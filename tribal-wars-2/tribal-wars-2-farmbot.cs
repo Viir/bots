@@ -1,4 +1,4 @@
-/* Tribal Wars 2 Farmbot v2018-08-20
+/* Tribal Wars 2 Farmbot v2018-08-21
 This bot goes through the list of reports to attack again.
 Farming is done following the process outlined at https://forum.botengine.org/t/tribal-wars-2-farmbot-2018/1330
 */
@@ -60,6 +60,8 @@ static string openVillageInfoButtonXPath => "//*[@ng-click='openVillageInfo(char
 static string reportJumpToAttackerVillageXPath => "//*[starts-with(@ng-click, 'jumpToVillage(report[type].attVillage')]";
 
 static string mapVillageContextMenuItemActivateXPath => "//*[contains(@class, 'context-menu-item') and contains(@class, 'activate')]";
+
+static string customArmyWindowCloseButtonXPath => "//*[@ng-controller='ModalCustomArmyController']//*[@ng-click='closeWindow()']";
 
 var browserPage = WebBrowser.OpenNewBrowserPage();
 
@@ -157,13 +159,26 @@ while(true)
 
 	Host.Delay(1333);
 
+	var customArmyWindowCloseButton =
+		WaitForReference(() =>
+			browserPage.XPathAsync(customArmyWindowCloseButtonXPath).Result?.FirstOrDefault(), 333);
+
+	if(customArmyWindowCloseButton != null)
+	{
+		Host.Log("Looks like there is still an army window open. I click on the button to close it.");
+
+		AttemptClickAndLogError(() => customArmyWindowCloseButton);
+
+		Host.Delay(555);
+	}
+
 	var currentReportHeader = WaitForReference(() =>
 		browserPage.XPathAsync("//div[contains(@class,'report-header-wrapper')]").Result?.FirstOrDefault(), 333);
 
 	var currentReportCaption =
 		GetHtmlElementInnerText(currentReportHeader)?.Trim();
 
-	Host.Log("Caption of the current open report:\n" + currentReportCaption?.Replace("\n", " - "));
+	Host.Log("Caption of the current open report: '" + currentReportCaption?.Replace("\n", " - ") + "'");
 
 	var battleReportDetailsContainer =
 		WaitForReference(() => browserPage.XPathAsync(inBattleReportViewDetailsXPath).Result.FirstOrDefault(), 333);
@@ -176,8 +191,6 @@ while(true)
 
 	var battleReportDetailsContainerClass =
 		battleReportDetailsContainer?.GetPropertyAsync("className").Result?.JsonValueAsync().Result?.ToString();
-
-	Host.Log("Inspect battleReportDetailsContainerClass: " + battleReportDetailsContainerClass);
 
 	if(battleReportDetailsContainerClass.Contains("ng-hide"))
 	{
@@ -294,8 +307,6 @@ navigateToNextReport:
 	var navigateToNextReportButtonClassName = navigateToNextReportButton?.GetPropertyAsync("className").Result;
 
 	var navigateToNextReportButtonClassNameJsonValue = navigateToNextReportButtonClassName?.JsonValueAsync().Result;
-
-	Host.Log("navigateToNextReportButtonClassName.jsonValue: " + navigateToNextReportButtonClassNameJsonValue);
 
 	var buttonIsOrange = navigateToNextReportButtonClassNameJsonValue?.ToString()?.Contains("btn-orange");
 

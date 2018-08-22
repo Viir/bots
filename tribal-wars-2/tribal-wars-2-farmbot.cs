@@ -1,6 +1,7 @@
-/* Tribal Wars 2 Farmbot v2018-08-21
-This bot goes through the list of reports to attack again.
-Farming is done following the process outlined at https://forum.botengine.org/t/tribal-wars-2-farmbot-2018/1330
+/* Tribal Wars 2 Farmbot v2018-08-22
+I read your battle reports and send troops to your farms again.
+To learn more about how I work, see https://forum.botengine.org/t/tribal-wars-2-farmbot-2018/1330
+In case you have any questions, feel free to ask at https://forum.botengine.org
 */
 
 using System;
@@ -9,6 +10,15 @@ using System.Linq;
 using PuppeteerSharp;
 using System.Collections.Generic;
 
+
+//	Pick a timespan long enough for all farming units to return.
+const int breakBetweenCycleDurationMinSeconds = 60 * 30;
+
+const int breakBetweenCycleDurationRandomAdditionMaxSeconds = 60 * 30;
+
+const int cycleCountMin = 1;
+
+const int cycleCountRandomAdditionMax = 0;
 
 const int waitForReportListButtonTimespanMaxSeconds = 120;
 const int inGameDelaySeconds = 10;
@@ -55,6 +65,8 @@ static string inBattleReportViewDetailsXPath => "//*[contains(@class, 'report-ba
 
 static string inBattleReportViewToggleDetailsButtonXPath => "//*[contains(@class, 'report-battle')]//*[@ng-click='toggleCasual()']";
 
+static string inReportViewScrollWrapXPath => "//*[@ng-controller='ReportController']//*[contains(@class, 'scroll-wrap')]/parent::*";
+
 static string openVillageInfoButtonXPath => "//*[@ng-click='openVillageInfo(character.getSelectedVillage().getId())']";
 
 static string reportJumpToAttackerVillageXPath => "//*[starts-with(@ng-click, 'jumpToVillage(report[type].attVillage')]";
@@ -63,278 +75,343 @@ static string mapVillageContextMenuItemActivateXPath => "//*[contains(@class, 'c
 
 static string customArmyWindowCloseButtonXPath => "//*[@ng-controller='ModalCustomArmyController']//*[@ng-click='closeWindow()']";
 
+static string browserPageVisibilityGuide => "If you see this happen all the time, make sure that the game is visible in the web browser.";
+
+Host.Log("Welcome! - ¡Bienvenido! - Bienvenue! ---- This is the Tribal Wars 2 Farmbot. I read your battle reports and send troops to your farms again. To learn more about how I work, see https://forum.botengine.org/t/tribal-wars-2-farmbot-2018/1330. In case you have any questions, feel free to ask at https://forum.botengine.org");
+
 var browserPage = WebBrowser.OpenNewBrowserPage();
 
-browserPage.SetViewportAsync(new ViewPortOptions { Width = 1112, Height = 706, }).Wait();
+browserPage.SetViewportAsync(new ViewPortOptions { Width = 1112, Height = 726, }).Wait();
+
+browserPage.Browser.PagesAsync().Result.Except(new []{browserPage}).Select(page => { page.CloseAsync().Wait(); return 4;}).ToList();
 
 Host.Log("Looks like opening the web browser was successful.");
 
-var waitForReportListButtonStopwatch = Stopwatch.StartNew();
+var sessionReport = new CycleReport{ BeginTime = Host.GetTimeContinuousMilli() / 1000 };
 
-while(true)
+var logSessionStats = new Action(() =>
+    {
+        Host.Delay(1);
+        Host.Log("In this session, " + sessionReport.StatisticsText);
+        Host.Delay(1);
+    });
+
+var cycleCount = RandomIntFromMinimumAndRandomAddition(cycleCountMin, cycleCountRandomAdditionMax);
+
+for(int cycleIndex = 0; ; ++cycleIndex)
 {
-	Host.Log("I did not find the button to open the report list. Maybe the game is still loading. (The location of the current page is '" + browserPage.Url + "').");
-	Host.Log("If you have not done this yet, please log in and enter the game in the web browser I opened when the script started. For now, I keep looking for that button to appear....");
+	Host.Log("Starting cycle " + cycleIndex + " of " + cycleCount + ".");
 
-	if(WaitForOpenReportListButton(15000) != null)
-		break;
+	var waitForReportListButtonStopwatch = Stopwatch.StartNew();
 
-	if(waitForReportListButtonTimespanMaxSeconds < waitForReportListButtonStopwatch.Elapsed.TotalSeconds)
+	while(true)
 	{
-		var	message = "Did not find the button to open the report list while waiting for " + ((int)waitForReportListButtonStopwatch.Elapsed.TotalSeconds) + "seconds. Therefore I stop the bot."; 
-		Host.Log(message);
-		throw new ApplicationException(message);
-	}
-}
+		Host.Log("I did not find the button to open the report list. Maybe the game is still loading. (The location of the current page is '" + browserPage.Url + "'). If you have not done this yet, please log in and enter the game in the web browser I opened when the script started. For now, I keep looking for that button to appear....");
+	
+		if(WaitForOpenReportListButton(15000) != null)
+			break;
 
-Host.Log("Found the button to open the report list.");
-Host.Log("Please configure filtering in the reports list now. I will wait for " + inGameDelaySeconds + " seconds before continuing. In case you need more time to configure the game, you can pause the bot");
-
-Host.Delay(1000 * inGameDelaySeconds);
-
-var urlWithoutCharIdMatch = System.Text.RegularExpressions.Regex.Match(browserPage.Url ?? "", ".*(?<!&character_id=.*)");
-
-Host.Log("Url without character id: " + (urlWithoutCharIdMatch.Success ? ("'" + urlWithoutCharIdMatch.Value + "'") : "no match"));
-
-var openReportListButton = WaitForOpenReportListButton(1000);
-
-if (openReportListButton == null)
-    throw new NotImplementedException("Did not find openReportListButton.");
-
-Host.Log("Found the button to open the report list. I click on this button....");
-
-Host.Delay(333);
-
-if(!AttemptClickAndLogError(() => WaitForOpenReportListButton(1000)))
-	throw new NotImplementedException("Did not find openReportListButton.");
-
-var battleReportsButton = WaitForReference(() =>
-    browserPage.XPathAsync(battleReportsButtonXPath).Result.FirstOrDefault(), 10000);
-
-if(battleReportsButton == null)
-	throw new NotImplementedException("Did not find button to switch to battle reports.");
-
-var firstReportItem = WaitForReference(() =>
-    browserPage.XPathAsync(reportListItemXPath).Result.FirstOrDefault(), 3000);
-
-if (firstReportItem == null)
-    throw new NotImplementedException("Did not find any report in the report list.");
-
-Host.Log("Found at least one report item in the reports list.");
-
-//	AttemptClickAndLogError(() => openReportListButton);
-
-Host.Delay(444);
-
-var reports = WaitForReference(() => browserPage.XPathAsync(reportListItemXPath).Result, 1000);
-
-if(reports == null)
-    throw new NotImplementedException("Did not find the reports.");
-
-var parsedReportItems = reports.Select(ParseReportListItem).ToList();
-
-//	Host.Log("parsedReportItems:\n" + Newtonsoft.Json.JsonConvert.SerializeObject(parsedReportItems));
-Host.Log("Number of parsed report items: " + parsedReportItems?.Count);
-
-Host.Log("Found a report in the report list. I click on it.");
-
-Host.Delay(333);
-
-AttemptClickAndLogError(() => parsedReportItems.FirstOrDefault().linkToReport);
-
-var reportsSeen = new List<BattleReportDetails>();
-var reportsForWhichAttackHasBeenSentAgain = new List<BattleReportDetails>();
-
-var cycleBeginTime = Host.GetTimeContinuousMilli() / 1000;
-
-while(true)
-{
-	var cycleDuration = Host.GetTimeContinuousMilli() / 1000 - cycleBeginTime;
-
-	if(cycleDurationMax < cycleDuration)
-	{
-		Host.Log("Stopping after " + cycleDuration + " seconds for safety.");
-		break;
-	}
-
-	Host.Delay(1333);
-
-	var customArmyWindowCloseButton =
-		WaitForReference(() =>
-			browserPage.XPathAsync(customArmyWindowCloseButtonXPath).Result?.FirstOrDefault(), 333);
-
-	if(customArmyWindowCloseButton != null)
-	{
-		Host.Log("Looks like there is still an army window open. I click on the button to close it.");
-
-		AttemptClickAndLogError(() => customArmyWindowCloseButton);
-
-		Host.Delay(555);
-	}
-
-	var currentReportHeader = WaitForReference(() =>
-		browserPage.XPathAsync("//div[contains(@class,'report-header-wrapper')]").Result?.FirstOrDefault(), 333);
-
-	var currentReportCaption =
-		GetHtmlElementInnerText(currentReportHeader)?.Trim();
-
-	Host.Log("Caption of the current open report: '" + currentReportCaption?.Replace("\n", " - ") + "'");
-
-	var battleReportDetailsContainer =
-		WaitForReference(() => browserPage.XPathAsync(inBattleReportViewDetailsXPath).Result.FirstOrDefault(), 333);
-
-	if(battleReportDetailsContainer == null)
-	{
-		Host.Log("Did not find details container in battle report. Maybe this is a different kind of report, so I continue with the next report.");
-		goto navigateToNextReport;
-	}
-
-	var battleReportDetailsContainerClass =
-		battleReportDetailsContainer?.GetPropertyAsync("className").Result?.JsonValueAsync().Result?.ToString();
-
-	if(battleReportDetailsContainerClass.Contains("ng-hide"))
-	{
-		Host.Log("Report details seem to be hidden, I try to open the report details.");
-
-		if(!AttemptClickAndLogError(() => WaitForReference(() =>
-			browserPage.XPathAsync(inBattleReportViewToggleDetailsButtonXPath).Result.FirstOrDefault(), 333)))
+		if(waitForReportListButtonTimespanMaxSeconds < waitForReportListButtonStopwatch.Elapsed.TotalSeconds)
 		{
-			Host.Log("Did not find the button to toggle the report details. I end this cycle");
+			var	message = "Did not find the button to open the report list while waiting for " + ((int)waitForReportListButtonStopwatch.Elapsed.TotalSeconds) + "seconds. Therefore I stop the bot."; 
+			Host.Log(message);
+			throw new ApplicationException(message);
+		}
+	}
+
+	Host.Log("Found the button to open the report list.");
+	Host.Log("Please configure filtering in the reports list now. I will wait for " + inGameDelaySeconds + " seconds before continuing. In case you need more time to configure the game, you can pause the bot.");
+
+	Host.Delay(1000 * inGameDelaySeconds);
+
+	var urlWithoutCharIdMatch = System.Text.RegularExpressions.Regex.Match(browserPage.Url ?? "", ".*(?<!&character_id=.*)");
+
+	Host.Log("Url without character id: " + (urlWithoutCharIdMatch.Success ? ("'" + urlWithoutCharIdMatch.Value + "'") : "no match"));
+	
+	var openReportListButton = WaitForOpenReportListButton(1000);
+
+	if (openReportListButton == null)
+	    throw new NotImplementedException("Did not find openReportListButton.");
+
+	Host.Log("Found the button to open the report list. I click on this button....");
+
+	Host.Delay(333);
+
+	if(!AttemptClickAndLogError(() => WaitForOpenReportListButton(1000)))
+		throw new NotImplementedException("Did not find openReportListButton.");
+
+	var battleReportsButton = WaitForReference(() =>
+	    browserPage.XPathAsync(battleReportsButtonXPath).Result.FirstOrDefault(), 10000);
+
+	if(battleReportsButton == null)
+		throw new NotImplementedException("Did not find button to switch to battle reports.");
+
+	var firstReportItem = WaitForReference(() =>
+	    browserPage.XPathAsync(reportListItemXPath).Result.FirstOrDefault(), 3000);
+
+	if (firstReportItem == null)
+	    throw new NotImplementedException("Did not find any report in the report list.");
+
+	Host.Log("Found at least one report item in the reports list.");
+
+	//	AttemptClickAndLogError(() => openReportListButton);
+
+	Host.Delay(444);
+
+	var reports = WaitForReference(() => browserPage.XPathAsync(reportListItemXPath).Result, 1000);
+
+	if(reports == null)
+	    throw new NotImplementedException("Did not find the reports.");
+
+	var parsedReportItems = reports.Select(ParseReportListItem).ToList();
+
+	//	Host.Log("parsedReportItems:\n" + Newtonsoft.Json.JsonConvert.SerializeObject(parsedReportItems));
+	Host.Log("Number of parsed report items: " + parsedReportItems?.Count);
+
+	Host.Log("Found a report in the report list. I click on it.");
+
+	Host.Delay(333);
+
+	AttemptClickAndLogError(() => parsedReportItems.FirstOrDefault().linkToReport);
+
+	var cycleReport = new CycleReport{ BeginTime = Host.GetTimeContinuousMilli() / 1000 };
+
+	var statisticsLogLastTime = 0;
+	
+	var logCycleStats = new Action(() =>
+	    {
+	        Host.Delay(1);
+	        Host.Log("In the current cycle, " + cycleReport.StatisticsText);
+	        Host.Delay(1);
+	    });
+
+	while(true)
+	{
+		var cycleDuration = Host.GetTimeContinuousMilli() / 1000 - cycleReport.BeginTime;
+	
+		if(cycleDurationMax < cycleDuration)
+		{
+			Host.Log("Stopping after " + cycleDuration + " seconds for safety.");
 			break;
 		}
 
-		Host.Delay(555);
-	}
-
-	Host.Log("Parse the battle report details....");
-
-	var parseBattleReportDetails = ParseBattleReportDetails(battleReportDetailsContainer);
-
-	if(parseBattleReportDetails.IsFail)
-	{
-		Host.Log("Failed to parse the battle report details (" + parseBattleReportDetails.Error + "). I end this cycle.");
-		break;
-	}
-
-	var	battleReportDetails = parseBattleReportDetails.Result;
-
-	Host.Log("Battle report details:\n" + battleReportDetails);
-
-	reportsSeen.Add(battleReportDetails);
-
-	if(reportsForWhichAttackHasBeenSentAgain.Any(report =>
-		report.AttackerVillageLocation.Equals(battleReportDetails.AttackerVillageLocation) &&
-		report.DefenderVillageLocation.Equals(battleReportDetails.DefenderVillageLocation)))
-	{
-		Host.Log("An attack from " + battleReportDetails.AttackerVillageLocation + " to " + battleReportDetails.DefenderVillageLocation + " has already been sent in this cycle. I skip this one and continue with the next report");
-		goto navigateToNextReport;
-	}
-
-	var currentActiveVillageLocation = ReadCurrentActiveVillageLocation();
-
-	if(!currentActiveVillageLocation.HasValue)
-	{
-		Host.Log("Failed to read the current active village location. I stop this cycle.");
-		break;
-	}
-
-	Host.Log("Current active village location is " + currentActiveVillageLocation);
-
-	if(!currentActiveVillageLocation.Equals(battleReportDetails.AttackerVillageLocation))
-	{
-		Host.Log("Switching to village " + battleReportDetails.AttackerVillageLocation + ".");
-
-		if(!AttemptClickAndLogError(() =>
-			WaitForReference(() => browserPage.XPathAsync(reportJumpToAttackerVillageXPath).Result.FirstOrDefault(), 400)))
 		{
-			Host.Log("I did not find the button to jump to attackers village. I skip this report.");
-			goto navigateToNextReport;
+			var currentTime = (int)(Host.GetTimeContinuousMilli() / 1000);
+			var statisticsLogLastTimeAge = currentTime - statisticsLogLastTime;
+	
+			if(60 * 5 < statisticsLogLastTimeAge)
+			{
+				logCycleStats();
+				statisticsLogLastTime = currentTime;
+				logSessionStats();
+			}
 		}
 
-		Host.Delay(1777);
+		Host.Delay(777);
 
-		if(!AttemptClickAndLogError(() => WaitForReference(() =>
-			browserPage.XPathAsync(mapVillageContextMenuItemActivateXPath).Result.FirstOrDefault(), 3333)))
+		var customArmyWindowCloseButton =
+			WaitForReference(() =>
+				browserPage.XPathAsync(customArmyWindowCloseButtonXPath).Result?.FirstOrDefault(), 333);
+
+		if(customArmyWindowCloseButton != null)
 		{
-			Host.Log("I did not find the context menu button to activate the village. I skip this report.");
+			Host.Log("Looks like there is still an army window open. I click on the button to close it.");
+	
+			AttemptClickAndLogError(() => customArmyWindowCloseButton);
+	
+			Host.Delay(555);
+	
+			continue;
+		}
+	
+		var currentReportHeader = WaitForReference(() =>
+			browserPage.XPathAsync("//div[contains(@class,'report-header-wrapper')]").Result?.FirstOrDefault(), 333);
+	
+		var currentReportCaption =
+			GetHtmlElementInnerText(currentReportHeader)?.Trim();
+	
+		Host.Log("Caption of the current open report: '" + currentReportCaption?.Replace("\n", " - ") + "'");
+	
+		if(cycleReport.ReportsSeen.Any(report => report.Caption == currentReportCaption))
+		{
+			Host.Log("Hey, I have seen a report with the same caption before! I skip this report and continue with the next one. " + browserPageVisibilityGuide);
 			goto navigateToNextReport;
 		}
-
-		Host.Delay(1333);
-
-		currentActiveVillageLocation = ReadCurrentActiveVillageLocation();
-
+	
+		var battleReportDetailsContainer =
+			WaitForReference(() => browserPage.XPathAsync(inBattleReportViewDetailsXPath).Result.FirstOrDefault(), 333);
+	
+		if(battleReportDetailsContainer == null)
+		{
+			Host.Log("Did not find details container in battle report. Maybe this is a different kind of report, so I continue with the next report.");
+			goto navigateToNextReport;
+		}
+	
+		var battleReportDetailsContainerClass =
+			battleReportDetailsContainer?.GetPropertyAsync("className").Result?.JsonValueAsync().Result?.ToString();
+	
+		if(battleReportDetailsContainerClass.Contains("ng-hide"))
+		{
+			Host.Log("Report details seem to be hidden, I try to open the report details.");
+	
+			if(!AttemptClickAndLogError(() => WaitForReference(() =>
+				browserPage.XPathAsync(inBattleReportViewToggleDetailsButtonXPath).Result.FirstOrDefault(), 333)))
+			{
+				Host.Log("Did not find the button to toggle the report details. I end this cycle");
+				break;
+			}
+	
+			Host.Delay(555);
+		}
+	
+		Host.Log("Parse the battle report details....");
+	
+		var parseBattleReportDetails = ParseBattleReportDetails(battleReportDetailsContainer);
+	
+		if(parseBattleReportDetails.IsFail)
+		{
+			Host.Log("Failed to parse the battle report details (" + parseBattleReportDetails.Error + "). I end this cycle.");
+			break;
+		}
+	
+		var	battleReportDetails = parseBattleReportDetails.Result;
+		
+		battleReportDetails.Caption = currentReportCaption;
+	
+		Host.Log("Battle report details:\n" + battleReportDetails);
+	
+		cycleReport.ReportsSeen.Add(battleReportDetails);
+		sessionReport.ReportsSeen.Add(battleReportDetails);
+	
+		if(cycleReport.ReportsForWhichAttackHasBeenSentAgain.Any(report =>
+			report.AttackerVillageLocation.Equals(battleReportDetails.AttackerVillageLocation) &&
+			report.DefenderVillageLocation.Equals(battleReportDetails.DefenderVillageLocation)))
+		{
+			Host.Log("An attack from " + battleReportDetails.AttackerVillageLocation + " to " + battleReportDetails.DefenderVillageLocation + " has already been sent in this cycle. I skip this report and continue with the next one.");
+			goto navigateToNextReport;
+		}
+	
+		var currentActiveVillageLocation = ReadCurrentActiveVillageLocation();
+	
+		if(!currentActiveVillageLocation.HasValue)
+		{
+			Host.Log("Failed to read the current active village location. I stop this cycle.");
+			break;
+		}
+	
+		Host.Log("Current active village location is " + currentActiveVillageLocation);
+	
+		Host.Delay(1);
+	
 		if(!currentActiveVillageLocation.Equals(battleReportDetails.AttackerVillageLocation))
 		{
-			Host.Log("I failed to switch to the originally attacking village. I skip this report.");
-			goto navigateToNextReport;
+			Host.Log("Begin switching to village " + battleReportDetails.AttackerVillageLocation + ".");
+	
+			var scrollExpression =
+				javascriptExpressionToGetFirstElementFromXPath("//*[@ng-controller='ReportController']//*[contains(@class, 'scroll-wrap')]/parent::*") +
+				".scroll(0, 230)";
+	
+			var scrollResult = browserPage.EvaluateExpressionAsync(scrollExpression).Result;
+	
+			if(!AttemptClickAndLogError(() =>
+				WaitForReference(() => browserPage.XPathAsync(reportJumpToAttackerVillageXPath).Result.FirstOrDefault(), 400)))
+			{
+				Host.Log("I did not find the button to jump to attackers village. I skip this report and continue with the next one.");
+				goto navigateToNextReport;
+			}
+	
+			Host.Delay(1777);
+	
+			if(!AttemptClickAndLogError(() => WaitForReference(() =>
+				browserPage.XPathAsync(mapVillageContextMenuItemActivateXPath).Result.FirstOrDefault(), 3333)))
+			{
+				Host.Log("I did not find the context menu button to activate the village. I skip this report.");
+				goto navigateToNextReport;
+			}
+	
+			Host.Delay(1333);
+	
+			currentActiveVillageLocation = ReadCurrentActiveVillageLocation();
+	
+			if(!currentActiveVillageLocation.Equals(battleReportDetails.AttackerVillageLocation))
+			{
+				Host.Log("I failed to switch to the originally attacking village. I skip this report. " + browserPageVisibilityGuide);
+				goto navigateToNextReport;
+			}
 		}
-	}
+	
+		Host.Log("Try to find and click the button to attack again.");
+	
+		Host.Delay(555);
+	
+		if(!AttemptClickAndLogError(() => WaitForReference(() =>
+			browserPage.XPathAsync(inReportAttackAgainButtonXPath).Result.FirstOrDefault(), 1000)))
+			throw new NotImplementedException("Did not find button to attack again.");
 
-	Host.Log("Try to find and click the button to attack again.");
+		Host.Log("Try to find and click the button to send the attack.");
 
-	Host.Delay(555);
+		Host.Delay(555);
 
-	if(!AttemptClickAndLogError(() => WaitForReference(() =>
-		browserPage.XPathAsync(inReportAttackAgainButtonXPath).Result.FirstOrDefault(), 4000)))
-		throw new NotImplementedException("Did not find button to attack again.");
+		if(!AttemptClickAndLogError(() => WaitForReference(() =>
+		    browserPage.XPathAsync(inSendArmyFormSendAttackButtonXPath).Result.FirstOrDefault(), 3000)))
+		    throw new NotImplementedException("Did not find button to send attack.");
 
-	Host.Log("Try to find and click the button to send the attack.");
+		cycleReport.ReportsForWhichAttackHasBeenSentAgain.Add(battleReportDetails);
+		sessionReport.ReportsForWhichAttackHasBeenSentAgain.Add(battleReportDetails);
 
-	Host.Delay(555);
-
-	if(!AttemptClickAndLogError(() => WaitForReference(() =>
-	    browserPage.XPathAsync(inSendArmyFormSendAttackButtonXPath).Result.FirstOrDefault(), 4000)))
-	    throw new NotImplementedException("Did not find button to send attack.");
-
-	reportsForWhichAttackHasBeenSentAgain.Add(battleReportDetails);
-
-	Host.Log("cycle_number_of_attacks_sent: " + reportsForWhichAttackHasBeenSentAgain.Count);
+		Host.Log("session_number_of_attacks_sent: " + sessionReport.ReportsForWhichAttackHasBeenSentAgain.Count);
 
 navigateToNextReport:
 
-	Host.Delay(1333); // Wait some time to allow browser to process the request following the click.
-
-	var navigateToNextReportButton = WaitForReference(() =>
-	    browserPage.XPathAsync(inReportViewNavigateToNextReportButtonXPath).Result.FirstOrDefault(), 1000);
-
-	if(navigateToNextReportButton == null)
-	{
-	    Host.Log("Did not find button to navigate to next report.");
-	    break;
+		Host.Delay(1333); // Wait some time to allow browser to process the request following the click.
+	
+		var navigateToNextReportButton = WaitForReference(() =>
+		    browserPage.XPathAsync(inReportViewNavigateToNextReportButtonXPath).Result.FirstOrDefault(), 1000);
+	
+		if(navigateToNextReportButton == null)
+		{
+		    Host.Log("Did not find the button to navigate to the next report. I stop this cycle.");
+		    break;
+		}
+	
+		var navigateToNextReportButtonClassName = navigateToNextReportButton?.GetPropertyAsync("className").Result;
+	
+		var navigateToNextReportButtonClassNameJsonValue = navigateToNextReportButtonClassName?.JsonValueAsync().Result;
+	
+		var buttonIsOrange = navigateToNextReportButtonClassNameJsonValue?.ToString()?.Contains("btn-orange");
+	
+		if(buttonIsOrange != true)
+		{
+			Host.Log("The button to navigate to the next report seems to be disabled.");
+			break;
+		}
+	
+		Host.Log("I click on the button to navigate to the next report.");
+		Host.Delay(333);
+		AttemptClickAndLogError(() => navigateToNextReportButton);
+	
+		Host.Delay(1333);
 	}
 
-	var navigateToNextReportButtonClassName = navigateToNextReportButton?.GetPropertyAsync("className").Result;
+	logCycleStats();
 
-	var navigateToNextReportButtonClassNameJsonValue = navigateToNextReportButtonClassName?.JsonValueAsync().Result;
-
-	var buttonIsOrange = navigateToNextReportButtonClassNameJsonValue?.ToString()?.Contains("btn-orange");
-
-	if(buttonIsOrange != true)
-	{
-		Host.Log("Button to navigate to next report seems to be disabled.");
+	if(cycleCount <= cycleIndex + 1)
 		break;
-	}
 
-	Host.Log("I click on the button to navigate to next report.");
-	Host.Delay(333);
-	AttemptClickAndLogError(() => navigateToNextReportButton);
+	var breakDuration = RandomIntFromMinimumAndRandomAddition(breakBetweenCycleDurationMinSeconds, breakBetweenCycleDurationRandomAdditionMaxSeconds);
 
-	Host.Delay(1333);
+	Host.Log("I am done with this cycle. I will wait for " + (breakDuration / 60) + " minutes before continuing....");
+	Host.Delay(breakDuration * 1000);
 }
 
-var attacksOriginVillages =
-	reportsForWhichAttackHasBeenSentAgain.Select(report => report.AttackerVillageLocation).Distinct().ToList();
-
-Host.Log("I have looked at " + reportsSeen.Count +
-	" reports and sent " + reportsForWhichAttackHasBeenSentAgain.Count +
-	" attacks from " + attacksOriginVillages.Count + " villages.");
-
-Host.Log("I am done for now. I wait for one minute before terminating the script....");
+logSessionStats();
+Host.Log("I am done with this session. I wait for one minute before terminating the script....");
 Host.Delay(1000 * 60);
 
 struct BattleReportDetails
 {
+	public string Caption;
+
 	public VillageLocation AttackerVillageLocation;
 
 	public VillageLocation DefenderVillageLocation;
@@ -508,6 +585,9 @@ ElementHandle WaitForOpenReportListButton(int timeoutMilli) =>
         }
     }, timeoutMilli);
 
+static string javascriptExpressionToGetFirstElementFromXPath(string xpath) =>
+    "document.evaluate(\"" + xpath + "\", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue";
+
 T WaitForReference<T>(Func<T> attemptGetReference, int timeoutMilli)
     where T : class
 {
@@ -540,4 +620,27 @@ struct ErrorStringOrGenericResult<T>
 
 	public string Error;
 	public T Result;
+}
+
+class CycleReport
+{
+	public Int64 BeginTime;
+	readonly public List<BattleReportDetails> ReportsSeen = new List<BattleReportDetails>();
+	readonly public List<BattleReportDetails> ReportsForWhichAttackHasBeenSentAgain = new List<BattleReportDetails>();
+
+	public IEnumerable<VillageLocation> AttacksOriginVillages =>
+		ReportsForWhichAttackHasBeenSentAgain.Select(report => report.AttackerVillageLocation).Distinct();
+
+	public string StatisticsText =>
+		"I have looked at " + ReportsSeen.Count +
+		" reports and sent " + ReportsForWhichAttackHasBeenSentAgain.Count +
+		" attacks from " + AttacksOriginVillages.Count() + " villages.";
+}
+
+int RandomIntFromMinimumAndRandomAddition(int min, int additionMax)
+{
+	var addition =
+		additionMax < 1 ? 0 : (new Random((int)Host.GetTimeContinuousMilli()).Next() % additionMax);
+
+	return min + addition;
 }

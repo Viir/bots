@@ -1,7 +1,22 @@
-/* Tribal Wars 2 Farmbot v2018-08-22
+/* Tribal Wars 2 Farmbot v2018-08-24
 I read your battle reports and send troops to your farms again.
-To learn more about how I work, see https://forum.botengine.org/t/tribal-wars-2-farmbot-2018/1330
-In case you have any questions, feel free to ask at https://forum.botengine.org
+
+## Features Of This Bot
+
+### Easy To Configure
++ Reads battle reports to identify your farm villages.
++ Uses the ‘Attack Again’ function in the battle report to attack each target village with your preferred composition of the army.
++ Uses the chrome web browser to support in-game configuration (e.g. reports filter).
+
+### Efficient
++ Automatically activates correct villages to attack from the same villages again.
++ Improves efficiency of units distribution: Skips combination of attacking and defending village for which an attack has already been sent in the current cycle.
+
+### Safe
++ Supports random breaks between farming cycles.
++ Stops the farming when the configured time limit is met to avoid perpetual activity on your account.
+
+For details about how I work, see https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406
 */
 
 using System;
@@ -11,18 +26,19 @@ using PuppeteerSharp;
 using System.Collections.Generic;
 
 
-//	Pick a timespan long enough for all farming units to return.
+//	Minimum timespan to break between farming cycles.
 const int breakBetweenCycleDurationMinSeconds = 60 * 30;
 
+//	Upper limit of a random additional time for breaking between farming cycles.
 const int breakBetweenCycleDurationRandomAdditionMaxSeconds = 60 * 30;
 
-const int cycleCountMin = 1;
+const int numberOfFarmCyclesToRepeatMin = 1;
 
-const int cycleCountRandomAdditionMax = 0;
+const int numberOfFarmCyclesToRepeatRandomAdditionMax = 0;
 
 const int waitForReportListButtonTimespanMaxSeconds = 120;
 const int inGameDelaySeconds = 10;
-const int cycleDurationMax = 60 * 30;
+const int cycleDurationMax = 60 * 60;
 
 
 /*
@@ -96,7 +112,7 @@ var logSessionStats = new Action(() =>
         Host.Delay(1);
     });
 
-var cycleCount = RandomIntFromMinimumAndRandomAddition(cycleCountMin, cycleCountRandomAdditionMax);
+var cycleCount = RandomIntFromMinimumAndRandomAddition(numberOfFarmCyclesToRepeatMin, numberOfFarmCyclesToRepeatRandomAdditionMax);
 
 for(int cycleIndex = 0; ; ++cycleIndex)
 {

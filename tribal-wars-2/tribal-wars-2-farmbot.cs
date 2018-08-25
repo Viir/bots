@@ -1,4 +1,4 @@
-/* Tribal Wars 2 Farmbot v2018-08-24
+/* Tribal Wars 2 Farmbot v2018-08-25
 I read your battle reports and send troops to your farms again.
 
 ## Features Of This Bot
@@ -160,7 +160,10 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 	    browserPage.XPathAsync(battleReportsButtonXPath).Result.FirstOrDefault(), 10000);
 
 	if(battleReportsButton == null)
+	{
+		Host.Log("It looks like opening the report list was not successful. Please make sure the zoom level in the browser window is set to 100%.");
 		throw new NotImplementedException("Did not find button to switch to battle reports.");
+	}
 
 	var firstReportItem = WaitForReference(() =>
 	    browserPage.XPathAsync(reportListItemXPath).Result.FirstOrDefault(), 3000);
@@ -204,7 +207,7 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 	while(true)
 	{
 		var cycleDuration = Host.GetTimeContinuousMilli() / 1000 - cycleReport.BeginTime;
-	
+
 		if(cycleDurationMax < cycleDuration)
 		{
 			Host.Log("Stopping after " + cycleDuration + " seconds for safety.");
@@ -328,7 +331,7 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 				".scroll(0, 230)";
 	
 			var scrollResult = browserPage.EvaluateExpressionAsync(scrollExpression).Result;
-	
+
 			if(!AttemptClickAndLogError(() =>
 				WaitForReference(() => browserPage.XPathAsync(reportJumpToAttackerVillageXPath).Result.FirstOrDefault(), 400)))
 			{
@@ -362,7 +365,10 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 	
 		if(!AttemptClickAndLogError(() => WaitForReference(() =>
 			browserPage.XPathAsync(inReportAttackAgainButtonXPath).Result.FirstOrDefault(), 1000)))
-			throw new NotImplementedException("Did not find button to attack again.");
+		{
+			Host.Log("I did not find the context menu button to attack again. I skip this report.");
+			goto navigateToNextReport;
+		}
 
 		Host.Log("Try to find and click the button to send the attack.");
 
@@ -370,7 +376,10 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 
 		if(!AttemptClickAndLogError(() => WaitForReference(() =>
 		    browserPage.XPathAsync(inSendArmyFormSendAttackButtonXPath).Result.FirstOrDefault(), 3000)))
-		    throw new NotImplementedException("Did not find button to send attack.");
+		{
+			Host.Log("Did not find button to send attack. I skip this report.");
+			goto navigateToNextReport;
+		}
 
 		cycleReport.ReportsForWhichAttackHasBeenSentAgain.Add(battleReportDetails);
 		sessionReport.ReportsForWhichAttackHasBeenSentAgain.Add(battleReportDetails);

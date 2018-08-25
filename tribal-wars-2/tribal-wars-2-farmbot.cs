@@ -282,26 +282,26 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 	
 			Host.Delay(555);
 		}
-	
+
 		Host.Log("Parse the battle report details....");
-	
+
 		var parseBattleReportDetails = ParseBattleReportDetails(battleReportDetailsContainer);
-	
+
 		if(parseBattleReportDetails.IsFail)
 		{
-			Host.Log("Failed to parse the battle report details (" + parseBattleReportDetails.Error + "). I end this cycle.");
-			break;
+			Host.Log("Failed to parse the battle report details (" + parseBattleReportDetails.Error + "). I skip this report.");
+			goto navigateToNextReport;
 		}
-	
+
 		var	battleReportDetails = parseBattleReportDetails.Result;
-		
+
 		battleReportDetails.Caption = currentReportCaption;
-	
+
 		Host.Log("Battle report details:\n" + battleReportDetails);
-	
+
 		cycleReport.ReportsSeen.Add(battleReportDetails);
 		sessionReport.ReportsSeen.Add(battleReportDetails);
-	
+
 		if(cycleReport.ReportsForWhichAttackHasBeenSentAgain.Any(report =>
 			report.AttackerVillageLocation.Equals(battleReportDetails.AttackerVillageLocation) &&
 			report.DefenderVillageLocation.Equals(battleReportDetails.DefenderVillageLocation)))
@@ -479,33 +479,40 @@ VillageLocation? ReadCurrentActiveVillageLocation()
 
 ErrorStringOrGenericResult<BattleReportDetails> ParseBattleReportDetails(ElementHandle battleReportDetailsHtmlElement)
 {
-	var attackerDetails =
-		battleReportDetailsHtmlElement.XPathAsync(".//table[.//*[contains(@class, 'attack')]]").Result?.SingleOrDefault();
-
-	var defenderDetails =
-		battleReportDetailsHtmlElement.XPathAsync(".//table[.//*[contains(@class, 'defense')]]").Result?.SingleOrDefault();
-
-	if(attackerDetails == null)
-		return Error<BattleReportDetails>("Did not find attacker details."); 
-
-	if(defenderDetails == null)
-		return Error<BattleReportDetails>("Did not find defender details."); 
-
-	var attackerVillageLocation = VillageLocationFromReportParty(attackerDetails);
-
-	if(attackerVillageLocation.IsFail)
-		return Error<BattleReportDetails>("Failed to parse attacker village location: " + attackerVillageLocation.Error);
-
-	var defenderVillageLocation = VillageLocationFromReportParty(defenderDetails);
-
-	if(defenderVillageLocation.IsFail)
-		return Error<BattleReportDetails>("Failed to parse defender village location: " + defenderVillageLocation.Error);
-
-	return Success(new BattleReportDetails
+	try
 	{
-		AttackerVillageLocation = attackerVillageLocation.Result,
-		DefenderVillageLocation = defenderVillageLocation.Result,
-	});
+		var attackerDetails =
+			battleReportDetailsHtmlElement.XPathAsync(".//table[.//*[contains(@class, 'attack')]]").Result?.SingleOrDefault();
+
+		var defenderDetails =
+			battleReportDetailsHtmlElement.XPathAsync(".//table[.//*[contains(@class, 'defense')]]").Result?.SingleOrDefault();
+
+		if(attackerDetails == null)
+			return Error<BattleReportDetails>("Did not find attacker details."); 
+
+		if(defenderDetails == null)
+			return Error<BattleReportDetails>("Did not find defender details."); 
+
+		var attackerVillageLocation = VillageLocationFromReportParty(attackerDetails);
+
+		if(attackerVillageLocation.IsFail)
+			return Error<BattleReportDetails>("Failed to parse attacker village location: " + attackerVillageLocation.Error);
+
+		var defenderVillageLocation = VillageLocationFromReportParty(defenderDetails);
+
+		if(defenderVillageLocation.IsFail)
+			return Error<BattleReportDetails>("Failed to parse defender village location: " + defenderVillageLocation.Error);
+
+		return Success(new BattleReportDetails
+		{
+			AttackerVillageLocation = attackerVillageLocation.Result,
+			DefenderVillageLocation = defenderVillageLocation.Result,
+		});
+	}
+	catch(Exception e)
+	{
+		return Error<BattleReportDetails>("Failed with Exception: " + e.ToString());
+	}
 }
 
 ErrorStringOrGenericResult<VillageLocation> VillageLocationFromReportParty(ElementHandle reportPartyHtmlElement)

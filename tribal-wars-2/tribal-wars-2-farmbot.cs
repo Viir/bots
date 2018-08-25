@@ -1,5 +1,5 @@
 /* Tribal Wars 2 Farmbot v2018-08-25
-I read your battle reports and send troops to your farms again.
+This bot reads your battle reports and sends troops to your farms again.
 
 ## Features Of This Bot
 
@@ -16,7 +16,7 @@ I read your battle reports and send troops to your farms again.
 + Supports random breaks between farming cycles.
 + Stops the farming when the configured time limit is met to avoid perpetual activity on your account.
 
-For details about how I work, see https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406
+For details about how it works, see https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406
 */
 
 using System;
@@ -103,6 +103,8 @@ browserPage.Browser.PagesAsync().Result.Except(new []{browserPage}).Select(page 
 
 Host.Log("Looks like opening the web browser was successful.");
 
+Host.Delay(1);
+
 var sessionReport = new CycleReport{ BeginTime = Host.GetTimeContinuousMilli() / 1000 };
 
 var logSessionStats = new Action(() =>
@@ -117,6 +119,15 @@ var cycleCount = RandomIntFromMinimumAndRandomAddition(numberOfFarmCyclesToRepea
 for(int cycleIndex = 0; ; ++cycleIndex)
 {
 	Host.Log("Starting cycle " + cycleIndex + " of " + cycleCount + ".");
+
+	if(0 < cycleIndex)
+	{
+		Host.Log("This is not the first farming cycle, I ask the browser to reload the page to get to a clean state.");
+		browserPage.ReloadAsync(new NavigationOptions { Timeout = 15000, WaitUntil = new []{WaitUntilNavigation.DOMContentLoaded} }).Wait();
+		Host.Delay(1111);
+	}
+
+	Host.Delay(1111);
 
 	var waitForReportListButtonStopwatch = Stopwatch.StartNew();
 

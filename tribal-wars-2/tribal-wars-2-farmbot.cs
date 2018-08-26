@@ -1,4 +1,4 @@
-/* Tribal Wars 2 Farmbot v2018-08-25
+/* Tribal Wars 2 Farmbot v2018-08-26
 This bot reads your battle reports and sends troops to your farms again.
 
 ## Features Of This Bot
@@ -11,6 +11,7 @@ This bot reads your battle reports and sends troops to your farms again.
 ### Efficient
 + Automatically activates correct villages to attack from the same villages again.
 + Improves efficiency of units distribution: Skips combination of attacking and defending village for which an attack has already been sent in the current cycle.
++ Applies heuristics to reduce the number of reports which need to be read to learn about all farming villages coordinates.
 
 ### Safe
 + Supports random breaks between farming cycles.
@@ -36,9 +37,12 @@ const int numberOfFarmCyclesToRepeatMin = 1;
 
 const int numberOfFarmCyclesToRepeatRandomAdditionMax = 0;
 
+//	The bot ends a farming cycle when it has seen this many reports in a row with already covered coordinates of attacking and defending villages.
+const int numberOfConsecutiveReportsWithAlreadyCoveredCoordinatesToEndCycle = 30;
+
 const int waitForReportListButtonTimespanMaxSeconds = 120;
 const int inGameDelaySeconds = 10;
-const int cycleDurationMax = 60 * 60;
+const int cycleDurationMaxSeconds = 60 * 40;
 
 
 /*
@@ -207,7 +211,7 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 	var cycleReport = new CycleReport{ BeginTime = Host.GetTimeContinuousMilli() / 1000 };
 
 	var statisticsLogLastTime = 0;
-	
+
 	var logCycleStats = new Action(() =>
 	    {
 	        Host.Delay(1);
@@ -215,11 +219,13 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 	        Host.Delay(1);
 	    });
 
+	var numberOfConsecutiveReportsWithAlreadyCoveredCoordinatesInCycle = 0;
+
 	while(true)
 	{
 		var cycleDuration = Host.GetTimeContinuousMilli() / 1000 - cycleReport.BeginTime;
 
-		if(cycleDurationMax < cycleDuration)
+		if(cycleDurationMaxSeconds < cycleDuration)
 		{
 			Host.Log("Stopping after " + cycleDuration + " seconds for safety.");
 			break;
@@ -318,8 +324,24 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 			report.DefenderVillageLocation.Equals(battleReportDetails.DefenderVillageLocation)))
 		{
 			Host.Log("An attack from " + battleReportDetails.AttackerVillageLocation + " to " + battleReportDetails.DefenderVillageLocation + " has already been sent in this cycle. I skip this report and continue with the next one.");
+			Host.Delay(1);
+
+			++numberOfConsecutiveReportsWithAlreadyCoveredCoordinatesInCycle;
+
+			if(numberOfConsecutiveReportsWithAlreadyCoveredCoordinatesToEndCycle <
+				numberOfConsecutiveReportsWithAlreadyCoveredCoordinatesInCycle)
+			{
+				Host.Log("The last " + numberOfConsecutiveReportsWithAlreadyCoveredCoordinatesInCycle + " reports I have seen contained combinations of attacking and defending village coordinates for which I have already sent attacks in this cycle. Because of this, I do not expect to find any more new farm coordinates in the next reports. I end this cycle.");
+				break;
+			}
+
 			goto navigateToNextReport;
 		}
+
+		numberOfConsecutiveReportsWithAlreadyCoveredCoordinatesInCycle = 0;
+
+		Host.Delay(1);
+		Host.Log("This report looks like I should attack here.");
 	
 		var currentActiveVillageLocation = ReadCurrentActiveVillageLocation();
 	

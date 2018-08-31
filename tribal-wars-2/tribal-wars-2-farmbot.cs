@@ -1,4 +1,4 @@
-/* Tribal Wars 2 Farmbot v2018-08-26
+/* Tribal Wars 2 Farmbot v2018-08-31
 This bot reads your battle reports and sends troops to your farms again.
 
 ## Features Of This Bot
@@ -158,7 +158,7 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 	var urlWithoutCharIdMatch = System.Text.RegularExpressions.Regex.Match(browserPage.Url ?? "", ".*(?<!&character_id=.*)");
 
 	Host.Log("Url without character id: " + (urlWithoutCharIdMatch.Success ? ("'" + urlWithoutCharIdMatch.Value + "'") : "no match"));
-	
+
 	var openReportListButton = WaitForOpenReportListButton(1000);
 
 	if (openReportListButton == null)
@@ -206,7 +206,7 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 
 	Host.Delay(333);
 
-	AttemptClickAndLogError(() => parsedReportItems.FirstOrDefault().linkToReport);
+	AttemptClickAndLogError(() => parsedReportItems.FirstOrDefault().htmlElement);
 
 	var cycleReport = new CycleReport{ BeginTime = Host.GetTimeContinuousMilli() / 1000 };
 
@@ -220,6 +220,8 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 	    });
 
 	var numberOfConsecutiveReportsWithAlreadyCoveredCoordinatesInCycle = 0;
+	var numberOfConsecutiveReportsWithSameCaption = 0;
+	string lastReportCaption = null;
 
 	while(true)
 	{
@@ -259,30 +261,55 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 	
 			continue;
 		}
-	
+
 		var currentReportHeader = WaitForReference(() =>
 			browserPage.XPathAsync("//div[contains(@class,'report-header-wrapper')]").Result?.FirstOrDefault(), 333);
-	
+
 		var currentReportCaption =
 			GetHtmlElementInnerText(currentReportHeader)?.Trim();
-	
+
 		Host.Log("Caption of the current open report: '" + currentReportCaption?.Replace("\n", " - ") + "'");
-	
+
+		if(lastReportCaption == currentReportCaption)
+			++numberOfConsecutiveReportsWithSameCaption;
+		else
+			numberOfConsecutiveReportsWithSameCaption = 0;
+
 		if(cycleReport.ReportsSeen.Any(report => report.Caption == currentReportCaption))
 		{
-			Host.Log("Hey, I have seen a report with the same caption before! I skip this report and continue with the next one. " + browserPageVisibilityGuide);
+			var	messageBase = "Hey, I have seen a report with the same caption before! ";
+
+			if(2 < numberOfConsecutiveReportsWithSameCaption)
+			{
+				Host.Log(messageBase + "This has happened " + numberOfConsecutiveReportsWithSameCaption + " consecutive times. This could be caused by the the bug in the Tribal Wars 2 Web App which breaks reports display (https://forum.botengine.org/t/bug-in-tribal-wars-2-web-app-broken-report-display/1457). I start the process to recover from this bug.");
+
+				var reportCaptionTimeMatch =
+					System.Text.RegularExpressions.Regex.Match(lastReportCaption ?? "", @"\d{1,2}\:\d{2}\:\d{2}");
+
+				var reportTimeToContinueAt =
+					reportCaptionTimeMatch.Success ? reportCaptionTimeMatch.Value?.Trim() : null;
+
+				ReloadAndEnterReportAtTime(reportTimeToContinueAt);
+				numberOfConsecutiveReportsWithSameCaption = 0;
+				numberOfConsecutiveReportsWithAlreadyCoveredCoordinatesInCycle = 0;
+			}
+			else
+			{
+				Host.Log(messageBase + "I skip this report and continue with the next one. " + browserPageVisibilityGuide);
+			}
+
 			goto navigateToNextReport;
 		}
-	
+
 		var battleReportDetailsContainer =
 			WaitForReference(() => browserPage.XPathAsync(inBattleReportViewDetailsXPath).Result.FirstOrDefault(), 333);
-	
+
 		if(battleReportDetailsContainer == null)
 		{
 			Host.Log("Did not find details container in battle report. Maybe this is a different kind of report, so I continue with the next report.");
 			goto navigateToNextReport;
 		}
-	
+
 		var battleReportDetailsContainerClass =
 			battleReportDetailsContainer?.GetPropertyAsync("className").Result?.JsonValueAsync().Result?.ToString();
 	
@@ -421,6 +448,8 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 
 navigateToNextReport:
 
+		lastReportCaption = currentReportCaption ?? lastReportCaption;
+
 		Host.Delay(1333); // Wait some time to allow browser to process the request following the click.
 	
 		var navigateToNextReportButton = WaitForReference(() =>
@@ -494,7 +523,7 @@ class ReportListItem
 {
     public string timeText;
 
-    public ElementHandle linkToReport;
+    public ElementHandle htmlElement;
 }
 
 VillageLocation? ReadCurrentActiveVillageLocation()
@@ -585,6 +614,77 @@ ErrorStringOrGenericResult<VillageLocation> SingleVillageLocationContainedInText
 	});
 }
 
+bool ReloadAndEnterReportAtTime(string reportTimeToContinueAt)
+{
+	Host.Log("I begin the process to restart the report UI and continue at report with time '" + reportTimeToContinueAt + "'.");
+
+	for(var i = 0; i < 3; ++i)
+	{
+		Host.Delay(333);
+
+		var closeWindowButton = WaitForReference(() =>
+			browserPage.XPathAsync("//*[@ng-click='closeWindow()']").Result.FirstOrDefault(), 111);
+
+		closeWindowButton?.ClickAsync().Wait();
+	}
+
+	if(!AttemptClickAndLogError(() => WaitForOpenReportListButton(1000)))
+	{
+		Host.Log("I did not find the button to open the report list.");
+		return false;
+	}
+
+	var	pageSize = 100;
+
+	Host.Log("I clicked the button to open the report list. Next, I set the page size to " + pageSize + ".");
+
+	Host.Delay(3333);
+
+	var setPageSizeButton = WaitForReference(() =>
+		browserPage.XPathAsync("//*[@ng-click='setLimit(_limit)' and contains(., '" + pageSize + "')]").Result.FirstOrDefault(), 111);
+
+	setPageSizeButton?.ClickAsync().Wait();
+
+	Host.Delay(3333);
+
+	Host.Log("I parse the reports in there to find the best to continue with.");
+
+	var reports = WaitForReference(() => browserPage.XPathAsync(reportListItemXPath).Result, 1000);
+
+	if(reports == null)
+	{
+		Host.Log("Did not find the report items.");
+		return false;
+	}
+
+	var parsedReportItems = reports.Select(ParseReportListItem).ToList();
+
+	Host.Log("I parsed " + parsedReportItems?.Count + " report items.");
+
+	var	matchingReportItem =
+		0 < reportTimeToContinueAt?.Length ?
+		parsedReportItems.FirstOrDefault(reportItem => reportItem.timeText?.Contains(reportTimeToContinueAt) ?? false)
+		: null;
+
+	var	reportItemToContinueWith = matchingReportItem;
+
+	if(matchingReportItem == null)
+	{
+		Host.Log("I did not find a report item with time of '" + reportTimeToContinueAt + "'. I continue with the last report in the list.");
+		reportItemToContinueWith = parsedReportItems.LastOrDefault();
+	}
+
+	var	reportItemToContinueWithText = GetHtmlElementInnerText(reportItemToContinueWith.htmlElement);
+
+	Host.Log("Report item to continue with: '" + reportItemToContinueWithText?.Trim()?.Replace("\n", " - ") + "'");
+
+	var	parsedReportItemsUpToReportToContinueWith =
+		parsedReportItems.Take(parsedReportItems.IndexOf(reportItemToContinueWith) + 1)
+		.ToList();
+
+	return OpenReportItemInReportList(parsedReportItemsUpToReportToContinueWith);
+}
+
 string GetHtmlElementInnerText(ElementHandle htmlElement) =>
 	htmlElement?.GetPropertyAsync("innerText")?.Result?.JsonValueAsync()?.Result?.ToString();
 
@@ -622,13 +722,55 @@ ReportListItem ParseReportListItem(ElementHandle htmlElement)
 
     var timeText = GetHtmlElementInnerText(reportDateElement);
 
-    var linkToReport = htmlElement;
-
     return new ReportListItem
     {
         timeText = timeText,
-        linkToReport = linkToReport,
+        htmlElement = htmlElement,
     };
+}
+
+bool OpenReportItemInReportList(IReadOnlyList<ReportListItem> reportItemsUpToReportToOpen)
+{
+	var	reportToOpen = reportItemsUpToReportToOpen.LastOrDefault();
+
+	var	reportItemDisplayText = GetHtmlElementInnerText(reportToOpen.htmlElement)?.Trim()?.Replace("\n", " - ");
+
+	Host.Log("I start the process to open the report '" + reportItemDisplayText + "' which is at position " + (reportItemsUpToReportToOpen.Count - 1) + " in the report list.");
+
+	/*
+	2018-08-30
+	Playing around with `scrollIntoView` in the reports list, I observed that it did not work for items which are further from the current viewport.
+	*/
+
+	var	scrollStepsReportItems =
+		reportItemsUpToReportToOpen
+		.Where((report, i) => i % 3 == 0 || report == reportToOpen)
+		.ToList();
+
+	Host.Log("I start to scroll down....");
+
+	var	scrollOperationsResults =
+		scrollStepsReportItems
+		.Select(reportItem =>
+		{
+			Host.Delay(111);
+			var scrollResult = ScrollHtmlElementIntoViewEnd(browserPage, reportItem.htmlElement).Result;
+			Host.Delay(111);
+			return scrollResult;
+		}).ToList();
+
+	Host.Log("scrollOperationsResults: " + String.Join(";", scrollOperationsResults));
+
+	if(AttemptClickAndLogError(() => reportToOpen.htmlElement))
+	{
+		Host.Log("Clicked on report '" + reportItemDisplayText + "'.");
+		return true;
+	}
+	else
+	{
+		Host.Log("Failed to click on report '" + reportItemDisplayText + "'.");
+		return false;
+	}
 }
 
 ElementHandle WaitForOpenReportListButton(int timeoutMilli) =>
@@ -649,6 +791,14 @@ ElementHandle WaitForOpenReportListButton(int timeoutMilli) =>
             return null;
         }
     }, timeoutMilli);
+
+System.Threading.Tasks.Task<string> ScrollHtmlElementIntoViewEnd(Page browserPage, ElementHandle htmlElement)
+{
+	return
+		browserPage.EvaluateFunctionAsync<string>(
+			@"(htmlElement) => htmlElement.scrollIntoView({behavior: ""instant"", block: ""end"", inline: ""nearest""})",
+			htmlElement);
+}
 
 static string javascriptExpressionToGetFirstElementFromXPath(string xpath) =>
     "document.evaluate(\"" + xpath + "\", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue";

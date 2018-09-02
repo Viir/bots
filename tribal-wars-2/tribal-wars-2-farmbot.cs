@@ -1,4 +1,4 @@
-/* Tribal Wars 2 Farmbot v2018-08-31
+/* Tribal Wars 2 Farmbot v2018-09-02
 This bot reads your battle reports and sends troops to your farms again.
 
 ## Features Of This Bot
@@ -544,10 +544,10 @@ ErrorStringOrGenericResult<BattleReportDetails> ParseBattleReportDetails(Element
 	try
 	{
 		var attackerDetails =
-			battleReportDetailsHtmlElement.XPathAsync(".//table[.//*[contains(@class, 'attack')]]").Result?.SingleOrDefault();
+			battleReportDetailsHtmlElement.XPathAsync(".//table[(.//*[contains(@class, 'attack')]) and (.//*[contains(@class, 'report-village')])]").Result?.SingleOrDefault();
 
 		var defenderDetails =
-			battleReportDetailsHtmlElement.XPathAsync(".//table[.//*[contains(@class, 'defense')]]").Result?.SingleOrDefault();
+			battleReportDetailsHtmlElement.XPathAsync(".//table[(.//*[contains(@class, 'defense')]) and (.//*[contains(@class, 'report-village')])]").Result?.SingleOrDefault();
 
 		if(attackerDetails == null)
 			return Error<BattleReportDetails>("Did not find attacker details."); 

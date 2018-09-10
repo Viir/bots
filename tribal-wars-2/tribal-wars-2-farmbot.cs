@@ -1,4 +1,4 @@
-/* Tribal Wars 2 Farmbot v2018-09-02
+/* Tribal Wars 2 Farmbot v2018-09-10
 This bot reads your battle reports and sends troops to your farms again.
 
 ## Features Of This Bot
@@ -28,10 +28,10 @@ using System.Collections.Generic;
 
 
 //	Minimum timespan to break between farming cycles.
-const int breakBetweenCycleDurationMinSeconds = 60 * 30;
+const int breakBetweenCycleDurationMinSeconds = 60 * 60;
 
 //	Upper limit of a random additional time for breaking between farming cycles.
-const int breakBetweenCycleDurationRandomAdditionMaxSeconds = 60 * 30;
+const int breakBetweenCycleDurationRandomAdditionMaxSeconds = 60 * 20;
 
 const int numberOfFarmCyclesToRepeatMin = 1;
 

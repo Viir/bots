@@ -1,4 +1,4 @@
-/* Tribal Wars 2 Farmbot v2018-09-10
+/* Tribal Wars 2 Farmbot v2018-09-11
 This bot reads your battle reports and sends troops to your farms again.
 
 ## Features Of This Bot
@@ -119,6 +119,8 @@ var logSessionStats = new Action(() =>
     });
 
 var cycleCount = RandomIntFromMinimumAndRandomAddition(numberOfFarmCyclesToRepeatMin, numberOfFarmCyclesToRepeatRandomAdditionMax);
+
+var villageLocationsToNotAttack = new Dictionary<VillageLocation, BattleReportDetails>();
 
 for(int cycleIndex = 0; ; ++cycleIndex)
 {
@@ -268,7 +270,7 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 		var currentReportCaption =
 			GetHtmlElementInnerText(currentReportHeader)?.Trim();
 
-		Host.Log("Caption of the current open report: '" + currentReportCaption?.Replace("\n", " - ") + "'");
+		Host.Log("Caption of the current open report: '" + ReportCaptionTextInSingleLine(currentReportCaption) + "'");
 
 		if(lastReportCaption == currentReportCaption)
 			++numberOfConsecutiveReportsWithSameCaption;
@@ -342,9 +344,26 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 		battleReportDetails.Caption = currentReportCaption;
 
 		Host.Log("Battle report details:\n" + battleReportDetails);
+		Host.Delay(1);
 
 		cycleReport.ReportsSeen.Add(battleReportDetails);
 		sessionReport.ReportsSeen.Add(battleReportDetails);
+
+		if(!battleReportDetails.DefenderIsBarbarian)
+		{
+			villageLocationsToNotAttack[battleReportDetails.DefenderVillageLocation] = battleReportDetails;
+			Host.Log("Looks like the defending village was not a barbarian village. I skip this report.");
+			goto navigateToNextReport;
+		}
+
+		BattleReportDetails otherReportIndicatingToNotAttackHere;
+
+		if(villageLocationsToNotAttack.TryGetValue(battleReportDetails.DefenderVillageLocation, out otherReportIndicatingToNotAttackHere))
+		{
+			var	sourceReportCaption = ReportCaptionTextInSingleLine(otherReportIndicatingToNotAttackHere.Caption);
+			Host.Log("The details of report (‘" + sourceReportCaption + "’) indicated that I should not attack at " + battleReportDetails.DefenderVillageLocation + ". I skip this report.");
+			goto navigateToNextReport;
+		}
 
 		if(cycleReport.ReportsForWhichAttackHasBeenSentAgain.Any(report =>
 			report.AttackerVillageLocation.Equals(battleReportDetails.AttackerVillageLocation) &&
@@ -495,6 +514,9 @@ logSessionStats();
 Host.Log("I am done with this session. I wait for one minute before terminating the script....");
 Host.Delay(1000 * 60);
 
+string ReportCaptionTextInSingleLine(string reportCaptionText) =>
+	reportCaptionText?.Trim()?.Replace("\n", " - ");
+
 struct BattleReportDetails
 {
 	public string Caption;
@@ -503,10 +525,13 @@ struct BattleReportDetails
 
 	public VillageLocation DefenderVillageLocation;
 
+	public bool DefenderIsBarbarian;
+
 	override public string ToString() =>
 		"{ " + string.Join(" , ", new []{
 			@"""AttackerVillageLocation"": """ + AttackerVillageLocation.ToString() + @"""",
 			@"""DefenderVillageLocation"": """ + DefenderVillageLocation.ToString() + @"""",
+			@"""DefenderIsBarbarian"": """ + DefenderIsBarbarian + @"""",
 		}
 		) + " }";
 }
@@ -560,6 +585,20 @@ ErrorStringOrGenericResult<BattleReportDetails> ParseBattleReportDetails(Element
 		if(attackerVillageLocation.IsFail)
 			return Error<BattleReportDetails>("Failed to parse attacker village location: " + attackerVillageLocation.Error);
 
+		var defenderCharacterInfoButton =
+			defenderDetails.XPathAsync(".//*[contains(@class, 'character-info') and contains(@class, 'btn')]").Result?.FirstOrDefault();
+
+		if(defenderCharacterInfoButton == null)
+			return Error<BattleReportDetails>("Did not find defender character info button.");
+
+		var defenderCharacterInfoButtonClass =
+			defenderCharacterInfoButton?.GetPropertyAsync("className").Result?.JsonValueAsync().Result?.ToString();
+
+		if(defenderCharacterInfoButtonClass == null)
+			return Error<BattleReportDetails>("Failed to read class from defender character info button.");
+
+		var defenderIsBarbarian = defenderCharacterInfoButtonClass?.Contains("btn-grey") ?? false;
+
 		var defenderVillageLocation = VillageLocationFromReportParty(defenderDetails);
 
 		if(defenderVillageLocation.IsFail)
@@ -569,6 +608,7 @@ ErrorStringOrGenericResult<BattleReportDetails> ParseBattleReportDetails(Element
 		{
 			AttackerVillageLocation = attackerVillageLocation.Result,
 			DefenderVillageLocation = defenderVillageLocation.Result,
+			DefenderIsBarbarian = defenderIsBarbarian,
 		});
 	}
 	catch(Exception e)
@@ -676,7 +716,7 @@ bool ReloadAndEnterReportAtTime(string reportTimeToContinueAt)
 
 	var	reportItemToContinueWithText = GetHtmlElementInnerText(reportItemToContinueWith.htmlElement);
 
-	Host.Log("Report item to continue with: '" + reportItemToContinueWithText?.Trim()?.Replace("\n", " - ") + "'");
+	Host.Log("Report item to continue with: '" + ReportCaptionTextInSingleLine(reportItemToContinueWithText) + "'");
 
 	var	parsedReportItemsUpToReportToContinueWith =
 		parsedReportItems.Take(parsedReportItems.IndexOf(reportItemToContinueWith) + 1)
@@ -733,7 +773,8 @@ bool OpenReportItemInReportList(IReadOnlyList<ReportListItem> reportItemsUpToRep
 {
 	var	reportToOpen = reportItemsUpToReportToOpen.LastOrDefault();
 
-	var	reportItemDisplayText = GetHtmlElementInnerText(reportToOpen.htmlElement)?.Trim()?.Replace("\n", " - ");
+	var	reportItemDisplayText =
+		ReportCaptionTextInSingleLine(GetHtmlElementInnerText(reportToOpen.htmlElement));
 
 	Host.Log("I start the process to open the report '" + reportItemDisplayText + "' which is at position " + (reportItemsUpToReportToOpen.Count - 1) + " in the report list.");
 

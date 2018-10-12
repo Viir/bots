@@ -1,4 +1,4 @@
-/* Tribal Wars 2 Farmbot v2018-09-11
+/* Tribal Wars 2 Farmbot v2018-10-12
 This bot reads your battle reports and sends troops to your farms again.
 
 ## Features Of This Bot
@@ -417,29 +417,35 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 				Host.Log("I did not find the button to jump to attackers village. I skip this report and continue with the next one.");
 				goto navigateToNextReport;
 			}
-	
+
 			Host.Delay(1777);
-	
+
 			if(!AttemptClickAndLogError(() => WaitForReference(() =>
 				browserPage.XPathAsync(mapVillageContextMenuItemActivateXPath).Result.FirstOrDefault(), 3333)))
 			{
 				Host.Log("I did not find the context menu button to activate the village. I skip this report.");
 				goto navigateToNextReport;
 			}
-	
-			Host.Delay(1333);
-	
-			currentActiveVillageLocation = ReadCurrentActiveVillageLocation();
-	
+
+			Host.Log("I clicked on the menu button to activate the village. Now I wait for the game to show " + battleReportDetails.AttackerVillageLocation + " as the active village.");
+
+			Host.Delay(555);
+
+			for(var i = 0; i < 7 && !currentActiveVillageLocation.Equals(battleReportDetails.AttackerVillageLocation); ++i)
+			{
+				Host.Delay(111 + i * 222);
+				currentActiveVillageLocation = ReadCurrentActiveVillageLocation();
+			}
+
 			if(!currentActiveVillageLocation.Equals(battleReportDetails.AttackerVillageLocation))
 			{
 				Host.Log("I failed to switch to the originally attacking village. I skip this report. " + browserPageVisibilityGuide);
 				goto navigateToNextReport;
 			}
 		}
-	
+
 		Host.Log("Try to find and click the button to attack again.");
-	
+
 		Host.Delay(555);
 	
 		if(!AttemptClickAndLogError(() => WaitForReference(() =>

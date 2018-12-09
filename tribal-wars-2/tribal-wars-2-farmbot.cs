@@ -1,4 +1,4 @@
-/* Tribal Wars 2 Farmbot v2018-10-12
+/* Tribal Wars 2 Farmbot v2018-12-09
 This bot reads your battle reports and sends troops to your farms again.
 
 ## Features Of This Bot
@@ -291,7 +291,11 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 				var reportTimeToContinueAt =
 					reportCaptionTimeMatch.Success ? reportCaptionTimeMatch.Value?.Trim() : null;
 
-				ReloadAndEnterReportAtTime(reportTimeToContinueAt);
+				if(!ReloadAndEnterReportAtTime(reportTimeToContinueAt))
+				{
+					Host.Log("Failed to reload the report list and continue. I end this cycle.");
+					break;
+				}
 				numberOfConsecutiveReportsWithSameCaption = 0;
 				numberOfConsecutiveReportsWithAlreadyCoveredCoordinatesInCycle = 0;
 			}
@@ -660,75 +664,88 @@ ErrorStringOrGenericResult<VillageLocation> SingleVillageLocationContainedInText
 	});
 }
 
-bool ReloadAndEnterReportAtTime(string reportTimeToContinueAt)
+bool ReloadAndEnterReportAtTime(string reportTimeToContinueAt, int maxNumberOfAttempts = 5)
 {
 	Host.Log("I begin the process to restart the report UI and continue at report with time '" + reportTimeToContinueAt + "'.");
 
-	for(var i = 0; i < 3; ++i)
+	for(var attemptNumber = 1; attemptNumber <= maxNumberOfAttempts; ++attemptNumber)
 	{
-		Host.Delay(333);
+		Host.Log("Attempt number " + attemptNumber + ". I close the report list.");
 
-		var closeWindowButton = WaitForReference(() =>
-			browserPage.XPathAsync("//*[@ng-click='closeWindow()']").Result.FirstOrDefault(), 111);
+		for(var i = 0; i < 3; ++i)
+		{
+			Host.Delay(333);
 
-		closeWindowButton?.ClickAsync().Wait();
+			var closeWindowButton = WaitForReference(() =>
+				browserPage.XPathAsync("//*[@ng-click='closeWindow()']").Result.FirstOrDefault(), 111);
+
+			closeWindowButton?.ClickAsync().Wait();
+		}
+
+		if(!AttemptClickAndLogError(() => WaitForOpenReportListButton(1000)))
+		{
+			Host.Log("I did not find the button to open the report list.");
+			return false;
+		}
+
+		var	pageSize = 100;
+
+		Host.Log("I clicked the button to open the report list. Next, I set the page size to " + pageSize + ".");
+
+		Host.Delay(3333);
+
+		var setPageSizeButton = WaitForReference(() =>
+			browserPage.XPathAsync("//*[@ng-click='setLimit(_limit)' and contains(., '" + pageSize + "')]").Result.FirstOrDefault(), 111);
+
+		setPageSizeButton?.ClickAsync().Wait();
+
+		Host.Delay(3333);
+
+		Host.Log("I parse the reports in there to find the best to continue with.");
+
+		var reports = WaitForReference(() => browserPage.XPathAsync(reportListItemXPath).Result, 1000);
+
+		if(reports == null)
+		{
+			Host.Log("Did not find the report items.");
+			return false;
+		}
+
+		var parsedReportItems = reports.Select(ParseReportListItem).ToList();
+
+		Host.Log("I parsed " + parsedReportItems?.Count + " report items.");
+
+		if(!(0 < parsedReportItems?.Count))
+		{
+			//	Empty report list could again be an effect of the bug in Tribal Wars 2 web app as described at https://forum.botengine.org/t/bug-in-tribal-wars-2-web-app-broken-report-display/1457, which implies that closing and opening the report list again could help.
+			continue;
+		}
+
+		var	matchingReportItem =
+			0 < reportTimeToContinueAt?.Length ?
+			parsedReportItems.FirstOrDefault(reportItem => reportItem.timeText?.Contains(reportTimeToContinueAt) ?? false)
+			: null;
+
+		var	reportItemToContinueWith = matchingReportItem;
+
+		if(matchingReportItem == null)
+		{
+			Host.Log("I did not find a report item with time of '" + reportTimeToContinueAt + "'. I continue with the last report in the list.");
+			reportItemToContinueWith = parsedReportItems.LastOrDefault();
+		}
+
+		var	reportItemToContinueWithText = GetHtmlElementInnerText(reportItemToContinueWith.htmlElement);
+
+		Host.Log("Report item to continue with: '" + ReportCaptionTextInSingleLine(reportItemToContinueWithText) + "'");
+
+		var	parsedReportItemsUpToReportToContinueWith =
+			parsedReportItems.Take(parsedReportItems.IndexOf(reportItemToContinueWith) + 1)
+			.ToList();
+
+		return OpenReportItemInReportList(parsedReportItemsUpToReportToContinueWith);
 	}
 
-	if(!AttemptClickAndLogError(() => WaitForOpenReportListButton(1000)))
-	{
-		Host.Log("I did not find the button to open the report list.");
-		return false;
-	}
-
-	var	pageSize = 100;
-
-	Host.Log("I clicked the button to open the report list. Next, I set the page size to " + pageSize + ".");
-
-	Host.Delay(3333);
-
-	var setPageSizeButton = WaitForReference(() =>
-		browserPage.XPathAsync("//*[@ng-click='setLimit(_limit)' and contains(., '" + pageSize + "')]").Result.FirstOrDefault(), 111);
-
-	setPageSizeButton?.ClickAsync().Wait();
-
-	Host.Delay(3333);
-
-	Host.Log("I parse the reports in there to find the best to continue with.");
-
-	var reports = WaitForReference(() => browserPage.XPathAsync(reportListItemXPath).Result, 1000);
-
-	if(reports == null)
-	{
-		Host.Log("Did not find the report items.");
-		return false;
-	}
-
-	var parsedReportItems = reports.Select(ParseReportListItem).ToList();
-
-	Host.Log("I parsed " + parsedReportItems?.Count + " report items.");
-
-	var	matchingReportItem =
-		0 < reportTimeToContinueAt?.Length ?
-		parsedReportItems.FirstOrDefault(reportItem => reportItem.timeText?.Contains(reportTimeToContinueAt) ?? false)
-		: null;
-
-	var	reportItemToContinueWith = matchingReportItem;
-
-	if(matchingReportItem == null)
-	{
-		Host.Log("I did not find a report item with time of '" + reportTimeToContinueAt + "'. I continue with the last report in the list.");
-		reportItemToContinueWith = parsedReportItems.LastOrDefault();
-	}
-
-	var	reportItemToContinueWithText = GetHtmlElementInnerText(reportItemToContinueWith.htmlElement);
-
-	Host.Log("Report item to continue with: '" + ReportCaptionTextInSingleLine(reportItemToContinueWithText) + "'");
-
-	var	parsedReportItemsUpToReportToContinueWith =
-		parsedReportItems.Take(parsedReportItems.IndexOf(reportItemToContinueWith) + 1)
-		.ToList();
-
-	return OpenReportItemInReportList(parsedReportItemsUpToReportToContinueWith);
+	return false;
 }
 
 string GetHtmlElementInnerText(ElementHandle htmlElement) =>

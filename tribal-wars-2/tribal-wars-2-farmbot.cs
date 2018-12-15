@@ -1,4 +1,4 @@
-/* Tribal Wars 2 Farmbot v2018-12-09
+/* Tribal Wars 2 Farmbot v2018-12-15
 This bot farms barbarian villages in Tribal Wars 2. It reads your battle reports and sends troops to your farms again.
 
 ## Features Of This Bot
@@ -98,6 +98,8 @@ static string mapVillageContextMenuItemActivateXPath => "//*[contains(@class, 'c
 static string customArmyWindowCloseButtonXPath => "//*[@ng-controller='ModalCustomArmyController']//*[@ng-click='closeWindow()']";
 
 static string browserPageVisibilityGuide => "If you see this happen all the time, make sure that the game is visible in the web browser.";
+
+static string switchVillageChatWindowGuide => "If you see this happen frequently, make sure that no chat window is open in the game. (https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406/108?u=viir)";
 
 Host.Log("Welcome! - ¡Bienvenido! - Bienvenue! ---- This is the Tribal Wars 2 Farmbot. I read your battle reports and send troops to your farms again. To learn more about how I work, see https://forum.botengine.org/t/tribal-wars-2-farmbot-2018/1330. In case you have any questions, feel free to ask at https://forum.botengine.org");
 
@@ -445,7 +447,11 @@ for(int cycleIndex = 0; ; ++cycleIndex)
 
 			if(!currentActiveVillageLocation.Equals(battleReportDetails.AttackerVillageLocation))
 			{
-				Host.Log("I failed to switch to the originally attacking village. I skip this report. " + browserPageVisibilityGuide);
+				/* Several users reported that switching the village failed when the chat window was open in the game:
+				+ https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406/108?u=viir
+				+ https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406/115?u=viir
+				*/
+				Host.Log("I failed to switch to the originally attacking village. I skip this report. " + switchVillageChatWindowGuide);
 				goto navigateToNextReport;
 			}
 		}

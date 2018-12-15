@@ -18,6 +18,8 @@ This bot reads your battle reports and sends troops to your farms again.
 + Stops the farming when the configured time limit is met to avoid perpetual activity on your account.
 
 For details about how it works, see https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406
+
+bot-catalog-tags:tribal-wars-2
 */
 
 using System;

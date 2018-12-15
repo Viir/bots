@@ -1,5 +1,5 @@
 /* Tribal Wars 2 Farmbot v2018-12-09
-This bot reads your battle reports and sends troops to your farms again.
+This bot farms barbarian villages in Tribal Wars 2. It reads your battle reports and sends troops to your farms again.
 
 ## Features Of This Bot
 

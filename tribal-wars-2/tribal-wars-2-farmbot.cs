@@ -1,9 +1,9 @@
-/* Tribal Wars 2 Farmbot v2018-12-15
+/* Tribal Wars 2 Farmbot v2019-01-18
 This bot farms barbarian villages in Tribal Wars 2. It reads your battle reports and sends troops to your farms again.
 
-## Features Of This Bot
+## Features of This Bot
 
-### Easy To Configure
+### Easy to Configure
 + Reads battle reports to identify your farm villages.
 + Uses the ‘Attack Again’ function in the battle report to attack each target village with your preferred composition of the army.
 + Uses the chrome web browser to support in-game configuration (e.g. reports filter).
@@ -101,7 +101,11 @@ static string browserPageVisibilityGuide => "If you see this happen all the time
 
 static string switchVillageChatWindowGuide => "If you see this happen frequently, make sure that no chat window is open in the game. (https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406/108?u=viir)";
 
-Host.Log("Welcome! - ¡Bienvenido! - Bienvenue! ---- This is the Tribal Wars 2 Farmbot. I read your battle reports and send troops to your farms again. To learn more about how I work, see https://forum.botengine.org/t/tribal-wars-2-farmbot-2018/1330. In case you have any questions, feel free to ask at https://forum.botengine.org");
+Host.Log("Welcome! - ¡Bienvenido! - Bienvenue! ---- This is the Tribal Wars 2 Farmbot. I read your battle reports and send troops to your farms again. To learn more about how I work, see https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406. In case you have any questions, feel free to ask at https://forum.botengine.org");
+
+var cycleCount = RandomIntFromMinimumAndRandomAddition(numberOfFarmCyclesToRepeatMin, numberOfFarmCyclesToRepeatRandomAdditionMax);
+
+Host.Log($"According to the configuration, I will repeat farming in { cycleCount } cycles. Between the farming cycles, I will take breaks with lengths between { breakBetweenCycleDurationMinSeconds / 60 } and { ((breakBetweenCycleDurationMinSeconds + breakBetweenCycleDurationRandomAdditionMaxSeconds) / 60) } minutes.");
 
 var browserPage = WebBrowser.OpenNewBrowserPage();
 
@@ -122,13 +126,11 @@ var logSessionStats = new Action(() =>
         Host.Delay(1);
     });
 
-var cycleCount = RandomIntFromMinimumAndRandomAddition(numberOfFarmCyclesToRepeatMin, numberOfFarmCyclesToRepeatRandomAdditionMax);
-
 var villageLocationsToNotAttack = new Dictionary<VillageLocation, BattleReportDetails>();
 
 for(int cycleIndex = 0; ; ++cycleIndex)
 {
-	Host.Log("Starting cycle " + cycleIndex + " of " + cycleCount + ".");
+	Host.Log("I am starting farming cycle " + cycleIndex + " of " + cycleCount + ".");
 
 	if(0 < cycleIndex)
 	{

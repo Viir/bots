@@ -1,5 +1,5 @@
 //  This script defines common functions for botting in EVE Online.
-//  You can load and use it with the BotEngine Windows App from https://to.botengine.org/guide/windows-repl
+//  You can load and use it with the BotEngine Windows Console from https://to.botengine.org/guide/windows-console
 
 #r "Bib3.dll"
 #r "BotEngine.Interface.dll"
@@ -11,7 +11,10 @@
 #r "WindowsInput.dll"
 #r "Sanderling.ExploreProcessMeasurement.exe"
 
+using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Security.Cryptography;
 using Sanderling.ExploreProcessMeasurement;
 
@@ -160,8 +163,8 @@ Func<Sanderling.Interface.MemoryStruct.IUIElement, bool> UIElementRegionIntersec
             new Bib3.Geometrik.Vektor2DInt(rectangle.left, rectangle.top),
             new Bib3.Geometrik.Vektor2DInt(rectangle.right, rectangle.bottom))));
 
-Process[] GetWindowsProcessesLookingLikeEVEOnlineClient() =>
-    Process.GetProcessesByName("exefile");
+System.Diagnostics.Process[] GetWindowsProcessesLookingLikeEVEOnlineClient() =>
+    System.Diagnostics.Process.GetProcessesByName("exefile");
 
 IReadOnlyList<T> FindNodesOnPathFromTreeNodeToDescendant<T>(T pathRoot, Func<T, IEnumerable<T>> getChildrenFromNode, T descendant)
     =>

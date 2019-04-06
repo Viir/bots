@@ -1,7 +1,11 @@
 //  This script demonstrates common functionality for botting in EVE Online, such as finding information in the game clients' memory and interacting with objects in the game window.
-//  You can load and use it with the BotEngine Windows App from https://to.botengine.org/guide/windows-repl
+//  You can load and use it with the BotEngine Windows Console from https://to.botengine.org/guide/windows-console
 
 #load "setup-sanderling.csx"
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 Console.WriteLine("I begin with reading from a process sample from a file, so we do not need a EVE Online client. If you do not yet have a process sample of an EVE Online client, you can follow the guide at https://forum.botengine.org/t/how-to-collect-samples-for-memory-reading-development/50 to get one.");
 
@@ -14,7 +18,7 @@ DemonstrateExploreLiveProcessAndSendInput();
 void DemonstrateExploreProcessSample()
 {
     var processSampleFilePath =
-        Path.Combine(
+        System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
             @"EVE-Online-process-sample\my-eve-online-client-process-sample.zip");
 
@@ -22,7 +26,7 @@ void DemonstrateExploreProcessSample()
 
     Console.ReadKey();
 
-    if (!File.Exists(processSampleFilePath))
+    if (!System.IO.File.Exists(processSampleFilePath))
     {
         Console.WriteLine("I did not find a file at '" + processSampleFilePath + "', therefore I skip this part.");
         return;

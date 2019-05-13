@@ -1,0 +1,438 @@
+{
+    "UserDefaultLocaleName": "en-AU",
+    "ScreenSize": {
+        "A": 1158,
+        "B": 792
+    },
+    "Menu": [
+        {
+            "Entry": [
+                {
+                    "HighlightVisible": false,
+                    "Text": "Warp to Within 0 m",
+                    "LabelText": [
+                        {
+                            "Text": "Warp to Within 0 m",
+                            "Region": {
+                                "Min0": 942,
+                                "Min1": 436,
+                                "Max0": 1045,
+                                "Max1": 449
+                            },
+                            "InTreeIndex": 1647,
+                            "Id": 788245072
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 934,
+                        "Min1": 434,
+                        "Max0": 1104,
+                        "Max1": 449
+                    },
+                    "InTreeIndex": 1645,
+                    "ChildLastInTreeIndex": 1648,
+                    "Id": 787530576
+                },
+                {
+                    "HighlightVisible": true,
+                    "Text": "Warp to Within",
+                    "LabelText": [
+                        {
+                            "Text": "Warp to Within",
+                            "Region": {
+                                "Min0": 942,
+                                "Min1": 451,
+                                "Max0": 1020,
+                                "Max1": 464
+                            },
+                            "InTreeIndex": 1643,
+                            "Id": 788183472
+                        }
+                    ],
+                    "Sprite": [
+                        {
+                            "TexturePath": "res:/UI/Texture/Icons/1_16_14.png",
+                            "Region": {
+                                "Min0": 1088,
+                                "Min1": 448,
+                                "Max0": 1104,
+                                "Max1": 465
+                            },
+                            "InTreeIndex": 1644,
+                            "Id": 795038704
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 934,
+                        "Min1": 449,
+                        "Max0": 1104,
+                        "Max1": 464
+                    },
+                    "InTreeIndex": 1641,
+                    "ChildLastInTreeIndex": 1644,
+                    "Id": 791189040
+                },
+                {
+                    "Text": "Align to",
+                    "LabelText": [
+                        {
+                            "Text": "Align to",
+                            "Region": {
+                                "Min0": 942,
+                                "Min1": 466,
+                                "Max0": 981,
+                                "Max1": 479
+                            },
+                            "InTreeIndex": 1639,
+                            "Id": 796530096
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 934,
+                        "Min1": 464,
+                        "Max0": 1104,
+                        "Max1": 479
+                    },
+                    "InTreeIndex": 1638,
+                    "ChildLastInTreeIndex": 1640,
+                    "Id": 792607888
+                },
+                {
+                    "Text": "Track",
+                    "LabelText": [
+                        {
+                            "Text": "Track",
+                            "Region": {
+                                "Min0": 942,
+                                "Min1": 481,
+                                "Max0": 967,
+                                "Max1": 494
+                            },
+                            "InTreeIndex": 1636,
+                            "Id": 796532592
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 934,
+                        "Min1": 479,
+                        "Max0": 1104,
+                        "Max1": 494
+                    },
+                    "InTreeIndex": 1635,
+                    "ChildLastInTreeIndex": 1637,
+                    "Id": 788183344
+                },
+                {
+                    "Text": "Show Info",
+                    "LabelText": [
+                        {
+                            "Text": "Show Info",
+                            "Region": {
+                                "Min0": 942,
+                                "Min1": 500,
+                                "Max0": 993,
+                                "Max1": 513
+                            },
+                            "InTreeIndex": 1632,
+                            "Id": 794482032
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 934,
+                        "Min1": 498,
+                        "Max0": 1104,
+                        "Max1": 513
+                    },
+                    "InTreeIndex": 1631,
+                    "ChildLastInTreeIndex": 1633,
+                    "Id": 796531984
+                },
+                {
+                    "Text": "Save Location...",
+                    "LabelText": [
+                        {
+                            "Text": "Save Location...",
+                            "Region": {
+                                "Min0": 942,
+                                "Min1": 519,
+                                "Max0": 1021,
+                                "Max1": 532
+                            },
+                            "InTreeIndex": 1628,
+                            "Id": 792777264
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 934,
+                        "Min1": 517,
+                        "Max0": 1104,
+                        "Max1": 532
+                    },
+                    "InTreeIndex": 1627,
+                    "ChildLastInTreeIndex": 1629,
+                    "Id": 794482576
+                },
+                {
+                    "Text": "Remove Moon from Overview",
+                    "LabelText": [
+                        {
+                            "Text": "Remove Moon from Overview",
+                            "Region": {
+                                "Min0": 942,
+                                "Min1": 538,
+                                "Max0": 1088,
+                                "Max1": 551
+                            },
+                            "InTreeIndex": 1624,
+                            "Id": 792776752
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 934,
+                        "Min1": 536,
+                        "Max0": 1104,
+                        "Max1": 551
+                    },
+                    "InTreeIndex": 1623,
+                    "ChildLastInTreeIndex": 1625,
+                    "Id": 792778032
+                }
+            ],
+            "Region": {
+                "Min0": 934,
+                "Min1": 433,
+                "Max0": 1104,
+                "Max1": 552
+            },
+            "InTreeIndex": 1621,
+            "ChildLastInTreeIndex": 1648,
+            "Id": 792406864
+        },
+        {
+            "Entry": [
+                {
+                    "Text": "Within 0 m",
+                    "LabelText": [
+                        {
+                            "Text": "Within 0 m",
+                            "Region": {
+                                "Min0": 849,
+                                "Min1": 452,
+                                "Max0": 906,
+                                "Max1": 465
+                            },
+                            "InTreeIndex": 1674,
+                            "Id": 788245744
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 841,
+                        "Min1": 450,
+                        "Max0": 939,
+                        "Max1": 465
+                    },
+                    "InTreeIndex": 1673,
+                    "ChildLastInTreeIndex": 1675,
+                    "Id": 795040048
+                },
+                {
+                    "Text": "Within 10 km",
+                    "LabelText": [
+                        {
+                            "Text": "Within 10 km",
+                            "Region": {
+                                "Min0": 849,
+                                "Min1": 467,
+                                "Max0": 917,
+                                "Max1": 480
+                            },
+                            "InTreeIndex": 1671,
+                            "Id": 790897136
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 841,
+                        "Min1": 465,
+                        "Max0": 939,
+                        "Max1": 480
+                    },
+                    "InTreeIndex": 1670,
+                    "ChildLastInTreeIndex": 1672,
+                    "Id": 792004144
+                },
+                {
+                    "Text": "Within 20 km",
+                    "LabelText": [
+                        {
+                            "Text": "Within 20 km",
+                            "Region": {
+                                "Min0": 849,
+                                "Min1": 482,
+                                "Max0": 917,
+                                "Max1": 495
+                            },
+                            "InTreeIndex": 1668,
+                            "Id": 790900560
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 841,
+                        "Min1": 480,
+                        "Max0": 939,
+                        "Max1": 495
+                    },
+                    "InTreeIndex": 1667,
+                    "ChildLastInTreeIndex": 1669,
+                    "Id": 792002832
+                },
+                {
+                    "Text": "Within 30 km",
+                    "LabelText": [
+                        {
+                            "Text": "Within 30 km",
+                            "Region": {
+                                "Min0": 849,
+                                "Min1": 497,
+                                "Max0": 917,
+                                "Max1": 510
+                            },
+                            "InTreeIndex": 1665,
+                            "Id": 790899728
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 841,
+                        "Min1": 495,
+                        "Max0": 939,
+                        "Max1": 510
+                    },
+                    "InTreeIndex": 1664,
+                    "ChildLastInTreeIndex": 1666,
+                    "Id": 788242928
+                },
+                {
+                    "Text": "Within 50 km",
+                    "LabelText": [
+                        {
+                            "Text": "Within 50 km",
+                            "Region": {
+                                "Min0": 849,
+                                "Min1": 512,
+                                "Max0": 917,
+                                "Max1": 525
+                            },
+                            "InTreeIndex": 1662,
+                            "Id": 792777936
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 841,
+                        "Min1": 510,
+                        "Max0": 939,
+                        "Max1": 525
+                    },
+                    "InTreeIndex": 1661,
+                    "ChildLastInTreeIndex": 1663,
+                    "Id": 790898192
+                },
+                {
+                    "Text": "Within 70 km",
+                    "LabelText": [
+                        {
+                            "Text": "Within 70 km",
+                            "Region": {
+                                "Min0": 849,
+                                "Min1": 527,
+                                "Max0": 917,
+                                "Max1": 540
+                            },
+                            "InTreeIndex": 1659,
+                            "Id": 792779184
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 841,
+                        "Min1": 525,
+                        "Max0": 939,
+                        "Max1": 540
+                    },
+                    "InTreeIndex": 1658,
+                    "ChildLastInTreeIndex": 1660,
+                    "Id": 790896848
+                },
+                {
+                    "Text": "Within 100 km",
+                    "LabelText": [
+                        {
+                            "Text": "Within 100 km",
+                            "Region": {
+                                "Min0": 849,
+                                "Min1": 542,
+                                "Max0": 923,
+                                "Max1": 555
+                            },
+                            "InTreeIndex": 1656,
+                            "Id": 792780528
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 841,
+                        "Min1": 540,
+                        "Max0": 939,
+                        "Max1": 555
+                    },
+                    "InTreeIndex": 1655,
+                    "ChildLastInTreeIndex": 1657,
+                    "Id": 790896752
+                },
+                {
+                    "Text": "Set Default",
+                    "LabelText": [
+                        {
+                            "Text": "Set Default",
+                            "Region": {
+                                "Min0": 849,
+                                "Min1": 561,
+                                "Max0": 906,
+                                "Max1": 574
+                            },
+                            "InTreeIndex": 1652,
+                            "Id": 792779760
+                        }
+                    ],
+                    "Sprite": [
+                        {
+                            "TexturePath": "res:/UI/Texture/Icons/1_16_14.png",
+                            "Region": {
+                                "Min0": 923,
+                                "Min1": 558,
+                                "Max0": 939,
+                                "Max1": 575
+                            },
+                            "InTreeIndex": 1653,
+                            "Id": 792777104
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 841,
+                        "Min1": 559,
+                        "Max0": 939,
+                        "Max1": 574
+                    },
+                    "InTreeIndex": 1651,
+                    "ChildLastInTreeIndex": 1653,
+                    "Id": 792780144
+                }
+            ],
+            "Region": {
+                "Min0": 841,
+                "Min1": 449,
+                "Max0": 939,
+                "Max1": 575
+            },
+            "InTreeIndex": 1649,
+            "ChildLastInTreeIndex": 1675,
+            "Id": 793285872
+        }
+    ]
+}

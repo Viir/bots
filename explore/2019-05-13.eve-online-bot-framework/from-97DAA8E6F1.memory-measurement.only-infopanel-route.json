@@ -1,0 +1,285 @@
+{
+    "UserDefaultLocaleName": "en-AU",
+    "ScreenSize": {
+        "A": 1158,
+        "B": 792
+    },
+    "InfoPanelRoute": {
+        "NextLabel": {
+            "Text": "<center><url=showinfo:5//30001391 alt='Next System in Route'>Piekura</url></b> <color=0xffffff00L><hint='Security status'>0.5</hint></color><fontsize=12><fontsize=8> </fontsize>&lt;<fontsize=8> </fontsize><url=showinfo:4//20000203>Makiriemi</url><fontsize=8> </fontsize>&lt;<fontsize=8> </fontsize><url=showinfo:3//10000016>Lonetrek</url>",
+            "Region": {
+                "Min0": 83,
+                "Min1": 237,
+                "Max0": 353,
+                "Max1": 253
+            },
+            "InTreeIndex": 378,
+            "Id": 787539952
+        },
+        "DestinationLabel": {
+            "Text": "<center><url=showinfo:5//30001367 alt='Current Destination'>Hageken</url></b> <color=0xff99ff33L><hint='Security status'>0.6</hint></color><fontsize=12><fontsize=8> </fontsize>&lt;<fontsize=8> </fontsize><url=showinfo:4//20000199>Koichi</url><fontsize=8> </fontsize>&lt;<fontsize=8> </fontsize><url=showinfo:3//10000016>Lonetrek</url>",
+            "Region": {
+                "Min0": 74,
+                "Min1": 291,
+                "Max0": 362,
+                "Max1": 307
+            },
+            "InTreeIndex": 366,
+            "Id": 792822896
+        },
+        "RouteElementMarker": [
+            {
+                "Region": {
+                    "Min0": 82,
+                    "Min1": 267,
+                    "Max0": 90,
+                    "Max1": 275
+                },
+                "InTreeIndex": 373,
+                "ChildLastInTreeIndex": 374,
+                "Id": 788615728
+            },
+            {
+                "Region": {
+                    "Min0": 92,
+                    "Min1": 267,
+                    "Max0": 100,
+                    "Max1": 275
+                },
+                "InTreeIndex": 371,
+                "ChildLastInTreeIndex": 372,
+                "Id": 788617872
+            },
+            {
+                "Region": {
+                    "Min0": 102,
+                    "Min1": 267,
+                    "Max0": 110,
+                    "Max1": 275
+                },
+                "InTreeIndex": 369,
+                "ChildLastInTreeIndex": 370,
+                "Id": 788617808
+            }
+        ],
+        "IsExpanded": true,
+        "ExpandToggleButton": {
+            "Color": {
+                "OMilli": 0,
+                "RMilli": 1000,
+                "GMilli": 1000,
+                "BMilli": 1000
+            },
+            "Texture0Id": {
+                "Id": 765679176
+            },
+            "Region": {
+                "Min0": 46,
+                "Min1": 218,
+                "Max0": 53,
+                "Max1": 225
+            },
+            "InTreeIndex": 386,
+            "Id": 787538864
+        },
+        "HeaderContent": {
+            "LabelText": [
+                {
+                    "Text": "<color=white>Route <fontsize=12></b>3 Jumps",
+                    "Region": {
+                        "Min0": 82,
+                        "Min1": 210,
+                        "Max0": 173,
+                        "Max1": 233
+                    },
+                    "InTreeIndex": 384,
+                    "Id": 787540176
+                }
+            ],
+            "Sprite": [
+                {
+                    "Color": {
+                        "OMilli": 0,
+                        "RMilli": 1000,
+                        "GMilli": 1000,
+                        "BMilli": 1000
+                    },
+                    "Texture0Id": {
+                        "Id": 765679176
+                    },
+                    "Region": {
+                        "Min0": 46,
+                        "Min1": 218,
+                        "Max0": 53,
+                        "Max1": 225
+                    },
+                    "InTreeIndex": 386,
+                    "Id": 787538864
+                },
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/Classes/InfoPanels/Route.png",
+                    "Region": {
+                        "Min0": 59,
+                        "Min1": 212,
+                        "Max0": 77,
+                        "Max1": 230
+                    },
+                    "InTreeIndex": 389,
+                    "Id": 787540688
+                }
+            ],
+            "Region": {
+                "Min0": 40,
+                "Min1": 207,
+                "Max0": 352,
+                "Max1": 235
+            },
+            "InTreeIndex": 381,
+            "ChildLastInTreeIndex": 389,
+            "Id": 792404848
+        },
+        "ExpandedContent": {
+            "LabelText": [
+                {
+                    "Text": "<center><url=showinfo:5//30001391 alt='Next System in Route'>Piekura</url></b> <color=0xffffff00L><hint='Security status'>0.5</hint></color><fontsize=12><fontsize=8> </fontsize>&lt;<fontsize=8> </fontsize><url=showinfo:4//20000203>Makiriemi</url><fontsize=8> </fontsize>&lt;<fontsize=8> </fontsize><url=showinfo:3//10000016>Lonetrek</url>",
+                    "Region": {
+                        "Min0": 83,
+                        "Min1": 237,
+                        "Max0": 353,
+                        "Max1": 253
+                    },
+                    "InTreeIndex": 378,
+                    "Id": 787539952
+                },
+                {
+                    "Text": "<center><url=showinfo:5//30001367 alt='Current Destination'>Hageken</url></b> <color=0xff99ff33L><hint='Security status'>0.6</hint></color><fontsize=12><fontsize=8> </fontsize>&lt;<fontsize=8> </fontsize><url=showinfo:4//20000199>Koichi</url><fontsize=8> </fontsize>&lt;<fontsize=8> </fontsize><url=showinfo:3//10000016>Lonetrek</url>",
+                    "Region": {
+                        "Min0": 74,
+                        "Min1": 291,
+                        "Max0": 362,
+                        "Max1": 307
+                    },
+                    "InTreeIndex": 366,
+                    "Id": 792822896
+                }
+            ],
+            "Sprite": [
+                {
+                    "Color": {
+                        "OMilli": 150,
+                        "RMilli": 1000,
+                        "GMilli": 1000,
+                        "BMilli": 1000
+                    },
+                    "Texture0Id": {
+                        "Id": 833821120
+                    },
+                    "Region": {
+                        "Min0": 82,
+                        "Min1": 255,
+                        "Max0": 92,
+                        "Max1": 265
+                    },
+                    "InTreeIndex": 379,
+                    "Id": 787542000
+                },
+                {
+                    "Color": {
+                        "OMilli": 750,
+                        "RMilli": 1000,
+                        "GMilli": 1000,
+                        "BMilli": 0
+                    },
+                    "Texture0Id": {
+                        "Id": 833877792
+                    },
+                    "Region": {
+                        "Min0": 82,
+                        "Min1": 267,
+                        "Max0": 92,
+                        "Max1": 277
+                    },
+                    "InTreeIndex": 374,
+                    "Id": 788618032
+                },
+                {
+                    "Color": {
+                        "OMilli": 750,
+                        "RMilli": 0,
+                        "GMilli": 1000,
+                        "BMilli": 0
+                    },
+                    "Texture0Id": {
+                        "Id": 833877792
+                    },
+                    "Region": {
+                        "Min0": 92,
+                        "Min1": 267,
+                        "Max0": 102,
+                        "Max1": 277
+                    },
+                    "InTreeIndex": 372,
+                    "Id": 788616272
+                },
+                {
+                    "Color": {
+                        "OMilli": 750,
+                        "RMilli": 600,
+                        "GMilli": 1000,
+                        "BMilli": 200
+                    },
+                    "Texture0Id": {
+                        "Id": 833818656
+                    },
+                    "Region": {
+                        "Min0": 102,
+                        "Min1": 267,
+                        "Max0": 112,
+                        "Max1": 277
+                    },
+                    "InTreeIndex": 370,
+                    "Id": 795081072
+                },
+                {
+                    "Color": {
+                        "OMilli": 150,
+                        "RMilli": 1000,
+                        "GMilli": 1000,
+                        "BMilli": 1000
+                    },
+                    "Texture0Id": {
+                        "Id": 833806336
+                    },
+                    "Region": {
+                        "Min0": 102,
+                        "Min1": 279,
+                        "Max0": 112,
+                        "Max1": 289
+                    },
+                    "InTreeIndex": 367,
+                    "Id": 787539536
+                }
+            ],
+            "Region": {
+                "Min0": 82,
+                "Min1": 235,
+                "Max0": 352,
+                "Max1": 309
+            },
+            "InTreeIndex": 362,
+            "ChildLastInTreeIndex": 380,
+            "Id": 787538672
+        },
+        "HeaderText": "<color=white>Route <fontsize=12></b>3 Jumps",
+        "Region": {
+            "Min0": 40,
+            "Min1": 207,
+            "Max0": 352,
+            "Max1": 319
+        },
+        "InTreeIndex": 361,
+        "ChildLastInTreeIndex": 389,
+        "Id": 791838000
+    }
+}

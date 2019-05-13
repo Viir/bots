@@ -1,0 +1,160 @@
+{
+    "UserDefaultLocaleName": "en-AU",
+    "ScreenSize": {
+        "A": 1158,
+        "B": 792
+    },
+    "ShipUi": {
+        "Center": {
+            "Region": {
+                "Min0": 559,
+                "Min1": 671,
+                "Max0": 599,
+                "Max1": 711
+            },
+            "InTreeIndex": 720,
+            "ChildLastInTreeIndex": 756,
+            "Id": 787600048
+        },
+        "Indication": {
+            "LabelText": [
+                {
+                    "Text": "Warp Drive Active",
+                    "Region": {
+                        "Min0": 483,
+                        "Min1": 499,
+                        "Max0": 676,
+                        "Max1": 524
+                    },
+                    "InTreeIndex": 574,
+                    "Id": 796361168
+                },
+                {
+                    "Text": "<center><center><center>Distance: 5,154 m to warp bubble collapse",
+                    "Region": {
+                        "Min0": 379,
+                        "Min1": 524,
+                        "Max0": 779,
+                        "Max1": 540
+                    },
+                    "InTreeIndex": 575,
+                    "Id": 786949328
+                }
+            ],
+            "Region": {
+                "Min0": 379,
+                "Min1": 498,
+                "Max0": 779,
+                "Max1": 548
+            },
+            "InTreeIndex": 573,
+            "ChildLastInTreeIndex": 575,
+            "Id": 788539600
+        },
+        "HitpointsAndEnergy": {
+            "Struct": 1000,
+            "Armor": 960,
+            "Shield": 1000,
+            "Capacitor": 1000
+        },
+        "SpeedLabel": {
+            "Text": "(Warping)",
+            "Region": {
+                "Min0": 554,
+                "Min1": 739,
+                "Max0": 604,
+                "Max1": 752
+            },
+            "InTreeIndex": 703,
+            "Id": 792153360
+        },
+        "EWarElement": [],
+        "ButtonSpeed0": {
+            "Region": {
+                "Min0": 526,
+                "Min1": 719,
+                "Max0": 538,
+                "Max1": 731
+            },
+            "InTreeIndex": 768,
+            "Id": 795709808
+        },
+        "ButtonSpeedMax": {
+            "Region": {
+                "Min0": 619,
+                "Min1": 719,
+                "Max0": 631,
+                "Max1": 731
+            },
+            "InTreeIndex": 767,
+            "Id": 780637264
+        },
+        "Module": [
+            {
+                "ModuleButtonVisible": true,
+                "ModuleButtonIconTexture": {
+                    "Id": 833848224
+                },
+                "ModuleButtonQuantity": "40",
+                "RampActive": false,
+                "OverloadOn": false,
+                "RegionInteraction": {
+                    "Region": {
+                        "Min0": 692,
+                        "Min1": 639,
+                        "Max0": 708,
+                        "Max1": 655
+                    },
+                    "InTreeIndex": 676,
+                    "ChildLastInTreeIndex": 687,
+                    "Id": 791709456
+                },
+                "Region": {
+                    "Min0": 668,
+                    "Min1": 615,
+                    "Max0": 732,
+                    "Max1": 679
+                },
+                "InTreeIndex": 676,
+                "ChildLastInTreeIndex": 687,
+                "Id": 791709456
+            },
+            {
+                "ModuleButtonVisible": true,
+                "ModuleButtonIconTexture": {
+                    "Id": 833854384
+                },
+                "RampActive": false,
+                "OverloadOn": false,
+                "RegionInteraction": {
+                    "Region": {
+                        "Min0": 717,
+                        "Min1": 683,
+                        "Max0": 733,
+                        "Max1": 699
+                    },
+                    "InTreeIndex": 663,
+                    "ChildLastInTreeIndex": 668,
+                    "Id": 790170320
+                },
+                "Region": {
+                    "Min0": 693,
+                    "Min1": 659,
+                    "Max0": 757,
+                    "Max1": 723
+                },
+                "InTreeIndex": 663,
+                "ChildLastInTreeIndex": 668,
+                "Id": 790170320
+            }
+        ],
+        "Readout": [],
+        "Region": {
+            "Min0": 0,
+            "Min1": 0,
+            "Max0": 0,
+            "Max1": 0
+        },
+        "Id": 0
+    }
+}

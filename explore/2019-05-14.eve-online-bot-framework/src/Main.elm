@@ -1,4 +1,11 @@
-module Main exposing (botStep)
+module Main exposing
+    ( botStep
+    , botStepInterface
+    , deserializeState
+    , initInterface
+    , main
+    , serializeState
+    )
 
 {-| This is a warp to 0km auto-pilot, making your travels faster and thus safer by directly warping to gates/stations.
 The bot follows the route set in the in-game autopilot and uses the context menu to initiate warp and dock commands.
@@ -10,10 +17,11 @@ import Sanderling
     exposing
         ( InfoPanelRouteRouteElementMarker
         , MemoryMeasurement
+        , MemoryMeasurementShipUi
         , centerFromRegion
         , parseMemoryMeasurementFromJson
         )
-import Sanderling_Interface_20190513
+import Sanderling_Interface_20190514
     exposing
         ( BotEvent(..)
         , BotEventAtTime
@@ -65,6 +73,9 @@ botStep eventAtTime stateBefore =
                 Ok memoryMeasurement ->
                     ( initState, botRequests ( eventAtTime.timeInMilliseconds, memoryMeasurement ) )
 
+        SetSessionTimeLimitInMilliseconds _ ->
+            ( initState, [] )
+
 
 botRequests : ( Int, MemoryMeasurement ) -> List BotRequest
 botRequests ( currentTimeInMilliseconds, memoryMeasurement ) =
@@ -75,22 +86,23 @@ botRequests ( currentTimeInMilliseconds, memoryMeasurement ) =
             ]
 
         Just infoPanelRouteFirstMarker ->
-            case memoryMeasurement |> isShipWarpingOrJumping of
+            case memoryMeasurement.shipUi of
                 Nothing ->
                     [ ReportStatus "I cannot see whether the ship is warping or jumping."
                     , TakeMemoryMeasurementAtTimeInMilliseconds (currentTimeInMilliseconds + 4000)
                     ]
 
-                Just True ->
-                    [ ReportStatus "I see the ship is warping or jumping, so I wait."
-                    , TakeMemoryMeasurementAtTimeInMilliseconds (currentTimeInMilliseconds + 4000)
-                    ]
+                Just shipUi ->
+                    if shipUi |> isShipWarpingOrJumping then
+                        [ ReportStatus "I see the ship is warping or jumping, so I wait."
+                        , TakeMemoryMeasurementAtTimeInMilliseconds (currentTimeInMilliseconds + 4000)
+                        ]
 
-                Just False ->
-                    botRequestsWhenNotWaitingForShipManeuver
-                        memoryMeasurement
-                        infoPanelRouteFirstMarker
-                        ++ [ TakeMemoryMeasurementAtTimeInMilliseconds (currentTimeInMilliseconds + 2000) ]
+                    else
+                        botRequestsWhenNotWaitingForShipManeuver
+                            memoryMeasurement
+                            infoPanelRouteFirstMarker
+                            ++ [ TakeMemoryMeasurementAtTimeInMilliseconds (currentTimeInMilliseconds + 2000) ]
 
 
 botRequestsWhenNotWaitingForShipManeuver : MemoryMeasurement -> InfoPanelRouteRouteElementMarker -> List BotRequest
@@ -144,30 +156,51 @@ infoPanelRouteFirstMarkerFromMemoryMeasurement =
         >> Maybe.andThen List.head
 
 
-isShipWarpingOrJumping : MemoryMeasurement -> Maybe Bool
+isShipWarpingOrJumping : MemoryMeasurementShipUi -> Bool
 isShipWarpingOrJumping =
-    .shipUi
-        >> Maybe.andThen .indication
+    .indication
         >> Maybe.andThen .maneuverType
-        >> Maybe.map (\maneuverType -> [ Sanderling.Warp, Sanderling.Jump ] |> List.member maneuverType)
+        >> Maybe.map
+            (\maneuverType ->
+                [ Sanderling.Warp, Sanderling.Jump ]
+                    |> List.member maneuverType
+            )
+        -- If the ship is just floating in space, there might be no indication displayed.
+        >> Maybe.withDefault False
+
+
+{-| Define interface function for the framework. Don't change the function signature.
+<https://github.com/Viir/Kalmit/blob/640078f59bea3fa2ba1af43372933cff304b8c94/implement/PersistentProcess/PersistentProcess.Common/PersistentProcess.cs>
+-}
+serializeState : State -> String
+serializeState =
+    always ""
+
+
+{-| Define interface function for the framework. Don't change the function signature.
+<https://github.com/Viir/Kalmit/blob/640078f59bea3fa2ba1af43372933cff304b8c94/implement/PersistentProcess/PersistentProcess.Common/PersistentProcess.cs>
+-}
+deserializeState : String -> State
+deserializeState =
+    always initState
 
 
 {-| Define interface function for the framework. Don't change this.
 -}
 initInterface : ( State, String )
 initInterface =
-    Sanderling_Interface_20190513.wrapInitForSerialInterface init
+    Sanderling_Interface_20190514.wrapInitForSerialInterface init
 
 
 {-| Define interface function for the framework. Don't change this.
 -}
 botStepInterface : String -> State -> ( State, String )
 botStepInterface =
-    Sanderling_Interface_20190513.wrapBotStepForSerialInterface botStep
+    Sanderling_Interface_20190514.wrapBotStepForSerialInterface botStep
 
 
 {-| Define the Elm entry point. Don't change this function.
 -}
 main : Program Int State String
 main =
-    Sanderling.elmEntryPoint initInterface botStepInterface
+    Sanderling.elmEntryPoint initInterface botStepInterface serializeState deserializeState

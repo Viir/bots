@@ -1,7 +1,7 @@
 module SanderlingInterfaceTest exposing (suite)
 
 import Expect exposing (Expectation)
-import Sanderling_Interface_20190513
+import Sanderling_Interface_20190514
 import Test exposing (..)
 
 
@@ -28,12 +28,12 @@ botEventMemoryMeasurementCompleted =
     }
 }
 """
-                |> Sanderling_Interface_20190513.deserializeBotEventAtTime
+                |> Sanderling_Interface_20190514.deserializeBotEventAtTime
                 |> Expect.equal
                     (Ok
                         { timeInMilliseconds = 1234
                         , event =
-                            Sanderling_Interface_20190513.MemoryMeasurementFinished
+                            Sanderling_Interface_20190514.MemoryMeasurementFinished
                                 (Ok { reducedWithNamedNodesJson = Just "json content" })
                         }
                     )

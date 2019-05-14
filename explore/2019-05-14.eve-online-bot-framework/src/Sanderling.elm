@@ -5,6 +5,7 @@
 module Sanderling exposing
     ( InfoPanelRouteRouteElementMarker
     , MemoryMeasurement
+    , MemoryMeasurementShipUi
     , ShipManeuverType(..)
     , UIElementRegion
     , centerFromRegion
@@ -15,7 +16,7 @@ module Sanderling exposing
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
-import Sanderling_Interface_20190513
+import Sanderling_Interface_20190514
 
 
 type alias MemoryMeasurement =
@@ -76,7 +77,7 @@ type alias UIElementRegion =
 
 {-| Parse JSON string containing a Sanderling memory measurement.
 The string expected here is not the raw measurement, but the stage which after parsing for named nodes.
-To get a representation of the EVE Online clients memory contents as expected here, see the example at https://github.com/Arcitectus/Sanderling/blob/ada11c9f8df2367976a6bcc53efbe9917107bfa7/src/Sanderling/Sanderling.MemoryReading.Test/MemoryReadingDemo.cs
+To get a representation of the EVE Online clients memory contents as expected here, see the example at <https://github.com/Arcitectus/Sanderling/blob/ada11c9f8df2367976a6bcc53efbe9917107bfa7/src/Sanderling/Sanderling.MemoryReading.Test/MemoryReadingDemo.cs>
 -}
 parseMemoryMeasurementFromJson : String -> Result String MemoryMeasurement
 parseMemoryMeasurementFromJson =
@@ -176,19 +177,25 @@ menuEntryDecoder =
         (Json.Decode.field "Text" Json.Decode.string)
 
 
-centerFromRegion : UIElementRegion -> Sanderling_Interface_20190513.Location
+centerFromRegion : UIElementRegion -> Sanderling_Interface_20190514.Location
 centerFromRegion region =
     { x = (region.left + region.right) // 2, y = (region.top + region.bottom) // 2 }
 
 
-{-| Support function-level dead code elimination (<https://elm-lang.org/blog/small-assets-without-the-headache>) Elm code needed to inform the Elm compiler about our entry points.
+{-| Support function-level dead code elimination (<https://elm-lang.org/blog/small-assets-without-the-headache>).
+Elm code needed to inform the Elm compiler about our entry points.
 -}
-elmEntryPoint : ( botState, String ) -> (String -> botState -> ( botState, String )) -> Program Int botState String
-elmEntryPoint botInit botStepInterface =
+elmEntryPoint :
+    ( botState, String )
+    -> (String -> botState -> ( botState, String ))
+    -> (botState -> String)
+    -> (String -> botState)
+    -> Program Int botState String
+elmEntryPoint botInit botStepInterface serializeState deserializeState =
     Platform.worker
         { init = \_ -> ( botInit |> Tuple.first, Cmd.none )
         , update =
             \event stateBefore ->
-                botStepInterface "" stateBefore |> Tuple.mapSecond (always Cmd.none)
+                botStepInterface "" (stateBefore |> serializeState |> deserializeState) |> Tuple.mapSecond (always Cmd.none)
         , subscriptions = \_ -> Sub.none
         }

@@ -1,7 +1,7 @@
 -- Do not change anything in this file, as it is used to tell the bot running app which framework your bot depends on.
 
 
-module Sanderling_Interface_20190513 exposing
+module Sanderling_Interface_20190514 exposing
     ( BotEffect(..)
     , BotEvent(..)
     , BotEventAtTime
@@ -26,8 +26,11 @@ type alias BotEventAtTime =
     }
 
 
+{-| `SetSessionTimeLimitInMilliseconds` uses the same clock as `BotEventAtTime.timeInMilliseconds`.
+-}
 type BotEvent
     = MemoryMeasurementFinished (Result String MemoryMeasurement)
+    | SetSessionTimeLimitInMilliseconds Int
 
 
 type BotStepResult
@@ -35,10 +38,13 @@ type BotStepResult
     | DecodeSuccess (List BotRequest)
 
 
+{-| `TakeMemoryMeasurementAtTimeInMilliseconds` uses the same clock as `BotEventAtTime.timeInMilliseconds`.
+-}
 type BotRequest
     = TakeMemoryMeasurementAtTimeInMilliseconds Int
     | ReportStatus String
     | Effect BotEffect
+    | FinishSession
 
 
 type alias MemoryMeasurement =
@@ -110,6 +116,8 @@ decodeBotEvent =
     Json.Decode.oneOf
         [ Json.Decode.field "memoryMeasurementFinished" (decodeResult Json.Decode.string decodeMemoryMeasurement)
             |> Json.Decode.map MemoryMeasurementFinished
+        , Json.Decode.field "setSessionTimeLimitInMilliseconds" Json.Decode.int
+            |> Json.Decode.map SetSessionTimeLimitInMilliseconds
         ]
 
 
@@ -144,6 +152,9 @@ encodeBotRequest botRequest =
 
         Effect botEffect ->
             Json.Encode.object [ ( "effect", botEffect |> encodeBotEffect ) ]
+
+        FinishSession ->
+            Json.Encode.object [ ( "finishSession", Json.Encode.object [] ) ]
 
 
 encodeBotEffect : BotEffect -> Json.Encode.Value

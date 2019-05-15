@@ -182,7 +182,7 @@ namespace BotEngine.Windows.Console
                 var lastBotStepAgeInSeconds = (int)((DateTimeOffset.UtcNow - lastBotStep.Value.time).TotalSeconds);
 
                 yield return "In the last update, " + lastBotStepAgeInSeconds + " seconds ago at " + lastBotStep.Value.time.ToString("HH-mm-ss.fff") +
-                    " the bot reported following status:\n" + lastBotStep.Value.statusReport;
+                    ", the bot reported the following status:\n" + lastBotStep.Value.statusReport;
             }
 
             void processBotEvent(InterfaceToBot.BotEvent botEvent)

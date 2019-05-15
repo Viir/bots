@@ -8,8 +8,8 @@ module Main exposing
     )
 
 {-| This is a warp to 0km auto-pilot, making your travels faster and thus safer by directly warping to gates/stations.
-The bot follows the route set in the in-game autopilot and uses the context menu to initiate warp and dock commands.
-To use the bot, set the in-game autopilot route before starting the bot.
+The bot follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
+Before starting the bot, set the in-game autopilot route and make sure the autopilot is expanded, so that the route is visible.
 Make sure you are undocked before starting the bot because the bot does not undock.
 -}
 
@@ -88,13 +88,13 @@ botRequests ( currentTimeInMilliseconds, memoryMeasurement ) =
         Just infoPanelRouteFirstMarker ->
             case memoryMeasurement.shipUi of
                 Nothing ->
-                    [ ReportStatus "I cannot see whether the ship is warping or jumping."
+                    [ ReportStatus "I cannot see if the ship is warping or jumping. I wait for the ship UI to appear on the screen."
                     , TakeMemoryMeasurementAtTimeInMilliseconds (currentTimeInMilliseconds + 4000)
                     ]
 
                 Just shipUi ->
                     if shipUi |> isShipWarpingOrJumping then
-                        [ ReportStatus "I see the ship is warping or jumping, so I wait."
+                        [ ReportStatus "I see the ship is warping or jumping. I wait until that maneuver ends."
                         , TakeMemoryMeasurementAtTimeInMilliseconds (currentTimeInMilliseconds + 4000)
                         ]
 
@@ -109,7 +109,7 @@ botRequestsWhenNotWaitingForShipManeuver : MemoryMeasurement -> InfoPanelRouteRo
 botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMarker =
     let
         openMenuAnnouncementAndEffect =
-            [ ReportStatus "I click on the route marker to open the menu."
+            [ ReportStatus "I click on the route marker in the info panel to open the menu."
             , mouseClickAtLocation
                 (infoPanelRouteFirstMarker.uiElement.region |> centerFromRegion)
                 MouseButtonRight
@@ -139,7 +139,7 @@ botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMa
             in
             case maybeMenuEntryToClick of
                 Nothing ->
-                    [ ReportStatus "A menu was open, but it did not contain a matching entry." ]
+                    [ ReportStatus "A menu is open, but it does not contain a matching entry." ]
                         ++ openMenuAnnouncementAndEffect
 
                 Just menuEntryToClick ->

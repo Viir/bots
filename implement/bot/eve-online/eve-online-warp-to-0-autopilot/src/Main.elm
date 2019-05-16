@@ -1,3 +1,12 @@
+{- This is a warp to 0km auto-pilot, making your travels faster and thus safer by directly warping to gates/stations.
+   The bot follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
+   Before starting the bot, set the in-game autopilot route and make sure the autopilot is expanded, so that the route is visible.
+   Make sure you are undocked before starting the bot because the bot does not undock.
+
+   bot-catalog-tags:eve-online,auto-pilot,travel
+-}
+
+
 module Main exposing
     ( botStep
     , botStepInterface
@@ -6,12 +15,6 @@ module Main exposing
     , main
     , serializeState
     )
-
-{-| This is a warp to 0km auto-pilot, making your travels faster and thus safer by directly warping to gates/stations.
-The bot follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
-Before starting the bot, set the in-game autopilot route and make sure the autopilot is expanded, so that the route is visible.
-Make sure you are undocked before starting the bot because the bot does not undock.
--}
 
 import Sanderling
     exposing

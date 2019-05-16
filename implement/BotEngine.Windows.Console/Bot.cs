@@ -27,9 +27,8 @@ namespace BotEngine.Windows.Console
             {
                 /*
                  * Use convention for entry point file path, module name and function names.
-                 * For an example of a concrete collection of files satisfying these constraints, see https://github.com/Viir/bots/tree/880d745b0aa8408a4417575d54ecf1f513e7aef4/explore/2019-05-14.eve-online-bot-framework
+                 * For an example of a concrete collection of files satisfying these constraints, see https://github.com/Viir/bots/tree/d18b54d146a23eea5070444d1d73626f05c0de7b/implement/bot/eve-online/eve-online-warp-to-0-autopilot
                  * 
-                 * TODO: Use an example with less additional files.
                  * */
                 WithCustomSerialization = new Kalmit.ElmAppEntryConfig.ElmAppEntryConfigWithCustomSerialization
                 {

@@ -39,7 +39,7 @@ https://botengine.blob.core.windows.net/blob-library/by-name/2019-05-15.BotEngin
 Extract this Zip-Archive to a directory. In this directory, you will find a file named `BotEngine.exe`. To start a bot, call this program with a command like the following:
 
 ```cmd
-C:\path\to\the\botengine.exe  start-bot  --bot-source="C:\directory-containing-bot-code\"
+C:\path\to\the\botengine.exe  start-bot  --bot-source="C:\directory-containing-bot-code"
 ```
 
 You can use such a command, for example, in the Windows command line (cmd.exe).

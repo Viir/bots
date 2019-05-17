@@ -8,7 +8,7 @@ namespace BotEngine.Windows.Console
 {
     class BotEngine
     {
-        static string appVersionId => "2019-05-15";
+        static string appVersionId => "2019-05-17";
 
         static string uiTimeFormatToString => "yyyy-MM-ddTHH-mm-ss";
 
@@ -90,9 +90,9 @@ namespace BotEngine.Windows.Console
 
                     try
                     {
-                        var botCodeLocationParamName = "--bot-source";
+                        var botSourceParamName = "--bot-source";
 
-                        var botCodeLocationParamInstruction = "Add the '" + botCodeLocationParamName + "' argument to specify the directory containing your bot code. Following is an example: " + botCodeLocationParamName + @"=""C:\bots\bot-to-start""";
+                        var botSourceParamInstruction = "Add the '" + botSourceParamName + "' argument to specify the directory containing a bot. Following is an example: " + botSourceParamName + @"=""C:\bots\bot-to-start""";
 
                         (bool isPresent, string argumentValue) argumentFromParameterName(string parameterName)
                         {
@@ -123,42 +123,54 @@ namespace BotEngine.Windows.Console
                             return (true, valueEnclosedInQuotes.Length < valueWithoutQuotes.Length ? valueWithoutQuotes : valueEnclosedInQuotes);
                         }
 
-                        var botSourceMatch = argumentFromParameterName(botCodeLocationParamName);
+                        var botSourceMatch = argumentFromParameterName(botSourceParamName);
 
                         if (!botSourceMatch.isPresent)
                         {
-                            DotNetConsole.WriteLine("Where from should I load the bot? " + botCodeLocationParamInstruction);
+                            DotNetConsole.WriteLine("Where from should I load the bot? " + botSourceParamInstruction);
                             return 11;
                         }
 
-                        var botCodeLocationGuide = "Please choose a directory containing a bot.";
+                        var botSourcePath =
+                            botSourceMatch.argumentValue
+                            /*
+                             * Avoid problem observed 2019-05-17:
+                             * When using a command line argument like this:
+                             * start-bot  --bot-source="C:\directory-containing-bot-code\"
+                             * We get
+                             * --bot-source=C:\directory-containing-bot-code"
+                             * from `CommandLineApplication.RemainingArguments`
+                             * */
+                            ?.TrimEnd('"');
 
-                        if (!System.IO.Directory.Exists(botSourceMatch.argumentValue))
+                        var botSourceGuide = "Please choose a directory containing a bot.";
+
+                        if (!System.IO.Directory.Exists(botSourcePath))
                         {
-                            DotNetConsole.WriteLine("I did not find directory '" + botSourceMatch.argumentValue + "'. " + botCodeLocationGuide);
+                            DotNetConsole.WriteLine("I did not find a directory at '" + botSourcePath + "'. " + botSourceGuide);
                             return 12;
                         }
 
-                        var allFilePathsAtBotCodeLocation =
+                        var allFilePathsAtBotSource =
                             System.IO.Directory.GetFiles(
-                                botSourceMatch.argumentValue, "*", System.IO.SearchOption.AllDirectories);
+                                botSourcePath, "*", System.IO.SearchOption.AllDirectories);
 
                         DotNetConsole.WriteLine(
-                            "I found " + allFilePathsAtBotCodeLocation.Length +
-                            " files in '" + botSourceMatch.argumentValue + "'.");
+                            "I found " + allFilePathsAtBotSource.Length +
+                            " files in '" + botSourcePath + "'.");
 
-                        if (allFilePathsAtBotCodeLocation.Length < 1)
+                        if (allFilePathsAtBotSource.Length < 1)
                         {
-                            DotNetConsole.WriteLine(botCodeLocationGuide);
+                            DotNetConsole.WriteLine(botSourceGuide);
                             return 13;
                         }
 
                         var botCodeFiles =
-                            allFilePathsAtBotCodeLocation
+                            allFilePathsAtBotSource
                             .Select(botCodeFilePath =>
                             {
                                 return
-                                    (name: System.IO.Path.GetRelativePath(botSourceMatch.argumentValue, botCodeFilePath),
+                                    (name: System.IO.Path.GetRelativePath(botSourcePath, botCodeFilePath),
                                     content: System.IO.File.ReadAllBytes(botCodeFilePath));
                             })
                             .OrderBy(botCodeFile => botCodeFile.name)
@@ -177,7 +189,7 @@ namespace BotEngine.Windows.Console
                             {
                                 loadBotResult = new LogEntry.LoadBotResult
                                 {
-                                    botSource = botSourceMatch.argumentValue,
+                                    botSource = botSourcePath,
                                     botId = botId,
                                 }
                             });

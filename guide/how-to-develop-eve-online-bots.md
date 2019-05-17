@@ -74,21 +74,21 @@ Visual Studio Code is a software development tool from Microsoft, which also con
 
 To install this extension, open VSCode and open the 'Extensions' section (`Ctrl + Shift + X`).
 Type 'elm' in the search box, and you will see the `elm` extension as shown in the screenshot below:
-![Elm extension installation in Visual Studio Code](./2019-05-16.vscode-elm-install-extension.png)
+![Elm extension installation in Visual Studio Code](./image/2019-05-16.vscode-elm-install-extension.png)
 
 Use the `Install` button to install this extension in VSCode.
 
 Before this extension can work correctly, we need to tell it where to find the Elm program. Open the Visual Studio Code settings, using the menu entries `File` > `Preferences` > `Settings`.
 In the settings interface, select the `Elm configuration` entry under `Extensions` in the tree on the left. Then you will see diverse settings for the elm extension on the right, as shown in the screenshot below. Scroll down to the `Compiler` section and enter the file path to the elm.exe we downloaded earlier into the textbox. The screenshot below shows how this looks like:
 
-![Elm extension settings in Visual Studio Code](./2019-05-16.vscode-elm-settings.png)
+![Elm extension settings in Visual Studio Code](./image/2019-05-16.vscode-elm-settings.png)
 
 VSCode automatically saves this setting and remembers it the next time you open the program.
 
 To use VSCode with Elm, open it with the directory containing the `elm.json` file as the working directory. Otherwise, the Elm functionality will not work.
 A convenient way to do this is using the Windows Explorer context menu entry `Open with Code` on the bot directory, as shown in the screenshot below:
 
-![Open a directory in Visual Studio Code from the Windows Explorer](./vscode-open-directory-from-explorer.png)
+![Open a directory in Visual Studio Code from the Windows Explorer](./image/vscode-open-directory-from-explorer.png)
 
 Now we can test if our setup works correctly. In VSCode, open the `Main.elm` file and make the same code change as done earlier to provoke an error message from Elm.
 When you save the file (`Ctrl + S`), the VSCode extension starts Elm in the background to check the code. On the first time, it can take longer as required packages are downloaded. But usually, Elm should complete the check in a second. If the code is ok, you will not see any change. If there is a problem, this is displayed in multiple places, as you can see in the screenshot below:
@@ -97,11 +97,11 @@ When you save the file (`Ctrl + S`), the VSCode extension starts Elm in the back
 + On the scroll bar in an open file. You can see this as a red dot in the screenshot. This indicator helps to scroll to interesting locations in large files quickly.
 + When the offending portion of the code is visible in an editor viewport, the error is pointed out with a red squiggly underline.
 
-![Visual Studio Code displays diagnostics from Elm](./2019-05-16.vscode-elm-diagnostics-display.png)
+![Visual Studio Code displays diagnostics from Elm](./image/2019-05-16.vscode-elm-diagnostics-display.png)
 
 When you hover the mouse cursor over the highlighted text, a popup window shows more details. Here you find the message we get from Elm:
 
-![Visual Studio Code displays diagnostics from Elm - details on hover](./2019-05-16.vscode-elm-diagnostics-display-hover.png)
+![Visual Studio Code displays diagnostics from Elm - details on hover](./image/2019-05-16.vscode-elm-diagnostics-display-hover.png)
 
 ----
 

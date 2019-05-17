@@ -143,6 +143,8 @@ namespace BotEngine.Windows.Console
                              * */
                             ?.TrimEnd('"');
 
+                        //  TODO: Also support loading bot from single file.
+
                         var botSourceGuide = "Please choose a directory containing a bot.";
 
                         if (!System.IO.Directory.Exists(botSourcePath))
@@ -175,6 +177,40 @@ namespace BotEngine.Windows.Console
                             })
                             .OrderBy(botCodeFile => botCodeFile.name)
                             .ToList();
+
+                        {
+                            //  At the moment, all supported bot formats require this file.
+                            var fileNameExpectedAtRoot = "elm.json";
+
+                            if (!botCodeFiles.Any(botCodeFile => botCodeFile.name.ToLowerInvariant() == fileNameExpectedAtRoot))
+                            {
+                                DotNetConsole.WriteLine(
+                                    "There is a problem with the bot source: I did not find an '" + fileNameExpectedAtRoot + "' file directly in this directory."
+                                    //  TODO: Link to guide about supported bot code format.
+                                    );
+
+                                /*
+                                 * Account for the possibility that the user has accidentally picked a parent directory:
+                                 * See if a subdirectory contains such a file.
+                                 * */
+                                var filePathEndingsToLookFor = new[] { "\\" + fileNameExpectedAtRoot, "/" + fileNameExpectedAtRoot };
+
+                                var maybeAlternativeFilePath =
+                                    botCodeFiles
+                                    .Where(botCodeFile =>
+                                        filePathEndingsToLookFor.Any(filePathEndingToLookFor =>
+                                            botCodeFile.name.ToLowerInvariant().EndsWith(filePathEndingToLookFor)))
+                                    .OrderBy(botCodeFile => botCodeFile.name.Length)
+                                    .FirstOrDefault()
+                                    .name;
+
+                                if (maybeAlternativeFilePath != null)
+                                    DotNetConsole.WriteLine(
+                                        "Did you mean the subdirectory '" + System.IO.Path.GetDirectoryName(maybeAlternativeFilePath) + "'?");
+
+                                return 14;
+                            }
+                        }
 
                         var botCode =
                             //  TODO: Switch to a deterministic packaging.

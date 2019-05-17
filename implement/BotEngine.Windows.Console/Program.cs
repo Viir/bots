@@ -33,6 +33,19 @@ namespace BotEngine.Windows.Console
 
                 startBotCmd.OnExecute(() =>
                 {
+                    void dotnetConsoleWriteProblemCausingAbort(string line)
+                    {
+                        DotNetConsole.WriteLine("");
+
+                        var colorBefore = DotNetConsole.ForegroundColor;
+
+                        DotNetConsole.ForegroundColor = ConsoleColor.Yellow;
+
+                        DotNetConsole.WriteLine(line);
+
+                        DotNetConsole.ForegroundColor = colorBefore;
+                    }
+
                     var sessionStartTime = DateTimeOffset.UtcNow;
                     var sessionId = sessionStartTime.ToString("yyyy-MM-ddTHH-mm-ss");
 
@@ -82,8 +95,7 @@ namespace BotEngine.Windows.Console
                         }
                         catch (Exception e)
                         {
-                            DotNetConsole.ForegroundColor = ConsoleColor.DarkRed;
-                            DotNetConsole.WriteLine("Failed to open log file: " + e?.ToString());
+                            dotnetConsoleWriteProblemCausingAbort("Failed to open log file: " + e?.ToString());
                             return 1;
                         }
                     }
@@ -127,7 +139,7 @@ namespace BotEngine.Windows.Console
 
                         if (!botSourceMatch.isPresent)
                         {
-                            DotNetConsole.WriteLine("Where from should I load the bot? " + botSourceParamInstruction);
+                            dotnetConsoleWriteProblemCausingAbort("Where from should I load the bot? " + botSourceParamInstruction);
                             return 11;
                         }
 
@@ -149,7 +161,7 @@ namespace BotEngine.Windows.Console
 
                         if (!System.IO.Directory.Exists(botSourcePath))
                         {
-                            DotNetConsole.WriteLine("I did not find a directory at '" + botSourcePath + "'. " + botSourceGuide);
+                            dotnetConsoleWriteProblemCausingAbort("I did not find a directory at '" + botSourcePath + "'. " + botSourceGuide);
                             return 12;
                         }
 
@@ -163,7 +175,7 @@ namespace BotEngine.Windows.Console
 
                         if (allFilePathsAtBotSource.Length < 1)
                         {
-                            DotNetConsole.WriteLine(botSourceGuide);
+                            dotnetConsoleWriteProblemCausingAbort(botSourceGuide);
                             return 13;
                         }
 
@@ -184,7 +196,7 @@ namespace BotEngine.Windows.Console
 
                             if (!botCodeFiles.Any(botCodeFile => botCodeFile.name.ToLowerInvariant() == fileNameExpectedAtRoot))
                             {
-                                DotNetConsole.WriteLine(
+                                dotnetConsoleWriteProblemCausingAbort(
                                     "There is a problem with the bot source: I did not find an '" + fileNameExpectedAtRoot + "' file directly in this directory."
                                     //  TODO: Link to guide about supported bot code format.
                                     );
@@ -272,7 +284,7 @@ namespace BotEngine.Windows.Console
                     }
 
                     if (sessionException != null)
-                        DotNetConsole.WriteLine("start-bot failed with exception: " + sessionException);
+                        dotnetConsoleWriteProblemCausingAbort("start-bot failed with exception: " + sessionException);
 
                     appendLogEntry(new LogEntry
                     {

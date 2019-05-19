@@ -36,10 +36,11 @@ Now you can use elm.exe on the bot code files with a command like the following:
 ```
 C:\path-to-elm\binaries-for-windows\elm.exe make src/Main.elm
 ```
-If everything works so far, you will get the following output:
+If everything works so far, the elm.exe will write an output which ends with a line like the following:
 ```
-Success! Compiled 1 module.
+Success! Compiled 3 modules.
 ```
+That number of modules it mentions can vary; it should be at least one.
 
 To see the detection of errors in action, we can now make some destructive change to the `Main.elm` file. For example, simulate a typing mistake, on line 99, replace `shipUi` with `shipui`.
 If after this change we invoke Elm with the same command again, we now get a different output, informing us about a problem in the code:

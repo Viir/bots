@@ -4,49 +4,22 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.0</TargetFramework>
     <AssemblyName>BotEngine</AssemblyName>
-    <AssemblyVersion>2019.0517.0.0</AssemblyVersion>
-    <FileVersion>2019.0517.0.0</FileVersion>
+    <AssemblyVersion>2019.0521.0.0</AssemblyVersion>
+    <FileVersion>2019.0521.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="InputSimulator" Version="1.0.4" />
     <PackageReference Include="JavaScriptEngineSwitcher.ChakraCore" Version="3.0.2" />
     <PackageReference Include="JavaScriptEngineSwitcher.ChakraCore.Native.win-x64" Version="3.0.1" />
     <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="2.3.4" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="3.0.0" />
     <PackageReference Include="Mono.Posix.NETStandard" Version="1.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="12.0.2" />
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="Bib3">
-      <HintPath>..\lib\Sanderling\2019-05-13\Bib3.dll</HintPath>
-    </Reference>
-    <Reference Include="Bib3.RefNezDif">
-      <HintPath>..\lib\Sanderling\2019-05-13\Bib3.RefNezDif.dll</HintPath>
-    </Reference>
-    <Reference Include="BotEngine.Common">
-      <HintPath>..\lib\Sanderling\2019-05-13\BotEngine.Common.dll</HintPath>
-    </Reference>
-    <Reference Include="BotEngine.Interface">
-      <HintPath>..\lib\Sanderling\2019-05-13\BotEngine.Interface.dll</HintPath>
-    </Reference>
-    <Reference Include="Fasterflect">
-      <HintPath>..\lib\Sanderling\2019-05-13\Fasterflect.dll</HintPath>
-    </Reference>
     <Reference Include="PersistentProcess.Common">
       <HintPath>..\lib\Kalmit\2019-05-13\PersistentProcess.Common.dll</HintPath>
-    </Reference>
-    <Reference Include="Sanderling">
-      <HintPath>..\lib\Sanderling\2019-05-13\Sanderling.dll</HintPath>
-    </Reference>
-    <Reference Include="Sanderling.ExploreProcessMeasurement">
-      <HintPath>..\lib\Sanderling\2019-05-13\Sanderling.ExploreProcessMeasurement.exe</HintPath>
-    </Reference>
-    <Reference Include="Sanderling.Interface">
-      <HintPath>..\lib\Sanderling\2019-05-13\Sanderling.Interface.dll</HintPath>
-    </Reference>
-    <Reference Include="Sanderling.MemoryReading">
-      <HintPath>..\lib\Sanderling\2019-05-13\Sanderling.MemoryReading.dll</HintPath>
     </Reference>
   </ItemGroup>
 

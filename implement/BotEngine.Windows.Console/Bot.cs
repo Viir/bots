@@ -1,11 +1,12 @@
-﻿using Kalmit.ProcessStore;
+using BotEngine.Windows.Console.BotFramework;
+using Kalmit.ProcessStore;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-using InterfaceToBot = BotEngine.Windows.Console.BotFramework.InterfaceToBot;
 using DotNetConsole = System.Console;
-using BotEngine.Windows.Console.BotFramework;
+using InterfaceToBot = BotEngine.Windows.Console.BotFramework.InterfaceToBot;
 
 namespace BotEngine.Windows.Console
 {
@@ -34,7 +35,9 @@ namespace BotEngine.Windows.Console
                 {
                     pathToFileWithElmEntryPoint = "src/Main.elm",
                     pathToSerializedEventFunction = "Main.botStepInterface",
-                    pathToInitialStateFunction = "Main.initState",
+
+                    //  TODO: Get the bot requests from the `init` function: Switch to `initInterface`. (https://github.com/Viir/Kalmit/issues/5)
+                    pathToInitialStateFunction = "Main.initStateInterface",
                     pathToDeserializeStateFunction = "Main.deserializeState",
                     pathToSerializeStateFunction = "Main.serializeState",
                 },
@@ -46,7 +49,7 @@ namespace BotEngine.Windows.Console
              * */
 
             var elmAppMapFile =
-                NewtonsoftJson.SerializeToUtf8(elmAppMap);
+                System.Text.Encoding.UTF8.GetBytes(Newtonsoft.Json.JsonConvert.SerializeObject(elmAppMap));
 
             var kalmitElmAppFiles =
                 botCodeFiles
@@ -63,6 +66,7 @@ namespace BotEngine.Windows.Console
 
         static public int RunBotSession(
             byte[] kalmitElmApp,
+            Func<byte[], byte[]> getFileFromHashSHA256,
             string processStoreDirectory,
             Action<string> logEntry,
             Action<LogEntry.ProcessBotEventReport> logProcessBotEventReport)
@@ -84,49 +88,7 @@ namespace BotEngine.Windows.Console
                     return System.IO.Path.Combine(directoryName, directoryName + "T" + time.ToString("HH") + ".composition.jsonl");
                 });
 
-            /*
-             * For now, expect exactly interface Sanderling 2019-05-14.
-             * This is to be replaced to identify the framework version selected by the bot author.
-             * */
-
-            var eveOnlineClientProcesses =
-                System.Diagnostics.Process.GetProcessesByName("ExeFile");
-
-            var eveOnlineClientProcess = eveOnlineClientProcesses.FirstOrDefault();
-
-            if (eveOnlineClientProcess == null)
-            {
-                logEntry("I did not find any windows process which looks like an EVE Online client. I stop the bot.");
-                return 0;
-            }
-
-            logEntry("I found process '" + eveOnlineClientProcess.Id + "' which looks like an EVE Online client. I will use this one with the bot.");
-
-            //  Read memory based on https://github.com/Viir/bots/blob/59607e9c0e90f52cd35df2205401363c72787c1b/eve-online/setup-sanderling.csx
-
-            var memoryReader = SanderlingSetup.MemoryReaderFromLiveProcessId(eveOnlineClientProcess.Id);
-
-            logEntry("I search for the root of the UI tree now. This can take several seconds.");
-            var uiTreeRoot = SanderlingSetup.UITreeRootFromMemoryReader(memoryReader);
-
-            var testReadMemory = SanderlingSetup.PartialPythonModelFromUITreeRoot(memoryReader, uiTreeRoot);
-
-            if (testReadMemory == null)
-            {
-                logEntry("I did not found the root of the UI tree. I stop the bot.");
-                return 1;
-            }
-
-            var allNodesFromMemoryMeasurementPartialPythonModel =
-                SanderlingSetup.EnumerateNodeFromTreeDFirst(
-                    testReadMemory,
-                    node => node.GetListChild()?.Cast<Optimat.EveOnline.AuswertGbs.UINodeInfoInTree>())
-                .ToImmutableList();
-
-            logEntry("I found the UI tree, and " + allNodesFromMemoryMeasurementPartialPythonModel.Count + " nodes in there.");
-
-            (DateTimeOffset time, string statusReport, ImmutableList<InterfaceToBot.BotRequest>)?
-                lastBotStep = null;
+            (DateTimeOffset time, string statusMessage, ImmutableList<InterfaceToBot.BotRequest>)? lastBotStep = null;
 
             ImmutableList<InterfaceToBot.BotRequest> remainingBotRequests = null;
 
@@ -180,8 +142,48 @@ namespace BotEngine.Windows.Console
 
                 var lastBotStepAgeInSeconds = (int)((DateTimeOffset.UtcNow - lastBotStep.Value.time).TotalSeconds);
 
-                yield return "In the last update, " + lastBotStepAgeInSeconds + " seconds ago at " + lastBotStep.Value.time.ToString("HH-mm-ss.fff") +
-                    ", the bot reported the following status:\n" + lastBotStep.Value.statusReport;
+                yield return "Last bot event was " + lastBotStepAgeInSeconds + " seconds ago at " + lastBotStep.Value.time.ToString("HH-mm-ss.fff") + ".";
+
+                yield return "Status message from bot:\n";
+
+                yield return lastBotStep.Value.statusMessage;
+
+                yield return "";
+            }
+
+            var createVolatileHostAttempts = 0;
+
+            var volatileHosts = new ConcurrentDictionary<string, CSharpScriptContext>();
+
+            InterfaceToBot.Result<InterfaceToBot.TaskResult.RunInVolatileHostError, InterfaceToBot.TaskResult.RunInVolatileHostComplete> ExecuteRequestToRunInVolatileHost(
+                InterfaceToBot.Task.RunInVolatileHost runInVolatileHost)
+            {
+                if (!volatileHosts.TryGetValue(runInVolatileHost.hostId, out var volatileHost))
+                {
+                    return new InterfaceToBot.Result<InterfaceToBot.TaskResult.RunInVolatileHostError, InterfaceToBot.TaskResult.RunInVolatileHostComplete>
+                    {
+                        err = new InterfaceToBot.TaskResult.RunInVolatileHostError
+                        {
+                            hostNotFound = new object(),
+                        }
+                    };
+                }
+
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                var fromHostResult = volatileHost.RunScript(runInVolatileHost.script);
+
+                stopwatch.Stop();
+
+                return new InterfaceToBot.Result<InterfaceToBot.TaskResult.RunInVolatileHostError, InterfaceToBot.TaskResult.RunInVolatileHostComplete>
+                {
+                    ok = new InterfaceToBot.TaskResult.RunInVolatileHostComplete
+                    {
+                        exceptionToString = fromHostResult.Exception?.ToString(),
+                        returnValueToString = fromHostResult.ReturnValue?.ToString(),
+                        durationInMilliseconds = stopwatch.ElapsedMilliseconds,
+                    }
+                };
             }
 
             void processBotEvent(InterfaceToBot.BotEvent botEvent)
@@ -214,7 +216,7 @@ namespace BotEngine.Windows.Console
 
                     serializedResponse = processEventResult.responses.Single();
 
-                    var botResponse = NewtonsoftJson.DeserializeFromString<InterfaceToBot.BotResponse>(serializedResponse);
+                    var botResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<InterfaceToBot.BotResponse>(serializedResponse);
 
                     if (botResponse.decodeSuccess == null)
                     {
@@ -224,30 +226,19 @@ namespace BotEngine.Windows.Console
                     var botRequests =
                         botResponse.decodeSuccess.botRequests.ToImmutableList();
 
-                    var reportStatusRequests =
+                    var setStatusMessageRequests =
                         botRequests
-                        .Where(request => request.reportStatus != null)
+                        .Where(request => request.setStatusMessage != null)
                         .ToImmutableList();
 
-                    var stepStatusReport =
-                        string.Join("\n", reportStatusRequests.Select(botRequest => botRequest.reportStatus));
+                    var statusMessage =
+                        setStatusMessageRequests?.Select(request => request.setStatusMessage)?.LastOrDefault() ?? lastBotStep?.statusMessage;
 
-                    lastBotStep = (eventTime, stepStatusReport, botRequests);
-
-                    var requestedEffects =
-                        botRequests
-                        .Where(botRequest => botRequest.effect != null)
-                        .ToImmutableList();
-
-                    foreach (var botRequestEffect in requestedEffects)
-                    {
-                        ExecuteBotEffect(botRequestEffect.effect, eveOnlineClientProcess.MainWindowHandle);
-                    }
+                    lastBotStep = (eventTime, statusMessage, botRequests);
 
                     var stepRemainingRequests =
                         botRequests
-                        .Except(reportStatusRequests)
-                        .Except(requestedEffects);
+                        .Except(setStatusMessageRequests);
 
                     remainingBotRequests =
                         (remainingBotRequests ?? ImmutableList<InterfaceToBot.BotRequest>.Empty)
@@ -272,41 +263,6 @@ namespace BotEngine.Windows.Console
                 displayStatusInConsole();
             }
 
-            InterfaceToBot.Result<string, InterfaceToBot.MemoryMeasurement> memoryMeasurementFinishedResult()
-            {
-                try
-                {
-                    var partialPython = SanderlingSetup.PartialPythonModelFromUITreeRoot(memoryReader, uiTreeRoot);
-
-                    var reducedWithNameNodes = SanderlingSetup.SanderlingMemoryMeasurementFromPartialPythonModel(partialPython);
-
-                    return new InterfaceToBot.Result<string, InterfaceToBot.MemoryMeasurement>
-                    {
-                        ok = new InterfaceToBot.MemoryMeasurement
-                        {
-                            reducedWithNamedNodesJson = SerializeToJsonForBot(reducedWithNameNodes),
-                        }
-                    };
-                }
-                catch (Exception e)
-                {
-                    return new InterfaceToBot.Result<string, InterfaceToBot.MemoryMeasurement>
-                    {
-                        err = e.ToString(),
-                    };
-                }
-            }
-
-            void takeMemoryMeasurement()
-            {
-                var botEvent = new InterfaceToBot.BotEvent
-                {
-                    memoryMeasurementFinished = memoryMeasurementFinishedResult(),
-                };
-
-                processBotEvent(botEvent);
-            }
-
             //  TODO: Get the bot requests from the `init` function.
 
             while (true)
@@ -320,16 +276,10 @@ namespace BotEngine.Windows.Console
                 if (pauseBot)
                     continue;
 
-                if (eveOnlineClientProcess.HasExited)
-                {
-                    logEntry("Process '" + eveOnlineClientProcess.Id + "' has exited. I stop the bot.");
-                    return 0;
-                }
-
                 var botStepTime = DateTimeOffset.UtcNow;
 
                 var lastBotStepAgeMilli =
-                    botStepTime.ToUnixTimeSeconds() - lastBotStep?.time.ToUnixTimeSeconds();
+                    botStepTime.ToUnixTimeMilliseconds() - lastBotStep?.time.ToUnixTimeMilliseconds();
 
                 var finishSessionRequest =
                     remainingBotRequests
@@ -337,78 +287,107 @@ namespace BotEngine.Windows.Console
 
                 if (finishSessionRequest != null)
                 {
-                    logEntry("Bot has requested to finish the session. I stop.");
+                    logEntry("Bot has finished.");
                     return 0;
                 }
 
                 var botRequestToExecute =
                     remainingBotRequests
-                    ?.FirstOrDefault(botRequest =>
-                    {
-                        if (botRequest.takeMemoryMeasurementAtTimeInMilliseconds != null)
-                            return botRequest.takeMemoryMeasurementAtTimeInMilliseconds.Value <= botStepTime.ToUnixTimeMilliseconds();
-
-                        return false;
-                    });
+                    ?.FirstOrDefault();
 
                 if (botRequestToExecute == null)
                 {
                     if (!(lastBotStepAgeMilli < 10_000))
                     {
-                        takeMemoryMeasurement();
+                        processBotEvent(new InterfaceToBot.BotEvent
+                        {
+                            setSessionTimeLimitInMilliseconds = 0,
+                        });
                     }
 
                     continue;
                 }
 
-                if (botRequestToExecute.takeMemoryMeasurementAtTimeInMilliseconds != null)
+                var requestTask = botRequestToExecute.startTask;
+
+                if (requestTask?.task?.createVolatileHost != null)
                 {
-                    takeMemoryMeasurement();
-                }
+                    var volatileHostId = System.Threading.Interlocked.Increment(ref createVolatileHostAttempts).ToString();
 
-                remainingBotRequests =
-                    remainingBotRequests.Remove(botRequestToExecute);
-            }
-        }
+                    volatileHosts[volatileHostId] = new CSharpScriptContext(getFileFromHashSHA256);
 
-        static void ExecuteBotEffect(
-            InterfaceToBot.BotEffect botEffect,
-            IntPtr windowHandle)
-        {
-            if (botEffect.simpleEffect != null)
-            {
-                if (botEffect.simpleEffect.simpleMouseClickAtLocation != null)
-                {
-                    //  Build motion description based on https://github.com/Arcitectus/Sanderling/blob/ada11c9f8df2367976a6bcc53efbe9917107bfa7/src/Sanderling/Sanderling/Motor/Extension.cs#L24-L131
-
-                    var mousePosition = new Bib3.Geometrik.Vektor2DInt(
-                        botEffect.simpleEffect.simpleMouseClickAtLocation.location.x,
-                        botEffect.simpleEffect.simpleMouseClickAtLocation.location.y);
-
-                    var mouseButton =
-                        botEffect.simpleEffect.simpleMouseClickAtLocation.mouseButton == InterfaceToBot.MouseButton.right
-                        ? Motor.MouseButtonIdEnum.Right : Motor.MouseButtonIdEnum.Left;
-
-                    var mouseButtons = new Motor.MouseButtonIdEnum[]
+                    processBotEvent(new InterfaceToBot.BotEvent
                     {
-                        mouseButton,
-                    };
-
-                    var windowMotor = new Sanderling.Motor.WindowMotor(windowHandle);
-
-                    var motionSequence = new Motor.Motion[]{
-                        new Motor.Motion(
-                            mousePosition: mousePosition,
-                            mouseButtonDown: mouseButtons,
-                            windowToForeground: true),
-                        new Motor.Motion(
-                            mousePosition: mousePosition,
-                            mouseButtonUp: mouseButtons,
-                            windowToForeground: true),
-                    };
-
-                    windowMotor.ActSequenceMotion(motionSequence);
+                        taskResult = new InterfaceToBot.ResultFromTaskWithId
+                        {
+                            taskId = requestTask?.taskId,
+                            taskResult = new InterfaceToBot.TaskResult
+                            {
+                                createVolatileHostResponse = new InterfaceToBot.Result<object, InterfaceToBot.TaskResult.CreateVolatileHostComplete>
+                                {
+                                    ok = new InterfaceToBot.TaskResult.CreateVolatileHostComplete
+                                    {
+                                        hostId = volatileHostId,
+                                    },
+                                },
+                            },
+                        },
+                    });
                 }
+
+                if (requestTask?.task?.releaseVolatileHost != null)
+                {
+                    volatileHosts.TryRemove(requestTask?.task?.releaseVolatileHost.hostId, out var volatileHost);
+                }
+
+                if (requestTask?.task?.runInVolatileHost != null)
+                {
+                    var result = ExecuteRequestToRunInVolatileHost(requestTask?.task?.runInVolatileHost);
+
+                    processBotEvent(new InterfaceToBot.BotEvent
+                    {
+                        taskResult = new InterfaceToBot.ResultFromTaskWithId
+                        {
+                            taskId = requestTask?.taskId,
+                            taskResult = new InterfaceToBot.TaskResult
+                            {
+                                runInVolatileHostResponse = result,
+                            },
+                        }
+                    });
+                }
+
+                if (requestTask?.task?.delay != null)
+                {
+                    var delayStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                    while (true)
+                    {
+                        var remainingWaitTime = requestTask.task.delay.milliseconds - delayStopwatch.ElapsedMilliseconds;
+
+                        if (remainingWaitTime <= 0)
+                            break;
+
+                        System.Threading.Thread.Sleep((int)Math.Min(100, remainingWaitTime));
+
+                        updatePauseContinue();
+                        displayStatusInConsole();
+                    }
+
+                    processBotEvent(new InterfaceToBot.BotEvent
+                    {
+                        taskResult = new InterfaceToBot.ResultFromTaskWithId
+                        {
+                            taskId = requestTask?.taskId,
+                            taskResult = new InterfaceToBot.TaskResult
+                            {
+                                completeWithoutResult = new object(),
+                            },
+                        }
+                    });
+                }
+
+                remainingBotRequests = remainingBotRequests.Remove(botRequestToExecute);
             }
         }
 

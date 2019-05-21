@@ -8,12 +8,14 @@ namespace BotEngine.Windows.Console
 {
     class BotEngine
     {
-        static string appVersionId => "2019-05-17";
+        static string appVersionId => "2019-05-21";
 
         static string uiTimeFormatToString => "yyyy-MM-ddTHH-mm-ss";
 
         public static int Main(string[] args)
         {
+            DotNetConsole.Title = "BotEngine v" + appVersionId;
+
             //  Build interface based on sample from https://github.com/natemcmaster/CommandLineUtils/blob/be230400aaae2f00b29dac005c1b59a386a42165/docs/samples/subcommands/builder-api/Program.cs
 
             var app = new CommandLineApplication
@@ -230,7 +232,7 @@ namespace BotEngine.Windows.Console
                                 botCodeFiles,
                                 System.IO.Compression.CompressionLevel.NoCompression);
 
-                        var (botId, botCodeFileName) = WriteValueToCache(botCode);
+                        var (botId, botCodeFileName) = WriteValueToCacheBySHA256(botCode);
 
                         appendLogEntry(
                             new LogEntry
@@ -257,6 +259,7 @@ namespace BotEngine.Windows.Console
 
                         Bot.RunBotSession(
                             buildKalmitElmAppResult.kalmitElmApp,
+                            GetFileFromHashSHA256,
                             processStoreDirectory,
                             logEntry =>
                             {
@@ -310,24 +313,79 @@ namespace BotEngine.Windows.Console
             return app.Execute(args);
         }
 
+        static byte[] GetFileFromHashSHA256(byte[] hashSHA256)
+        {
+            var fileName = GetHashFileNameInCacheSHA256(hashSHA256);
+
+            var fromCache = ReadValueFromCacheSHA256(fileName);
+
+            if (fromCache != null)
+                return fromCache;
+
+            var addressBase = "https://botengine.blob.core.windows.net/blob-library/by-sha256/";
+
+            var address = addressBase + fileName;
+
+            var fromWeb = new System.Net.WebClient().DownloadData(address);
+
+            if (!(GetValueFileNameInCacheSHA256(fromWeb) == fileName))
+                return null;
+
+            WriteValueToCacheBySHA256(fromWeb);
+
+            return fromWeb;
+        }
+
         static string CacheDirectoryPath => System.IO.Path.Combine(
             GetExecutingAssemblyLocationDirectory, ".cache");
+
+        static string CacheByIdentityDirectoryPath = System.IO.Path.Combine(
+            CacheDirectoryPath, "by-sha256");
 
         static string GetExecutingAssemblyLocationDirectory =>
             System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
 
-        static (string valueIdentity, string filePath) WriteValueToCache(byte[] value)
+        static byte[] ReadValueFromCacheSHA256(string expectedFileName)
         {
-            var valueIdentity =
-                Kalmit.CommonConversion.StringBase16FromByteArray(Kalmit.CommonConversion.HashSHA256(value));
+            foreach (var filePath in System.IO.Directory.GetFiles(CacheByIdentityDirectoryPath, expectedFileName, searchOption: System.IO.SearchOption.AllDirectories))
+            {
+                var fileName = System.IO.Path.GetFileName(filePath);
+
+                if (fileName == expectedFileName)
+                {
+                    var file = System.IO.File.ReadAllBytes(filePath);
+
+                    if (!(GetValueFileNameInCacheSHA256(file) == expectedFileName))
+                    {
+                        System.IO.File.Delete(filePath);
+                        return null;
+                    }
+
+                    return file;
+                }
+            }
+
+            return null;
+        }
+
+        static string GetHashFileNameInCacheSHA256(byte[] hashSHA256) =>
+            Kalmit.CommonConversion.StringBase16FromByteArray(hashSHA256).ToUpperInvariant();
+
+        static string GetValueFileNameInCacheSHA256(byte[] value) =>
+            GetHashFileNameInCacheSHA256(Kalmit.CommonConversion.HashSHA256(value));
+
+        static (string fileName, string filePath) WriteValueToCacheBySHA256(byte[] value)
+        {
+            var fileName =
+                GetValueFileNameInCacheSHA256(value);
 
             var filePath = System.IO.Path.Combine(
-                CacheDirectoryPath, "by-identity", valueIdentity.Substring(0, 2), valueIdentity);
+                CacheByIdentityDirectoryPath, fileName.Substring(0, 2), fileName);
 
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(filePath));
             System.IO.File.WriteAllBytes(filePath, value);
 
-            return (valueIdentity, filePath);
+            return (fileName, filePath);
         }
     }
 }

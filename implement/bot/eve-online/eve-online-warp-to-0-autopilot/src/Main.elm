@@ -8,7 +8,8 @@
 
 
 module Main exposing
-    ( botStep
+    ( InterfaceBotState
+    , State
     , botStepInterface
     , deserializeState
     , initInterface
@@ -16,26 +17,14 @@ module Main exposing
     , serializeState
     )
 
-import Sanderling
-    exposing
-        ( InfoPanelRouteRouteElementMarker
-        , MemoryMeasurement
-        , MemoryMeasurementShipUi
-        , centerFromRegion
-        , parseMemoryMeasurementFromJson
-        )
-import Sanderling_Interface_20190514
-    exposing
-        ( BotEvent(..)
-        , BotEventAtTime
-        , BotRequest(..)
-        , MouseButton(..)
-        , mouseClickAtLocation
-        )
+import Bot_Interface_To_Host_20190521 as InterfaceToHost
+import Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
+import SanderlingMemoryMeasurement exposing (InfoPanelRouteRouteElementMarker, MemoryMeasurementShipUi)
+import SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
 
 
-
--- This implementation is modeled after the script from https://github.com/Arcitectus/Sanderling/blob/5cdd9f42759b40dc9f39084ec91beac70aef4134/src/Sanderling/Sanderling.Exe/sample/script/beginners-autopilot.cs
+type alias MemoryMeasurement =
+    SanderlingMemoryMeasurement.MemoryMeasurementReducedWithNamedNodes
 
 
 {-| The autopilot bot does not need to remember anything from the past; the information on the game client screen is sufficient to decide what to do next.
@@ -55,75 +44,70 @@ init =
     ( initState, [] )
 
 
-botStep : BotEventAtTime -> State -> ( State, List BotRequest )
+botStep : BotEventAtTime -> State -> { newState : State, requests : List BotRequest, statusMessage : String }
 botStep eventAtTime stateBefore =
     case eventAtTime.event of
-        MemoryMeasurementFinished memoryMeasurementFromInterface ->
+        SimpleSanderling.MemoryMeasurementCompleted memoryMeasurement ->
             let
-                parseResult =
-                    memoryMeasurementFromInterface
-                        |> Result.andThen (.reducedWithNamedNodesJson >> Maybe.map Ok >> Maybe.withDefault (Err "Memory measurement record from interface did not contain reducedWithNamedNodesJson"))
-                        |> Result.andThen parseMemoryMeasurementFromJson
+                ( requests, statusMessage ) =
+                    botRequestsFromGameClientState memoryMeasurement
             in
-            case parseResult of
-                Err memoryMeasurementError ->
-                    ( initState
-                    , [ ReportStatus ("Failed to get memory measurement: " ++ memoryMeasurementError)
-                      , TakeMemoryMeasurementAtTimeInMilliseconds (eventAtTime.timeInMilliseconds + 4000)
-                      ]
-                    )
-
-                Ok memoryMeasurement ->
-                    ( initState, botRequests ( eventAtTime.timeInMilliseconds, memoryMeasurement ) )
-
-        SetSessionTimeLimitInMilliseconds _ ->
-            ( initState, [] )
+            { newState = initState
+            , requests = requests
+            , statusMessage = statusMessage
+            }
 
 
-botRequests : ( Int, MemoryMeasurement ) -> List BotRequest
-botRequests ( currentTimeInMilliseconds, memoryMeasurement ) =
+botRequestsFromGameClientState : MemoryMeasurement -> ( List BotRequest, String )
+botRequestsFromGameClientState memoryMeasurement =
     case memoryMeasurement |> infoPanelRouteFirstMarkerFromMemoryMeasurement of
         Nothing ->
-            [ ReportStatus "I see no route in the info panel. I will start when a route is set."
-            , TakeMemoryMeasurementAtTimeInMilliseconds (currentTimeInMilliseconds + 4000)
-            ]
+            ( [ TakeMemoryMeasurementAfterDelayInMilliseconds 4000 ]
+            , "I see no route in the info panel. I will start when a route is set."
+            )
 
         Just infoPanelRouteFirstMarker ->
             case memoryMeasurement.shipUi of
                 Nothing ->
-                    [ ReportStatus "I cannot see if the ship is warping or jumping. I wait for the ship UI to appear on the screen."
-                    , TakeMemoryMeasurementAtTimeInMilliseconds (currentTimeInMilliseconds + 4000)
-                    ]
+                    ( [ TakeMemoryMeasurementAfterDelayInMilliseconds 4000 ]
+                    , "I cannot see if the ship is warping or jumping. I wait for the ship UI to appear on the screen."
+                    )
 
                 Just shipUi ->
                     if shipUi |> isShipWarpingOrJumping then
-                        [ ReportStatus "I see the ship is warping or jumping. I wait until that maneuver ends."
-                        , TakeMemoryMeasurementAtTimeInMilliseconds (currentTimeInMilliseconds + 4000)
-                        ]
+                        ( [ TakeMemoryMeasurementAfterDelayInMilliseconds 4000 ]
+                        , "I see the ship is warping or jumping. I wait until that maneuver ends."
+                        )
 
                     else
-                        botRequestsWhenNotWaitingForShipManeuver
-                            memoryMeasurement
-                            infoPanelRouteFirstMarker
-                            ++ [ TakeMemoryMeasurementAtTimeInMilliseconds (currentTimeInMilliseconds + 2000) ]
+                        let
+                            ( requests, statusMessage ) =
+                                botRequestsWhenNotWaitingForShipManeuver
+                                    memoryMeasurement
+                                    infoPanelRouteFirstMarker
+                        in
+                        ( requests ++ [ TakeMemoryMeasurementAfterDelayInMilliseconds 2000 ], statusMessage )
 
 
-botRequestsWhenNotWaitingForShipManeuver : MemoryMeasurement -> InfoPanelRouteRouteElementMarker -> List BotRequest
+botRequestsWhenNotWaitingForShipManeuver :
+    MemoryMeasurement
+    -> InfoPanelRouteRouteElementMarker
+    -> ( List BotRequest, String )
 botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMarker =
     let
         openMenuAnnouncementAndEffect =
-            [ ReportStatus "I click on the route marker in the info panel to open the menu."
-            , mouseClickAtLocation
-                (infoPanelRouteFirstMarker.uiElement.region |> centerFromRegion)
-                MouseButtonRight
-                |> Effect
-            ]
+            ( [ EffectOnGameClientWindow
+                    (effectMouseClickAtLocation
+                        (infoPanelRouteFirstMarker.uiElement.region |> centerFromRegion)
+                        Sanderling.MouseButtonRight
+                    )
+              ]
+            , "I click on the route marker in the info panel to open the menu."
+            )
     in
     case memoryMeasurement.menus |> List.head of
         Nothing ->
-            [ ReportStatus "No menu is open."
-            ]
-                ++ openMenuAnnouncementAndEffect
+            openMenuAnnouncementAndEffect
 
         Just firstMenu ->
             let
@@ -142,13 +126,12 @@ botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMa
             in
             case maybeMenuEntryToClick of
                 Nothing ->
-                    [ ReportStatus "A menu is open, but it does not contain a matching entry." ]
-                        ++ openMenuAnnouncementAndEffect
+                    openMenuAnnouncementAndEffect
 
                 Just menuEntryToClick ->
-                    [ ReportStatus ("I click on the menu entry '" ++ menuEntryToClick.text ++ "' to start the next ship maneuver.")
-                    , mouseClickAtLocation (menuEntryToClick.uiElement.region |> centerFromRegion) MouseButtonLeft |> Effect
-                    ]
+                    ( [ EffectOnGameClientWindow (effectMouseClickAtLocation (menuEntryToClick.uiElement.region |> centerFromRegion) MouseButtonLeft) ]
+                    , "I click on the menu entry '" ++ menuEntryToClick.text ++ "' to start the next ship maneuver."
+                    )
 
 
 infoPanelRouteFirstMarkerFromMemoryMeasurement : MemoryMeasurement -> Maybe InfoPanelRouteRouteElementMarker
@@ -165,17 +148,21 @@ isShipWarpingOrJumping =
         >> Maybe.andThen .maneuverType
         >> Maybe.map
             (\maneuverType ->
-                [ Sanderling.Warp, Sanderling.Jump ]
+                [ SanderlingMemoryMeasurement.Warp, SanderlingMemoryMeasurement.Jump ]
                     |> List.member maneuverType
             )
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
 
 
+type alias InterfaceBotState =
+    SimpleSanderling.StateIncludingSetup State
+
+
 {-| Define interface function for the framework. Don't change the function signature.
 <https://github.com/Viir/Kalmit/blob/640078f59bea3fa2ba1af43372933cff304b8c94/implement/PersistentProcess/PersistentProcess.Common/PersistentProcess.cs>
 -}
-serializeState : State -> String
+serializeState : InterfaceBotState -> String
 serializeState =
     always ""
 
@@ -183,27 +170,36 @@ serializeState =
 {-| Define interface function for the framework. Don't change the function signature.
 <https://github.com/Viir/Kalmit/blob/640078f59bea3fa2ba1af43372933cff304b8c94/implement/PersistentProcess/PersistentProcess.Common/PersistentProcess.cs>
 -}
-deserializeState : String -> State
+deserializeState : String -> InterfaceBotState
 deserializeState =
-    always initState
+    always (initInterface |> Tuple.first)
 
 
 {-| Define interface function for the framework. Don't change this.
 -}
-initInterface : ( State, String )
+initInterface : ( InterfaceBotState, String )
 initInterface =
-    Sanderling_Interface_20190514.wrapInitForSerialInterface init
+    InterfaceToHost.wrapInitForSerialInterface (SimpleSanderling.init init)
+
+
+{-| Define interface function for the framework. Don't change this.
+Temporary helper as long as the framework does not support the `initInterface`.
+This function can be removed when the engine supports `initInterface`. (<https://github.com/Viir/Kalmit/issues/5>)
+-}
+initStateInterface : InterfaceBotState
+initStateInterface =
+    initInterface |> Tuple.first
 
 
 {-| Define interface function for the framework. Don't change this.
 -}
-botStepInterface : String -> State -> ( State, String )
+botStepInterface : String -> InterfaceBotState -> ( InterfaceBotState, String )
 botStepInterface =
-    Sanderling_Interface_20190514.wrapBotStepForSerialInterface botStep
+    InterfaceToHost.wrapBotStepForSerialInterface (SimpleSanderling.botStep botStep)
 
 
 {-| Define the Elm entry point. Don't change this function.
 -}
-main : Program Int State String
+main : Program Int InterfaceBotState String
 main =
-    Sanderling.elmEntryPoint initInterface botStepInterface serializeState deserializeState
+    InterfaceToHost.elmEntryPoint initInterface botStepInterface serializeState (deserializeState >> always initStateInterface)

@@ -1,201 +1,265 @@
-{- Common functionality for EVE Online bots.
- -}
-
-
 module Sanderling exposing
-    ( InfoPanelRouteRouteElementMarker
-    , MemoryMeasurement
-    , MemoryMeasurementShipUi
-    , ShipManeuverType(..)
-    , UIElementRegion
+    ( EffectOnWindowStructure(..)
+    , GetMemoryMeasurementResultStructure(..)
+    , Location2d
+    , MouseButton(..)
+    , RequestToVolatileHost(..)
+    , ResponseFromVolatileHost(..)
+    , VirtualKeyCode(..)
+    , buildScriptToGetResponseFromVolatileHost
     , centerFromRegion
-    , elmEntryPoint
-    , parseMemoryMeasurementFromJson
+    , deserializeResponseFromVolatileHost
+    , effectMouseClickAtLocation
     )
 
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
-import Sanderling_Interface_20190514
+import SanderlingMemoryMeasurement
 
 
-type alias MemoryMeasurement =
-    { shipUi : Maybe MemoryMeasurementShipUi
-    , infoPanelRoute : Maybe MemoryMeasurementInfoPanelRoute
-    , menus : List MemoryMeasurementMenu
+type RequestToVolatileHost
+    = GetEveOnlineProcessesIds
+    | GetMemoryMeasurement GetMemoryMeasurementStructure
+    | EffectOnWindow (TaskOnWindowStructure EffectOnWindowStructure)
+
+
+type ResponseFromVolatileHost
+    = EveOnlineProcessesIds (List Int)
+    | GetMemoryMeasurementResult GetMemoryMeasurementResultStructure
+
+
+type alias GetMemoryMeasurementStructure =
+    { processId : Int }
+
+
+type GetMemoryMeasurementResultStructure
+    = ProcessNotFound
+    | Completed MemoryMeasurementCompleted
+
+
+type alias MemoryMeasurementCompleted =
+    { mainWindowId : WindowId
+    , reducedWithNamedNodesJson : Maybe String
     }
 
 
-type alias MemoryMeasurementMenu =
-    { uiElement : UIElement
-    , entries : List MemoryMeasurementMenuEntry
+type alias TaskOnWindowStructure task =
+    { windowId : WindowId
+    , bringWindowToForeground : Bool
+    , task : task
     }
 
 
-type alias MemoryMeasurementMenuEntry =
-    { uiElement : UIElement
-    , text : String
-    }
-
-
-type alias MemoryMeasurementInfoPanelRoute =
-    { routeElementMarker : List InfoPanelRouteRouteElementMarker }
-
-
-type alias InfoPanelRouteRouteElementMarker =
-    { uiElement : UIElement }
-
-
-type alias MemoryMeasurementShipUi =
-    { indication : Maybe MemoryMeasurementShipUiIndication }
-
-
-type alias MemoryMeasurementShipUiIndication =
-    { maneuverType : Maybe ShipManeuverType }
-
-
-type ShipManeuverType
-    = Warp
-    | Jump
-    | Orbit
-    | Approach
-
-
-type alias UIElement =
-    { id : Int
-    , region : UIElementRegion
-    }
-
-
-type alias UIElementRegion =
-    { left : Int
-    , top : Int
-    , right : Int
-    , bottom : Int
-    }
-
-
-{-| Parse JSON string containing a Sanderling memory measurement.
-The string expected here is not the raw measurement, but the stage which after parsing for named nodes.
-To get a representation of the EVE Online clients memory contents as expected here, see the example at <https://github.com/Arcitectus/Sanderling/blob/ada11c9f8df2367976a6bcc53efbe9917107bfa7/src/Sanderling/Sanderling.MemoryReading.Test/MemoryReadingDemo.cs>
+{-| Using names from Windows API and <https://www.nuget.org/packages/InputSimulator/>
 -}
-parseMemoryMeasurementFromJson : String -> Result String MemoryMeasurement
-parseMemoryMeasurementFromJson =
-    Json.Decode.decodeString memoryMeasurementReducedWithNamedNodesJsonDecoder
-        >> Result.mapError Json.Decode.errorToString
+type
+    EffectOnWindowStructure
+    {-
+       = MouseMoveTo MouseMoveToStructure
+       | MouseButtonDown MouseButtonChangeStructure
+       | MouseButtonUp MouseButtonChangeStructure
+       | MouseHorizontalScroll Int
+       | MouseVerticalScroll Int
+       | KeyboardKeyDown VirtualKeyCode
+       | KeyboardKeyUp VirtualKeyCode
+       | TextEntry String
+    -}
+    = SimpleMouseClickAtLocation MouseClickAtLocation
+    | KeyDown VirtualKeyCode
+    | KeyUp VirtualKeyCode
 
 
-memoryMeasurementReducedWithNamedNodesJsonDecoder : Json.Decode.Decoder MemoryMeasurement
-memoryMeasurementReducedWithNamedNodesJsonDecoder =
-    Json.Decode.map3 MemoryMeasurement
-        -- TODO: Consider treating 'null' value like field is not present, to avoid breakage when server encodes fiels with 'null' values too.
-        (Json.Decode.Extra.optionalField "ShipUi" shipUIDecoder)
-        (Json.Decode.Extra.optionalField "InfoPanelRoute" infoPanelRouteDecoder)
-        (Json.Decode.Extra.optionalField "Menu" (Json.Decode.list menuDecoder) |> Json.Decode.map (Maybe.withDefault []))
+type alias MouseMoveToStructure =
+    { location : LocationRelativeToWindow }
 
 
-shipUIDecoder : Json.Decode.Decoder MemoryMeasurementShipUi
-shipUIDecoder =
-    Json.Decode.map MemoryMeasurementShipUi
-        (Json.Decode.maybe
-            (Json.Decode.field "Indication" shipUIIndicationDecoder)
-        )
+type alias MouseButtonChangeStructure =
+    { location : LocationRelativeToWindow
+    , button : MouseButton
+    }
 
 
-shipUIIndicationDecoder : Json.Decode.Decoder MemoryMeasurementShipUiIndication
-shipUIIndicationDecoder =
-    Json.Decode.value |> Json.Decode.map shipUIIndicationFromJsonValue
+type VirtualKeyCode
+    = VirtualKeyCodeFromInt Int
+      -- Names from https://docs.microsoft.com/en-us/windows/desktop/inputdev/virtual-key-codes
+    | VK_SHIFT
+    | VK_CONTROL
+    | VK_MENU
+    | VK_ESCAPE
 
 
-shipUIIndicationFromJsonValue : Json.Encode.Value -> MemoryMeasurementShipUiIndication
-shipUIIndicationFromJsonValue jsonValue =
-    let
-        jsonString =
-            Json.Encode.encode 0 jsonValue
-
-        maneuverType =
-            [ ( "Warp", Warp )
-            , ( "Jump", Jump )
-            , ( "Orbit", Orbit )
-            , ( "Approach", Approach )
-            ]
-                |> List.filterMap
-                    (\( pattern, candidateManeuverType ) ->
-                        if jsonString |> String.contains pattern then
-                            Just candidateManeuverType
-
-                        else
-                            Nothing
-                    )
-                |> List.head
-    in
-    { maneuverType = maneuverType }
+type LocationRelativeToWindow
+    = ClientArea Location2d -- https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-clienttoscreen
 
 
-infoPanelRouteDecoder : Json.Decode.Decoder MemoryMeasurementInfoPanelRoute
-infoPanelRouteDecoder =
-    Json.Decode.map MemoryMeasurementInfoPanelRoute
-        (Json.Decode.maybe
-            (Json.Decode.field "RouteElementMarker" (Json.Decode.list infoPanelRouteRouteElementMarkerDecoder))
-            |> Json.Decode.map (Maybe.withDefault [])
-        )
+type alias WindowId =
+    String
 
 
-infoPanelRouteRouteElementMarkerDecoder : Json.Decode.Decoder InfoPanelRouteRouteElementMarker
-infoPanelRouteRouteElementMarkerDecoder =
-    uiElementDecoder
-        |> Json.Decode.map (\uiElement -> { uiElement = uiElement })
+type alias MouseClickAtLocation =
+    { location : Location2d
+    , mouseButton : MouseButton
+    }
 
 
-uiElementDecoder : Json.Decode.Decoder UIElement
-uiElementDecoder =
-    Json.Decode.map2 UIElement
-        (Json.Decode.field "Id" Json.Decode.int)
-        (Json.Decode.field "Region" uiElementRegionDecoder)
+type MouseButton
+    = MouseButtonLeft
+    | MouseButtonRight
 
 
-uiElementRegionDecoder : Json.Decode.Decoder UIElementRegion
-uiElementRegionDecoder =
-    Json.Decode.map4 UIElementRegion
-        (Json.Decode.field "Min0" Json.Decode.float |> Json.Decode.map round)
-        (Json.Decode.field "Min1" Json.Decode.float |> Json.Decode.map round)
-        (Json.Decode.field "Max0" Json.Decode.float |> Json.Decode.map round)
-        (Json.Decode.field "Max1" Json.Decode.float |> Json.Decode.map round)
+type alias Location2d =
+    { x : Int, y : Int }
 
 
-menuDecoder : Json.Decode.Decoder MemoryMeasurementMenu
-menuDecoder =
-    Json.Decode.map2 MemoryMeasurementMenu
-        uiElementDecoder
-        (Json.Decode.field "Entry" (Json.Decode.list menuEntryDecoder))
+deserializeResponseFromVolatileHost : String -> Result Json.Decode.Error ResponseFromVolatileHost
+deserializeResponseFromVolatileHost =
+    Json.Decode.decodeString decodeResponseFromVolatileHost
 
 
-menuEntryDecoder : Json.Decode.Decoder MemoryMeasurementMenuEntry
-menuEntryDecoder =
-    Json.Decode.map2 MemoryMeasurementMenuEntry
-        uiElementDecoder
-        (Json.Decode.field "Text" Json.Decode.string)
+decodeResponseFromVolatileHost : Json.Decode.Decoder ResponseFromVolatileHost
+decodeResponseFromVolatileHost =
+    Json.Decode.oneOf
+        [ Json.Decode.field "eveOnlineProcessesIds" (Json.Decode.list Json.Decode.int)
+            |> Json.Decode.map EveOnlineProcessesIds
+        , Json.Decode.field "getMemoryMeasurementResult" decodeGetMemoryMeasurementResult
+            |> Json.Decode.map GetMemoryMeasurementResult
+        ]
 
 
-centerFromRegion : UIElementRegion -> Sanderling_Interface_20190514.Location
+encodeRequestToVolatileHost : RequestToVolatileHost -> Json.Encode.Value
+encodeRequestToVolatileHost request =
+    case request of
+        GetEveOnlineProcessesIds ->
+            Json.Encode.object [ ( "getEveOnlineProcessesIds", Json.Encode.object [] ) ]
+
+        GetMemoryMeasurement getMemoryMeasurement ->
+            Json.Encode.object [ ( "getMemoryMeasurement", getMemoryMeasurement |> encodeGetMemoryMeasurement ) ]
+
+        EffectOnWindow taskOnWindow ->
+            Json.Encode.object [ ( "effectOnWindow", taskOnWindow |> encodeTaskOnWindow encodeEffectOnWindowStructure ) ]
+
+
+encodeTaskOnWindow : (task -> Json.Encode.Value) -> TaskOnWindowStructure task -> Json.Encode.Value
+encodeTaskOnWindow taskEncoder taskOnWindow =
+    Json.Encode.object
+        [ ( "windowId", taskOnWindow.windowId |> Json.Encode.string )
+        , ( "bringWindowToForeground", taskOnWindow.bringWindowToForeground |> Json.Encode.bool )
+        , ( "task", taskOnWindow.task |> taskEncoder )
+        ]
+
+
+encodeEffectOnWindowStructure : EffectOnWindowStructure -> Json.Encode.Value
+encodeEffectOnWindowStructure effectOnWindow =
+    case effectOnWindow of
+        SimpleMouseClickAtLocation mouseClickAtLocation ->
+            Json.Encode.object
+                [ ( "simpleMouseClickAtLocation", mouseClickAtLocation |> encodeMouseClickAtLocation )
+                ]
+
+        KeyDown virtualKeyCode ->
+            Json.Encode.object
+                [ ( "keyDown", virtualKeyCode |> encodeKey )
+                ]
+
+        KeyUp virtualKeyCode ->
+            Json.Encode.object
+                [ ( "keyUp", virtualKeyCode |> encodeKey )
+                ]
+
+
+encodeKey : VirtualKeyCode -> Json.Encode.Value
+encodeKey virtualKeyCode =
+    Json.Encode.object [ ( "virtualKeyCode", virtualKeyCode |> virtualKeyCodeAsInteger |> Json.Encode.int ) ]
+
+
+encodeMouseClickAtLocation : MouseClickAtLocation -> Json.Encode.Value
+encodeMouseClickAtLocation mouseClickAtLocation_ =
+    Json.Encode.object
+        [ ( "location", mouseClickAtLocation_.location |> encodeLocation2d )
+        , ( "mouseButton", mouseClickAtLocation_.mouseButton |> encodeMouseButton )
+        ]
+
+
+encodeLocation2d : Location2d -> Json.Encode.Value
+encodeLocation2d location =
+    Json.Encode.object
+        [ ( "x", location.x |> Json.Encode.int )
+        , ( "y", location.y |> Json.Encode.int )
+        ]
+
+
+encodeMouseButton : MouseButton -> Json.Encode.Value
+encodeMouseButton mouseButton =
+    (case mouseButton of
+        MouseButtonLeft ->
+            "left"
+
+        MouseButtonRight ->
+            "right"
+    )
+        |> Json.Encode.string
+
+
+encodeGetMemoryMeasurement : GetMemoryMeasurementStructure -> Json.Encode.Value
+encodeGetMemoryMeasurement getMemoryMeasurement =
+    Json.Encode.object [ ( "processId", getMemoryMeasurement.processId |> Json.Encode.int ) ]
+
+
+decodeGetMemoryMeasurementResult : Json.Decode.Decoder GetMemoryMeasurementResultStructure
+decodeGetMemoryMeasurementResult =
+    Json.Decode.oneOf
+        [ Json.Decode.field "processNotFound" (Json.Decode.succeed ProcessNotFound)
+        , Json.Decode.field "completed" decodeMemoryMeasurementCompleted
+            |> Json.Decode.map Completed
+        ]
+
+
+decodeMemoryMeasurementCompleted : Json.Decode.Decoder MemoryMeasurementCompleted
+decodeMemoryMeasurementCompleted =
+    Json.Decode.map2 MemoryMeasurementCompleted
+        (Json.Decode.field "mainWindowId" Json.Decode.string)
+        (Json.Decode.Extra.optionalField "reducedWithNamedNodesJson" Json.Decode.string)
+
+
+buildScriptToGetResponseFromVolatileHost : RequestToVolatileHost -> String
+buildScriptToGetResponseFromVolatileHost request =
+    "serialRequest("
+        ++ (request
+                |> encodeRequestToVolatileHost
+                |> Json.Encode.encode 0
+                |> Json.Encode.string
+                |> Json.Encode.encode 0
+           )
+        ++ ")"
+
+
+centerFromRegion : SanderlingMemoryMeasurement.UIElementRegion -> Location2d
 centerFromRegion region =
     { x = (region.left + region.right) // 2, y = (region.top + region.bottom) // 2 }
 
 
-{-| Support function-level dead code elimination (<https://elm-lang.org/blog/small-assets-without-the-headache>).
-Elm code needed to inform the Elm compiler about our entry points.
--}
-elmEntryPoint :
-    ( botState, String )
-    -> (String -> botState -> ( botState, String ))
-    -> (botState -> String)
-    -> (String -> botState)
-    -> Program Int botState String
-elmEntryPoint botInit botStepInterface serializeState deserializeState =
-    Platform.worker
-        { init = \_ -> ( botInit |> Tuple.first, Cmd.none )
-        , update =
-            \event stateBefore ->
-                botStepInterface "" (stateBefore |> serializeState |> deserializeState) |> Tuple.mapSecond (always Cmd.none)
-        , subscriptions = \_ -> Sub.none
-        }
+effectMouseClickAtLocation : Location2d -> MouseButton -> EffectOnWindowStructure
+effectMouseClickAtLocation location mouseButton =
+    SimpleMouseClickAtLocation
+        { location = location, mouseButton = mouseButton }
+
+
+virtualKeyCodeAsInteger : VirtualKeyCode -> Int
+virtualKeyCodeAsInteger keyCode =
+    -- Mapping from https://docs.microsoft.com/en-us/windows/desktop/inputdev/virtual-key-codes
+    case keyCode of
+        VirtualKeyCodeFromInt asInt ->
+            asInt
+
+        VK_SHIFT ->
+            0x10
+
+        VK_CONTROL ->
+            0x11
+
+        VK_MENU ->
+            0x12
+
+        VK_ESCAPE ->
+            0x1B

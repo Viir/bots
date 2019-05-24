@@ -111,30 +111,17 @@ namespace BotEngine.Windows.Console
                         (bool isPresent, string argumentValue) argumentFromParameterName(string parameterName)
                         {
                             var match =
-                                startBotCmd.RemainingArguments
-                                .Select(argument => Regex.Match(argument, "(^|\\s+)" + parameterName + "(.*)"))
+                                args
+                                .Select(arg => Regex.Match(arg, parameterName + "(=(.*)|)", RegexOptions.IgnoreCase))
                                 .FirstOrDefault(match => match.Success);
 
                             if (match == null)
                                 return (false, null);
 
-                            var optionalRest = match.Groups[2].Value;
-
-                            var restAssignmentMatch = Regex.Match(optionalRest, "=(.*)");
-
-                            if (!restAssignmentMatch.Success)
+                            if (match.Groups[1].Length < 1)
                                 return (true, null);
 
-                            var assignedValueMatch =
-                                Regex.Match(restAssignmentMatch.Groups[1].Value, "\\s*(\"([^\"]*)\"|([^\\s]*))");
-
-                            if (!assignedValueMatch.Success)
-                                return (true, "");
-
-                            var valueEnclosedInQuotes = assignedValueMatch.Groups[2].Value;
-                            var valueWithoutQuotes = assignedValueMatch.Groups[3].Value;
-
-                            return (true, valueEnclosedInQuotes.Length < valueWithoutQuotes.Length ? valueWithoutQuotes : valueEnclosedInQuotes);
+                            return (true, match?.Groups[2].Value);
                         }
 
                         var botSourceMatch = argumentFromParameterName(botSourceParamName);

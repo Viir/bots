@@ -71,6 +71,8 @@ namespace BotEngine.Windows.Console
             Action<string> logEntry,
             Action<LogEntry.ProcessBotEventReport> logProcessBotEventReport)
         {
+            var botSessionClock = System.Diagnostics.Stopwatch.StartNew();
+
             /*
              * Implementat store and process based on Kalmit Web Host
              * from https://github.com/Viir/Kalmit/blob/640078f59bea3fa2ba1af43372933cff304b8c94/implement/PersistentProcess/PersistentProcess.WebHost/Startup.cs
@@ -198,7 +200,7 @@ namespace BotEngine.Windows.Console
                 {
                     var botEventAtTime = new InterfaceToBot.BotEventAtTime
                     {
-                        timeInMilliseconds = eventTime.ToUnixTimeMilliseconds(),
+                        timeInMilliseconds = botSessionClock.ElapsedMilliseconds,
                         @event = botEvent,
                     };
 

@@ -2,7 +2,7 @@
  -}
 
 
-module Bot_Interface_To_Host_20190521 exposing
+module Bot_Interface_To_Host_20190526 exposing
     ( BotEvent(..)
     , BotEventAtTime
     , BotRequest(..)
@@ -75,8 +75,8 @@ type alias ReleaseVolatileHostStructure =
 
 
 type BotStepResult
-    = DecodeError String
-    | DecodeSuccess (List BotRequest)
+    = DecodeEventError String
+    | DecodeEventSuccess (List BotRequest)
 
 
 {-| Tasks can yield some result to return to the bot. That is why we use the identifier.
@@ -116,13 +116,13 @@ wrapBotStepForSerialInterface botStep serializedBotEventAtTime stateBefore =
                 Err error ->
                     ( stateBefore
                     , ("Failed to deserialize event: " ++ (error |> Json.Decode.errorToString))
-                        |> DecodeError
+                        |> DecodeEventError
                     )
 
                 Ok botEventAtTime ->
                     stateBefore
                         |> botStep botEventAtTime
-                        |> Tuple.mapSecond DecodeSuccess
+                        |> Tuple.mapSecond DecodeEventSuccess
     in
     ( state, response |> encodeResponseOverSerialInterface |> Json.Encode.encode 0 )
 
@@ -196,12 +196,12 @@ decodeRunInVolatileHostError =
 encodeResponseOverSerialInterface : BotStepResult -> Json.Encode.Value
 encodeResponseOverSerialInterface stepResult =
     case stepResult of
-        DecodeError errorString ->
-            Json.Encode.object [ ( "decodeError", errorString |> Json.Encode.string ) ]
+        DecodeEventError errorString ->
+            Json.Encode.object [ ( "decodeEventError", errorString |> Json.Encode.string ) ]
 
-        DecodeSuccess botRequests ->
+        DecodeEventSuccess botRequests ->
             Json.Encode.object
-                [ ( "decodeSuccess"
+                [ ( "decodeEventSuccess"
                   , Json.Encode.object [ ( "botRequests", botRequests |> Json.Encode.list encodeBotRequest ) ]
                   )
                 ]
@@ -214,14 +214,14 @@ encodeBotRequest botRequest =
             Json.Encode.object [ ( "setStatusMessage", statusMessage |> Json.Encode.string ) ]
 
         StartTask startTask ->
-            Json.Encode.object [ ( "startTask", startTask |> encodeStartTaskAfterTime ) ]
+            Json.Encode.object [ ( "startTask", startTask |> encodeStartTask ) ]
 
         FinishSession ->
             Json.Encode.object [ ( "finishSession", Json.Encode.object [] ) ]
 
 
-encodeStartTaskAfterTime : StartTaskStructure -> Json.Encode.Value
-encodeStartTaskAfterTime startTaskAfterTime =
+encodeStartTask : StartTaskStructure -> Json.Encode.Value
+encodeStartTask startTaskAfterTime =
     Json.Encode.object
         [ ( "taskId", startTaskAfterTime.taskId |> encodeTaskId )
         , ( "task", startTaskAfterTime.task |> encodeTask )

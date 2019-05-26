@@ -16,11 +16,11 @@
 
     public class BotResponse
     {
-        public string decodeError;
+        public string decodeEventError;
 
-        public DecodeSuccess decodeSuccess;
+        public DecodeEventSuccess decodeEventSuccess;
 
-        public class DecodeSuccess
+        public class DecodeEventSuccess
         {
             public BotRequest[] botRequests;
         }

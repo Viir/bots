@@ -220,13 +220,13 @@ namespace BotEngine.Windows.Console
 
                     var botResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<InterfaceToBot.BotResponse>(serializedResponse);
 
-                    if (botResponse.decodeSuccess == null)
+                    if (botResponse.decodeEventSuccess == null)
                     {
-                        throw new Exception("Bot reported decode error: " + botResponse.decodeError);
+                        throw new Exception("Bot reported decode error: " + botResponse.decodeEventError);
                     }
 
                     var botRequests =
-                        botResponse.decodeSuccess.botRequests.ToImmutableList();
+                        botResponse.decodeEventSuccess.botRequests.ToImmutableList();
 
                     var setStatusMessageRequests =
                         botRequests

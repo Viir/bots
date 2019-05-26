@@ -17,7 +17,7 @@ module Main exposing
     , serializeState
     )
 
-import Bot_Interface_To_Host_20190521 as InterfaceToHost
+import Bot_Interface_To_Host_20190526 as InterfaceToHost
 import Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
 import SanderlingMemoryMeasurement exposing (InfoPanelRouteRouteElementMarker, MemoryMeasurementShipUi)
 import SimpleSanderling exposing (BotEventAtTime, BotRequest(..))

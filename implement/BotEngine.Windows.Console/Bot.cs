@@ -1,4 +1,3 @@
-using BotEngine.Windows.Console.BotFramework;
 using Kalmit.ProcessStore;
 using System;
 using System.Collections.Concurrent;
@@ -14,26 +13,7 @@ namespace BotEngine.Windows.Console
     {
         static public (byte[] kalmitElmApp, string error) BuildKalmitElmAppFromBotCode(byte[] botCode)
         {
-            /*
-             * Build Kalmit Elm app.
-             * Based on API from https://github.com/Viir/Kalmit/blob/640078f59bea3fa2ba1af43372933cff304b8c94/implement/PersistentProcess/PersistentProcess.Common/ElmApp.cs
-             * */
-
-            var botCodeFiles =
-                Kalmit.ZipArchive.EntriesFromZipArchive(botCode)
-                .Select(fileNameAndContent => (name: fileNameAndContent.name.Replace("\\", "/"), fileNameAndContent.content))
-                .ToImmutableList();
-
-            /*
-             * TODO: Analyse 'botCodeFiles' to see if expected functions are present.
-             * Generate error messages.
-             * */
-
-            var kalmitElmApp = Kalmit.ZipArchive.ZipArchiveFromEntries(
-                botCodeFiles,
-                System.IO.Compression.CompressionLevel.NoCompression);
-
-            return (kalmitElmApp, null);
+            return (botCode, null);
         }
 
         static public int RunBotSession(
@@ -43,6 +23,8 @@ namespace BotEngine.Windows.Console
             Action<string> logEntry,
             Action<LogEntry.ProcessBotEventReport> logProcessBotEventReport)
         {
+            var botId = Kalmit.CommonConversion.StringBase16FromByteArray(Kalmit.CommonConversion.HashSHA256(kalmitElmApp));
+
             var botSessionClock = System.Diagnostics.Stopwatch.StartNew();
 
             /*
@@ -106,10 +88,13 @@ namespace BotEngine.Windows.Console
 
             IEnumerable<string> textLinesToDisplayInConsole()
             {
-                if (pauseBot)
-                    yield return "Bot is paused. Press the enter key to continue.";
-                else
-                    yield return "Bot is running. Press CTRL + ALT keys to pause the bot.";
+                //  TODO: Add display bot configuration.
+
+                yield return
+                    "Bot " + UserInterface.BotIdDisplayText(botId) +
+                     (pauseBot ?
+                     " is paused. Press the enter key to continue." :
+                     " is running. Press CTRL + ALT keys to pause the bot.");
 
                 if (!lastBotStep.HasValue)
                     yield break;

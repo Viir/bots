@@ -9,13 +9,13 @@ namespace BotEngine.Windows.Console
 {
     class BotEngine
     {
-        static string appVersionId => "2019-05-29";
+        static public string AppVersionId => "2019-05-29";
 
         static string uiTimeFormatToString => "yyyy-MM-ddTHH-mm-ss";
 
         public static int Main(string[] args)
         {
-            DotNetConsole.Title = "BotEngine v" + appVersionId;
+            UserInterface.SetConsoleTitle(null);
 
             //  Build interface based on sample from https://github.com/natemcmaster/CommandLineUtils/blob/be230400aaae2f00b29dac005c1b59a386a42165/docs/samples/subcommands/builder-api/Program.cs
 
@@ -27,7 +27,7 @@ namespace BotEngine.Windows.Console
 
             app.HelpOption(inherited: true);
 
-            app.VersionOption(template: "-v|--version", shortFormVersion: "BotEngine console version " + appVersionId);
+            app.VersionOption(template: "-v|--version", shortFormVersion: "BotEngine console version " + AppVersionId);
 
             app.Command("start-bot", startBotCmd =>
             {
@@ -175,7 +175,7 @@ namespace BotEngine.Windows.Console
                             .Select(botCodeFilePath =>
                             {
                                 return
-                                    (name: System.IO.Path.GetRelativePath(botSourcePath, botCodeFilePath),
+                                    (name: System.IO.Path.GetRelativePath(botSourcePath, botCodeFilePath).Replace("\\", "/"),
                                     content: System.IO.File.ReadAllBytes(botCodeFilePath));
                             })
                             .OrderBy(botCodeFile => botCodeFile.name)
@@ -234,19 +234,23 @@ namespace BotEngine.Windows.Console
 
                         DotNetConsole.WriteLine("I loaded bot " + botId + ".");
 
+                        /*
+                         * TODO: Analyse 'botCodeFiles' to see if expected functions are present.
+                         * Generate error messages.
+                         * */
+
                         //  TODO: Notify user in case bot code is not formatted, offer formatting.
-
-                        //  Build the elm-app zip-archive as expected from Kalmit
-
-                        var buildKalmitElmAppResult = Bot.BuildKalmitElmAppFromBotCode(botCode);
 
                         var processStoreDirectory = System.IO.Path.Combine(
                             botSessionDirectory, "kalmit-process-store");
 
                         DotNetConsole.WriteLine("Starting the bot....");
 
+                        //  TODO: Set console title for configuration. Update when configuration is changed.
+                        UserInterface.SetConsoleTitle(botId);
+
                         Bot.RunBotSession(
-                            buildKalmitElmAppResult.kalmitElmApp,
+                            botCode,
                             GetFileFromHashSHA256,
                             processStoreDirectory,
                             logEntry =>
@@ -375,5 +379,19 @@ namespace BotEngine.Windows.Console
 
             return (fileName, filePath);
         }
+    }
+
+    class UserInterface
+    {
+        static public void SetConsoleTitle(string botId)
+        {
+            var botPart = botId == null ? null : "Bot " + BotIdDisplayText(botId);
+            var appPart = "BotEngine v" + BotEngine.AppVersionId;
+
+            DotNetConsole.Title = string.Join(" - ", new[] { botPart, appPart }.Where(part => part != null));
+        }
+
+        static public string BotIdDisplayText(string botId) =>
+            botId == null ? null : botId.Substring(0, 10) + "...";
     }
 }

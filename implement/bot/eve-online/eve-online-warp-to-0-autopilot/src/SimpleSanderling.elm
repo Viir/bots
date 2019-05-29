@@ -1,6 +1,6 @@
 {- This module contains a framework to build simple EVE Online bots.
    This framework automatically selects an EVE Online client process and finishes the bot session when that process disappears.
-   To use this framework, import this module and use the `init` and `botStep` functions.
+   To use this framework, import this module and use the `initState` and `processEvent` functions.
 -}
 
 
@@ -11,11 +11,11 @@ module SimpleSanderling exposing
     , SetupState
     , StateIncludingSetup
     , VolatileHostState(..)
-    , botStep
     , initState
+    , processEvent
     )
 
-import Bot_Interface_To_Host_20190528 as InterfaceToHost
+import Bot_Interface_To_Host_20190529 as InterfaceToHost
 import Sanderling
 import SanderlingMemoryMeasurement
 import SanderlingVolatileHostSetup
@@ -29,6 +29,7 @@ type alias BotEventAtTime =
 
 type BotEvent
     = MemoryMeasurementCompleted SanderlingMemoryMeasurement.MemoryMeasurementReducedWithNamedNodes
+    | SetBotConfiguration String
 
 
 type BotRequest
@@ -102,12 +103,12 @@ initState simpleBotState =
     }
 
 
-botStep :
+processEvent :
     (BotEventAtTime -> simpleBotState -> { newState : simpleBotState, requests : List BotRequest, statusMessage : String })
     -> InterfaceToHost.BotEventAtTime
     -> StateIncludingSetup simpleBotState
     -> ( StateIncludingSetup simpleBotState, List InterfaceToHost.BotRequest )
-botStep simpleBotStep fromHostEventAtTime stateBefore =
+processEvent simpleBotProcessEvent fromHostEventAtTime stateBefore =
     let
         ( setupStateAfterIntegratingEvent, maybeBotEvent ) =
             stateBefore.setup |> integrateFromHostEvent fromHostEventAtTime
@@ -129,17 +130,17 @@ botStep simpleBotStep fromHostEventAtTime stateBefore =
                         botStateBefore =
                             stateAfterIntegratingEvent.botState
 
-                        maybeSimpleBotStepResult =
+                        maybeSimpleBotEventResult =
                             maybeBotEvent
                                 |> Maybe.map
-                                    (\botEvent -> botStateBefore.simpleBotState |> simpleBotStep botEvent)
+                                    (\botEvent -> botStateBefore.simpleBotState |> simpleBotProcessEvent botEvent)
 
                         botStateBeforeRequest =
-                            case maybeSimpleBotStepResult of
+                            case maybeSimpleBotEventResult of
                                 Nothing ->
                                     stateAfterIntegratingEvent.botState
 
-                                Just simpleBotStepResult ->
+                                Just simpleBotEventResult ->
                                     let
                                         requestQueueBefore =
                                             botStateBefore.requestQueue
@@ -147,13 +148,13 @@ botStep simpleBotStep fromHostEventAtTime stateBefore =
                                         requestQueue =
                                             { requestQueueBefore
                                                 | queuedRequests =
-                                                    simpleBotStepResult.requests
+                                                    simpleBotEventResult.requests
                                                         |> List.map (\botRequest -> ( fromHostEventAtTime.timeInMilliseconds, botRequest ))
                                             }
                                     in
                                     { botStateBefore
-                                        | simpleBotState = simpleBotStepResult.newState
-                                        , statusMessage = Just simpleBotStepResult.statusMessage
+                                        | simpleBotState = simpleBotEventResult.newState
+                                        , statusMessage = Just simpleBotEventResult.statusMessage
                                         , requestQueue = requestQueue
                                     }
 
@@ -230,6 +231,11 @@ integrateFromHostEvent fromHostEventAtTime setupStateBefore =
 
         InterfaceToHost.SetSessionTimeLimitInMilliseconds _ ->
             ( setupStateBefore, Nothing )
+
+        InterfaceToHost.SetBotConfiguration newBotConfiguration ->
+            ( setupStateBefore
+            , Just { timeInMilliseconds = fromHostEventAtTime.timeInMilliseconds, event = SetBotConfiguration newBotConfiguration }
+            )
 
 
 integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe BotEvent )

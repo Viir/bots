@@ -2,7 +2,7 @@
  -}
 
 
-module Bot_Interface_To_Host_20190528 exposing
+module Bot_Interface_To_Host_20190529 exposing
     ( BotEvent(..)
     , BotEventAtTime
     , BotRequest(..)
@@ -30,6 +30,7 @@ type alias BotEventAtTime =
 type BotEvent
     = SetSessionTimeLimitInMilliseconds Int
     | TaskComplete ResultFromTaskWithId
+    | SetBotConfiguration String
 
 
 type BotRequest
@@ -73,7 +74,7 @@ type alias ReleaseVolatileHostStructure =
     { hostId : String }
 
 
-type BotStepResult
+type ProcessEventResponse
     = DecodeEventError String
     | DecodeEventSuccess (List BotRequest)
 
@@ -108,7 +109,7 @@ type alias DelayTaskStructure =
 
 
 wrapForSerialInterface_processEvent : (BotEventAtTime -> state -> ( state, List BotRequest )) -> String -> state -> ( state, String )
-wrapForSerialInterface_processEvent botStep serializedBotEventAtTime stateBefore =
+wrapForSerialInterface_processEvent processEvent serializedBotEventAtTime stateBefore =
     let
         ( state, response ) =
             case serializedBotEventAtTime |> deserializeBotEventAtTime of
@@ -120,7 +121,7 @@ wrapForSerialInterface_processEvent botStep serializedBotEventAtTime stateBefore
 
                 Ok botEventAtTime ->
                     stateBefore
-                        |> botStep botEventAtTime
+                        |> processEvent botEventAtTime
                         |> Tuple.mapSecond DecodeEventSuccess
     in
     ( state, response |> encodeResponseOverSerialInterface |> Json.Encode.encode 0 )
@@ -145,6 +146,8 @@ decodeBotEvent =
             |> Json.Decode.map SetSessionTimeLimitInMilliseconds
         , Json.Decode.field "taskComplete" decodeResultFromTaskWithId
             |> Json.Decode.map TaskComplete
+        , Json.Decode.field "setBotConfiguration" Json.Decode.string
+            |> Json.Decode.map SetBotConfiguration
         ]
 
 
@@ -187,7 +190,7 @@ decodeRunInVolatileHostError =
         ]
 
 
-encodeResponseOverSerialInterface : BotStepResult -> Json.Encode.Value
+encodeResponseOverSerialInterface : ProcessEventResponse -> Json.Encode.Value
 encodeResponseOverSerialInterface stepResult =
     case stepResult of
         DecodeEventError errorString ->
@@ -279,11 +282,11 @@ elmEntryPoint :
     -> (botState -> String)
     -> (String -> botState)
     -> Program Int botState String
-elmEntryPoint botInitState botStepInterface serializeState deserializeState =
+elmEntryPoint initState processEventInterface serializeState deserializeState =
     Platform.worker
-        { init = \_ -> ( botInitState, Cmd.none )
+        { init = \_ -> ( initState, Cmd.none )
         , update =
             \event stateBefore ->
-                botStepInterface "" (stateBefore |> serializeState |> deserializeState) |> Tuple.mapSecond (always Cmd.none)
+                processEventInterface "" (stateBefore |> serializeState |> deserializeState) |> Tuple.mapSecond (always Cmd.none)
         , subscriptions = \_ -> Sub.none
         }

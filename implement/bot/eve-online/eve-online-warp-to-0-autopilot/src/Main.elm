@@ -17,7 +17,7 @@ module Main exposing
     , main
     )
 
-import Bot_Interface_To_Host_20190528 as InterfaceToHost
+import Bot_Interface_To_Host_20190529 as InterfaceToHost
 import Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
 import SanderlingMemoryMeasurement exposing (InfoPanelRouteRouteElementMarker, MemoryMeasurementShipUi)
 import SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
@@ -39,17 +39,28 @@ initState =
     ()
 
 
-botStep : BotEventAtTime -> State -> { newState : State, requests : List BotRequest, statusMessage : String }
-botStep eventAtTime stateBefore =
+processEvent : BotEventAtTime -> State -> { newState : State, requests : List BotRequest, statusMessage : String }
+processEvent eventAtTime stateBefore =
     case eventAtTime.event of
         SimpleSanderling.MemoryMeasurementCompleted memoryMeasurement ->
             let
                 ( requests, statusMessage ) =
                     botRequestsFromGameClientState memoryMeasurement
             in
-            { newState = initState
+            { newState = stateBefore
             , requests = requests
             , statusMessage = statusMessage
+            }
+
+        SimpleSanderling.SetBotConfiguration botConfiguration ->
+            { newState = stateBefore
+            , requests = []
+            , statusMessage =
+                if botConfiguration |> String.isEmpty then
+                    ""
+
+                else
+                    "I have a problem with this configuration: I am not programmed to support configuration at all. Maybe the bot catalog (https://to.botengine.org/bot-catalog) has a bot which better matches your use case?"
             }
 
 
@@ -161,7 +172,7 @@ interfaceToHost_initState =
 
 interfaceToHost_processEvent : String -> InterfaceBotState -> ( InterfaceBotState, String )
 interfaceToHost_processEvent =
-    InterfaceToHost.wrapForSerialInterface_processEvent (SimpleSanderling.botStep botStep)
+    InterfaceToHost.wrapForSerialInterface_processEvent (SimpleSanderling.processEvent processEvent)
 
 
 interfaceToHost_serializeState : InterfaceBotState -> String

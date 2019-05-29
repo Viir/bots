@@ -11,7 +11,7 @@
     {
         public long? setSessionTimeLimitInMilliseconds;
 
-        public ResultFromTaskWithId taskResult;
+        public ResultFromTaskWithId taskComplete;
     }
 
     public class BotResponse

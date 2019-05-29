@@ -219,8 +219,8 @@ botStep simpleBotStep fromHostEventAtTime stateBefore =
 integrateFromHostEvent : InterfaceToHost.BotEventAtTime -> SetupState -> ( SetupState, Maybe BotEventAtTime )
 integrateFromHostEvent fromHostEventAtTime setupStateBefore =
     case fromHostEventAtTime.event of
-        InterfaceToHost.TaskResult taskResult ->
-            integrateTaskResult ( fromHostEventAtTime.timeInMilliseconds, taskResult.taskResult ) setupStateBefore
+        InterfaceToHost.TaskComplete taskComplete ->
+            integrateTaskResult ( fromHostEventAtTime.timeInMilliseconds, taskComplete.taskResult ) setupStateBefore
                 |> Tuple.mapSecond
                     (Maybe.map
                         (\botEvent ->

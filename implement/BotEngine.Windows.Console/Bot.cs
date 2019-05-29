@@ -292,7 +292,7 @@ namespace BotEngine.Windows.Console
 
                     processBotEvent(new InterfaceToBot.BotEvent
                     {
-                        taskResult = new InterfaceToBot.ResultFromTaskWithId
+                        taskComplete = new InterfaceToBot.ResultFromTaskWithId
                         {
                             taskId = requestTask?.taskId,
                             taskResult = new InterfaceToBot.TaskResult
@@ -320,7 +320,7 @@ namespace BotEngine.Windows.Console
 
                     processBotEvent(new InterfaceToBot.BotEvent
                     {
-                        taskResult = new InterfaceToBot.ResultFromTaskWithId
+                        taskComplete = new InterfaceToBot.ResultFromTaskWithId
                         {
                             taskId = requestTask?.taskId,
                             taskResult = new InterfaceToBot.TaskResult
@@ -350,7 +350,7 @@ namespace BotEngine.Windows.Console
 
                     processBotEvent(new InterfaceToBot.BotEvent
                     {
-                        taskResult = new InterfaceToBot.ResultFromTaskWithId
+                        taskComplete = new InterfaceToBot.ResultFromTaskWithId
                         {
                             taskId = requestTask?.taskId,
                             taskResult = new InterfaceToBot.TaskResult

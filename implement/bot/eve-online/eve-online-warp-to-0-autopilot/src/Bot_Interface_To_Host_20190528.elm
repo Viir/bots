@@ -29,7 +29,7 @@ type alias BotEventAtTime =
 
 type BotEvent
     = SetSessionTimeLimitInMilliseconds Int
-    | TaskResult ResultFromTaskWithId
+    | TaskComplete ResultFromTaskWithId
 
 
 type BotRequest
@@ -143,8 +143,8 @@ decodeBotEvent =
     Json.Decode.oneOf
         [ Json.Decode.field "setSessionTimeLimitInMilliseconds" Json.Decode.int
             |> Json.Decode.map SetSessionTimeLimitInMilliseconds
-        , Json.Decode.field "taskResult" decodeResultFromTaskWithId
-            |> Json.Decode.map TaskResult
+        , Json.Decode.field "taskComplete" decodeResultFromTaskWithId
+            |> Json.Decode.map TaskComplete
         ]
 
 

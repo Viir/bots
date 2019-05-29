@@ -16,7 +16,7 @@ To achieve this, we combine the following tools:
 
 The following subsections explain in detail how to set up these tools.
 
-To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/d18b54d146a23eea5070444d1d73626f05c0de7b/implement/bot/eve-online/eve-online-warp-to-0-autopilot for this purpose.
+To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/de00799cd5edf771f210c8265d249f1380bd6382/implement/bot/eve-online/eve-online-warp-to-0-autopilot for this purpose.
 
 ### Elm command line program
 
@@ -106,4 +106,4 @@ When you hover the mouse cursor over the highlighted text, a popup window shows 
 
 ----
 
-Any questions? The [BotEngine forum](https://forum.botengine.org) is an excellent place to meet other developers and get help.
+Any questions? The [BotEngine forum](https://forum.botengine.org) is the place to meet other developers and get help.

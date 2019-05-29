@@ -34,7 +34,7 @@ If no version of `.NET Core 3.0` is installed, the app might display an error me
 ## Starting a Bot
 
 Download the BotEngine console from the following URL:
-https://botengine.blob.core.windows.net/blob-library/by-name/2019-05-21.BotEngine.Console.zip
+[https://botengine.blob.core.windows.net/blob-library/by-name/2019-05-29.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-05-29.BotEngine.Console.zip)
 
 Extract this Zip-Archive to a directory. In this directory, you will find a file named `BotEngine.exe`. To start a bot, call this program with a command like the following:
 
@@ -52,7 +52,7 @@ The engine then loads the bot from the specified location and runs it until you 
 While a bot is running, the engine displays status information in the console window. This display is updated as the bot continues operating.
 Most of the time, you don't need to watch this. After all, that is the point of automation right?
 
-But in case a bot gets stuck, you want to take a look at this status display. Among general information from the engine, this display can also contain information as coded by the bot author. This way, the bot can tell about the goal of its current actions or inform you about problems. For example, this [warp to 0 auto-pilot bot](https://github.com/Viir/bots/tree/dec158d42c2923be38e6c96e39d89f4fd0badf91/implement/bot/eve-online/eve-online-warp-to-0-autopilot) shows diverse messages to inform you what it is doing at the moment. When you run this bot, the console window might show a text like the following:
+But in case a bot gets stuck, you want to take a look at this status display. Among general information from the engine, this display can also contain information as coded by the bot author. This way, the bot can tell about the goal of its current actions or inform you about problems. For example, this [warp to 0 auto-pilot bot](https://github.com/Viir/bots/tree/de00799cd5edf771f210c8265d249f1380bd6382/implement/bot/eve-online/eve-online-warp-to-0-autopilot) shows diverse messages to inform you what it is doing at the moment. When you run this bot, the console window might show a text like the following:
 
 ```
 Bot is running. Press CTRL + ALT keys to pause the bot.

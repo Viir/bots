@@ -2,7 +2,7 @@
  -}
 
 
-module Bot_Interface_To_Host_20190526 exposing
+module Bot_Interface_To_Host_20190528 exposing
     ( BotEvent(..)
     , BotEventAtTime
     , BotRequest(..)
@@ -13,8 +13,7 @@ module Bot_Interface_To_Host_20190526 exposing
     , TaskResultStructure(..)
     , deserializeBotEventAtTime
     , elmEntryPoint
-    , wrapBotStepForSerialInterface
-    , wrapInitForSerialInterface
+    , wrapForSerialInterface_processEvent
     )
 
 import Json.Decode
@@ -108,8 +107,8 @@ type alias DelayTaskStructure =
     { milliseconds : Int }
 
 
-wrapBotStepForSerialInterface : (BotEventAtTime -> state -> ( state, List BotRequest )) -> String -> state -> ( state, String )
-wrapBotStepForSerialInterface botStep serializedBotEventAtTime stateBefore =
+wrapForSerialInterface_processEvent : (BotEventAtTime -> state -> ( state, List BotRequest )) -> String -> state -> ( state, String )
+wrapForSerialInterface_processEvent botStep serializedBotEventAtTime stateBefore =
     let
         ( state, response ) =
             case serializedBotEventAtTime |> deserializeBotEventAtTime of
@@ -125,11 +124,6 @@ wrapBotStepForSerialInterface botStep serializedBotEventAtTime stateBefore =
                         |> Tuple.mapSecond DecodeEventSuccess
     in
     ( state, response |> encodeResponseOverSerialInterface |> Json.Encode.encode 0 )
-
-
-wrapInitForSerialInterface : ( state, List BotRequest ) -> ( state, String )
-wrapInitForSerialInterface =
-    Tuple.mapSecond (Json.Encode.list encodeBotRequest >> Json.Encode.encode 0)
 
 
 deserializeBotEventAtTime : String -> Result Json.Decode.Error BotEventAtTime
@@ -280,14 +274,14 @@ decodeResult errorDecoder okDecoder =
 Elm code needed to inform the Elm compiler about our entry points.
 -}
 elmEntryPoint :
-    ( botState, String )
+    botState
     -> (String -> botState -> ( botState, String ))
     -> (botState -> String)
     -> (String -> botState)
     -> Program Int botState String
-elmEntryPoint botInit botStepInterface serializeState deserializeState =
+elmEntryPoint botInitState botStepInterface serializeState deserializeState =
     Platform.worker
-        { init = \_ -> ( botInit |> Tuple.first, Cmd.none )
+        { init = \_ -> ( botInitState, Cmd.none )
         , update =
             \event stateBefore ->
                 botStepInterface "" (stateBefore |> serializeState |> deserializeState) |> Tuple.mapSecond (always Cmd.none)

@@ -12,10 +12,10 @@ module SimpleSanderling exposing
     , StateIncludingSetup
     , VolatileHostState(..)
     , botStep
-    , init
+    , initState
     )
 
-import Bot_Interface_To_Host_20190526 as InterfaceToHost
+import Bot_Interface_To_Host_20190528 as InterfaceToHost
 import Sanderling
 import SanderlingMemoryMeasurement
 import SanderlingVolatileHostSetup
@@ -88,21 +88,18 @@ initSetup =
     }
 
 
-init : ( simpleBotState, List BotRequest ) -> ( StateIncludingSetup simpleBotState, List InterfaceToHost.BotRequest )
-init ( simpleBotState, simpleBotRequests ) =
-    ( { setup = initSetup
-      , botState =
-            { simpleBotState = simpleBotState
-            , statusMessage = Nothing
-            , requestQueue =
-                { queuedRequests = simpleBotRequests |> List.map (\botRequest -> ( 0, botRequest ))
-                , lastForwardedRequestTask = Nothing
-                }
+initState : simpleBotState -> StateIncludingSetup simpleBotState
+initState simpleBotState =
+    { setup = initSetup
+    , botState =
+        { simpleBotState = simpleBotState
+        , statusMessage = Nothing
+        , requestQueue =
+            { queuedRequests = []
+            , lastForwardedRequestTask = Nothing
             }
-      }
-      -- TODO: Propagate requests
-    , []
-    )
+        }
+    }
 
 
 botStep :

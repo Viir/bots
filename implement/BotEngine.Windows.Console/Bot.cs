@@ -24,41 +24,13 @@ namespace BotEngine.Windows.Console
                 .Select(fileNameAndContent => (name: fileNameAndContent.name.Replace("\\", "/"), fileNameAndContent.content))
                 .ToImmutableList();
 
-            var elmAppMap = new Kalmit.ElmAppEntryConfig
-            {
-                /*
-                 * Use convention for entry point file path, module name and function names.
-                 * For an example of a concrete collection of files satisfying these constraints, see https://github.com/Viir/bots/tree/d18b54d146a23eea5070444d1d73626f05c0de7b/implement/bot/eve-online/eve-online-warp-to-0-autopilot
-                 * 
-                 * */
-                WithCustomSerialization = new Kalmit.ElmAppEntryConfig.ElmAppEntryConfigWithCustomSerialization
-                {
-                    pathToFileWithElmEntryPoint = "src/Main.elm",
-                    pathToSerializedEventFunction = "Main.botStepInterface",
-
-                    //  TODO: Get the bot requests from the `init` function: Switch to `initInterface`. (https://github.com/Viir/Kalmit/issues/5)
-                    pathToInitialStateFunction = "Main.initStateInterface",
-                    pathToDeserializeStateFunction = "Main.deserializeState",
-                    pathToSerializeStateFunction = "Main.serializeState",
-                },
-            };
-
             /*
              * TODO: Analyse 'botCodeFiles' to see if expected functions are present.
              * Generate error messages.
              * */
 
-            var elmAppMapFile =
-                System.Text.Encoding.UTF8.GetBytes(Newtonsoft.Json.JsonConvert.SerializeObject(elmAppMap));
-
-            var kalmitElmAppFiles =
-                botCodeFiles
-                .Select(fileNameAndContent => (name: "elm-app/" + fileNameAndContent.name, fileNameAndContent.content))
-                .Concat(ImmutableList.Create((name: "elm-app.map.json", elmAppMapFile)))
-                .ToImmutableList();
-
             var kalmitElmApp = Kalmit.ZipArchive.ZipArchiveFromEntries(
-                kalmitElmAppFiles,
+                botCodeFiles,
                 System.IO.Compression.CompressionLevel.NoCompression);
 
             return (kalmitElmApp, null);
@@ -155,7 +127,7 @@ namespace BotEngine.Windows.Console
 
             var createVolatileHostAttempts = 0;
 
-            var volatileHosts = new ConcurrentDictionary<string, CSharpScriptContext>();
+            var volatileHosts = new ConcurrentDictionary<string, Kalmit.CSharpScriptContext>();
 
             InterfaceToBot.Result<InterfaceToBot.TaskResult.RunInVolatileHostError, InterfaceToBot.TaskResult.RunInVolatileHostComplete> ExecuteRequestToRunInVolatileHost(
                 InterfaceToBot.Task.RunInVolatileHost runInVolatileHost)
@@ -316,7 +288,7 @@ namespace BotEngine.Windows.Console
                 {
                     var volatileHostId = System.Threading.Interlocked.Increment(ref createVolatileHostAttempts).ToString();
 
-                    volatileHosts[volatileHostId] = new CSharpScriptContext(getFileFromHashSHA256);
+                    volatileHosts[volatileHostId] = new Kalmit.CSharpScriptContext(getFileFromHashSHA256);
 
                     processBotEvent(new InterfaceToBot.BotEvent
                     {

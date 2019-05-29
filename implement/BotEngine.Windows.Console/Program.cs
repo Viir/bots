@@ -1,5 +1,6 @@
 ﻿using McMaster.Extensions.CommandLineUtils;
 using System;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text.RegularExpressions;
 using DotNetConsole = System.Console;
@@ -8,7 +9,7 @@ namespace BotEngine.Windows.Console
 {
     class BotEngine
     {
-        static string appVersionId => "2019-05-26";
+        static string appVersionId => "2019-05-28";
 
         static string uiTimeFormatToString => "yyyy-MM-ddTHH-mm-ss";
 
@@ -170,6 +171,7 @@ namespace BotEngine.Windows.Console
 
                         var botCodeFiles =
                             allFilePathsAtBotSource
+                            .Where(Kalmit.ElmApp.FilePathMatchesPatternOfFilesInElmApp)
                             .Select(botCodeFilePath =>
                             {
                                 return
@@ -177,7 +179,7 @@ namespace BotEngine.Windows.Console
                                     content: System.IO.File.ReadAllBytes(botCodeFilePath));
                             })
                             .OrderBy(botCodeFile => botCodeFile.name)
-                            .ToList();
+                            .ToImmutableList();
 
                         {
                             //  At the moment, all supported bot formats require this file.
@@ -214,7 +216,6 @@ namespace BotEngine.Windows.Console
                         }
 
                         var botCode =
-                            //  TODO: Switch to a deterministic packaging.
                             Kalmit.ZipArchive.ZipArchiveFromEntries(
                                 botCodeFiles,
                                 System.IO.Compression.CompressionLevel.NoCompression);

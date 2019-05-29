@@ -10,14 +10,14 @@
 module Main exposing
     ( InterfaceBotState
     , State
-    , botStepInterface
-    , deserializeState
-    , initInterface
+    , interfaceToHost_deserializeState
+    , interfaceToHost_initState
+    , interfaceToHost_processEvent
+    , interfaceToHost_serializeState
     , main
-    , serializeState
     )
 
-import Bot_Interface_To_Host_20190526 as InterfaceToHost
+import Bot_Interface_To_Host_20190528 as InterfaceToHost
 import Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
 import SanderlingMemoryMeasurement exposing (InfoPanelRouteRouteElementMarker, MemoryMeasurementShipUi)
 import SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
@@ -37,11 +37,6 @@ type alias State =
 initState : State
 initState =
     ()
-
-
-init : ( State, List BotRequest )
-init =
-    ( initState, [] )
 
 
 botStep : BotEventAtTime -> State -> { newState : State, requests : List BotRequest, statusMessage : String }
@@ -159,47 +154,28 @@ type alias InterfaceBotState =
     SimpleSanderling.StateIncludingSetup State
 
 
-{-| Define interface function for the framework. Don't change the function signature.
-<https://github.com/Viir/Kalmit/blob/640078f59bea3fa2ba1af43372933cff304b8c94/implement/PersistentProcess/PersistentProcess.Common/PersistentProcess.cs>
--}
-serializeState : InterfaceBotState -> String
-serializeState =
+interfaceToHost_initState : InterfaceBotState
+interfaceToHost_initState =
+    SimpleSanderling.initState initState
+
+
+interfaceToHost_processEvent : String -> InterfaceBotState -> ( InterfaceBotState, String )
+interfaceToHost_processEvent =
+    InterfaceToHost.wrapForSerialInterface_processEvent (SimpleSanderling.botStep botStep)
+
+
+interfaceToHost_serializeState : InterfaceBotState -> String
+interfaceToHost_serializeState =
     always ""
 
 
-{-| Define interface function for the framework. Don't change the function signature.
-<https://github.com/Viir/Kalmit/blob/640078f59bea3fa2ba1af43372933cff304b8c94/implement/PersistentProcess/PersistentProcess.Common/PersistentProcess.cs>
--}
-deserializeState : String -> InterfaceBotState
-deserializeState =
-    always (initInterface |> Tuple.first)
-
-
-{-| Define interface function for the framework. Don't change this.
--}
-initInterface : ( InterfaceBotState, String )
-initInterface =
-    InterfaceToHost.wrapInitForSerialInterface (SimpleSanderling.init init)
-
-
-{-| Define interface function for the framework. Don't change this.
-Temporary helper as long as the framework does not support the `initInterface`.
-This function can be removed when the engine supports `initInterface`. (<https://github.com/Viir/Kalmit/issues/5>)
--}
-initStateInterface : InterfaceBotState
-initStateInterface =
-    initInterface |> Tuple.first
-
-
-{-| Define interface function for the framework. Don't change this.
--}
-botStepInterface : String -> InterfaceBotState -> ( InterfaceBotState, String )
-botStepInterface =
-    InterfaceToHost.wrapBotStepForSerialInterface (SimpleSanderling.botStep botStep)
+interfaceToHost_deserializeState : String -> InterfaceBotState
+interfaceToHost_deserializeState =
+    always interfaceToHost_initState
 
 
 {-| Define the Elm entry point. Don't change this function.
 -}
 main : Program Int InterfaceBotState String
 main =
-    InterfaceToHost.elmEntryPoint initInterface botStepInterface serializeState (deserializeState >> always initStateInterface)
+    InterfaceToHost.elmEntryPoint interfaceToHost_initState interfaceToHost_processEvent interfaceToHost_serializeState (interfaceToHost_deserializeState >> always interfaceToHost_initState)

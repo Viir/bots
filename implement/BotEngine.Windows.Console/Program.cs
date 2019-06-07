@@ -1,4 +1,5 @@
-﻿using McMaster.Extensions.CommandLineUtils;
+﻿using BotEngine.Windows.Console.BotSourceModel;
+using McMaster.Extensions.CommandLineUtils;
 using System;
 using System.Collections.Immutable;
 using System.Linq;
@@ -9,9 +10,11 @@ namespace BotEngine.Windows.Console
 {
     class BotEngine
     {
-        static public string AppVersionId => "2019-05-29";
+        static public string AppVersionId => "2019-06-07";
 
         static string uiTimeFormatToString => "yyyy-MM-ddTHH-mm-ss";
+
+        static string generalGuideLink => "https://to.botengine.org/guide/how-to-run-a-bot";
 
         public static int Main(string[] args)
         {
@@ -22,7 +25,7 @@ namespace BotEngine.Windows.Console
             var app = new CommandLineApplication
             {
                 Name = "BotEngine",
-                Description = "Run bots from the commandline.",
+                Description = "Run bots from the commandline.\nSee " + generalGuideLink + " for a detailed guide.",
             };
 
             app.HelpOption(inherited: true);
@@ -133,59 +136,69 @@ namespace BotEngine.Windows.Console
                             return 11;
                         }
 
-                        var botSourcePath =
-                            botSourceMatch.argumentValue
-                            /*
-                             * Avoid problem observed 2019-05-17:
-                             * When using a command line argument like this:
-                             * start-bot  --bot-source="C:\directory-containing-bot-code\"
-                             * We get
-                             * --bot-source=C:\directory-containing-bot-code"
-                             * from `CommandLineApplication.RemainingArguments`
-                             * */
-                            ?.TrimEnd('"');
-
-                        //  TODO: Also support loading bot from single file.
+                        var botSourcePath = botSourceMatch.argumentValue;
 
                         var botSourceGuide = "Please choose a directory containing a bot.";
 
-                        if (!System.IO.Directory.Exists(botSourcePath))
+                        LiteralNodeObject botCodeNodeFromSource = null;
+
+                        if (LoadFromGithub.ParseGitHubObjectUrl(botSourcePath) != null)
                         {
-                            dotnetConsoleWriteProblemCausingAbort("I did not find a directory at '" + botSourcePath + "'. " + botSourceGuide);
-                            return 12;
+                            DotNetConsole.WriteLine("This bot source looks like a URL. I try to load the bot from Github");
+
+                            var loadFromGithubResult =
+                                LoadFromGithub.LoadFromUrl(botSourcePath);
+
+                            if (loadFromGithubResult?.Success == null)
+                            {
+                                dotnetConsoleWriteProblemCausingAbort("I failed to load bot from '" + botSourcePath + "':\n" + loadFromGithubResult?.Error?.ToString());
+                                return 31;
+                            }
+
+                            botCodeNodeFromSource = loadFromGithubResult.Success;
+                        }
+                        else
+                        {
+                            if (!(System.IO.Directory.Exists(botSourcePath) || System.IO.File.Exists(botSourcePath)))
+                            {
+                                dotnetConsoleWriteProblemCausingAbort("I did not find anything at '" + botSourcePath + "'. " + botSourceGuide);
+                                return 12;
+                            }
+
+                            botCodeNodeFromSource = LoadFromLocalFilesystem.LoadLiteralNodeFromPath(botSourcePath);
                         }
 
-                        var allFilePathsAtBotSource =
-                            System.IO.Directory.GetFiles(
-                                botSourcePath, "*", System.IO.SearchOption.AllDirectories);
+                        if (botCodeNodeFromSource?.BlobContent != null)
+                        {
+                            dotnetConsoleWriteProblemCausingAbort("This bot source points to a file. Using a file as a bot is not supported yet. You can use a directory/tree as bot.");
+                            return 32;
+                        }
 
-                        DotNetConsole.WriteLine(
-                            "I found " + allFilePathsAtBotSource.Length +
-                            " files in '" + botSourcePath + "'.");
+                        var botCodeFilesFromSource =
+                            botCodeNodeFromSource
+                            ?.EnumerateBlobsTransitive()
+                            .Select(blobPathAndContent => (path: string.Join("/", blobPathAndContent.path), blobPathAndContent.blobContent))
+                            .ToImmutableList();
 
-                        if (allFilePathsAtBotSource.Length < 1)
+                        DotNetConsole.WriteLine("I found " + botCodeFilesFromSource.Count + " files in '" + botSourcePath + "'.");
+
+                        if (botCodeFilesFromSource.Count < 1)
                         {
                             dotnetConsoleWriteProblemCausingAbort(botSourceGuide);
                             return 13;
                         }
 
                         var botCodeFiles =
-                            allFilePathsAtBotSource
-                            .Where(Kalmit.ElmApp.FilePathMatchesPatternOfFilesInElmApp)
-                            .Select(botCodeFilePath =>
-                            {
-                                return
-                                    (name: System.IO.Path.GetRelativePath(botSourcePath, botCodeFilePath).Replace("\\", "/"),
-                                    content: System.IO.File.ReadAllBytes(botCodeFilePath));
-                            })
-                            .OrderBy(botCodeFile => botCodeFile.name)
+                            botCodeFilesFromSource
+                            .Where(blobPathAndContent => Kalmit.ElmApp.FilePathMatchesPatternOfFilesInElmApp(blobPathAndContent.path))
+                            .OrderBy(botCodeFile => botCodeFile.path)
                             .ToImmutableList();
 
                         {
                             //  At the moment, all supported bot formats require this file.
                             var fileNameExpectedAtRoot = "elm.json";
 
-                            if (!botCodeFiles.Any(botCodeFile => botCodeFile.name.ToLowerInvariant() == fileNameExpectedAtRoot))
+                            if (!botCodeFiles.Any(botCodeFile => botCodeFile.path.ToLowerInvariant() == fileNameExpectedAtRoot))
                             {
                                 dotnetConsoleWriteProblemCausingAbort(
                                     "There is a problem with the bot source: I did not find an '" + fileNameExpectedAtRoot + "' file directly in this directory."
@@ -202,10 +215,10 @@ namespace BotEngine.Windows.Console
                                     botCodeFiles
                                     .Where(botCodeFile =>
                                         filePathEndingsToLookFor.Any(filePathEndingToLookFor =>
-                                            botCodeFile.name.ToLowerInvariant().EndsWith(filePathEndingToLookFor)))
-                                    .OrderBy(botCodeFile => botCodeFile.name.Length)
+                                            botCodeFile.path.ToLowerInvariant().EndsWith(filePathEndingToLookFor)))
+                                    .OrderBy(botCodeFile => botCodeFile.path.Length)
                                     .FirstOrDefault()
-                                    .name;
+                                    .path;
 
                                 if (maybeAlternativeFilePath != null)
                                     DotNetConsole.WriteLine(
@@ -235,7 +248,7 @@ namespace BotEngine.Windows.Console
                         DotNetConsole.WriteLine("I loaded bot " + botId + ".");
 
                         /*
-                         * TODO: Analyse 'botCodeFiles' to see if expected functions are present.
+                         * TODO: Analyse 'botCode' to see if expected functions are present.
                          * Generate error messages.
                          * */
 

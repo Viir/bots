@@ -34,18 +34,26 @@ If no version of `.NET Core 3.0` is installed, the app might display an error me
 ## Starting a Bot
 
 Download the BotEngine console from the following URL:
-[https://botengine.blob.core.windows.net/blob-library/by-name/2019-05-29.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-05-29.BotEngine.Console.zip)
+[https://botengine.blob.core.windows.net/blob-library/by-name/2019-06-11.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-06-11.BotEngine.Console.zip)
 
 Extract this Zip-Archive to a directory. In this directory, you will find a file named `BotEngine.exe`. To start a bot, call this program with a command like the following:
 
 ```cmd
-C:\path\to\the\botengine.exe  start-bot  --bot-source="C:\directory-containing-bot-code"
+C:\path\to\the\botengine.exe  start-bot  --bot-source="https://github.com/Viir/bots/tree/1abbe82b5dcb21ef96e3ad41ba79544abedf73b9/implement/bot/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
 You can use such a command, for example, in the Windows command line (cmd.exe).
-The `--bot-source` parameter tells the engine where to find the bot. This needs to be a directory on your local file system, containing the bot code files.
 
 The engine then loads the bot from the specified location and runs it until you stop it or the bot stops itself.
+
+### `--Bot-Source` Parameter
+
+The `--bot-source` parameter tells the engine where to load the bot code from. The `--bot-source` can point to following different kinds of sources:
+
++ A directory on the local file system. Example: `C:\directory-containing-bot-code`.
++ A directory in a repository on [Github](https://github.com). Example: `https://github.com/Viir/bots/tree/1abbe82b5dcb21ef96e3ad41ba79544abedf73b9/implement/bot/eve-online/eve-online-warp-to-0-autopilot`
+
+Developers use Github to collaborate and share code. Using the local file system as the source can be more convenient when you make changes to the bot code which you only want to test yourself.
 
 ## Operating the Bot
 

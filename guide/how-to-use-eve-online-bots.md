@@ -6,8 +6,8 @@ In this guide, I show how to run EVE Online bots using the BotEngine console.
 
 A bot is a software which performs the following steps:
 
-+ Read information from the game client, to learn about the current state of the game world.
-+ Send inputs such as mouse clicks or key presses to the game client, to achieve in-game effects and progress.
++ Learn about the current state of the game world by reading information from the game client. Usually, the bot does this by taking screenshots of the game client. In the case of EVE Online, we can also use [memory reading](https://github.com/Arcitectus/Sanderling) to get information from the game client.
++ Accomplish an in-game effect by sending inputs such as mouse clicks or key presses to the game client.
 
 The bot runs as a continual process repeating these steps again and again until it reaches the configured goal or you stop it.
 

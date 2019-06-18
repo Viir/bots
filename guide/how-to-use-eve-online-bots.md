@@ -34,7 +34,7 @@ If no version of `.NET Core 3.0` is installed, the app might display an error me
 ## Starting a Bot
 
 Download the BotEngine console from the following URL:
-[https://botengine.blob.core.windows.net/blob-library/by-name/2019-06-11.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-06-11.BotEngine.Console.zip)
+[https://botengine.blob.core.windows.net/blob-library/by-name/2019-06-18.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-06-18.BotEngine.Console.zip)
 
 Extract this Zip-Archive to a directory. In this directory, you will find a file named `BotEngine.exe`. To start a bot, call this program with a command like the following:
 
@@ -72,4 +72,15 @@ I see no route in the info panel. I will start when a route is set.
 
 You can pause bot operation by pressing the `CTRL` + `ALT` keys. To let the bot continue, focus the console window and press the enter key. The key combination `CTRL` + `C` stops the bot and the botengine process.
 
-Any questions? The [BotEngine forum](https://forum.botengine.org) is a good place to learn more.
+## Configuring a Bot
+
+Some bots support configuration. When starting a bot from the command line, you can use the `--bot-configuration` parameter to set the bot configuration. The complete command line can then look as follows:
+```cmd
+C:\path\to\the\botengine.exe  start-bot  --bot-source="https://github.com/Viir/bots/tree/b50d8dfd5a66654e9529dd3d07ff97e2e682c3f9/implement/bot/general/demonstrate-bot-configuration" --bot-configuration" --bot-configuration="My bot configuration"
+```
+
+The supported bot configuration values depend entirely on the bot that you chose with the `--bot-source`. To learn which bot configuration values are supported in your case, look up the description for the bot or contact the developer of the bot. A good place to look for guidance on a specific bot is the `src/Main.elm` file contained in the directory specified as `--bot-source`. Bot authors often write a guide at the beginning of that file, for example in [this EVE Online auto-pilot bot](https://github.com/Viir/bots/blob/d05d741d68b8ac4b20e8c222f9b1828bc2fb534b/implement/bot/eve-online/eve-online-warp-to-0-autopilot/src/Main.elm).
+
+## Getting Help
+
+If you have any questions, the [BotEngine forum](https://forum.botengine.org) is a good place to learn more.

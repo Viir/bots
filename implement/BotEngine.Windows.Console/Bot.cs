@@ -21,7 +21,8 @@ namespace BotEngine.Windows.Console
             Func<byte[], byte[]> getFileFromHashSHA256,
             string processStoreDirectory,
             Action<string> logEntry,
-            Action<LogEntry.ProcessBotEventReport> logProcessBotEventReport)
+            Action<LogEntry.ProcessBotEventReport> logProcessBotEventReport,
+            string botConfiguration)
         {
             var botId = Kalmit.CommonConversion.StringBase16FromByteArray(Kalmit.CommonConversion.HashSHA256(kalmitElmApp));
 
@@ -223,6 +224,8 @@ namespace BotEngine.Windows.Console
             }
 
             //  TODO: Get the bot requests from the `init` function.
+
+            processBotEvent(new InterfaceToBot.BotEvent { setBotConfiguration = botConfiguration ?? "" });
 
             while (true)
             {

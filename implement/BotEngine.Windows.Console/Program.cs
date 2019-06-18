@@ -10,7 +10,7 @@ namespace BotEngine.Windows.Console
 {
     class BotEngine
     {
-        static public string AppVersionId => "2019-06-07";
+        static public string AppVersionId => "2019-06-18";
 
         static string uiTimeFormatToString => "yyyy-MM-ddTHH-mm-ss";
 
@@ -109,6 +109,7 @@ namespace BotEngine.Windows.Console
                     try
                     {
                         var botSourceParamName = "--bot-source";
+                        var botConfigurationParamName = "--bot-configuration";
 
                         var botSourceParamInstruction = "Add the '" + botSourceParamName + "' argument to specify the directory containing a bot. Following is an example: " + botSourceParamName + @"=""C:\bots\bot-to-start""";
 
@@ -128,15 +129,16 @@ namespace BotEngine.Windows.Console
                             return (true, match?.Groups[2].Value);
                         }
 
-                        var botSourceMatch = argumentFromParameterName(botSourceParamName);
+                        var botSourceArgument = argumentFromParameterName(botSourceParamName);
+                        var botConfigurationArgument = argumentFromParameterName(botConfigurationParamName);
 
-                        if (!botSourceMatch.isPresent)
+                        if (!botSourceArgument.isPresent)
                         {
                             dotnetConsoleWriteProblemCausingAbort("Where from should I load the bot? " + botSourceParamInstruction);
                             return 11;
                         }
 
-                        var botSourcePath = botSourceMatch.argumentValue;
+                        var botSourcePath = botSourceArgument.argumentValue;
 
                         var botSourceGuide = "Please choose a directory containing a bot.";
 
@@ -247,6 +249,8 @@ namespace BotEngine.Windows.Console
 
                         DotNetConsole.WriteLine("I loaded bot " + botId + ".");
 
+                        var botConfiguration = botConfigurationArgument.argumentValue;
+
                         /*
                          * TODO: Analyse 'botCode' to see if expected functions are present.
                          * Generate error messages.
@@ -284,7 +288,8 @@ namespace BotEngine.Windows.Console
                                 {
                                     processBotEventReport = processBotEventReport,
                                 });
-                            });
+                            },
+                            botConfiguration);
                     }
                     catch (Exception e)
                     {

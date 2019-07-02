@@ -5,14 +5,13 @@ module Main exposing (main)
    Credits to Ivan for supplying us with such a nice demo!
 -}
 
-import Base64.Decode as Decode
-import Base64.Encode as Encode
+import Base64.Encode
 import Browser
 import Bytes
 import File
-import Html exposing (..)
-import Html.Attributes exposing (..)
-import Html.Events exposing (on, onClick, onInput, preventDefaultOn)
+import Html
+import Html.Attributes as HA
+import Html.Events as HE
 import Json.Decode exposing (field, list)
 import Task
 
@@ -20,13 +19,13 @@ import Task
 type Msg
     = NoOp
     | OnDrop (List File.File)
-    | FileBytesEncoded Bytes.Bytes
+    | FileDropped Bytes.Bytes
 
 
 type alias Model =
     { input : String
     , output : String
-    , imageEncoded : String
+    , fileAsBase64 : String
     }
 
 
@@ -46,7 +45,7 @@ init _ =
         initialModel =
             { input = ""
             , output = ""
-            , imageEncoded = ""
+            , fileAsBase64 = ""
             }
     in
     ( initialModel, Cmd.none )
@@ -64,19 +63,19 @@ update msg model =
                 task =
                     case List.head files of
                         Just file ->
-                            Task.perform FileBytesEncoded (File.toBytes file)
+                            Task.perform FileDropped (File.toBytes file)
 
                         Nothing ->
                             Cmd.none
             in
             ( model, task )
 
-        FileBytesEncoded bytes ->
+        FileDropped bytes ->
             let
-                encoded =
-                    Encode.encode (Encode.bytes bytes)
+                fileAsBase64 =
+                    Base64.Encode.encode (Base64.Encode.bytes bytes)
             in
-            ( { model | imageEncoded = encoded }, Cmd.none )
+            ( { model | fileAsBase64 = fileAsBase64 }, Cmd.none )
 
 
 
@@ -93,12 +92,12 @@ onDrop msg =
             Json.Decode.map msg_ fileDecoder
                 |> Json.Decode.map alwaysPreventDefault
     in
-    preventDefaultOn "drop" (dropDecoder msg)
+    HE.preventDefaultOn "drop" (dropDecoder msg)
 
 
 onDragOver : msg -> Html.Attribute msg
 onDragOver msg =
-    preventDefaultOn "dragover" (Json.Decode.map alwaysPreventDefault (Json.Decode.succeed msg))
+    HE.preventDefaultOn "dragover" (Json.Decode.map alwaysPreventDefault (Json.Decode.succeed msg))
 
 
 alwaysPreventDefault : msg -> ( msg, Bool )
@@ -110,41 +109,41 @@ alwaysPreventDefault msg =
 -- View
 
 
-view : Model -> Html Msg
+view : Model -> Html.Html Msg
 view model =
-    div [ class "main-wrapper" ] <|
+    Html.div [ HA.class "main-wrapper" ] <|
         viewInfoSection model
             :: [ viewWidget model ]
 
 
-viewInfoSection : Model -> Html Msg
+viewInfoSection : Model -> Html.Html Msg
 viewInfoSection model =
-    section [ class "info-section" ]
-        [ header []
-            [ h1 [] [ text "Base64 Encoding" ]
+    Html.section [ HA.class "info-section" ]
+        [ Html.header []
+            [ Html.h1 [] [ Html.text "Base64 Encoding" ]
             ]
-        , p []
-            [ text "Base64 is a group of similar binary-to-text encoding schemes that represent binary data in an ASCII string format by translating it into a radix-64 representation. The term Base64 originates from a specific MIME content transfer encoding. Each Base64 digit represents exactly 6 bits of data. Three 8-bit bytes (i.e., a total of 24 bits) can therefore be represented by four 6-bit Base64 digits. "
-            , a [ href "https://en.wikipedia.org/wiki/Base64" ] [ text "Base64 on Wikipedia" ]
+        , Html.p []
+            [ Html.text "Base64 is a group of similar binary-to-text encoding schemes that represent binary data in an ASCII string format by translating it into a radix-64 representation. The term Base64 originates from a specific MIME content transfer encoding. Each Base64 digit represents exactly 6 bits of data. Three 8-bit bytes (i.e., a total of 24 bits) can therefore be represented by four 6-bit Base64 digits. "
+            , Html.a [ HA.href "https://en.wikipedia.org/wiki/Base64" ] [ Html.text "Base64 on Wikipedia" ]
             ]
-        , p []
-            [ a [ href "https://github.com/ivadzy/bbase64" ] [ text "Repository" ]
+        , Html.p []
+            [ Html.a [ HA.href "https://github.com/ivadzy/bbase64" ] [ Html.text "Repository" ]
             ]
         ]
 
 
-viewWidget : Model -> Html Msg
+viewWidget : Model -> Html.Html Msg
 viewWidget model =
-    div [ class "widget" ]
-        [ div [ class "widget_wrapper" ]
+    Html.div [ HA.class "widget" ]
+        [ Html.div [ HA.class "widget_wrapper" ]
             [ viewImageWidget model
             ]
         ]
 
 
-viewImageWidget : Model -> Html Msg
+viewImageWidget : Model -> Html.Html Msg
 viewImageWidget model =
-    div [ class "image-widget" ]
-        [ div [ class "image-widget_dropzone", onDrop OnDrop, onDragOver NoOp ] [ text "Drop a file" ]
-        , textarea [ class "image-widget_textarea", placeholder "A Base64 string of the dropped file", value model.imageEncoded ] []
+    Html.div [ HA.class "image-widget" ]
+        [ Html.div [ HA.class "image-widget_dropzone", onDrop OnDrop, onDragOver NoOp ] [ Html.text "Drop a file" ]
+        , Html.textarea [ HA.class "image-widget_textarea", HA.placeholder "A Base64 string of the dropped file", HA.value model.fileAsBase64 ] []
         ]

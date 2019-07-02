@@ -1,5 +1,10 @@
 module Main exposing (main)
 
+{-
+   This demo was adapted from https://github.com/ivadzy/ivadzy.github.io/tree/90013a59b3889f68e89f590d77c280ead3a424b6/demos/bbase64
+   Credits to Ivan for supplying us with such a nice demo!
+-}
+
 import Base64.Decode as Decode
 import Base64.Encode as Encode
 import Browser
@@ -14,10 +19,6 @@ import Task
 
 type Msg
     = NoOp
-    | ToTextExample
-    | ToImageExample
-    | OnTextInput String
-    | OnTextOutput String
     | OnDrop (List File.File)
     | FileBytesEncoded Bytes.Bytes
 
@@ -26,7 +27,6 @@ type alias Model =
     { input : String
     , output : String
     , imageEncoded : String
-    , widgetType : String
     }
 
 
@@ -44,11 +44,10 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     let
         initialModel =
-            Model
-                ""
-                ""
-                ""
-                "text"
+            { input = ""
+            , output = ""
+            , imageEncoded = ""
+            }
     in
     ( initialModel, Cmd.none )
 
@@ -59,31 +58,6 @@ update msg model =
         NoOp ->
             Debug.log "noop" <|
                 ( model, Cmd.none )
-
-        ToImageExample ->
-            ( { model | widgetType = "image" }, Cmd.none )
-
-        ToTextExample ->
-            ( { model | widgetType = "text" }, Cmd.none )
-
-        OnTextInput input ->
-            let
-                encoded =
-                    Encode.encode (Encode.string input)
-            in
-            ( { model | input = input, output = encoded }, Cmd.none )
-
-        OnTextOutput output ->
-            let
-                decodedResult =
-                    Decode.decode Decode.string output
-            in
-            case decodedResult of
-                Ok decoded ->
-                    ( { model | input = decoded, output = output }, Cmd.none )
-
-                Err e ->
-                    ( { model | input = Debug.toString e, output = output }, Cmd.none )
 
         OnDrop files ->
             let
@@ -161,33 +135,10 @@ viewInfoSection model =
 
 viewWidget : Model -> Html Msg
 viewWidget model =
-    let
-        textWidgetButtonDisabled =
-            model.widgetType == "text"
-
-        imageWidgeButtonDisabled =
-            not textWidgetButtonDisabled
-    in
     div [ class "widget" ]
         [ div [ class "widget_wrapper" ]
-            [ div [ class "widget_button-wrapper" ]
-                [ button [ onClick ToTextExample, disabled textWidgetButtonDisabled ] [ text "Text" ]
-                , button [ onClick ToImageExample, disabled imageWidgeButtonDisabled ] [ text "File" ]
-                ]
-            , if model.widgetType == "text" then
-                viewTextWidget model
-
-              else
-                viewImageWidget model
+            [ viewImageWidget model
             ]
-        ]
-
-
-viewTextWidget : Model -> Html Msg
-viewTextWidget model =
-    div [ class "text-widget" ]
-        [ textarea [ onInput OnTextInput, placeholder "Enter a text", value model.input ] []
-        , textarea [ onInput OnTextOutput, placeholder "Encoded output", value model.output ] []
         ]
 
 

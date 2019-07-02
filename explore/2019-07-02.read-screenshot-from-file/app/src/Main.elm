@@ -22,10 +22,12 @@ type Msg
     | FileDropped Bytes.Bytes
 
 
+type alias FileReadResult =
+    { fileAsBase64 : String }
+
+
 type alias Model =
-    { input : String
-    , output : String
-    , fileAsBase64 : String
+    { fileReadResult : Maybe FileReadResult
     }
 
 
@@ -43,9 +45,7 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     let
         initialModel =
-            { input = ""
-            , output = ""
-            , fileAsBase64 = ""
+            { fileReadResult = Nothing
             }
     in
     ( initialModel, Cmd.none )
@@ -75,7 +75,7 @@ update msg model =
                 fileAsBase64 =
                     Base64.Encode.encode (Base64.Encode.bytes bytes)
             in
-            ( { model | fileAsBase64 = fileAsBase64 }, Cmd.none )
+            ( { model | fileReadResult = Just { fileAsBase64 = fileAsBase64 } }, Cmd.none )
 
 
 
@@ -111,14 +111,14 @@ alwaysPreventDefault msg =
 
 view : Model -> Html.Html Msg
 view model =
-    Html.div [ HA.class "main-wrapper" ] <|
+    Html.div [] <|
         viewInfoSection model
             :: [ viewWidget model ]
 
 
 viewInfoSection : Model -> Html.Html Msg
 viewInfoSection model =
-    Html.section [ HA.class "info-section" ]
+    Html.section []
         [ Html.header []
             [ Html.h1 [] [ Html.text "Base64 Encoding" ]
             ]
@@ -134,16 +134,28 @@ viewInfoSection model =
 
 viewWidget : Model -> Html.Html Msg
 viewWidget model =
-    Html.div [ HA.class "widget" ]
-        [ Html.div [ HA.class "widget_wrapper" ]
-            [ viewImageWidget model
+    let
+        fileReadResultHtml =
+            case model.fileReadResult of
+                Nothing ->
+                    Html.text "No file loaded so far."
+
+                Just fileReadResult ->
+                    viewFileReadResult fileReadResult
+    in
+    [ Html.div [ HA.style "padding" "1em", onDrop OnDrop, onDragOver NoOp ] [ Html.text "Drop a file here" ]
+    , fileReadResultHtml
+    ]
+        |> Html.div []
+
+
+viewFileReadResult : FileReadResult -> Html.Html Msg
+viewFileReadResult fileReadResult =
+    Html.div []
+        [ Html.textarea
+            [ HA.placeholder "A Base64 string of the dropped file"
+            , HA.value fileReadResult.fileAsBase64
+            , HA.readonly True
             ]
-        ]
-
-
-viewImageWidget : Model -> Html.Html Msg
-viewImageWidget model =
-    Html.div [ HA.class "image-widget" ]
-        [ Html.div [ HA.class "image-widget_dropzone", onDrop OnDrop, onDragOver NoOp ] [ Html.text "Drop a file" ]
-        , Html.textarea [ HA.class "image-widget_textarea", HA.placeholder "A Base64 string of the dropped file", HA.value model.fileAsBase64 ] []
+            []
         ]

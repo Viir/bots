@@ -12,7 +12,7 @@ import File
 import Html
 import Html.Attributes as HA
 import Html.Events as HE
-import Json.Decode exposing (field, list)
+import Json.Decode
 import Task
 
 
@@ -86,7 +86,7 @@ onDrop : (List File.File -> msg) -> Html.Attribute msg
 onDrop msg =
     let
         fileDecoder =
-            field "dataTransfer" (field "files" (list File.decoder))
+            Json.Decode.field "dataTransfer" (Json.Decode.field "files" (Json.Decode.list File.decoder))
 
         dropDecoder msg_ =
             Json.Decode.map msg_ fileDecoder
@@ -151,11 +151,12 @@ viewWidget model =
 
 viewFileReadResult : FileReadResult -> Html.Html Msg
 viewFileReadResult fileReadResult =
-    Html.div []
-        [ Html.textarea
-            [ HA.placeholder "A Base64 string of the dropped file"
-            , HA.value fileReadResult.fileAsBase64
-            , HA.readonly True
-            ]
-            []
+    [ [ Html.text "A Base64 string of the dropped file" ] |> Html.div []
+    , Html.textarea
+        [ HA.value fileReadResult.fileAsBase64
+        , HA.readonly True
+        , HA.style "margin-left" "1em"
         ]
+        []
+    ]
+        |> Html.div []

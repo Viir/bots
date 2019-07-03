@@ -8,6 +8,7 @@ module Main exposing (main)
 import Base64.Encode
 import Browser
 import Bytes
+import DecodeBMPImage
 import File
 import Html
 import Html.Attributes as HA
@@ -23,7 +24,9 @@ type Msg
 
 
 type alias FileReadResult =
-    { fileAsBase64 : String }
+    { fileAsBase64 : String
+    , decodeImageResult : Result String DecodeBMPImage.DecodeBMPImageResult
+    }
 
 
 type alias Model =
@@ -74,8 +77,15 @@ update msg model =
             let
                 fileAsBase64 =
                     Base64.Encode.encode (Base64.Encode.bytes bytes)
+
+                decodeImageResult =
+                    DecodeBMPImage.decodeBMPImageFile bytes
             in
-            ( { model | fileReadResult = Just { fileAsBase64 = fileAsBase64 } }, Cmd.none )
+            ( { model
+                | fileReadResult = Just { fileAsBase64 = fileAsBase64, decodeImageResult = decodeImageResult }
+              }
+            , Cmd.none
+            )
 
 
 
@@ -149,14 +159,48 @@ viewWidget model =
         |> Html.div []
 
 
+fileAsBase64DisplayLengthMax : Int
+fileAsBase64DisplayLengthMax =
+    100000
+
+
 viewFileReadResult : FileReadResult -> Html.Html Msg
 viewFileReadResult fileReadResult =
+    let
+        imageDecodeResultHtml =
+            case fileReadResult.decodeImageResult of
+                Err error ->
+                    [ ("Decoding failed: " ++ error) |> Html.text ] |> Html.div []
+
+                Ok decodeSuccess ->
+                    [ ( "file size / byte", decodeSuccess.fileSizeInBytes |> String.fromInt )
+                    , ( "width / pixel", decodeSuccess.bitmapWidthInPixels |> String.fromInt )
+                    , ( "height / pixel", decodeSuccess.bitmapHeightInPixels |> String.fromInt )
+                    , ( "bits per pixel", decodeSuccess.bitsPerPixel |> String.fromInt )
+                    ]
+                        |> List.map
+                            (\( dimension, amount ) ->
+                                [ [ (dimension ++ " = " ++ amount) |> Html.text ]
+                                    |> Html.td [ HA.style "padding" "0.1 em" ]
+                                ]
+                                    |> Html.tr []
+                            )
+                        |> Html.div []
+    in
     [ [ Html.text "A Base64 string of the dropped file" ] |> Html.div []
     , Html.textarea
-        [ HA.value fileReadResult.fileAsBase64
+        [ HA.value
+            (if fileAsBase64DisplayLengthMax < (fileReadResult.fileAsBase64 |> String.length) then
+                "Base64 encoding is not displayed because it is longer than " ++ (fileAsBase64DisplayLengthMax |> String.fromInt)
+
+             else
+                fileReadResult.fileAsBase64
+            )
         , HA.readonly True
         , HA.style "margin-left" "1em"
         ]
         []
+    , [ Html.text "Image decoding result" ] |> Html.div []
+    , [ imageDecodeResultHtml ] |> Html.div [ HA.style "margin-left" "1em" ]
     ]
         |> Html.div []

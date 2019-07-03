@@ -30,14 +30,24 @@ suite =
         \_ ->
             example_2019_07_02_4x4_040506_ImageFileBase64
                 |> Base64.Decode.decode Base64.Decode.bytes
-                |> Result.toMaybe
-                |> Maybe.andThen (Bytes.Decode.decode DecodeBMPImage.decodeBMPImage)
+                |> Result.mapError (stringDescriptionFromBase64DecodeError >> (++) "Base64 decode error: ")
+                |> Result.andThen DecodeBMPImage.decodeBMPImageFile
                 |> Expect.equal
-                    (Just
+                    (Ok
                         { fileSizeInBytes = 102
                         , bitmapWidthInPixels = 4
                         , bitmapHeightInPixels = 4
                         , bitsPerPixel = 24
-                        , pixelsAsInts = 40506 |> List.repeat 16
+                        , pixelsAsInts = 0x00040506 |> List.repeat 16
                         }
                     )
+
+
+stringDescriptionFromBase64DecodeError : Base64.Decode.Error -> String
+stringDescriptionFromBase64DecodeError base64DecodeError =
+    case base64DecodeError of
+        Base64.Decode.ValidationError ->
+            "validation error"
+
+        Base64.Decode.InvalidByteSequence ->
+            "invalid byte sequence"

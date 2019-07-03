@@ -1,4 +1,4 @@
-module DecodeImageFile exposing (suite)
+module DecodeBMPImageTest exposing (suite)
 
 import Base64.Decode
 import Bytes.Decode
@@ -16,7 +16,7 @@ import Test exposing (..)
 
   - Fill the image using the color with Red = 4, Green = 5, Blue = 6 (Hex 040506).
 
-  - 'Save As', pick 'BMP' and and 'Bit-Depth' of '24-bit'.
+  - 'Save As', pick 'BMP' and 'Bit-Depth' of '24-bit'.
 
 -}
 example_2019_07_02_4x4_040506_ImageFileBase64 : String
@@ -26,7 +26,7 @@ example_2019_07_02_4x4_040506_ImageFileBase64 =
 
 suite : Test
 suite =
-    test "Example file is decoded as expected" <|
+    test "Example 4x4 image file is decoded as expected" <|
         \_ ->
             example_2019_07_02_4x4_040506_ImageFileBase64
                 |> Base64.Decode.decode Base64.Decode.bytes
@@ -34,7 +34,8 @@ suite =
                 |> Maybe.andThen (Bytes.Decode.decode DecodeBMPImage.decodeBMPImage)
                 |> Expect.equal
                     (Just
-                        { bitmapWidthInPixels = 4
+                        { fileSizeInBytes = 102
+                        , bitmapWidthInPixels = 4
                         , bitmapHeightInPixels = 4
                         , bitsPerPixel = 24
                         , pixelsAsInts = 40506 |> List.repeat 16

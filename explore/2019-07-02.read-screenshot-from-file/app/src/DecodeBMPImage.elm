@@ -1,4 +1,4 @@
-module DecodeBMPImage exposing (DecodeBMPImageResult, decodeBMPImageFile)
+module DecodeBMPImage exposing (DecodeBMPImageResult, decodeBMPImageFile, encodeRGBasInt)
 
 import Bitwise
 import Bytes
@@ -10,8 +10,13 @@ type alias DecodeBMPImageResult =
     , bitmapWidthInPixels : Int
     , bitmapHeightInPixels : Int
     , bitsPerPixel : Int
-    , pixelsAsInts : List Int
+    , pixelsAsIntsLeftToRightTopToBottom : List Int
     }
+
+
+encodeRGBasInt : { red : Int, green : Int, blue : Int } -> Int
+encodeRGBasInt { red, green, blue } =
+    blue |> Bitwise.shiftLeftBy 8 |> Bitwise.or green |> Bitwise.shiftLeftBy 8 |> Bitwise.or red
 
 
 {-| Decode image file based on layout described at <https://en.wikipedia.org/wiki/BMP_file_format>
@@ -52,7 +57,13 @@ decodeBMPImageFile bytes =
                     pixelsDecoderFromFileBegin =
                         Bytes.Decode.bytes fileHeader.pixelArrayOffset
                             |> Bytes.Decode.andThen
-                                (\_ -> pixelArrayDecoder { numberOfPixels = numberOfPixels, bitsPerPixel = dibHeader.bitsPerPixel })
+                                (\_ ->
+                                    pixelArrayDecoderLeftToRightTopToBottom
+                                        { bitmapWidthInPixels = dibHeader.bitmapWidthInPixels
+                                        , bitmapHeightInPixels = dibHeader.bitmapHeightInPixels
+                                        , bitsPerPixel = dibHeader.bitsPerPixel
+                                        }
+                                )
                 in
                 case
                     bytes |> Bytes.Decode.decode pixelsDecoderFromFileBegin
@@ -60,27 +71,46 @@ decodeBMPImageFile bytes =
                     Nothing ->
                         Err "Failed to decode pixel array"
 
-                    Just pixels ->
+                    Just pixelsAsIntsLeftToRightTopToBottom ->
                         { fileSizeInBytes = fileHeader.fileSizeInBytes
                         , bitmapWidthInPixels = dibHeader.bitmapWidthInPixels
                         , bitmapHeightInPixels = dibHeader.bitmapHeightInPixels
                         , bitsPerPixel = dibHeader.bitsPerPixel
-                        , pixelsAsInts = pixels
+                        , pixelsAsIntsLeftToRightTopToBottom = pixelsAsIntsLeftToRightTopToBottom
                         }
                             |> Ok
 
 
-pixelArrayDecoder : { numberOfPixels : Int, bitsPerPixel : Int } -> Bytes.Decode.Decoder (List Int)
-pixelArrayDecoder { numberOfPixels, bitsPerPixel } =
-    Bytes.Decode.loop ( numberOfPixels, [] )
+pixelArrayDecoderLeftToRightTopToBottom : { bitmapWidthInPixels : Int, bitmapHeightInPixels : Int, bitsPerPixel : Int } -> Bytes.Decode.Decoder (List Int)
+pixelArrayDecoderLeftToRightTopToBottom { bitmapWidthInPixels, bitmapHeightInPixels, bitsPerPixel } =
+    Bytes.Decode.loop ( bitmapHeightInPixels, [] )
+        (decodeListStep (pixelRowDecoderLeftToRight { bitmapWidthInPixels = bitmapWidthInPixels, bitsPerPixel = bitsPerPixel }))
+        |> Bytes.Decode.map List.concat
+
+
+pixelRowDecoderLeftToRight : { bitmapWidthInPixels : Int, bitsPerPixel : Int } -> Bytes.Decode.Decoder (List Int)
+pixelRowDecoderLeftToRight { bitmapWidthInPixels, bitsPerPixel } =
+    let
+        bytesPerPixel =
+            bitsPerPixel // 8
+
+        bytesPerRowBeforePadding =
+            bitmapWidthInPixels * bytesPerPixel
+
+        padding =
+            (4 * bitmapWidthInPixels - bytesPerRowBeforePadding) |> modBy 4
+    in
+    Bytes.Decode.loop ( bitmapWidthInPixels, [] )
         (decodeListStep (pixelDecoder { bitsPerPixel = bitsPerPixel }))
+        |> Bytes.Decode.map List.reverse
+        |> Bytes.Decode.andThen (\rowPixels -> Bytes.Decode.bytes padding |> Bytes.Decode.map (always rowPixels))
 
 
 pixelDecoder : { bitsPerPixel : Int } -> Bytes.Decode.Decoder Int
 pixelDecoder { bitsPerPixel } =
     if bitsPerPixel == 24 then
         Bytes.Decode.map3
-            (\red green blue -> blue |> Bitwise.shiftLeftBy 8 |> Bitwise.or green |> Bitwise.shiftLeftBy 8 |> Bitwise.or red)
+            (\blue green red -> encodeRGBasInt { red = red, green = green, blue = blue })
             Bytes.Decode.unsignedInt8
             Bytes.Decode.unsignedInt8
             Bytes.Decode.unsignedInt8

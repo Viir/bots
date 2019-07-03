@@ -6,9 +6,10 @@ module Main exposing (main)
 -}
 
 import Base64.Encode
+import Bitwise
 import Browser
 import Bytes
-import DecodeBMPImage
+import DecodeBMPImage exposing (DecodeBMPImageResult)
 import File
 import Html
 import Html.Attributes as HA
@@ -17,10 +18,15 @@ import Json.Decode
 import Task
 
 
-type Msg
+type Event
     = NoOp
     | OnDrop (List File.File)
     | FileDropped Bytes.Bytes
+    | ConfigureImageSearch PixelValueExactRGB
+
+
+type alias PixelValueExactRGB =
+    { red : Int, green : Int, blue : Int }
 
 
 type alias FileReadResult =
@@ -29,37 +35,45 @@ type alias FileReadResult =
     }
 
 
-type alias Model =
+type alias State =
     { fileReadResult : Maybe FileReadResult
+    , imageSearchConfiguration : ImageSearchConfiguration
+    , imageSearchResults : Maybe (List { x : Int, y : Int })
     }
 
 
-main : Program () Model Msg
+type alias ImageSearchConfiguration =
+    PixelValueExactRGB
+
+
+main : Program () State Event
 main =
     Browser.document
         { init = init
-        , view = \model -> { title = "ivadzy/bbase64", body = [ view model ] }
+        , view = \state -> { title = "Search in BMP Image", body = [ view state ] }
         , update = update
         , subscriptions = \_ -> Sub.none
         }
 
 
-init : () -> ( Model, Cmd Msg )
+init : () -> ( State, Cmd Event )
 init _ =
     let
-        initialModel =
+        initialState =
             { fileReadResult = Nothing
+            , imageSearchConfiguration = { red = 0, green = 0, blue = 0 }
+            , imageSearchResults = Nothing
             }
     in
-    ( initialModel, Cmd.none )
+    ( initialState, Cmd.none )
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
+update : Event -> State -> ( State, Cmd Event )
+update msg stateBefore =
     case msg of
         NoOp ->
             Debug.log "noop" <|
-                ( model, Cmd.none )
+                ( stateBefore, Cmd.none )
 
         OnDrop files ->
             let
@@ -71,7 +85,7 @@ update msg model =
                         Nothing ->
                             Cmd.none
             in
-            ( model, task )
+            ( stateBefore, task )
 
         FileDropped bytes ->
             let
@@ -81,8 +95,23 @@ update msg model =
                 decodeImageResult =
                     DecodeBMPImage.decodeBMPImageFile bytes
             in
-            ( { model
+            ( { stateBefore
                 | fileReadResult = Just { fileAsBase64 = fileAsBase64, decodeImageResult = decodeImageResult }
+                , imageSearchResults = Nothing
+              }
+            , Cmd.none
+            )
+
+        ConfigureImageSearch imageSearchConfiguration ->
+            let
+                imageSearchResults =
+                    stateBefore.fileReadResult
+                        |> Maybe.andThen (.decodeImageResult >> Result.toMaybe)
+                        |> Maybe.map (findMatchesInImage imageSearchConfiguration)
+            in
+            ( { stateBefore
+                | imageSearchConfiguration = imageSearchConfiguration
+                , imageSearchResults = imageSearchResults
               }
             , Cmd.none
             )
@@ -119,15 +148,15 @@ alwaysPreventDefault msg =
 -- View
 
 
-view : Model -> Html.Html Msg
-view model =
+view : State -> Html.Html Event
+view state =
     Html.div [] <|
-        viewInfoSection model
-            :: [ viewWidget model ]
+        viewInfoSection state
+            :: [ viewWidget state ]
 
 
-viewInfoSection : Model -> Html.Html Msg
-viewInfoSection model =
+viewInfoSection : State -> Html.Html Event
+viewInfoSection state =
     Html.section []
         [ Html.header []
             [ Html.h1 [] [ Html.text "Base64 Encoding" ]
@@ -142,19 +171,28 @@ viewInfoSection model =
         ]
 
 
-viewWidget : Model -> Html.Html Msg
-viewWidget model =
+viewWidget : State -> Html.Html Event
+viewWidget state =
     let
         fileReadResultHtml =
-            case model.fileReadResult of
+            case state.fileReadResult of
                 Nothing ->
                     Html.text "No file loaded so far."
 
                 Just fileReadResult ->
                     viewFileReadResult fileReadResult
+
+        imageSearchHtml =
+            viewImageSearchConfiguration state.imageSearchConfiguration
     in
     [ Html.div [ HA.style "padding" "1em", onDrop OnDrop, onDragOver NoOp ] [ Html.text "Drop a file here" ]
     , fileReadResultHtml
+    , [] |> Html.div [ HA.style "height" "1em" ]
+    , [ "Configure Image Search" |> Html.text ] |> Html.div []
+    , [ imageSearchHtml ] |> Html.div [ HA.style "margin-left" "1em" ]
+    , [] |> Html.div [ HA.style "height" "1em" ]
+    , [ "Image Search Results" |> Html.text ] |> Html.div []
+    , [ viewImageSearchResults state.imageSearchResults ] |> Html.div [ HA.style "margin-left" "1em" ]
     ]
         |> Html.div []
 
@@ -164,7 +202,7 @@ fileAsBase64DisplayLengthMax =
     100000
 
 
-viewFileReadResult : FileReadResult -> Html.Html Msg
+viewFileReadResult : FileReadResult -> Html.Html Event
 viewFileReadResult fileReadResult =
     let
         imageDecodeResultHtml =
@@ -204,3 +242,93 @@ viewFileReadResult fileReadResult =
     , [ imageDecodeResultHtml ] |> Html.div [ HA.style "margin-left" "1em" ]
     ]
         |> Html.div []
+
+
+viewImageSearchConfiguration : ImageSearchConfiguration -> Html.Html Event
+viewImageSearchConfiguration state =
+    let
+        components : List ( String, Int, ImageSearchConfiguration -> Int -> ImageSearchConfiguration )
+        components =
+            [ ( "red", state.red, \previousValue input -> { previousValue | red = input } )
+            , ( "green", state.green, \previousValue input -> { previousValue | green = input } )
+            , ( "blue", state.blue, \previousValue input -> { previousValue | blue = input } )
+            ]
+    in
+    components
+        |> List.map
+            (\( componentName, componentCurrentValue, componentMap ) ->
+                let
+                    inputMap : String -> Event
+                    inputMap =
+                        \inputString ->
+                            inputString
+                                |> String.toInt
+                                |> Maybe.map
+                                    (\inputAsInt ->
+                                        componentMap state inputAsInt
+                                    )
+                                |> Maybe.map ConfigureImageSearch
+                                |> Maybe.withDefault NoOp
+                in
+                [ componentName |> Html.text
+                , []
+                    |> Html.input
+                        [ HA.value (componentCurrentValue |> String.fromInt)
+                        , HE.onInput inputMap
+                        ]
+                ]
+                    |> Html.div []
+            )
+        |> Html.div []
+
+
+viewImageSearchResults : Maybe (List { x : Int, y : Int }) -> Html.Html a
+viewImageSearchResults maybeSearchResults =
+    case maybeSearchResults of
+        Nothing ->
+            [ "No search performed yet." |> Html.text ] |> Html.div []
+
+        Just searchResults ->
+            let
+                resultsToDisplay =
+                    searchResults |> List.take 10
+
+                truncatedSearchResultsHtml =
+                    resultsToDisplay
+                        |> List.map
+                            (\searchResult ->
+                                [ ((searchResult.x |> String.fromInt) ++ ", " ++ (searchResult.y |> String.fromInt)) |> Html.text ]
+                                    |> Html.div []
+                            )
+                        |> Html.div []
+
+                overviewHtml =
+                    [ ("Found matches in "
+                        ++ (searchResults |> List.length |> String.fromInt)
+                        ++ " locations."
+                      )
+                        |> Html.text
+                    ]
+                        |> Html.div []
+            in
+            [ overviewHtml, [ truncatedSearchResultsHtml ] |> Html.div [ HA.style "margin-left" "1em" ] ] |> Html.div []
+
+
+findMatchesInImage : ImageSearchConfiguration -> DecodeBMPImageResult -> List { x : Int, y : Int }
+findMatchesInImage searchConfiguration image =
+    let
+        pixelValueToSearchAsInt =
+            DecodeBMPImage.encodeRGBasInt
+                { red = searchConfiguration.red, green = searchConfiguration.green, blue = searchConfiguration.blue }
+    in
+    image.pixelsAsIntsLeftToRightTopToBottom
+        |> List.indexedMap
+            (\pixelIndex pixelValue ->
+                if pixelValue == pixelValueToSearchAsInt then
+                    Just
+                        { x = pixelIndex |> modBy image.bitmapWidthInPixels, y = pixelIndex // image.bitmapWidthInPixels }
+
+                else
+                    Nothing
+            )
+        |> List.filterMap identity

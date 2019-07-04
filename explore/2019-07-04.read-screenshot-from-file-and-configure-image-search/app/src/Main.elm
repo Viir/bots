@@ -14,6 +14,27 @@ import Json.Decode
 import Task
 
 
+viewInfoSection : State -> Html.Html event
+viewInfoSection state =
+    Html.section []
+        [ Html.header []
+            [ Html.h1 [] [ Html.text "Configure and Test an Image Search Pattern" ]
+            ]
+        , Html.p []
+            [ Html.text "This example demonstrates how to load a screenshot from a file and locate an object in the screenshot."
+            ]
+        , Html.p []
+            [ Html.text "With the tools below, you can configure an image search pattern and test it with a bitmap image."
+            ]
+        , Html.p []
+            [ Html.a [ HA.href "https://github.com/Viir/bots" ] [ Html.text "Repository" ]
+            ]
+        , Html.p []
+            [ Html.text "Credits to Ivan for supplying the demos for file loading and base64 at https://github.com/ivadzy/ivadzy.github.io/tree/90013a59b3889f68e89f590d77c280ead3a424b6/demos/bbase64"
+            ]
+        ]
+
+
 type Event
     = NoOp
     | OnDrop (List File.File)
@@ -207,24 +228,6 @@ view state =
     Html.div [] <|
         viewInfoSection state
             :: [ viewWidget state ]
-
-
-viewInfoSection : State -> Html.Html Event
-viewInfoSection state =
-    Html.section []
-        [ Html.header []
-            [ Html.h1 [] [ Html.text "Configure and Test an Image Search Pattern" ]
-            ]
-        , Html.p []
-            [ Html.text "Below you can configure an image search pattern and test it with bitmap images. You can load images to test by dragging and dropping them into the drop area below."
-            ]
-        , Html.p []
-            [ Html.a [ HA.href "https://github.com/Viir/bots" ] [ Html.text "Repository" ]
-            ]
-        , Html.p []
-            [ Html.text "Credits to Ivan for supplying the demos for file loading and base64 at https://github.com/ivadzy/ivadzy.github.io/tree/90013a59b3889f68e89f590d77c280ead3a424b6/demos/bbase64"
-            ]
-        ]
 
 
 viewWidget : State -> Html.Html Event

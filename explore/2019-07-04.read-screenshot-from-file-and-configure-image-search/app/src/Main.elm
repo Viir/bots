@@ -41,6 +41,7 @@ type Event
     | FileDropped Bytes.Bytes
     | ConfigureImageSearch ConfigureImageSearchEvent
     | SetImagePatternConfigureLeafFormState ImagePatternLeaf
+    | UpdateImageSearchResults
 
 
 type ConfigureImageSearchEvent
@@ -165,12 +166,15 @@ update msg stateBefore =
                         RemovePatternLeaf patternLeaf ->
                             imageSearchConfigurationBefore |> List.filter ((/=) patternLeaf)
             in
-            ( { stateBefore | imageSearchConfiguration = imageSearchConfiguration } |> updateImageSearchResult
-            , Cmd.none
-            )
+            { stateBefore | imageSearchConfiguration = imageSearchConfiguration } |> update UpdateImageSearchResults
 
         SetImagePatternConfigureLeafFormState formState ->
             ( { stateBefore | imagePatternConfigureLeafForm = formState }, Cmd.none )
+
+        UpdateImageSearchResults ->
+            ( stateBefore |> updateImageSearchResult
+            , Cmd.none
+            )
 
 
 pixelValueDictFromDecodeBMPImageResult : DecodeBMPImage.DecodeBMPImageResult -> Dict.Dict ( Int, Int ) PixelValue
@@ -502,11 +506,14 @@ pixelColorChannelDecoder =
             )
 
 
-viewImageSearchResults : Maybe (List { x : Int, y : Int }) -> Html.Html a
+viewImageSearchResults : Maybe (List { x : Int, y : Int }) -> Html.Html Event
 viewImageSearchResults maybeSearchResults =
     case maybeSearchResults of
         Nothing ->
-            [ "No search performed yet." |> Html.text ] |> Html.div []
+            [ "No search performed yet." |> Html.text
+            , [ "Start search for pattern in image now" |> Html.text ] |> Html.button [ HE.onClick UpdateImageSearchResults ]
+            ]
+                |> Html.div []
 
         Just searchResults ->
             let

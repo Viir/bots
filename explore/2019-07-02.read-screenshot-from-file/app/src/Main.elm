@@ -10,6 +10,7 @@ import Bitwise
 import Browser
 import Bytes
 import DecodeBMPImage exposing (DecodeBMPImageResult)
+import Dict
 import File
 import Html
 import Html.Attributes as HA
@@ -22,11 +23,35 @@ type Event
     = NoOp
     | OnDrop (List File.File)
     | FileDropped Bytes.Bytes
-    | ConfigureImageSearch PixelValueExactRGB
+    | ConfigureImageSearch ConfigureImageSearchEvent
+    | SetImagePatternConfigureLeafFormState ImagePatternLeaf
+
+
+type ConfigureImageSearchEvent
+    = RemovePatternLeaf ImagePatternLeaf
+    | AddPatternLeaf ImagePatternLeaf
 
 
 type alias PixelValueExactRGB =
     { red : Int, green : Int, blue : Int }
+
+
+type PixelColorChannel
+    = Red
+    | Green
+    | Blue
+
+
+type PatternConstraintOnColorChannelValue
+    = Minimum Int
+    | Maximum Int
+
+
+type alias ImagePatternLeaf =
+    { pixelOffset : { x : Int, y : Int }
+    , channel : PixelColorChannel
+    , channelValueConstraint : PatternConstraintOnColorChannelValue
+    }
 
 
 type alias FileReadResult =
@@ -39,11 +64,12 @@ type alias State =
     { fileReadResult : Maybe FileReadResult
     , imageSearchConfiguration : ImageSearchConfiguration
     , imageSearchResults : Maybe (List { x : Int, y : Int })
+    , imagePatternConfigureLeafForm : ImagePatternLeaf
     }
 
 
 type alias ImageSearchConfiguration =
-    PixelValueExactRGB
+    List ImagePatternLeaf
 
 
 main : Program () State Event
@@ -61,8 +87,10 @@ init _ =
     let
         initialState =
             { fileReadResult = Nothing
-            , imageSearchConfiguration = { red = 0, green = 0, blue = 0 }
+            , imageSearchConfiguration = []
             , imageSearchResults = Nothing
+            , imagePatternConfigureLeafForm =
+                { pixelOffset = { x = 0, y = 0 }, channel = Red, channelValueConstraint = Minimum 0 }
             }
     in
     ( initialState, Cmd.none )
@@ -102,19 +130,40 @@ update msg stateBefore =
             , Cmd.none
             )
 
-        ConfigureImageSearch imageSearchConfiguration ->
+        ConfigureImageSearch configureImageSearchEvent ->
             let
-                imageSearchResults =
-                    stateBefore.fileReadResult
-                        |> Maybe.andThen (.decodeImageResult >> Result.toMaybe)
-                        |> Maybe.map (findMatchesInImage imageSearchConfiguration)
+                imageSearchConfigurationBefore =
+                    stateBefore.imageSearchConfiguration
+
+                imageSearchConfiguration =
+                    case configureImageSearchEvent of
+                        AddPatternLeaf patternLeaf ->
+                            imageSearchConfigurationBefore ++ [ patternLeaf ]
+
+                        RemovePatternLeaf patternLeaf ->
+                            imageSearchConfigurationBefore |> List.filter ((/=) patternLeaf)
             in
-            ( { stateBefore
-                | imageSearchConfiguration = imageSearchConfiguration
-                , imageSearchResults = imageSearchResults
-              }
+            ( { stateBefore | imageSearchConfiguration = imageSearchConfiguration } |> updateImageSearchResult
             , Cmd.none
             )
+
+        SetImagePatternConfigureLeafFormState formState ->
+            ( { stateBefore | imagePatternConfigureLeafForm = formState }, Cmd.none )
+
+
+updateImageSearchResult : State -> State
+updateImageSearchResult stateBefore =
+    let
+        imageSearchResults =
+            if stateBefore.imageSearchConfiguration |> List.isEmpty then
+                Nothing
+
+            else
+                stateBefore.fileReadResult
+                    |> Maybe.andThen (.decodeImageResult >> Result.toMaybe)
+                    |> Maybe.map (findMatchesInImage stateBefore.imageSearchConfiguration)
+    in
+    { stateBefore | imageSearchResults = imageSearchResults }
 
 
 
@@ -183,7 +232,7 @@ viewWidget state =
                     viewFileReadResult fileReadResult
 
         imageSearchHtml =
-            viewImageSearchConfiguration state.imageSearchConfiguration
+            viewImageSearchConfiguration state
     in
     [ Html.div [ HA.style "padding" "1em", onDrop OnDrop, onDragOver NoOp ] [ Html.text "Drop a file here" ]
     , fileReadResultHtml
@@ -244,42 +293,190 @@ viewFileReadResult fileReadResult =
         |> Html.div []
 
 
-viewImageSearchConfiguration : ImageSearchConfiguration -> Html.Html Event
+viewImageSearchConfiguration : State -> Html.Html Event
 viewImageSearchConfiguration state =
     let
-        components : List ( String, Int, ImageSearchConfiguration -> Int -> ImageSearchConfiguration )
-        components =
-            [ ( "red", state.red, \previousValue input -> { previousValue | red = input } )
-            , ( "green", state.green, \previousValue input -> { previousValue | green = input } )
-            , ( "blue", state.blue, \previousValue input -> { previousValue | blue = input } )
-            ]
+        patternLeavesHtml =
+            state.imageSearchConfiguration
+                |> List.map viewImagePatternLeaf
+                |> Html.div []
     in
-    components
-        |> List.map
-            (\( componentName, componentCurrentValue, componentMap ) ->
-                let
-                    inputMap : String -> Event
-                    inputMap =
-                        \inputString ->
-                            inputString
-                                |> String.toInt
-                                |> Maybe.map
-                                    (\inputAsInt ->
-                                        componentMap state inputAsInt
-                                    )
-                                |> Maybe.map ConfigureImageSearch
-                                |> Maybe.withDefault NoOp
-                in
-                [ componentName |> Html.text
-                , []
-                    |> Html.input
-                        [ HA.value (componentCurrentValue |> String.fromInt)
-                        , HE.onInput inputMap
-                        ]
-                ]
-                    |> Html.div []
-            )
+    [ [ Html.text "List of constraints to accept a match" ] |> Html.div []
+    , [ patternLeavesHtml ] |> Html.div [ HA.style "margin-left" "1em" ]
+    , [ Html.text "Configure new constraint" ] |> Html.div []
+    , [ viewConfigureImagePatternLeafForm state.imagePatternConfigureLeafForm ] |> Html.div [ HA.style "margin-left" "1em" ]
+    ]
         |> Html.div []
+
+
+viewImagePatternLeaf : ImagePatternLeaf -> Html.Html Event
+viewImagePatternLeaf imagePatternLeaf =
+    let
+        pixelOffsetText =
+            (imagePatternLeaf.pixelOffset.x |> String.fromInt) ++ " | " ++ (imagePatternLeaf.pixelOffset.y |> String.fromInt)
+
+        channelName =
+            colorChannelFromNameInForm
+                |> dictListGet imagePatternLeaf.channel
+                |> Maybe.withDefault "Error"
+
+        channelConstraintText =
+            case imagePatternLeaf.channelValueConstraint of
+                Minimum channelMinimum ->
+                    " >= " ++ (channelMinimum |> String.fromInt)
+
+                Maximum channelMaximum ->
+                    " <= " ++ (channelMaximum |> String.fromInt)
+
+        removeButtonHtml =
+            [ "⌫ remove" |> Html.text ] |> Html.button [ HE.onClick (RemovePatternLeaf imagePatternLeaf) ]
+    in
+    [ ("for pixel at " ++ pixelOffsetText ++ ", channel " ++ channelName ++ channelConstraintText) |> Html.text, removeButtonHtml ]
+        |> Html.div []
+        |> Html.map ConfigureImageSearch
+
+
+viewConfigureImagePatternLeafForm : ImagePatternLeaf -> Html.Html Event
+viewConfigureImagePatternLeafForm state =
+    let
+        selectChannelDropdownEvent =
+            HE.on "change"
+                (pixelColorChannelDecoder |> Json.Decode.map (\channel -> { state | channel = channel }))
+
+        viewOfferedColorChannel : PixelColorChannel -> Html.Html event
+        viewOfferedColorChannel offeredChannel =
+            let
+                label =
+                    colorChannelFromNameInForm
+                        |> dictListGet offeredChannel
+                        |> Maybe.withDefault "Error"
+            in
+            [ Html.text label ]
+                |> Html.option [ HA.value label, HA.selected (state.channel == offeredChannel) ]
+
+        currentSelectedChannelNameInForm =
+            colorChannelFromNameInForm
+                |> dictListGet state.channel
+                |> Maybe.withDefault "none"
+
+        ( selectedChannelConstraintName, selectedOperandValue ) =
+            case state.channelValueConstraint of
+                Minimum channelMinimum ->
+                    ( "min", channelMinimum )
+
+                Maximum channelMaximum ->
+                    ( "max", channelMaximum )
+
+        offeredConstraintsOptionsHtml =
+            [ ( "min", ">=" ), ( "max", "<=" ) ]
+                |> List.map
+                    (\( offeredConstraintName, offeredConstraintOperatorText ) ->
+                        [ offeredConstraintOperatorText |> Html.text ]
+                            |> Html.option
+                                [ HA.value offeredConstraintName, HA.selected (selectedChannelConstraintName == offeredConstraintName) ]
+                    )
+
+        channelConstraintDecoder : Json.Decode.Decoder PatternConstraintOnColorChannelValue
+        channelConstraintDecoder =
+            HE.targetValue
+                |> Json.Decode.map
+                    (\targetValue ->
+                        if targetValue == "min" then
+                            Minimum selectedOperandValue
+
+                        else
+                            Maximum selectedOperandValue
+                    )
+
+        selectChannelConstraintDropdownEvent =
+            HE.on "change"
+                (channelConstraintDecoder |> Json.Decode.map (\channelConstraint -> { state | channelValueConstraint = channelConstraint }))
+
+        operandInputEventDecoder : Json.Decode.Decoder PatternConstraintOnColorChannelValue
+        operandInputEventDecoder =
+            eventTargetValueAsIntDecoder
+                |> Json.Decode.map
+                    (\operand ->
+                        case state.channelValueConstraint of
+                            Minimum _ ->
+                                Minimum operand
+
+                            Maximum _ ->
+                                Maximum operand
+                    )
+
+        operandInputEventAttribute =
+            HE.on "input"
+                (operandInputEventDecoder |> Json.Decode.map (\channelConstraint -> { state | channelValueConstraint = channelConstraint }))
+
+        operandInputHtml =
+            [] |> Html.input [ HA.value (selectedOperandValue |> String.fromInt), operandInputEventAttribute ]
+
+        currentPixelOffset =
+            state.pixelOffset
+
+        offsetInputHtml =
+            [ [ "offset " |> Html.text ] |> Html.span []
+            , [ \input -> { currentPixelOffset | x = input }, \input -> { currentPixelOffset | y = input } ]
+                |> List.map
+                    (\inputMap ->
+                        let
+                            eventDecoder =
+                                eventTargetValueAsIntDecoder
+                                    |> Json.Decode.map (inputMap >> (\newPixelOffset -> { state | pixelOffset = newPixelOffset }))
+                        in
+                        [] |> Html.input [ HE.on "input" eventDecoder, HA.style "width" "3em" ]
+                    )
+                |> Html.span []
+            ]
+                |> Html.span []
+
+        parameterHtml =
+            [ offsetInputHtml
+            , colorChannelFromNameInForm
+                |> List.map (Tuple.first >> viewOfferedColorChannel)
+                |> Html.select
+                    [ HA.value currentSelectedChannelNameInForm, selectChannelDropdownEvent ]
+            , offeredConstraintsOptionsHtml
+                |> Html.select
+                    [ HA.value selectedChannelConstraintName, selectChannelConstraintDropdownEvent ]
+            , operandInputHtml
+            ]
+                |> Html.span []
+                |> Html.map SetImagePatternConfigureLeafFormState
+    in
+    [ parameterHtml
+    , [ "Add" |> Html.text ] |> Html.button [ HE.onClick (ConfigureImageSearch (AddPatternLeaf state)) ]
+    ]
+        |> Html.div []
+
+
+eventTargetValueAsIntDecoder : Json.Decode.Decoder Int
+eventTargetValueAsIntDecoder =
+    HE.targetValue
+        |> Json.Decode.andThen
+            (String.toInt
+                >> Maybe.map Json.Decode.succeed
+                >> Maybe.withDefault (Json.Decode.fail "Failed to parse as integer")
+            )
+
+
+colorChannelFromNameInForm : List ( PixelColorChannel, String )
+colorChannelFromNameInForm =
+    [ ( Red, "red" ), ( Green, "green" ), ( Blue, "blue" ) ]
+
+
+pixelColorChannelDecoder : Json.Decode.Decoder PixelColorChannel
+pixelColorChannelDecoder =
+    HE.targetValue
+        |> Json.Decode.andThen
+            (\targetValue ->
+                colorChannelFromNameInForm
+                    |> List.map tupleSwap
+                    |> dictListGet targetValue
+                    |> Maybe.map Json.Decode.succeed
+                    |> Maybe.withDefault (Json.Decode.fail ("Invalid channel kind: " ++ targetValue))
+            )
 
 
 viewImageSearchResults : Maybe (List { x : Int, y : Int }) -> Html.Html a
@@ -317,18 +514,73 @@ viewImageSearchResults maybeSearchResults =
 findMatchesInImage : ImageSearchConfiguration -> DecodeBMPImageResult -> List { x : Int, y : Int }
 findMatchesInImage searchConfiguration image =
     let
-        pixelValueToSearchAsInt =
-            DecodeBMPImage.encodeRGBasInt
-                { red = searchConfiguration.red, green = searchConfiguration.green, blue = searchConfiguration.blue }
+        pixelValueDict : Dict.Dict ( Int, Int ) { red : Int, green : Int, blue : Int }
+        pixelValueDict =
+            image.pixelsLeftToRightTopToBottom
+                |> List.indexedMap
+                    (\pixelIndex pixelValue ->
+                        ( ( pixelIndex |> modBy image.bitmapWidthInPixels, pixelIndex // image.bitmapWidthInPixels )
+                        , pixelValue
+                        )
+                    )
+                |> Dict.fromList
     in
-    image.pixelsAsIntsLeftToRightTopToBottom
-        |> List.indexedMap
-            (\pixelIndex pixelValue ->
-                if pixelValue == pixelValueToSearchAsInt then
-                    Just
-                        { x = pixelIndex |> modBy image.bitmapWidthInPixels, y = pixelIndex // image.bitmapWidthInPixels }
+    pixelValueDict
+        |> Dict.keys
+        |> List.filter
+            (\( originX, originY ) ->
+                searchConfiguration
+                    |> List.all
+                        (\patternLeaf ->
+                            let
+                                leafAbsoluteX =
+                                    originX + patternLeaf.pixelOffset.x
+
+                                leafAbsoluteY =
+                                    originY + patternLeaf.pixelOffset.y
+                            in
+                            case pixelValueDict |> Dict.get ( leafAbsoluteX, leafAbsoluteY ) of
+                                Nothing ->
+                                    False
+
+                                Just leafPixelValue ->
+                                    let
+                                        channelValue =
+                                            case patternLeaf.channel of
+                                                Red ->
+                                                    leafPixelValue.red
+
+                                                Green ->
+                                                    leafPixelValue.green
+
+                                                Blue ->
+                                                    leafPixelValue.blue
+                                    in
+                                    case patternLeaf.channelValueConstraint of
+                                        Minimum channelMinimum ->
+                                            channelMinimum <= channelValue
+
+                                        Maximum channelMaximum ->
+                                            channelValue <= channelMaximum
+                        )
+            )
+        |> List.map (\( originX, originY ) -> { x = originX, y = originY })
+
+
+dictListGet : key -> List ( key, value ) -> Maybe value
+dictListGet key dict =
+    dict
+        |> List.filterMap
+            (\( cKey, val ) ->
+                if cKey == key then
+                    Just val
 
                 else
                     Nothing
             )
-        |> List.filterMap identity
+        |> List.head
+
+
+tupleSwap : ( a, b ) -> ( b, a )
+tupleSwap ( a, b ) =
+    ( b, a )

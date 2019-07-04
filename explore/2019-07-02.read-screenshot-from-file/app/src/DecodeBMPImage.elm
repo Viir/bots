@@ -1,4 +1,4 @@
-module DecodeBMPImage exposing (DecodeBMPImageResult, decodeBMPImageFile, encodeRGBasInt)
+module DecodeBMPImage exposing (DecodeBMPImageResult, decodeBMPImageFile)
 
 import Bitwise
 import Bytes
@@ -10,13 +10,12 @@ type alias DecodeBMPImageResult =
     , bitmapWidthInPixels : Int
     , bitmapHeightInPixels : Int
     , bitsPerPixel : Int
-    , pixelsAsIntsLeftToRightTopToBottom : List Int
+    , pixelsLeftToRightTopToBottom : List PixelValue
     }
 
 
-encodeRGBasInt : { red : Int, green : Int, blue : Int } -> Int
-encodeRGBasInt { red, green, blue } =
-    blue |> Bitwise.shiftLeftBy 8 |> Bitwise.or green |> Bitwise.shiftLeftBy 8 |> Bitwise.or red
+type alias PixelValue =
+    { red : Int, green : Int, blue : Int }
 
 
 {-| Decode image file based on layout described at <https://en.wikipedia.org/wiki/BMP_file_format>
@@ -71,24 +70,24 @@ decodeBMPImageFile bytes =
                     Nothing ->
                         Err "Failed to decode pixel array"
 
-                    Just pixelsAsIntsLeftToRightTopToBottom ->
+                    Just pixelsLeftToRightTopToBottom ->
                         { fileSizeInBytes = fileHeader.fileSizeInBytes
                         , bitmapWidthInPixels = dibHeader.bitmapWidthInPixels
                         , bitmapHeightInPixels = dibHeader.bitmapHeightInPixels
                         , bitsPerPixel = dibHeader.bitsPerPixel
-                        , pixelsAsIntsLeftToRightTopToBottom = pixelsAsIntsLeftToRightTopToBottom
+                        , pixelsLeftToRightTopToBottom = pixelsLeftToRightTopToBottom
                         }
                             |> Ok
 
 
-pixelArrayDecoderLeftToRightTopToBottom : { bitmapWidthInPixels : Int, bitmapHeightInPixels : Int, bitsPerPixel : Int } -> Bytes.Decode.Decoder (List Int)
+pixelArrayDecoderLeftToRightTopToBottom : { bitmapWidthInPixels : Int, bitmapHeightInPixels : Int, bitsPerPixel : Int } -> Bytes.Decode.Decoder (List PixelValue)
 pixelArrayDecoderLeftToRightTopToBottom { bitmapWidthInPixels, bitmapHeightInPixels, bitsPerPixel } =
     Bytes.Decode.loop ( bitmapHeightInPixels, [] )
         (decodeListStep (pixelRowDecoderLeftToRight { bitmapWidthInPixels = bitmapWidthInPixels, bitsPerPixel = bitsPerPixel }))
         |> Bytes.Decode.map List.concat
 
 
-pixelRowDecoderLeftToRight : { bitmapWidthInPixels : Int, bitsPerPixel : Int } -> Bytes.Decode.Decoder (List Int)
+pixelRowDecoderLeftToRight : { bitmapWidthInPixels : Int, bitsPerPixel : Int } -> Bytes.Decode.Decoder (List PixelValue)
 pixelRowDecoderLeftToRight { bitmapWidthInPixels, bitsPerPixel } =
     let
         bytesPerPixel =
@@ -106,11 +105,11 @@ pixelRowDecoderLeftToRight { bitmapWidthInPixels, bitsPerPixel } =
         |> Bytes.Decode.andThen (\rowPixels -> Bytes.Decode.bytes padding |> Bytes.Decode.map (always rowPixels))
 
 
-pixelDecoder : { bitsPerPixel : Int } -> Bytes.Decode.Decoder Int
+pixelDecoder : { bitsPerPixel : Int } -> Bytes.Decode.Decoder PixelValue
 pixelDecoder { bitsPerPixel } =
     if bitsPerPixel == 24 then
         Bytes.Decode.map3
-            (\blue green red -> encodeRGBasInt { red = red, green = green, blue = blue })
+            (\blue green red -> { red = red, green = green, blue = blue })
             Bytes.Decode.unsignedInt8
             Bytes.Decode.unsignedInt8
             Bytes.Decode.unsignedInt8

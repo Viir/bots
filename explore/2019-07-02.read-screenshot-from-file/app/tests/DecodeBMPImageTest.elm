@@ -65,8 +65,8 @@ suite =
                             , bitmapWidthInPixels = 4
                             , bitmapHeightInPixels = 4
                             , bitsPerPixel = 24
-                            , pixelsAsIntsLeftToRightTopToBottom =
-                                DecodeBMPImage.encodeRGBasInt { red = 4, green = 5, blue = 6 } |> List.repeat 16
+                            , pixelsLeftToRightTopToBottom =
+                                { red = 4, green = 5, blue = 6 } |> List.repeat 16
                             }
                         )
         , test
@@ -83,7 +83,7 @@ suite =
                             , bitmapWidthInPixels = 3
                             , bitmapHeightInPixels = 4
                             , bitsPerPixel = 24
-                            , pixelsAsIntsLeftToRightTopToBottom =
+                            , pixelsLeftToRightTopToBottom =
                                 [ { red = 0, green = 0, blue = 0 }
                                 , { red = 0, green = 0, blue = 0 }
                                 , { red = 0, green = 0, blue = 0 }
@@ -97,7 +97,6 @@ suite =
                                 , { red = 0, green = 0, blue = 0 }
                                 , { red = 0, green = 0, blue = 0 }
                                 ]
-                                    |> List.map DecodeBMPImage.encodeRGBasInt
                             }
                         )
         ]

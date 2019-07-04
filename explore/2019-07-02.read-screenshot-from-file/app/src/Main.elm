@@ -1,10 +1,5 @@
 module Main exposing (main)
 
-{-
-   This demo was adapted from https://github.com/ivadzy/ivadzy.github.io/tree/90013a59b3889f68e89f590d77c280ead3a424b6/demos/bbase64
-   Credits to Ivan for supplying us with such a nice demo!
--}
-
 import Base64.Encode
 import Bitwise
 import Browser
@@ -166,10 +161,6 @@ updateImageSearchResult stateBefore =
     { stateBefore | imageSearchResults = imageSearchResults }
 
 
-
--- Drag and Drop
-
-
 onDrop : (List File.File -> msg) -> Html.Attribute msg
 onDrop msg =
     let
@@ -193,10 +184,6 @@ alwaysPreventDefault msg =
     ( msg, True )
 
 
-
--- View
-
-
 view : State -> Html.Html Event
 view state =
     Html.div [] <|
@@ -208,14 +195,16 @@ viewInfoSection : State -> Html.Html Event
 viewInfoSection state =
     Html.section []
         [ Html.header []
-            [ Html.h1 [] [ Html.text "Base64 Encoding" ]
+            [ Html.h1 [] [ Html.text "Configure and Test an Image Search Pattern" ]
             ]
         , Html.p []
-            [ Html.text "Base64 is a group of similar binary-to-text encoding schemes that represent binary data in an ASCII string format by translating it into a radix-64 representation. The term Base64 originates from a specific MIME content transfer encoding. Each Base64 digit represents exactly 6 bits of data. Three 8-bit bytes (i.e., a total of 24 bits) can therefore be represented by four 6-bit Base64 digits. "
-            , Html.a [ HA.href "https://en.wikipedia.org/wiki/Base64" ] [ Html.text "Base64 on Wikipedia" ]
+            [ Html.text "Below you can configure an image search pattern and test it with bitmap images. You can load images to test by dragging and dropping them into the drop area below."
             ]
         , Html.p []
-            [ Html.a [ HA.href "https://github.com/ivadzy/bbase64" ] [ Html.text "Repository" ]
+            [ Html.a [ HA.href "https://github.com/Viir/bots" ] [ Html.text "Repository" ]
+            ]
+        , Html.p []
+            [ Html.text "Credits to Ivan for supplying the demos for file loading and base64 at https://github.com/ivadzy/ivadzy.github.io/tree/90013a59b3889f68e89f590d77c280ead3a424b6/demos/bbase64"
             ]
         ]
 
@@ -234,7 +223,8 @@ viewWidget state =
         imageSearchHtml =
             viewImageSearchConfiguration state
     in
-    [ Html.div [ HA.style "padding" "1em", onDrop OnDrop, onDragOver NoOp ] [ Html.text "Drop a file here" ]
+    [ Html.div [ onDrop OnDrop, onDragOver NoOp, HA.style "border" "2px dashed #555", HA.style "padding" "1em" ]
+        [ Html.text "Drop an image file here to load it for testing the search pattern." ]
     , fileReadResultHtml
     , [] |> Html.div [ HA.style "height" "1em" ]
     , [ "Configure Image Search" |> Html.text ] |> Html.div []
@@ -274,7 +264,7 @@ viewFileReadResult fileReadResult =
                             )
                         |> Html.div []
     in
-    [ [ Html.text "A Base64 string of the dropped file" ] |> Html.div []
+    [ [ Html.text "Base64 string of the dropped file" ] |> Html.div []
     , Html.textarea
         [ HA.value
             (if fileAsBase64DisplayLengthMax < (fileReadResult.fileAsBase64 |> String.length) then
@@ -303,7 +293,7 @@ viewImageSearchConfiguration state =
     in
     [ [ Html.text "List of constraints to accept a match" ] |> Html.div []
     , [ patternLeavesHtml ] |> Html.div [ HA.style "margin-left" "1em" ]
-    , [ Html.text "Configure new constraint" ] |> Html.div []
+    , [ Html.text "Configure a new constraint" ] |> Html.div []
     , [ viewConfigureImagePatternLeafForm state.imagePatternConfigureLeafForm ] |> Html.div [ HA.style "margin-left" "1em" ]
     ]
         |> Html.div []
@@ -329,7 +319,7 @@ viewImagePatternLeaf imagePatternLeaf =
                     " <= " ++ (channelMaximum |> String.fromInt)
 
         removeButtonHtml =
-            [ "⌫ remove" |> Html.text ] |> Html.button [ HE.onClick (RemovePatternLeaf imagePatternLeaf) ]
+            [ "⌫ remove this constraint" |> Html.text ] |> Html.button [ HE.onClick (RemovePatternLeaf imagePatternLeaf) ]
     in
     [ ("for pixel at " ++ pixelOffsetText ++ ", channel " ++ channelName ++ channelConstraintText) |> Html.text, removeButtonHtml ]
         |> Html.div []
@@ -410,22 +400,34 @@ viewConfigureImagePatternLeafForm state =
                 (operandInputEventDecoder |> Json.Decode.map (\channelConstraint -> { state | channelValueConstraint = channelConstraint }))
 
         operandInputHtml =
-            [] |> Html.input [ HA.value (selectedOperandValue |> String.fromInt), operandInputEventAttribute ]
+            []
+                |> Html.input
+                    [ HA.value (selectedOperandValue |> String.fromInt)
+                    , operandInputEventAttribute
+                    , HA.style "width" "3em"
+                    ]
 
         currentPixelOffset =
             state.pixelOffset
 
         offsetInputHtml =
             [ [ "offset " |> Html.text ] |> Html.span []
-            , [ \input -> { currentPixelOffset | x = input }, \input -> { currentPixelOffset | y = input } ]
+            , [ ( currentPixelOffset.x, \input -> { currentPixelOffset | x = input } )
+              , ( currentPixelOffset.y, \input -> { currentPixelOffset | y = input } )
+              ]
                 |> List.map
-                    (\inputMap ->
+                    (\( currentValue, inputMap ) ->
                         let
                             eventDecoder =
                                 eventTargetValueAsIntDecoder
                                     |> Json.Decode.map (inputMap >> (\newPixelOffset -> { state | pixelOffset = newPixelOffset }))
                         in
-                        [] |> Html.input [ HE.on "input" eventDecoder, HA.style "width" "3em" ]
+                        []
+                            |> Html.input
+                                [ HE.on "input" eventDecoder
+                                , HA.value (currentValue |> String.fromInt)
+                                , HA.style "width" "3em"
+                                ]
                     )
                 |> Html.span []
             ]
@@ -446,7 +448,7 @@ viewConfigureImagePatternLeafForm state =
                 |> Html.map SetImagePatternConfigureLeafFormState
     in
     [ parameterHtml
-    , [ "Add" |> Html.text ] |> Html.button [ HE.onClick (ConfigureImageSearch (AddPatternLeaf state)) ]
+    , [ "Add this constraint to the search pattern" |> Html.text ] |> Html.button [ HE.onClick (ConfigureImageSearch (AddPatternLeaf state)) ]
     ]
         |> Html.div []
 

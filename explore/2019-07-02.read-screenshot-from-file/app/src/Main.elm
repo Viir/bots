@@ -27,7 +27,7 @@ type ConfigureImageSearchEvent
     | AddPatternLeaf ImagePatternLeaf
 
 
-type alias PixelValueExactRGB =
+type alias PixelValue =
     { red : Int, green : Int, blue : Int }
 
 
@@ -52,6 +52,7 @@ type alias ImagePatternLeaf =
 type alias FileReadResult =
     { fileAsBase64 : String
     , decodeImageResult : Result String DecodeBMPImage.DecodeBMPImageResult
+    , imageAsDict : Maybe (Dict.Dict ( Int, Int ) PixelValue)
     }
 
 
@@ -117,9 +118,14 @@ update msg stateBefore =
 
                 decodeImageResult =
                     DecodeBMPImage.decodeBMPImageFile bytes
+
+                imageAsDict =
+                    decodeImageResult
+                        |> Result.map pixelValueDictFromDecodeBMPImageResult
+                        |> Result.toMaybe
             in
             ( { stateBefore
-                | fileReadResult = Just { fileAsBase64 = fileAsBase64, decodeImageResult = decodeImageResult }
+                | fileReadResult = Just { fileAsBase64 = fileAsBase64, decodeImageResult = decodeImageResult, imageAsDict = imageAsDict }
                 , imageSearchResults = Nothing
               }
             , Cmd.none
@@ -146,6 +152,18 @@ update msg stateBefore =
             ( { stateBefore | imagePatternConfigureLeafForm = formState }, Cmd.none )
 
 
+pixelValueDictFromDecodeBMPImageResult : DecodeBMPImage.DecodeBMPImageResult -> Dict.Dict ( Int, Int ) PixelValue
+pixelValueDictFromDecodeBMPImageResult decodeImageResult =
+    decodeImageResult.pixelsLeftToRightTopToBottom
+        |> List.indexedMap
+            (\pixelIndex pixelValue ->
+                ( ( pixelIndex |> modBy decodeImageResult.bitmapWidthInPixels, pixelIndex // decodeImageResult.bitmapWidthInPixels )
+                , pixelValue
+                )
+            )
+        |> Dict.fromList
+
+
 updateImageSearchResult : State -> State
 updateImageSearchResult stateBefore =
     let
@@ -155,7 +173,7 @@ updateImageSearchResult stateBefore =
 
             else
                 stateBefore.fileReadResult
-                    |> Maybe.andThen (.decodeImageResult >> Result.toMaybe)
+                    |> Maybe.andThen .imageAsDict
                     |> Maybe.map (findMatchesInImage stateBefore.imageSearchConfiguration)
     in
     { stateBefore | imageSearchResults = imageSearchResults }
@@ -513,21 +531,9 @@ viewImageSearchResults maybeSearchResults =
             [ overviewHtml, [ truncatedSearchResultsHtml ] |> Html.div [ HA.style "margin-left" "1em" ] ] |> Html.div []
 
 
-findMatchesInImage : ImageSearchConfiguration -> DecodeBMPImageResult -> List { x : Int, y : Int }
-findMatchesInImage searchConfiguration image =
-    let
-        pixelValueDict : Dict.Dict ( Int, Int ) { red : Int, green : Int, blue : Int }
-        pixelValueDict =
-            image.pixelsLeftToRightTopToBottom
-                |> List.indexedMap
-                    (\pixelIndex pixelValue ->
-                        ( ( pixelIndex |> modBy image.bitmapWidthInPixels, pixelIndex // image.bitmapWidthInPixels )
-                        , pixelValue
-                        )
-                    )
-                |> Dict.fromList
-    in
-    pixelValueDict
+findMatchesInImage : ImageSearchConfiguration -> Dict.Dict ( Int, Int ) PixelValue -> List { x : Int, y : Int }
+findMatchesInImage searchConfiguration imageAsDict =
+    imageAsDict
         |> Dict.keys
         |> List.filter
             (\( originX, originY ) ->
@@ -541,7 +547,7 @@ findMatchesInImage searchConfiguration image =
                                 leafAbsoluteY =
                                     originY + patternLeaf.pixelOffset.y
                             in
-                            case pixelValueDict |> Dict.get ( leafAbsoluteX, leafAbsoluteY ) of
+                            case imageAsDict |> Dict.get ( leafAbsoluteX, leafAbsoluteY ) of
                                 Nothing ->
                                     False
 

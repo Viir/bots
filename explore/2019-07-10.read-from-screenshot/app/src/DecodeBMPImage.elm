@@ -1,4 +1,4 @@
-module DecodeBMPImage exposing (DecodeBMPImageResult, decodeBMPImageFile)
+module DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue, decodeBMPImageFile)
 
 import Bitwise
 import Bytes

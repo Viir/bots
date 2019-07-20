@@ -15,7 +15,7 @@ module SimpleSanderling exposing
     , processEvent
     )
 
-import Bot_Interface_To_Host_20190529 as InterfaceToHost
+import Bot_Interface_To_Host_20190720 as InterfaceToHost
 import Sanderling
 import SanderlingMemoryMeasurement
 import SanderlingVolatileHostSetup
@@ -107,7 +107,7 @@ processEvent :
     (BotEventAtTime -> simpleBotState -> { newState : simpleBotState, requests : List BotRequest, statusMessage : String })
     -> InterfaceToHost.BotEventAtTime
     -> StateIncludingSetup simpleBotState
-    -> ( StateIncludingSetup simpleBotState, List InterfaceToHost.BotRequest )
+    -> ( StateIncludingSetup simpleBotState, InterfaceToHost.ProcessEventResponse )
 processEvent simpleBotProcessEvent fromHostEventAtTime stateBefore =
     let
         ( setupStateAfterIntegratingEvent, maybeBotEvent ) =
@@ -210,11 +210,8 @@ processEvent simpleBotProcessEvent fromHostEventAtTime stateBefore =
             (state |> statusReportFromState)
                 ++ "\nCurrent activity: "
                 ++ currentActivityMessage
-
-        requests =
-            [ request, InterfaceToHost.SetStatusMessage statusMessage ]
     in
-    ( state, requests )
+    ( state, { botRequests = [ request ], statusDescriptionForOperator = statusMessage } )
 
 
 integrateFromHostEvent : InterfaceToHost.BotEventAtTime -> SetupState -> ( SetupState, Maybe BotEventAtTime )

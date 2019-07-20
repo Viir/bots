@@ -2,10 +2,12 @@
  -}
 
 
-module Bot_Interface_To_Host_20190529 exposing
+module Bot_Interface_To_Host_20190720 exposing
     ( BotEvent(..)
     , BotEventAtTime
     , BotRequest(..)
+    , ProcessEventResponse
+    , ProcessSerializedEventResponse(..)
     , RunInVolatileHostComplete
     , RunInVolatileHostError(..)
     , StartTaskStructure
@@ -34,8 +36,7 @@ type BotEvent
 
 
 type BotRequest
-    = SetStatusMessage String
-    | StartTask StartTaskStructure
+    = StartTask StartTaskStructure
     | FinishSession
 
 
@@ -74,9 +75,15 @@ type alias ReleaseVolatileHostStructure =
     { hostId : String }
 
 
-type ProcessEventResponse
+type ProcessSerializedEventResponse
     = DecodeEventError String
-    | DecodeEventSuccess (List BotRequest)
+    | DecodeEventSuccess ProcessEventResponse
+
+
+type alias ProcessEventResponse =
+    { statusDescriptionForOperator : String
+    , botRequests : List BotRequest
+    }
 
 
 {-| Tasks can yield some result to return to the bot. That is why we use the identifier.
@@ -108,7 +115,7 @@ type alias DelayTaskStructure =
     { milliseconds : Int }
 
 
-wrapForSerialInterface_processEvent : (BotEventAtTime -> state -> ( state, List BotRequest )) -> String -> state -> ( state, String )
+wrapForSerialInterface_processEvent : (BotEventAtTime -> state -> ( state, ProcessEventResponse )) -> String -> state -> ( state, String )
 wrapForSerialInterface_processEvent processEvent serializedBotEventAtTime stateBefore =
     let
         ( state, response ) =
@@ -124,7 +131,7 @@ wrapForSerialInterface_processEvent processEvent serializedBotEventAtTime stateB
                         |> processEvent botEventAtTime
                         |> Tuple.mapSecond DecodeEventSuccess
     in
-    ( state, response |> encodeResponseOverSerialInterface |> Json.Encode.encode 0 )
+    ( state, response |> encodeProcessSerializedEventResponse |> Json.Encode.encode 0 )
 
 
 deserializeBotEventAtTime : String -> Result Json.Decode.Error BotEventAtTime
@@ -190,26 +197,28 @@ decodeRunInVolatileHostError =
         ]
 
 
-encodeResponseOverSerialInterface : ProcessEventResponse -> Json.Encode.Value
-encodeResponseOverSerialInterface stepResult =
+encodeProcessSerializedEventResponse : ProcessSerializedEventResponse -> Json.Encode.Value
+encodeProcessSerializedEventResponse stepResult =
     case stepResult of
         DecodeEventError errorString ->
             Json.Encode.object [ ( "decodeEventError", errorString |> Json.Encode.string ) ]
 
-        DecodeEventSuccess botRequests ->
+        DecodeEventSuccess response ->
             Json.Encode.object
-                [ ( "decodeEventSuccess"
-                  , Json.Encode.object [ ( "botRequests", botRequests |> Json.Encode.list encodeBotRequest ) ]
-                  )
-                ]
+                [ ( "decodeEventSuccess", response |> encodeProcessEventResponse ) ]
+
+
+encodeProcessEventResponse : ProcessEventResponse -> Json.Encode.Value
+encodeProcessEventResponse processEventResponse =
+    [ ( "statusDescriptionForOperator", processEventResponse.statusDescriptionForOperator |> Json.Encode.string )
+    , ( "botRequests", processEventResponse.botRequests |> Json.Encode.list encodeBotRequest )
+    ]
+        |> Json.Encode.object
 
 
 encodeBotRequest : BotRequest -> Json.Encode.Value
 encodeBotRequest botRequest =
     case botRequest of
-        SetStatusMessage statusMessage ->
-            Json.Encode.object [ ( "setStatusMessage", statusMessage |> Json.Encode.string ) ]
-
         StartTask startTask ->
             Json.Encode.object [ ( "startTask", startTask |> encodeStartTask ) ]
 

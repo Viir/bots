@@ -16,7 +16,7 @@ module Main exposing
     , main
     )
 
-import Bot_Interface_To_Host_20190529 as InterfaceToHost exposing (BotEventAtTime, BotRequest)
+import Bot_Interface_To_Host_20190720 as InterfaceToHost exposing (BotEventAtTime, BotRequest, ProcessEventResponse)
 import Json.Encode
 
 
@@ -31,13 +31,13 @@ initState =
     { timeInMilliseconds = 0, lastSetConfiguration = Nothing }
 
 
-processEvent : BotEventAtTime -> State -> ( State, List BotRequest )
+processEvent : BotEventAtTime -> State -> ( State, ProcessEventResponse )
 processEvent eventAtTime stateBefore =
     let
         state =
             stateBefore |> integrateEvent eventAtTime
     in
-    ( state, [ InterfaceToHost.SetStatusMessage (state |> statusMessageFromState) ] )
+    ( state, { botRequests = [], statusDescriptionForOperator = state |> statusMessageFromState } )
 
 
 integrateEvent : BotEventAtTime -> State -> State

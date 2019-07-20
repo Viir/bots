@@ -4,8 +4,8 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.0</TargetFramework>
     <AssemblyName>BotEngine</AssemblyName>
-    <AssemblyVersion>2019.0618.0.0</AssemblyVersion>
-    <FileVersion>2019.0618.0.0</FileVersion>
+    <AssemblyVersion>2019.0720.0.0</AssemblyVersion>
+    <FileVersion>2019.0720.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

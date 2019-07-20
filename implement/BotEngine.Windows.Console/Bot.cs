@@ -45,7 +45,7 @@ namespace BotEngine.Windows.Console
                     return System.IO.Path.Combine(directoryName, directoryName + "T" + time.ToString("HH") + ".composition.jsonl");
                 });
 
-            (DateTimeOffset time, string statusMessage, ImmutableList<InterfaceToBot.BotRequest>)? lastBotStep = null;
+            (DateTimeOffset time, string statusDescriptionForOperator, ImmutableList<InterfaceToBot.BotRequest>)? lastBotStep = null;
 
             ImmutableList<InterfaceToBot.BotRequest> remainingBotRequests = null;
 
@@ -106,7 +106,7 @@ namespace BotEngine.Windows.Console
 
                 yield return "Status message from bot:\n";
 
-                yield return lastBotStep.Value.statusMessage;
+                yield return lastBotStep.Value.statusDescriptionForOperator;
 
                 yield return "";
             }
@@ -186,23 +186,11 @@ namespace BotEngine.Windows.Console
                     var botRequests =
                         botResponse.decodeEventSuccess.botRequests.ToImmutableList();
 
-                    var setStatusMessageRequests =
-                        botRequests
-                        .Where(request => request.setStatusMessage != null)
-                        .ToImmutableList();
-
-                    var statusMessage =
-                        setStatusMessageRequests?.Select(request => request.setStatusMessage)?.LastOrDefault() ?? lastBotStep?.statusMessage;
-
-                    lastBotStep = (eventTime, statusMessage, botRequests);
-
-                    var stepRemainingRequests =
-                        botRequests
-                        .Except(setStatusMessageRequests);
+                    lastBotStep = (eventTime, botResponse.decodeEventSuccess.statusDescriptionForOperator, botRequests);
 
                     remainingBotRequests =
                         (remainingBotRequests ?? ImmutableList<InterfaceToBot.BotRequest>.Empty)
-                        .AddRange(stepRemainingRequests);
+                        .AddRange(botRequests);
                 }
                 catch (Exception exception)
                 {

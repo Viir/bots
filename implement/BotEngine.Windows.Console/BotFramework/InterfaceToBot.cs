@@ -25,13 +25,13 @@
         public class DecodeEventSuccess
         {
             public BotRequest[] botRequests;
+
+            public string statusDescriptionForOperator;
         }
     }
 
     public class BotRequest
     {
-        public string setStatusMessage;
-
         public object finishSession;
 
         //  TODO: Consider make consistent with Kalmit: move ID from task to request.

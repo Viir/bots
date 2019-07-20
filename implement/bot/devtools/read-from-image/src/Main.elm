@@ -29,7 +29,7 @@ module Main exposing
     )
 
 import Base64.Decode
-import Bot_Interface_To_Host_20190529 as InterfaceToHost exposing (BotEventAtTime, BotRequest(..))
+import Bot_Interface_To_Host_20190720 as InterfaceToHost exposing (BotEventAtTime, BotRequest(..), ProcessEventResponse)
 import DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue)
 import Dict
 import Json.Decode
@@ -167,7 +167,7 @@ initState =
     }
 
 
-processEvent : BotEventAtTime -> State -> ( State, List BotRequest )
+processEvent : BotEventAtTime -> State -> ( State, ProcessEventResponse )
 processEvent eventAtTime stateBefore =
     let
         state =
@@ -194,7 +194,7 @@ processEvent eventAtTime stateBefore =
                 ++ "\n"
                 ++ activityDescription
     in
-    ( state, requests ++ [ SetStatusMessage statusDescription ] )
+    ( state, { botRequests = requests, statusDescriptionForOperator = statusDescription } )
 
 
 integrateEvent : BotEventAtTime -> State -> State

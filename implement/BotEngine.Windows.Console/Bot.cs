@@ -22,7 +22,9 @@ namespace BotEngine.Windows.Console
             string processStoreDirectory,
             Action<string> logEntry,
             Action<LogEntry.ProcessBotEventReport> logProcessBotEventReport,
-            string botConfiguration)
+            string botConfiguration,
+            string sessionId,
+            string botSource)
         {
             var botId = Kalmit.CommonConversion.StringBase16FromByteArray(Kalmit.CommonConversion.HashSHA256(kalmitElmApp));
 
@@ -93,6 +95,7 @@ namespace BotEngine.Windows.Console
 
                 yield return
                     "Bot " + UserInterface.BotIdDisplayText(botId) +
+                    " in session '" + sessionId + "'" +
                      (pauseBot ?
                      " is paused. Press the enter key to continue." :
                      " is running. Press CTRL + ALT keys to pause the bot.");
@@ -110,6 +113,48 @@ namespace BotEngine.Windows.Console
 
                 yield return "";
             }
+
+            long lastRequestToReactorTimeInSeconds = 0;
+
+            async System.Threading.Tasks.Task requestToReactor(RequestToReactorUseBotStruct useBot)
+            {
+                lastRequestToReactorTimeInSeconds = (long)botSessionClock.Elapsed.TotalSeconds;
+
+                var toReactorStruct = new RequestToReactorStruct { UseBot = useBot };
+
+                var serializedToReactorStruct = Newtonsoft.Json.JsonConvert.SerializeObject(toReactorStruct);
+
+                var reactorClient = new System.Net.Http.HttpClient();
+
+                reactorClient.DefaultRequestHeaders.UserAgent.Add(
+                    new System.Net.Http.Headers.ProductInfoHeaderValue(new System.Net.Http.Headers.ProductHeaderValue("windows-console", BotEngine.AppVersionId)));
+
+                var content = new System.Net.Http.ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(serializedToReactorStruct));
+
+                var response = await reactorClient.PostAsync("https://reactor.botengine.org/api/", content);
+
+                var responseString = await response.Content.ReadAsStringAsync();
+            }
+
+            void fireAndForgetReportToReactor(RequestToReactorUseBotStruct report)
+            {
+                lastRequestToReactorTimeInSeconds = (long)botSessionClock.Elapsed.TotalSeconds;
+
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        requestToReactor(report).Wait();
+                    }
+                    catch { }
+                });
+            }
+
+            fireAndForgetReportToReactor(new RequestToReactorUseBotStruct
+            {
+                StartSession = new RequestToReactorUseBotStruct.StartSessionStruct
+                { botId = botId, sessionId = sessionId, botSource = BotSourceIsPublic(botSource) ? botSource : null }
+            });
 
             var createVolatileHostAttempts = 0;
 
@@ -222,6 +267,13 @@ namespace BotEngine.Windows.Console
                 updatePauseContinue();
 
                 System.Threading.Thread.Sleep(111);
+
+                var lastRequestToReactorAgeInSeconds = (long)botSessionClock.Elapsed.TotalSeconds - lastRequestToReactorTimeInSeconds;
+
+                if (30 <= lastRequestToReactorAgeInSeconds)
+                    fireAndForgetReportToReactor(new RequestToReactorUseBotStruct
+                    { ContinueSession = new RequestToReactorUseBotStruct.ContinueSessionStruct
+                    { sessionId = sessionId, statusDescriptionForOperator = lastBotStep?.statusDescriptionForOperator } });
 
                 if (pauseBot)
                     continue;
@@ -353,6 +405,37 @@ namespace BotEngine.Windows.Console
                     //	https://stackoverflow.com/questions/7397207/json-net-error-self-referencing-loop-detected-for-type/18223985#18223985
                     ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore,
                 });
+
+        static public bool BotSourceIsPublic(string botSource) =>
+            new[] { "http:", "https:" }.Any(publicPattern => botSource?.ToLowerInvariant()?.StartsWith(publicPattern) ?? false);
+
+        class RequestToReactorStruct
+        {
+            public RequestToReactorUseBotStruct UseBot;
+        }
+
+        class RequestToReactorUseBotStruct
+        {
+            public StartSessionStruct StartSession;
+
+            public ContinueSessionStruct ContinueSession;
+
+            public class StartSessionStruct
+            {
+                public string sessionId;
+
+                public string botId;
+
+                public string botSource;
+            }
+
+            public class ContinueSessionStruct
+            {
+                public string sessionId;
+
+                public string statusDescriptionForOperator;
+            }
+        }
     }
 
     class EmptyProcessStore : IProcessStoreReader

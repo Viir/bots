@@ -10,7 +10,7 @@ namespace BotEngine.Windows.Console
 {
     class BotEngine
     {
-        static public string AppVersionId => "2019-07-20";
+        static public string AppVersionId => "2019-07-29";
 
         static string uiTimeFormatToString => "yyyy-MM-ddTHH-mm-ss";
 
@@ -53,7 +53,8 @@ namespace BotEngine.Windows.Console
                     }
 
                     var sessionStartTime = DateTimeOffset.UtcNow;
-                    var sessionId = sessionStartTime.ToString("yyyy-MM-ddTHH-mm-ss");
+                    var sessionStartTimeText = sessionStartTime.ToString("yyyy-MM-ddTHH-mm-ss");
+                    var sessionId = sessionStartTimeText + "-" + Kalmit.CommonConversion.StringBase16FromByteArray(GetRandomBytes(6));
 
                     Exception sessionException = null;
 
@@ -289,7 +290,9 @@ namespace BotEngine.Windows.Console
                                     processBotEventReport = processBotEventReport,
                                 });
                             },
-                            botConfiguration);
+                            botConfiguration,
+                            sessionId,
+                            botSourceArgument.argumentValue);
                     }
                     catch (Exception e)
                     {
@@ -321,6 +324,18 @@ namespace BotEngine.Windows.Console
             });
 
             return app.Execute(args);
+        }
+
+        static byte[] GetRandomBytes(int amount)
+        {
+            using (var rng = new System.Security.Cryptography.RNGCryptoServiceProvider())
+            {
+                var container = new byte[amount];
+
+                rng.GetBytes(container);
+
+                return container;
+            }
         }
 
         static byte[] GetFileFromHashSHA256(byte[] hashSHA256)

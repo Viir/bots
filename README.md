@@ -1,7 +1,8 @@
-# Making Bots Has Never Been Easier
+# Grinding Is Not Necessary Anymore
 
-Discover your favorite video games from a new perspective.
-This repository contains guides on how to automate activities in video games:
+Improve your gaming experience using bots.
+
+This repository contains guides on how to make bots to automate activities in video games:
 
 + How to use EVE Online bots: [./guide/how-to-use-eve-online-bots.md](./guide/how-to-use-eve-online-bots.md)
 + How to develop EVE Online bots: [./guide/how-to-develop-eve-online-bots.md](./guide/how-to-develop-eve-online-bots.md)

@@ -1,9 +1,86 @@
 # How to Develop EVE Online Bots
 
 This is a guide for beginners on how to develop EVE Online bots. You don't need prior experience in programming or software development, as I explain the process and tools from the ground up.
-There is a separate guide on how to run EVE Online bots, read that first, as this guide assumes you already know how to load, start, and operate a bot. You can find that guide at [./how-to-use-eve-online-bots.md](./how-to-use-eve-online-bots.md).
+There is a separate guide on how to run EVE Online bots, read that first, as this guide assumes you already know how to load, start, configure, and operate a bot. You can find that guide at [./how-to-use-eve-online-bots.md](./how-to-use-eve-online-bots.md).
 
 This guide goes beyond just running and configuring bots. The tools I show here give you the power to automate anything in EVE Online. I will also summarize what I learned during bot development projects like the EVE Online mission running and anomaly ratting bots, or the Tribal Wars 2 farmbot. The goal is to present the methods and approaches which make the development process efficient and a pleasant experience.
+
+## Bot Architecture
+
+Before we look at any code, let me give you a high-level overview of how a bot works and how it is structured.
+
+A bot is a program which reacts to events. Every time an event happens, the engine tells the bot. Given this information, the bot then computes its new state and a response to this event.
+
+This event response is given to the engine and contains the following two components:
+
++ A status message to inform about the current state in a human-readable form. When you run a bot, you can see the engine displaying this message.
++ A list of tasks for the engine to execute.
+
+This event/response cycle repeats for every event happening during the operation of the bot.
+
+Some examples of events:
+
++ The user sets the bot configuration (as explained in the [guide on how to use bots](./how-to-use-eve-online-bots.md)).
++ The engine completes executing one of the tasks it received from the bot in an earlier cycle. The event contains the result of the execution of this task.
+
+Examples of tasks the bot can give to the engine:
+
++ Take a screenshot of a window of another app on the system.
++ Read the contents of another process' memory.
++ Send a mouse click to a specific position in a window in another process.
++ Simulate pressing a keyboard key.
++ Start a new Windows process, specifying the path to an executable file.
++ Stop another process on the system.
+
+As we can see from the examples above, these events and tasks can be quite fine-grained, so you might see the event/response cycle happen several times per second.
+
+## Bot Code
+
+### File Structure
+
+The bot code is a set of files. Some of these files are located in subdirectories. The bot code always contains the following three files:
+
++ `src/Main.elm`: When you code a bot from scratch, this file is where you start to edit.
++ `src/Bot_Interface_To_Host_20190720.elm`: You don't need to edit anything in here.
++ `elm.json`. This file is only edited to include Elm packages (That is a way to include functionality from external sources).
+
+You can distribute code into more `.elm` files. But this is not required, you can add everything to the `src/Main.elm` file.
+
+Each file with a name ending in `.elm` contains one [Elm module](https://guide.elm-lang.org/webapps/modules.html). Each module contains [functions](https://guide.elm-lang.org/core_language.html), which are composed to describe the behavior of the bot.
+
+### Entry Point - `processEvent`
+
+Each time an event happens, the framework calls the function `interfaceToHost_processEvent` from the `Main.elm` file. Because of this unique role, this function is sometimes also referred to as 'entry point'.
+
+Let's look at how this function is implemented. Usually it will look like this:
+```Elm
+interfaceToHost_processEvent : String -> InterfaceBotState -> ( InterfaceBotState, String )
+interfaceToHost_processEvent =
+    InterfaceToHost.wrapForSerialInterface_processEvent processEvent
+```
+This function takes care of serializing and deserializing on the interface to the engine, and delegates everything else to the `processEvent` function in the same file. It translates between the serial representations used on the interface and typed values, so that we can enjoy the benefits of the type system when working on the bot code. In theory, this function could look different, because you could rename the function `processEvent` to something else. But we will leave this function alone, forget about it and turn to the `processEvent` function.
+
+Let's look at the type signature of `processEvent`, the first line of the functions source code:
+```Elm
+processEvent : InterfaceToHost.BotEventAtTime -> State -> ( State, InterfaceToHost.ProcessEventResponse )
+```
+Thanks to the translation in the wrapping function discussed above, the types here are already more specific. So this type signature better tells what kinds of values this function takes and returns.
+
+> The actual names for the types used here are only conventions. You might find a bot code which uses different names. For example, the bot author might choose to abbreviate `InterfaceToHost.BotEventAtTime` to `BotEventAtTime`, by using a type alias.
+
+```todo
+-> TODO:  
+  + Update the example bots and devtools for consistent names.  
+  + Look into improving type names for more consistency (`BotEventResponse`?)
+```
+
+I will quickly break down the Elm syntax here: The part after the last arrow (`->`) is the return type. It is a tuple with two components. The part between the colon (`:`) and the return type is the list of parameters. So we have two parameters, one of type `InterfaceToHost.BotEventAtTime` and one of type `State`.
+
+Let's have a closer look at the three different types here:
+
++ `InterfaceToHost.BotEventAtTime`: This describes an event that happens during the operation of the bot. All information the bot ever receives is coming through the values given with this first parameter.
++ `InterfaceToHost.ProcessEventResponse`: This type describes what the engine should do.
++ `State`: The `State` type is specific to the bot. With this type, we describe what the bot remembers between events. When the engine informs the bot about a new event, it also passes the `State` value which the bot returned after processing the previous event (The first component of the tuple in the return type). But what if this is the first event? Then there is no previous event? In this case, the engine takes the value from the function `interfaceToHost_initState` to give to the bot.
 
 ## Setting up the Programming Tools
 

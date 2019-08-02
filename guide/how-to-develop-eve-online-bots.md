@@ -181,6 +181,49 @@ When you hover the mouse cursor over the highlighted text, a popup window shows 
 
 ![Visual Studio Code displays diagnostics from Elm - details on hover](./image/2019-05-16.vscode-elm-diagnostics-display-hover.png)
 
+## Programming Language
+
+#### Custom Types
+
+Custom types are also called tagged union types or algebraic data types. In the documentation about Elm, the term 'Custom Type' seems to be more popular.
+
+Let's look at how a custom type with a type parameter can be used to compose more specific types. I will take a popular example of such a type. This one is often used to describe what can be seen on the screen.
+
+```Elm
+type PossiblyInvisible feature
+    = CanNotSeeIt
+    | CanSee feature
+```
+In this type definition, we have a type parameter called `feature`. We can instantiate the `PossiblyInvisible` type by specifying what to use as `feature`. For example, we can use the type `Bool` as the `feature`:
+```Elm
+type alias PossiblyInvisibleBool =
+    PossiblyInvisible Bool
+```
+The type `PossiblyInvisible Bool` can have three different values:
++ `CanNotSeeIt`
++ `CanSee True`
++ `CanSee False`
+
+In the larger context, this combination could be used as follows:
+```Elm
+type alias EveOnlineVision =
+    { shipOreHoldIsFull : PossiblyInvisible Bool
+    }
+
+
+describeWhatWeSee : EveOnlineVision -> String
+describeWhatWeSee vision =
+    case vision.shipOreHoldIsFull of
+        CanNotSeeIt ->
+            "I can not see if the ships ore hold is full. Do we need to change the setup?"
+
+        CanSee True ->
+            "The ships ore hold is full."
+
+        CanSee False ->
+            "The ships ore hold is not full."
+```
+
 ----
 
 Any questions? The [BotEngine forum](https://forum.botengine.org) is the place to meet other developers and get help.

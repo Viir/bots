@@ -5,6 +5,16 @@ There is a separate guide on how to run EVE Online bots, read that first, as thi
 
 This guide goes beyond just running and configuring bots. The tools I show here give you the power to automate anything in EVE Online. I will also summarize what I learned during bot development projects like the EVE Online mission running and anomaly ratting bots, or the Tribal Wars 2 farmbot. The goal is to present the methods and approaches which make the development process efficient and a pleasant experience.
 
+## Development Process
+
+Bot development begins by identifying a situation in which the bot should act. The same applies if we want to add new functionality to or fix a problem in a bot: In both cases, we observe a situation in which the bot acted differently than it should.
+
+Because the bot perceives the game world trough screenshots, we use screenshots to describe this situation.
+
+In simple cases, the most recent screenshot is sufficient to decide what to do in the game. In other cases, the bot needs to account for information which is not visible in the last screenshot but was visible in an earlier screenshot. In this case, we use a sequence of screenshots to describe the situation.
+
+After describing a situation the bot could encounter, the next development step is to explain how it should act in this situation. A bot can act by sending mouse movements, mouse clicks, and keyboard key presses to the game client.
+
 ## Bot Architecture
 
 Before we look at any code, let me give you a high-level overview of how a bot works and how it is structured.

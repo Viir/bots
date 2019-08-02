@@ -2,7 +2,7 @@
  -}
 
 
-module Bot_Interface_To_Host_20190720 exposing
+module Interface_To_Host_20190720 exposing
     ( BotEvent(..)
     , BotEventAtTime
     , BotRequest(..)

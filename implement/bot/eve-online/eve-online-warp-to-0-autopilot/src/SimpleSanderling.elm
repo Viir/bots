@@ -15,7 +15,7 @@ module SimpleSanderling exposing
     , processEvent
     )
 
-import Bot_Interface_To_Host_20190720 as InterfaceToHost
+import Interface_To_Host_20190720 as InterfaceToHost
 import Sanderling
 import SanderlingMemoryMeasurement
 import SanderlingVolatileHostSetup

@@ -48,13 +48,13 @@ As we can see from the examples above, these events and tasks can be quite fine-
 
 ### File Structure
 
-The bot code is a set of files. Some of these files are located in subdirectories. The bot code always contains the following three files:
+The bot code is a set of files. Some of these files are located in subdirectories. The bot code contains the following files:
 
-+ `src/Main.elm`: When you code a bot from scratch, this file is where you start to edit.
-+ `src/Bot_Interface_To_Host_20190720.elm`: You don't need to edit anything in here.
++ `src/Bot.elm`: When you code a bot from scratch, this file is where you start to edit.
++ `src/Bot_Interface_To_Host_20190803.elm`: You don't need to edit anything in here.
 + `elm.json`. This file is only edited to include Elm packages (That is a way to include functionality from external sources).
 
-You can distribute code into more `.elm` files. But this is not required, you can add everything to the `src/Main.elm` file.
+You can distribute code into more `.elm` files. But this is not required, you can add everything to the `src/Bot.elm` file.
 
 Each file with a name ending in `.elm` contains one [Elm module](https://guide.elm-lang.org/webapps/modules.html). Each module contains [functions](https://guide.elm-lang.org/core_language.html), which are composed to describe the behavior of the bot.
 
@@ -72,11 +72,11 @@ This function takes care of serializing and deserializing on the interface to th
 
 Let's look at the type signature of `processEvent`, the first line of the functions source code:
 ```Elm
-processEvent : InterfaceToHost.BotEventAtTime -> State -> ( State, InterfaceToHost.ProcessEventResponse )
+processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 ```
 Thanks to the translation in the wrapping function discussed above, the types here are already more specific. So this type signature better tells what kinds of values this function takes and returns.
 
-> The actual names for the types used here are only conventions. You might find a bot code which uses different names. For example, the bot author might choose to abbreviate `InterfaceToHost.BotEventAtTime` to `BotEventAtTime`, by using a type alias.
+> The actual names for the types used here are only conventions. You might find a bot code which uses different names. For example, the bot author might choose to abbreviate `InterfaceToHost.BotEvent` to `BotEvent`, by using a type alias.
 
 ```todo
 -> TODO:  
@@ -84,12 +84,12 @@ Thanks to the translation in the wrapping function discussed above, the types he
   + Look into improving type names for more consistency (`BotEventResponse`?)
 ```
 
-I will quickly break down the Elm syntax here: The part after the last arrow (`->`) is the return type. It is a tuple with two components. The part between the colon (`:`) and the return type is the list of parameters. So we have two parameters, one of type `InterfaceToHost.BotEventAtTime` and one of type `State`.
+I will quickly break down the Elm syntax here: The part after the last arrow (`->`) is the return type. It is a tuple with two components. The part between the colon (`:`) and the return type is the list of parameters. So we have two parameters, one of type `InterfaceToHost.BotEvent` and one of type `State`.
 
 Let's have a closer look at the three different types here:
 
-+ `InterfaceToHost.BotEventAtTime`: This describes an event that happens during the operation of the bot. All information the bot ever receives is coming through the values given with this first parameter.
-+ `InterfaceToHost.ProcessEventResponse`: This type describes what the engine should do.
++ `InterfaceToHost.BotEvent`: This describes an event that happens during the operation of the bot. All information the bot ever receives is coming through the values given with this first parameter.
++ `InterfaceToHost.BotResponse`: This type describes what the engine should do.
 + `State`: The `State` type is specific to the bot. With this type, we describe what the bot remembers between events. When the engine informs the bot about a new event, it also passes the `State` value which the bot returned after processing the previous event (The first component of the tuple in the return type). But what if this is the first event? Then there is no previous event? In this case, the engine takes the value from the function `interfaceToHost_initState` to give to the bot.
 
 ## Setting up the Programming Tools
@@ -103,7 +103,7 @@ To achieve this, we combine the following tools:
 
 The following subsections explain in detail how to set up these tools.
 
-To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/8284feffc64e9832b0db65c19f2679d39af7a0d6/implement/bot/eve-online/eve-online-warp-to-0-autopilot for this purpose.
+To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/faf59c8d5f24a7648c2d009949c2b440c0c06eab/implement/bot/eve-online/eve-online-warp-to-0-autopilot for this purpose.
 
 ### Elm command line program
 
@@ -129,7 +129,7 @@ Success! Compiled 3 modules.
 ```
 That number of modules it mentions can vary; it should be at least one.
 
-To see the detection of errors in action, we can now make some destructive change to the `Main.elm` file. For example, simulate a typing mistake, on line 99, replace `shipUi` with `shipui`.
+To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on line 99, replace `shipUi` with `shipui`.
 If after this change we invoke Elm with the same command again, we now get a different output, informing us about a problem in the code:
 ```
 Detected errors in 1 module.
@@ -178,7 +178,7 @@ A convenient way to do this is using the Windows Explorer context menu entry `Op
 
 ![Open a directory in Visual Studio Code from the Windows Explorer](./image/vscode-open-directory-from-explorer.png)
 
-Now we can test if our setup works correctly. In VSCode, open the `Main.elm` file and make the same code change as done earlier to provoke an error message from Elm.
+Now we can test if our setup works correctly. In VSCode, open the `Bot.elm` file and make the same code change as done earlier to provoke an error message from Elm.
 When you save the file (`Ctrl + S`), the VSCode extension starts Elm in the background to check the code. On the first time, it can take longer as required packages are downloaded. But usually, Elm should complete the check in a second. If the code is ok, you will not see any change. If there is a problem, this is displayed in multiple places, as you can see in the screenshot below:
 
 + In the file tree view, coloring files containing errors in red.

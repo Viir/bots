@@ -27,7 +27,7 @@ module Bot exposing
 import Base64.Decode
 import DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue)
 import Dict
-import Interface_To_Host_20190720 as InterfaceToHost exposing (BotEventAtTime, BotRequest(..), ProcessEventResponse)
+import Interface_To_Host_20190803 as InterfaceToHost exposing (BotEvent, BotResponse(..))
 import Json.Decode
 import Maybe.Extra
 import VolatileHostSetup exposing (ReadFileContentResultStructure(..), RequestToVolatileHost(..), ResponseFromVolatileHost(..))
@@ -163,7 +163,7 @@ initState =
     }
 
 
-processEvent : BotEventAtTime -> State -> ( State, ProcessEventResponse )
+processEvent : BotEvent -> State -> ( State, BotResponse )
 processEvent eventAtTime stateBefore =
     let
         state =
@@ -177,30 +177,34 @@ processEvent eventAtTime stateBefore =
                 Nothing ->
                     state |> getNextRequestWithDescriptionFromState
 
-        ( requests, activityDescription ) =
+        generalStatusDescription =
+            (state |> statusDescriptionFromState) ++ "\n"
+
+        response =
             case nextStep of
                 StopWithResult { resultDescription } ->
-                    ( [ FinishSession ], "Stopped with result: " ++ resultDescription )
+                    FinishSession
+                        { statusDescriptionForOperator = generalStatusDescription ++ "Stopped with result: " ++ resultDescription
+                        }
 
                 ContinueWithTask continue ->
-                    ( [ StartTask continue.task ], "Current step: " ++ continue.taskDescription )
-
-        statusDescription =
-            (state |> statusDescriptionFromState)
-                ++ "\n"
-                ++ activityDescription
+                    ContinueSession
+                        { startTasks = [ continue.task ]
+                        , statusDescriptionForOperator = generalStatusDescription ++ "Current step: " ++ continue.taskDescription
+                        , notifyWhenArrivedAtTime = Nothing
+                        }
     in
-    ( state, { botRequests = requests, statusDescriptionForOperator = statusDescription } )
+    ( state, response )
 
 
-integrateEvent : BotEventAtTime -> State -> State
-integrateEvent eventAtTime stateBefore =
-    case eventAtTime.event of
+integrateEvent : BotEvent -> State -> State
+integrateEvent event stateBefore =
+    case event of
+        InterfaceToHost.ArrivedAtTime configuration ->
+            stateBefore
+
         InterfaceToHost.SetBotConfiguration configuration ->
             { stateBefore | imageFileName = Just configuration }
-
-        InterfaceToHost.SetSessionTimeLimitInMilliseconds _ ->
-            stateBefore
 
         InterfaceToHost.TaskComplete { taskId, taskResult } ->
             case taskResult of
@@ -276,6 +280,9 @@ integrateEvent eventAtTime stateBefore =
 
                 InterfaceToHost.CompleteWithoutResult ->
                     stateBefore
+
+        InterfaceToHost.SetSessionTimeLimit _ ->
+            stateBefore
 
 
 statusDescriptionFromState : State -> String

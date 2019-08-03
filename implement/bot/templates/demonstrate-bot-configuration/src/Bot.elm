@@ -12,7 +12,7 @@ module Bot exposing
     , processEvent
     )
 
-import Interface_To_Host_20190720 as InterfaceToHost exposing (BotEventAtTime, BotRequest, ProcessEventResponse)
+import Interface_To_Host_20190803 as InterfaceToHost exposing (BotEvent, BotResponse)
 import Json.Encode
 
 
@@ -27,29 +27,37 @@ initState =
     { timeInMilliseconds = 0, lastSetConfiguration = Nothing }
 
 
-processEvent : BotEventAtTime -> State -> ( State, ProcessEventResponse )
-processEvent eventAtTime stateBefore =
+processEvent : BotEvent -> State -> ( State, BotResponse )
+processEvent event stateBefore =
     let
         state =
-            stateBefore |> integrateEvent eventAtTime
+            stateBefore |> integrateEvent event
     in
-    ( state, { botRequests = [], statusDescriptionForOperator = state |> statusMessageFromState } )
+    ( state
+    , InterfaceToHost.ContinueSession
+        { statusDescriptionForOperator = state |> statusMessageFromState
+        , startTasks = []
+        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = state.timeInMilliseconds + 1000 }
+        }
+    )
 
 
-integrateEvent : BotEventAtTime -> State -> State
-integrateEvent eventAtTime stateBefore =
-    let
-        stateWithUpdatedTime =
-            { stateBefore | timeInMilliseconds = eventAtTime.timeInMilliseconds }
-    in
-    case eventAtTime.event of
+integrateEvent : BotEvent -> State -> State
+integrateEvent event stateBefore =
+    case event of
+        InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
+            { stateBefore | timeInMilliseconds = timeInMilliseconds }
+
         InterfaceToHost.SetBotConfiguration configuration ->
-            { stateWithUpdatedTime
-                | lastSetConfiguration = Just { timeInMilliseconds = eventAtTime.timeInMilliseconds, configuration = configuration }
+            { stateBefore
+                | lastSetConfiguration = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, configuration = configuration }
             }
 
-        _ ->
-            stateWithUpdatedTime
+        InterfaceToHost.TaskComplete _ ->
+            stateBefore
+
+        InterfaceToHost.SetSessionTimeLimit _ ->
+            stateBefore
 
 
 statusMessageFromState : State -> String

@@ -2,42 +2,34 @@
  -}
 
 
-module Interface_To_Host_20190720 exposing
+module Interface_To_Host_20190803 exposing
     ( BotEvent(..)
-    , BotEventAtTime
-    , BotRequest(..)
-    , ProcessEventResponse
+    , BotResponse(..)
     , ProcessSerializedEventResponse(..)
     , RunInVolatileHostComplete
     , RunInVolatileHostError(..)
     , StartTaskStructure
     , Task(..)
     , TaskResultStructure(..)
-    , deserializeBotEventAtTime
+    , deserializeBotEvent
     , elmEntryPoint
     , wrapForSerialInterface_processEvent
     )
 
 import Json.Decode
-import Json.Decode.Extra
 import Json.Encode
 
 
-type alias BotEventAtTime =
-    { timeInMilliseconds : Int
-    , event : BotEvent
-    }
-
-
 type BotEvent
-    = SetSessionTimeLimitInMilliseconds Int
-    | TaskComplete ResultFromTaskWithId
+    = ArrivedAtTime { timeInMilliseconds : Int }
     | SetBotConfiguration String
+    | TaskComplete ResultFromTaskWithId
+    | SetSessionTimeLimit { timeInMilliseconds : Int }
 
 
-type BotRequest
-    = StartTask StartTaskStructure
-    | FinishSession
+type BotResponse
+    = ContinueSession BotResponseContinueSession
+    | FinishSession BotResponseFinishSession
 
 
 type alias ResultFromTaskWithId =
@@ -77,12 +69,18 @@ type alias ReleaseVolatileHostStructure =
 
 type ProcessSerializedEventResponse
     = DecodeEventError String
-    | DecodeEventSuccess ProcessEventResponse
+    | DecodeEventSuccess BotResponse
 
 
-type alias ProcessEventResponse =
+type alias BotResponseContinueSession =
     { statusDescriptionForOperator : String
-    , botRequests : List BotRequest
+    , startTasks : List StartTaskStructure
+    , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
+    }
+
+
+type alias BotResponseFinishSession =
+    { statusDescriptionForOperator : String
     }
 
 
@@ -94,67 +92,57 @@ type alias StartTaskStructure =
     }
 
 
-type alias RunInVolatileHostStructure =
-    { hostId : String
-    , script : String
-    }
+type alias TaskId =
+    String
 
 
 type Task
     = CreateVolatileHost
     | RunInVolatileHost RunInVolatileHostStructure
     | ReleaseVolatileHost ReleaseVolatileHostStructure
-    | Delay DelayTaskStructure
 
 
-type alias TaskId =
-    String
+type alias RunInVolatileHostStructure =
+    { hostId : String
+    , script : String
+    }
 
 
-type alias DelayTaskStructure =
-    { milliseconds : Int }
-
-
-wrapForSerialInterface_processEvent : (BotEventAtTime -> state -> ( state, ProcessEventResponse )) -> String -> state -> ( state, String )
+wrapForSerialInterface_processEvent : (BotEvent -> state -> ( state, BotResponse )) -> String -> state -> ( state, String )
 wrapForSerialInterface_processEvent processEvent serializedBotEventAtTime stateBefore =
     let
         ( state, response ) =
-            case serializedBotEventAtTime |> deserializeBotEventAtTime of
+            case serializedBotEventAtTime |> deserializeBotEvent of
                 Err error ->
                     ( stateBefore
                     , ("Failed to deserialize event: " ++ (error |> Json.Decode.errorToString))
                         |> DecodeEventError
                     )
 
-                Ok botEventAtTime ->
+                Ok botEvent ->
                     stateBefore
-                        |> processEvent botEventAtTime
+                        |> processEvent botEvent
                         |> Tuple.mapSecond DecodeEventSuccess
     in
     ( state, response |> encodeProcessSerializedEventResponse |> Json.Encode.encode 0 )
 
 
-deserializeBotEventAtTime : String -> Result Json.Decode.Error BotEventAtTime
-deserializeBotEventAtTime =
-    Json.Decode.decodeString decodeBotEventAtTime
-
-
-decodeBotEventAtTime : Json.Decode.Decoder BotEventAtTime
-decodeBotEventAtTime =
-    Json.Decode.map2 BotEventAtTime
-        (Json.Decode.field "timeInMilliseconds" Json.Decode.int)
-        (Json.Decode.field "event" decodeBotEvent)
+deserializeBotEvent : String -> Result Json.Decode.Error BotEvent
+deserializeBotEvent =
+    Json.Decode.decodeString decodeBotEvent
 
 
 decodeBotEvent : Json.Decode.Decoder BotEvent
 decodeBotEvent =
     Json.Decode.oneOf
-        [ Json.Decode.field "setSessionTimeLimitInMilliseconds" Json.Decode.int
-            |> Json.Decode.map SetSessionTimeLimitInMilliseconds
-        , Json.Decode.field "taskComplete" decodeResultFromTaskWithId
-            |> Json.Decode.map TaskComplete
-        , Json.Decode.field "setBotConfiguration" Json.Decode.string
+        [ Json.Decode.field "ArrivedAtTime" jsonDecodeRecordTimeInMilliseconds
+            |> Json.Decode.map ArrivedAtTime
+        , Json.Decode.field "SetBotConfiguration" Json.Decode.string
             |> Json.Decode.map SetBotConfiguration
+        , Json.Decode.field "TaskComplete" decodeResultFromTaskWithId
+            |> Json.Decode.map TaskComplete
+        , Json.Decode.field "SetSessionTimeLimit" jsonDecodeRecordTimeInMilliseconds
+            |> Json.Decode.map SetSessionTimeLimit
         ]
 
 
@@ -168,11 +156,11 @@ decodeResultFromTaskWithId =
 decodeTaskResult : Json.Decode.Decoder TaskResultStructure
 decodeTaskResult =
     Json.Decode.oneOf
-        [ Json.Decode.field "createVolatileHostResponse" (decodeResult (Json.Decode.succeed ()) decodeCreateVolatileHostComplete)
+        [ Json.Decode.field "CreateVolatileHostResponse" (jsonDecodeResult (jsonDecodeSucceedWhenNotNull ()) decodeCreateVolatileHostComplete)
             |> Json.Decode.map CreateVolatileHostResponse
-        , Json.Decode.field "runInVolatileHostResponse" (decodeResult decodeRunInVolatileHostError decodeRunInVolatileHostComplete)
+        , Json.Decode.field "RunInVolatileHostResponse" (jsonDecodeResult decodeRunInVolatileHostError decodeRunInVolatileHostComplete)
             |> Json.Decode.map RunInVolatileHostResponse
-        , Json.Decode.field "completeWithoutResult" (Json.Decode.succeed CompleteWithoutResult)
+        , Json.Decode.field "CompleteWithoutResult" (jsonDecodeSucceedWhenNotNull CompleteWithoutResult)
         ]
 
 
@@ -185,15 +173,15 @@ decodeCreateVolatileHostComplete =
 decodeRunInVolatileHostComplete : Json.Decode.Decoder RunInVolatileHostComplete
 decodeRunInVolatileHostComplete =
     Json.Decode.map3 RunInVolatileHostComplete
-        (Json.Decode.Extra.optionalField "exceptionToString" Json.Decode.string)
-        (Json.Decode.Extra.optionalField "returnValueToString" Json.Decode.string)
+        (Json.Decode.field "exceptionToString" (jsonDecodeNullAsMaybeNothing Json.Decode.string))
+        (Json.Decode.field "returnValueToString" (jsonDecodeNullAsMaybeNothing Json.Decode.string))
         (Json.Decode.field "durationInMilliseconds" Json.Decode.int)
 
 
 decodeRunInVolatileHostError : Json.Decode.Decoder RunInVolatileHostError
 decodeRunInVolatileHostError =
     Json.Decode.oneOf
-        [ Json.Decode.field "hostNotFound" (Json.Decode.succeed HostNotFound)
+        [ Json.Decode.field "hostNotFound" (jsonDecodeSucceedWhenNotNull HostNotFound)
         ]
 
 
@@ -201,29 +189,37 @@ encodeProcessSerializedEventResponse : ProcessSerializedEventResponse -> Json.En
 encodeProcessSerializedEventResponse stepResult =
     case stepResult of
         DecodeEventError errorString ->
-            Json.Encode.object [ ( "decodeEventError", errorString |> Json.Encode.string ) ]
+            Json.Encode.object [ ( "DecodeEventError", errorString |> Json.Encode.string ) ]
 
         DecodeEventSuccess response ->
             Json.Encode.object
-                [ ( "decodeEventSuccess", response |> encodeProcessEventResponse ) ]
+                [ ( "DecodeEventSuccess", response |> encodeBotResponse ) ]
 
 
-encodeProcessEventResponse : ProcessEventResponse -> Json.Encode.Value
-encodeProcessEventResponse processEventResponse =
-    [ ( "statusDescriptionForOperator", processEventResponse.statusDescriptionForOperator |> Json.Encode.string )
-    , ( "botRequests", processEventResponse.botRequests |> Json.Encode.list encodeBotRequest )
+encodeBotResponse : BotResponse -> Json.Encode.Value
+encodeBotResponse botResponse =
+    case botResponse of
+        ContinueSession continueSession ->
+            Json.Encode.object [ ( "ContinueSession", continueSession |> encodeContinueSession ) ]
+
+        FinishSession finishSession ->
+            Json.Encode.object [ ( "FinishSession", finishSession |> encodeFinishSession ) ]
+
+
+encodeContinueSession : BotResponseContinueSession -> Json.Encode.Value
+encodeContinueSession continueSession =
+    [ ( "statusDescriptionForOperator", continueSession.statusDescriptionForOperator |> Json.Encode.string )
+    , ( "startTasks", continueSession.startTasks |> Json.Encode.list encodeStartTask )
+    , ( "notifyWhenArrivedAtTime", continueSession.notifyWhenArrivedAtTime |> jsonEncodeMaybeNothingAsNull jsonEncodeRecordTimeInMilliseconds )
     ]
         |> Json.Encode.object
 
 
-encodeBotRequest : BotRequest -> Json.Encode.Value
-encodeBotRequest botRequest =
-    case botRequest of
-        StartTask startTask ->
-            Json.Encode.object [ ( "startTask", startTask |> encodeStartTask ) ]
-
-        FinishSession ->
-            Json.Encode.object [ ( "finishSession", Json.Encode.object [] ) ]
+encodeFinishSession : BotResponseFinishSession -> Json.Encode.Value
+encodeFinishSession finishSession =
+    [ ( "statusDescriptionForOperator", finishSession.statusDescriptionForOperator |> Json.Encode.string )
+    ]
+        |> Json.Encode.object
 
 
 encodeStartTask : StartTaskStructure -> Json.Encode.Value
@@ -264,22 +260,50 @@ encodeTask task =
                   )
                 ]
 
-        Delay delay ->
-            Json.Encode.object
-                [ ( "delay"
-                  , Json.Encode.object
-                        [ ( "milliseconds", delay.milliseconds |> Json.Encode.int )
-                        ]
-                  )
-                ]
+
+jsonEncodeRecordTimeInMilliseconds : { timeInMilliseconds : Int } -> Json.Encode.Value
+jsonEncodeRecordTimeInMilliseconds { timeInMilliseconds } =
+    [ ( "timeInMilliseconds", timeInMilliseconds |> Json.Encode.int ) ]
+        |> Json.Encode.object
 
 
-decodeResult : Json.Decode.Decoder error -> Json.Decode.Decoder ok -> Json.Decode.Decoder (Result error ok)
-decodeResult errorDecoder okDecoder =
+jsonDecodeRecordTimeInMilliseconds : Json.Decode.Decoder { timeInMilliseconds : Int }
+jsonDecodeRecordTimeInMilliseconds =
     Json.Decode.oneOf
-        [ Json.Decode.field "err" errorDecoder |> Json.Decode.map Err
-        , Json.Decode.field "ok" okDecoder |> Json.Decode.map Ok
+        [ Json.Decode.field "timeInMilliseconds" Json.Decode.int
+            |> Json.Decode.map (\timeInMilliseconds -> { timeInMilliseconds = timeInMilliseconds })
         ]
+
+
+jsonDecodeResult : Json.Decode.Decoder error -> Json.Decode.Decoder ok -> Json.Decode.Decoder (Result error ok)
+jsonDecodeResult errorDecoder okDecoder =
+    Json.Decode.oneOf
+        [ Json.Decode.field "Err" errorDecoder |> Json.Decode.map Err
+        , Json.Decode.field "Ok" okDecoder |> Json.Decode.map Ok
+        ]
+
+
+jsonEncodeMaybeNothingAsNull : (a -> Json.Encode.Value) -> Maybe a -> Json.Encode.Value
+jsonEncodeMaybeNothingAsNull encoder =
+    Maybe.map encoder >> Maybe.withDefault Json.Encode.null
+
+
+jsonDecodeNullAsMaybeNothing : Json.Decode.Decoder a -> Json.Decode.Decoder (Maybe a)
+jsonDecodeNullAsMaybeNothing =
+    Json.Decode.nullable
+
+
+jsonDecodeSucceedWhenNotNull : a -> Json.Decode.Decoder a
+jsonDecodeSucceedWhenNotNull valueIfNotNull =
+    Json.Decode.value
+        |> Json.Decode.andThen
+            (\asValue ->
+                if asValue == Json.Encode.null then
+                    Json.Decode.fail "Is null."
+
+                else
+                    Json.Decode.succeed valueIfNotNull
+            )
 
 
 {-| Support function-level dead code elimination (<https://elm-lang.org/blog/small-assets-without-the-headache>).
@@ -295,7 +319,7 @@ elmEntryPoint initState processEventInterface serializeState deserializeState =
     Platform.worker
         { init = \_ -> ( initState, Cmd.none )
         , update =
-            \event stateBefore ->
+            \_ stateBefore ->
                 processEventInterface "" (stateBefore |> serializeState |> deserializeState) |> Tuple.mapSecond (always Cmd.none)
         , subscriptions = \_ -> Sub.none
         }

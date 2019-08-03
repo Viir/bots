@@ -15,7 +15,7 @@ module SimpleSanderling exposing
     , processEvent
     )
 
-import Interface_To_Host_20190720 as InterfaceToHost
+import Interface_To_Host_20190803 as InterfaceToHost
 import Sanderling
 import SanderlingMemoryMeasurement
 import SanderlingVolatileHostSetup
@@ -40,6 +40,7 @@ type BotRequest
 type alias StateIncludingSetup simpleBotState =
     { setup : SetupState
     , botState : BotState simpleBotState
+    , timeInMilliseconds : Int
     }
 
 
@@ -100,35 +101,35 @@ initState simpleBotState =
             , lastForwardedRequestTask = Nothing
             }
         }
+    , timeInMilliseconds = 0
     }
 
 
 processEvent :
     (BotEventAtTime -> simpleBotState -> { newState : simpleBotState, requests : List BotRequest, statusMessage : String })
-    -> InterfaceToHost.BotEventAtTime
+    -> InterfaceToHost.BotEvent
     -> StateIncludingSetup simpleBotState
-    -> ( StateIncludingSetup simpleBotState, InterfaceToHost.ProcessEventResponse )
-processEvent simpleBotProcessEvent fromHostEventAtTime stateBefore =
+    -> ( StateIncludingSetup simpleBotState, InterfaceToHost.BotResponse )
+processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
     let
-        ( setupStateAfterIntegratingEvent, maybeBotEvent ) =
-            stateBefore.setup |> integrateFromHostEvent fromHostEventAtTime
+        ( stateBefore, maybeBotEvent ) =
+            stateBeforeIntegratingEvent |> integrateFromHostEvent fromHostEvent
 
-        stateAfterIntegratingEvent =
-            { stateBefore | setup = setupStateAfterIntegratingEvent }
-
-        ( state, ( request, currentActivityMessage ) ) =
-            case stateAfterIntegratingEvent.setup |> getNextSetupTask of
+        ( state, response ) =
+            case stateBefore.setup |> getNextSetupTask of
                 ContinueSetup setupState setupTask setupTaskDescription ->
-                    ( { stateAfterIntegratingEvent | setup = setupState }
-                    , ( { taskId = "setup", task = setupTask } |> InterfaceToHost.StartTask
-                      , "Continue setup: " ++ setupTaskDescription
-                      )
+                    ( { stateBefore | setup = setupState }
+                    , { startTasks = [ { taskId = "setup", task = setupTask } ]
+                      , statusDescriptionForOperator = "Continue setup: " ++ setupTaskDescription
+                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
+                      }
+                        |> InterfaceToHost.ContinueSession
                     )
 
                 OperateBot operateBot ->
                     let
                         botStateBefore =
-                            stateAfterIntegratingEvent.botState
+                            stateBefore.botState
 
                         maybeSimpleBotEventResult =
                             maybeBotEvent
@@ -138,7 +139,7 @@ processEvent simpleBotProcessEvent fromHostEventAtTime stateBefore =
                         botStateBeforeRequest =
                             case maybeSimpleBotEventResult of
                                 Nothing ->
-                                    stateAfterIntegratingEvent.botState
+                                    stateBefore.botState
 
                                 Just simpleBotEventResult ->
                                     let
@@ -149,7 +150,7 @@ processEvent simpleBotProcessEvent fromHostEventAtTime stateBefore =
                                             { requestQueueBefore
                                                 | queuedRequests =
                                                     simpleBotEventResult.requests
-                                                        |> List.map (\botRequest -> ( fromHostEventAtTime.timeInMilliseconds, botRequest ))
+                                                        |> List.map (\botRequest -> ( stateBefore.timeInMilliseconds, botRequest ))
                                             }
                                     in
                                     { botStateBefore
@@ -161,7 +162,7 @@ processEvent simpleBotProcessEvent fromHostEventAtTime stateBefore =
                         ( botRequestQueue, operateBotRequestTask ) =
                             case
                                 botStateBeforeRequest.requestQueue
-                                    |> dequeueNextRequestFromBotState { currentTimeInMs = fromHostEventAtTime.timeInMilliseconds }
+                                    |> dequeueNextRequestFromBotState { currentTimeInMs = stateBefore.timeInMilliseconds }
                             of
                                 NoRequest ->
                                     let
@@ -171,68 +172,94 @@ processEvent simpleBotProcessEvent fromHostEventAtTime stateBefore =
                                                     True
 
                                                 Just ( lastMemoryMeasurementTime, _ ) ->
-                                                    lastMemoryMeasurementTime + 10000 < fromHostEventAtTime.timeInMilliseconds
+                                                    lastMemoryMeasurementTime + 10000 < stateBefore.timeInMilliseconds
 
-                                        task =
+                                        memoryMeasurementTask =
                                             if timeForNewMemoryMeasurement then
-                                                operateBot.taskFromBotRequest (TakeMemoryMeasurementAfterDelayInMilliseconds 0)
+                                                Just (operateBot.taskFromBotRequest (TakeMemoryMeasurementAfterDelayInMilliseconds 0))
 
                                             else
-                                                InterfaceToHost.Delay { milliseconds = 3000 }
+                                                Nothing
                                     in
-                                    ( botStateBeforeRequest.requestQueue, task )
+                                    ( botStateBeforeRequest.requestQueue, memoryMeasurementTask )
 
                                 WaitForNextRequest { durationInMilliseconds } ->
                                     ( botStateBeforeRequest.requestQueue
-                                    , InterfaceToHost.Delay { milliseconds = durationInMilliseconds |> min 4000 }
+                                    , Nothing
                                     )
 
                                 ForwardRequest forward ->
-                                    ( forward.newQueueState, forward.request |> operateBot.taskFromBotRequest )
+                                    ( forward.newQueueState, forward.request |> operateBot.taskFromBotRequest |> Just )
 
-                        operateBotRequest =
-                            InterfaceToHost.StartTask
-                                { taskId = "operate-bot", task = operateBotRequestTask }
+                        operateBotRequestStartTasks =
+                            operateBotRequestTask
+                                |> Maybe.map (\task -> { taskId = "operate-bot", task = task })
+                                |> Maybe.map List.singleton
+                                |> Maybe.withDefault []
 
                         botState =
                             { botStateBeforeRequest | requestQueue = botRequestQueue }
                     in
-                    ( { stateAfterIntegratingEvent | botState = botState }
-                    , ( operateBotRequest, "Operate bot:\n" ++ (botState.statusMessage |> Maybe.withDefault "") )
+                    ( { stateBefore | botState = botState }
+                    , { startTasks = operateBotRequestStartTasks
+                      , statusDescriptionForOperator = "Operate bot:\n" ++ (botState.statusMessage |> Maybe.withDefault "")
+                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
+                      }
+                        |> InterfaceToHost.ContinueSession
                     )
 
                 FinishSession reason ->
-                    ( stateAfterIntegratingEvent
-                    , ( InterfaceToHost.FinishSession, "Finish session (" ++ reason ++ ")" )
+                    ( stateBefore
+                    , InterfaceToHost.FinishSession { statusDescriptionForOperator = "Finish session (" ++ reason ++ ")" }
                     )
 
-        statusMessage =
-            (state |> statusReportFromState)
-                ++ "\nCurrent activity: "
-                ++ currentActivityMessage
+        statusMessagePrefix =
+            (state |> statusReportFromState) ++ "\nCurrent activity: "
+
+        responseWithAddedStatusMessage =
+            case response of
+                InterfaceToHost.ContinueSession continueSession ->
+                    { continueSession
+                        | statusDescriptionForOperator = statusMessagePrefix ++ continueSession.statusDescriptionForOperator
+                    }
+                        |> InterfaceToHost.ContinueSession
+
+                InterfaceToHost.FinishSession finishSession ->
+                    { finishSession
+                        | statusDescriptionForOperator = statusMessagePrefix ++ finishSession.statusDescriptionForOperator
+                    }
+                        |> InterfaceToHost.FinishSession
     in
-    ( state, { botRequests = [ request ], statusDescriptionForOperator = statusMessage } )
+    ( state, responseWithAddedStatusMessage )
 
 
-integrateFromHostEvent : InterfaceToHost.BotEventAtTime -> SetupState -> ( SetupState, Maybe BotEventAtTime )
-integrateFromHostEvent fromHostEventAtTime setupStateBefore =
-    case fromHostEventAtTime.event of
+integrateFromHostEvent : InterfaceToHost.BotEvent -> StateIncludingSetup a -> ( StateIncludingSetup a, Maybe BotEventAtTime )
+integrateFromHostEvent fromHostEvent stateBefore =
+    case fromHostEvent of
+        InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
+            ( { stateBefore | timeInMilliseconds = timeInMilliseconds }, Nothing )
+
         InterfaceToHost.TaskComplete taskComplete ->
-            integrateTaskResult ( fromHostEventAtTime.timeInMilliseconds, taskComplete.taskResult ) setupStateBefore
-                |> Tuple.mapSecond
-                    (Maybe.map
-                        (\botEvent ->
-                            { timeInMilliseconds = fromHostEventAtTime.timeInMilliseconds, event = botEvent }
-                        )
-                    )
-
-        InterfaceToHost.SetSessionTimeLimitInMilliseconds _ ->
-            ( setupStateBefore, Nothing )
+            let
+                ( setupState, maybeBotEvent ) =
+                    stateBefore.setup
+                        |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
+                        |> Tuple.mapSecond
+                            (Maybe.map
+                                (\botEvent ->
+                                    { timeInMilliseconds = stateBefore.timeInMilliseconds, event = botEvent }
+                                )
+                            )
+            in
+            ( { stateBefore | setup = setupState }, maybeBotEvent )
 
         InterfaceToHost.SetBotConfiguration newBotConfiguration ->
-            ( setupStateBefore
-            , Just { timeInMilliseconds = fromHostEventAtTime.timeInMilliseconds, event = SetBotConfiguration newBotConfiguration }
+            ( stateBefore
+            , Just { timeInMilliseconds = stateBefore.timeInMilliseconds, event = SetBotConfiguration newBotConfiguration }
             )
+
+        InterfaceToHost.SetSessionTimeLimit _ ->
+            ( stateBefore, Nothing )
 
 
 integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe BotEvent )

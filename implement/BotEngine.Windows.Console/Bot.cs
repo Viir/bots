@@ -47,9 +47,10 @@ namespace BotEngine.Windows.Console
                     return System.IO.Path.Combine(directoryName, directoryName + "T" + time.ToString("HH") + ".composition.jsonl");
                 });
 
-            (DateTimeOffset time, string statusDescriptionForOperator, ImmutableList<InterfaceToBot.BotRequest>)? lastBotStep = null;
+            (DateTimeOffset time, string statusDescriptionForOperator, InterfaceToBot.BotResponse.DecodeEventSuccessStructure response)? lastBotStep = null;
 
-            ImmutableList<InterfaceToBot.BotRequest> remainingBotRequests = null;
+            var botSessionTaskCancellationToken = new System.Threading.CancellationTokenSource();
+            var activeBotTasks = new ConcurrentDictionary<InterfaceToBot.StartTask, System.Threading.Tasks.Task>();
 
             bool pauseBot = false;
             (string text, DateTimeOffset time) lastConsoleUpdate = (null, DateTimeOffset.MinValue);
@@ -74,19 +75,38 @@ namespace BotEngine.Windows.Console
                 }
             }
 
+            void cleanUpBotTasksAndPropagateExceptions()
+            {
+                foreach (var (request, engineTask) in activeBotTasks.ToList())
+                {
+                    if (engineTask.Exception != null)
+                        throw new Exception("Bot task '" + request.taskId + "' has failed with exception", engineTask.Exception);
+
+                    if (engineTask.IsCompleted)
+                        activeBotTasks.TryRemove(request, out var _);
+                }
+            }
+
+            var displayLock = new object();
+
             void displayStatusInConsole()
             {
-                var textToDisplay = string.Join("\n", textLinesToDisplayInConsole());
+                lock (displayLock)
+                {
+                    cleanUpBotTasksAndPropagateExceptions();
 
-                var time = DateTimeOffset.UtcNow;
+                    var textToDisplay = string.Join("\n", textLinesToDisplayInConsole());
 
-                if (lastConsoleUpdate.text == textToDisplay && time < lastConsoleUpdate.time + TimeSpan.FromSeconds(1))
-                    return;
+                    var time = DateTimeOffset.UtcNow;
 
-                DotNetConsole.Clear();
-                DotNetConsole.WriteLine(textToDisplay);
+                    if (lastConsoleUpdate.text == textToDisplay && time < lastConsoleUpdate.time + TimeSpan.FromSeconds(1))
+                        return;
 
-                lastConsoleUpdate = (textToDisplay, time);
+                    DotNetConsole.Clear();
+                    DotNetConsole.WriteLine(textToDisplay);
+
+                    lastConsoleUpdate = (textToDisplay, time);
+                }
             }
 
             IEnumerable<string> textLinesToDisplayInConsole()
@@ -105,7 +125,9 @@ namespace BotEngine.Windows.Console
 
                 var lastBotStepAgeInSeconds = (int)((DateTimeOffset.UtcNow - lastBotStep.Value.time).TotalSeconds);
 
-                yield return "Last bot event was " + lastBotStepAgeInSeconds + " seconds ago at " + lastBotStep.Value.time.ToString("HH-mm-ss.fff") + ".";
+                yield return
+                    "Last bot event was " + lastBotStepAgeInSeconds + " seconds ago at " + lastBotStep.Value.time.ToString("HH-mm-ss.fff") + ". " +
+                    "There are " + activeBotTasks.Count + " tasks in progress.";
 
                 yield return "Status message from bot:\n";
 
@@ -161,13 +183,13 @@ namespace BotEngine.Windows.Console
             var volatileHosts = new ConcurrentDictionary<string, Kalmit.CSharpScriptContext>();
 
             InterfaceToBot.Result<InterfaceToBot.TaskResult.RunInVolatileHostError, InterfaceToBot.TaskResult.RunInVolatileHostComplete> ExecuteRequestToRunInVolatileHost(
-                InterfaceToBot.Task.RunInVolatileHost runInVolatileHost)
+                InterfaceToBot.Task.RunInVolatileHostStructure runInVolatileHost)
             {
                 if (!volatileHosts.TryGetValue(runInVolatileHost.hostId, out var volatileHost))
                 {
                     return new InterfaceToBot.Result<InterfaceToBot.TaskResult.RunInVolatileHostError, InterfaceToBot.TaskResult.RunInVolatileHostComplete>
                     {
-                        err = new InterfaceToBot.TaskResult.RunInVolatileHostError
+                        Err = new InterfaceToBot.TaskResult.RunInVolatileHostError
                         {
                             hostNotFound = new object(),
                         }
@@ -182,7 +204,7 @@ namespace BotEngine.Windows.Console
 
                 return new InterfaceToBot.Result<InterfaceToBot.TaskResult.RunInVolatileHostError, InterfaceToBot.TaskResult.RunInVolatileHostComplete>
                 {
-                    ok = new InterfaceToBot.TaskResult.RunInVolatileHostComplete
+                    Ok = new InterfaceToBot.TaskResult.RunInVolatileHostComplete
                     {
                         exceptionToString = fromHostResult.Exception?.ToString(),
                         returnValueToString = fromHostResult.ReturnValue?.ToString(),
@@ -201,13 +223,7 @@ namespace BotEngine.Windows.Console
 
                 try
                 {
-                    var botEventAtTime = new InterfaceToBot.BotEventAtTime
-                    {
-                        timeInMilliseconds = botSessionClock.ElapsedMilliseconds,
-                        @event = botEvent,
-                    };
-
-                    serializedEvent = SerializeToJsonForBot(botEventAtTime);
+                    serializedEvent = SerializeToJsonForBot(botEvent);
 
                     var processEventResult = process.ProcessEvents(
                         new[]
@@ -223,19 +239,23 @@ namespace BotEngine.Windows.Console
 
                     var botResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<InterfaceToBot.BotResponse>(serializedResponse);
 
-                    if (botResponse.decodeEventSuccess == null)
+                    if (botResponse.DecodeEventSuccess == null)
                     {
-                        throw new Exception("Bot reported decode error: " + botResponse.decodeEventError);
+                        throw new Exception("Bot reported decode error: " + botResponse.DecodeEventError);
                     }
 
-                    var botRequests =
-                        botResponse.decodeEventSuccess.botRequests.ToImmutableList();
+                    var statusDescriptionForOperator =
+                        botResponse.DecodeEventSuccess?.ContinueSession?.statusDescriptionForOperator ??
+                        botResponse.DecodeEventSuccess?.FinishSession?.statusDescriptionForOperator;
 
-                    lastBotStep = (eventTime, botResponse.decodeEventSuccess.statusDescriptionForOperator, botRequests);
+                    lastBotStep = (eventTime, statusDescriptionForOperator, botResponse.DecodeEventSuccess);
 
-                    remainingBotRequests =
-                        (remainingBotRequests ?? ImmutableList<InterfaceToBot.BotRequest>.Empty)
-                        .AddRange(botRequests);
+                    foreach (var startTask in botResponse.DecodeEventSuccess?.ContinueSession?.startTasks ?? Array.Empty<InterfaceToBot.StartTask>())
+                    {
+                        var engineTask = System.Threading.Tasks.Task.Run(() => startTaskAndProcessEvent(startTask), botSessionTaskCancellationToken.Token);
+
+                        activeBotTasks[startTask] = engineTask;
+                    }
                 }
                 catch (Exception exception)
                 {
@@ -258,7 +278,7 @@ namespace BotEngine.Windows.Console
 
             //  TODO: Get the bot requests from the `init` function.
 
-            processBotEvent(new InterfaceToBot.BotEvent { setBotConfiguration = botConfiguration ?? "" });
+            processBotEvent(new InterfaceToBot.BotEvent { SetBotConfiguration = botConfiguration ?? "" });
 
             while (true)
             {
@@ -266,14 +286,19 @@ namespace BotEngine.Windows.Console
 
                 updatePauseContinue();
 
-                System.Threading.Thread.Sleep(111);
+                var millisecondsToNextNotification =
+                    (lastBotStep?.response?.ContinueSession?.notifyWhenArrivedAtTime?.timeInMilliseconds - botSessionClock.ElapsedMilliseconds) ?? 1000;
+
+                System.Threading.Thread.Sleep((int)Math.Min(1000, Math.Max(10, millisecondsToNextNotification)));
 
                 var lastRequestToReactorAgeInSeconds = (long)botSessionClock.Elapsed.TotalSeconds - lastRequestToReactorTimeInSeconds;
 
                 if (30 <= lastRequestToReactorAgeInSeconds)
                     fireAndForgetReportToReactor(new RequestToReactorUseBotStruct
-                    { ContinueSession = new RequestToReactorUseBotStruct.ContinueSessionStruct
-                    { sessionId = sessionId, statusDescriptionForOperator = lastBotStep?.statusDescriptionForOperator } });
+                    {
+                        ContinueSession = new RequestToReactorUseBotStruct.ContinueSessionStruct
+                        { sessionId = sessionId, statusDescriptionForOperator = lastBotStep?.statusDescriptionForOperator }
+                    });
 
                 if (pauseBot)
                     continue;
@@ -283,124 +308,85 @@ namespace BotEngine.Windows.Console
                 var lastBotStepAgeMilli =
                     botStepTime.ToUnixTimeMilliseconds() - lastBotStep?.time.ToUnixTimeMilliseconds();
 
-                var finishSessionRequest =
-                    remainingBotRequests
-                    ?.FirstOrDefault(request => request.finishSession != null);
-
-                if (finishSessionRequest != null)
+                if (lastBotStep?.response?.FinishSession != null)
                 {
                     logEntry("Bot has finished.");
+                    botSessionTaskCancellationToken.Cancel();
                     return 0;
                 }
 
-                var botRequestToExecute =
-                    remainingBotRequests
-                    ?.FirstOrDefault();
-
-                if (botRequestToExecute == null)
+                if (lastBotStep?.response?.ContinueSession?.notifyWhenArrivedAtTime?.timeInMilliseconds <= botSessionClock.ElapsedMilliseconds
+                    || !(lastBotStepAgeMilli < 10_000))
                 {
-                    if (!(lastBotStepAgeMilli < 10_000))
+                    processBotEvent(new InterfaceToBot.BotEvent
                     {
-                        processBotEvent(new InterfaceToBot.BotEvent
-                        {
-                            setSessionTimeLimitInMilliseconds = 0,
-                        });
-                    }
-
-                    continue;
+                        ArrivedAtTime = new InterfaceToBot.TimeStructure { timeInMilliseconds = botSessionClock.ElapsedMilliseconds },
+                    });
                 }
+            }
 
-                var requestTask = botRequestToExecute.startTask;
+            void startTaskAndProcessEvent(InterfaceToBot.StartTask startTask)
+            {
+                var taskResult = performTask(startTask.task);
 
-                if (requestTask?.task?.createVolatileHost != null)
+                processBotEvent(new InterfaceToBot.BotEvent
+                {
+                    TaskComplete = new InterfaceToBot.ResultFromTaskWithId
+                    {
+                        taskId = startTask.taskId,
+                        taskResult = taskResult,
+                    },
+                });
+            }
+
+            InterfaceToBot.TaskResult performTask(InterfaceToBot.Task task)
+            {
+                if (task?.CreateVolatileHost != null)
                 {
                     var volatileHostId = System.Threading.Interlocked.Increment(ref createVolatileHostAttempts).ToString();
 
                     volatileHosts[volatileHostId] = new Kalmit.CSharpScriptContext(getFileFromHashSHA256);
 
-                    processBotEvent(new InterfaceToBot.BotEvent
+                    return new InterfaceToBot.TaskResult
                     {
-                        taskComplete = new InterfaceToBot.ResultFromTaskWithId
+                        CreateVolatileHostResponse = new InterfaceToBot.Result<object, InterfaceToBot.TaskResult.CreateVolatileHostComplete>
                         {
-                            taskId = requestTask?.taskId,
-                            taskResult = new InterfaceToBot.TaskResult
+                            Ok = new InterfaceToBot.TaskResult.CreateVolatileHostComplete
                             {
-                                createVolatileHostResponse = new InterfaceToBot.Result<object, InterfaceToBot.TaskResult.CreateVolatileHostComplete>
-                                {
-                                    ok = new InterfaceToBot.TaskResult.CreateVolatileHostComplete
-                                    {
-                                        hostId = volatileHostId,
-                                    },
-                                },
+                                hostId = volatileHostId,
                             },
                         },
-                    });
+                    };
                 }
 
-                if (requestTask?.task?.releaseVolatileHost != null)
+                if (task?.ReleaseVolatileHost != null)
                 {
-                    volatileHosts.TryRemove(requestTask?.task?.releaseVolatileHost.hostId, out var volatileHost);
+                    volatileHosts.TryRemove(task?.ReleaseVolatileHost.hostId, out var volatileHost);
+
+                    return new InterfaceToBot.TaskResult { CompleteWithoutResult = new object() };
                 }
 
-                if (requestTask?.task?.runInVolatileHost != null)
+                if (task?.RunInVolatileHost != null)
                 {
-                    var result = ExecuteRequestToRunInVolatileHost(requestTask?.task?.runInVolatileHost);
+                    var result = ExecuteRequestToRunInVolatileHost(task?.RunInVolatileHost);
 
-                    processBotEvent(new InterfaceToBot.BotEvent
+                    return new InterfaceToBot.TaskResult
                     {
-                        taskComplete = new InterfaceToBot.ResultFromTaskWithId
-                        {
-                            taskId = requestTask?.taskId,
-                            taskResult = new InterfaceToBot.TaskResult
-                            {
-                                runInVolatileHostResponse = result,
-                            },
-                        }
-                    });
+                        RunInVolatileHostResponse = result,
+                    };
                 }
 
-                if (requestTask?.task?.delay != null)
-                {
-                    var delayStopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-                    while (true)
-                    {
-                        var remainingWaitTime = requestTask.task.delay.milliseconds - delayStopwatch.ElapsedMilliseconds;
-
-                        if (remainingWaitTime <= 0)
-                            break;
-
-                        System.Threading.Thread.Sleep((int)Math.Min(100, remainingWaitTime));
-
-                        updatePauseContinue();
-                        displayStatusInConsole();
-                    }
-
-                    processBotEvent(new InterfaceToBot.BotEvent
-                    {
-                        taskComplete = new InterfaceToBot.ResultFromTaskWithId
-                        {
-                            taskId = requestTask?.taskId,
-                            taskResult = new InterfaceToBot.TaskResult
-                            {
-                                completeWithoutResult = new object(),
-                            },
-                        }
-                    });
-                }
-
-                remainingBotRequests = remainingBotRequests.Remove(botRequestToExecute);
+                return null;
             }
         }
 
         static string SerializeToJsonForBot<T>(T value) =>
             Newtonsoft.Json.JsonConvert.SerializeObject(
                 value,
-                //  Use settings to get same derivation as at https://github.com/Arcitectus/Sanderling/blob/ada11c9f8df2367976a6bcc53efbe9917107bfa7/src/Sanderling/Sanderling.MemoryReading.Test/MemoryReadingDemo.cs#L91-L97
+                //  Use settings for consistency with Kalmit/elm-fullstack
                 new Newtonsoft.Json.JsonSerializerSettings
                 {
-                    //  Bot code does not expect properties with null values, see https://github.com/Viir/bots/blob/880d745b0aa8408a4417575d54ecf1f513e7aef4/explore/2019-05-14.eve-online-bot-framework/src/Sanderling_Interface_20190514.elm
-                    NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore,
+                    NullValueHandling = Newtonsoft.Json.NullValueHandling.Include,
 
                     //	https://stackoverflow.com/questions/7397207/json-net-error-self-referencing-loop-detected-for-type/18223985#18223985
                     ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore,

@@ -1,48 +1,49 @@
 ﻿namespace BotEngine.Windows.Console.BotFramework.InterfaceToBot
 {
-    public class BotEventAtTime
-    {
-        public long timeInMilliseconds;
-
-        public BotEvent @event;
-    }
-
     public class BotEvent
     {
-        public long? setSessionTimeLimitInMilliseconds;
+        public TimeStructure ArrivedAtTime;
 
-        public ResultFromTaskWithId taskComplete;
+        public ResultFromTaskWithId TaskComplete;
 
-        public string setBotConfiguration;
+        public TimeStructure SetSessionTimeLimit;
+
+        public string SetBotConfiguration;
     }
 
     public class BotResponse
     {
-        public string decodeEventError;
+        public string DecodeEventError;
 
-        public DecodeEventSuccess decodeEventSuccess;
+        public DecodeEventSuccessStructure DecodeEventSuccess;
 
-        public class DecodeEventSuccess
+        public class DecodeEventSuccessStructure
         {
-            public BotRequest[] botRequests;
+            public ContinueSessionStructure ContinueSession;
 
-            public string statusDescriptionForOperator;
+            public FinishSessionStructure FinishSession;
+
+            public class ContinueSessionStructure
+            {
+                public string statusDescriptionForOperator;
+
+                public StartTask[] startTasks;
+
+                public TimeStructure notifyWhenArrivedAtTime;
+            }
+
+            public class FinishSessionStructure
+            {
+                public string statusDescriptionForOperator;
+            }
         }
     }
 
-    public class BotRequest
+    public class Result<ErrT, OkT>
     {
-        public object finishSession;
+        public ErrT Err;
 
-        //  TODO: Consider make consistent with Kalmit: move ID from task to request.
-        public StartTask startTask;
-    }
-
-    public class Result<Err, Ok>
-    {
-        public Err err;
-
-        public Ok ok;
+        public OkT Ok;
     }
 
     public class ResultFromTaskWithId
@@ -54,11 +55,11 @@
 
     public class TaskResult
     {
-        public Result<object, CreateVolatileHostComplete> createVolatileHostResponse;
+        public Result<object, CreateVolatileHostComplete> CreateVolatileHostResponse;
 
-        public Result<RunInVolatileHostError, RunInVolatileHostComplete> runInVolatileHostResponse;
+        public Result<RunInVolatileHostError, RunInVolatileHostComplete> RunInVolatileHostResponse;
 
-        public object completeWithoutResult;
+        public object CompleteWithoutResult;
 
         public class CreateVolatileHostComplete
         {
@@ -89,29 +90,27 @@
 
     public class Task
     {
-        public object createVolatileHost;
+        public object CreateVolatileHost;
 
-        public RunInVolatileHost runInVolatileHost;
+        public RunInVolatileHostStructure RunInVolatileHost;
 
-        public ReleaseVolatileHost releaseVolatileHost;
+        public ReleaseVolatileHostStructure ReleaseVolatileHost;
 
-        public Delay delay;
-
-        public class RunInVolatileHost
+        public class RunInVolatileHostStructure
         {
             public string hostId;
 
             public string script;
         }
 
-        public class ReleaseVolatileHost
+        public class ReleaseVolatileHostStructure
         {
             public string hostId;
         }
+    }
 
-        public class Delay
-        {
-            public long milliseconds;
-        }
+    public class TimeStructure
+    {
+        public long timeInMilliseconds;
     }
 }

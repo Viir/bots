@@ -13,7 +13,7 @@ module Bot exposing
     , processEvent
     )
 
-import Interface_To_Host_20190720 as InterfaceToHost
+import Interface_To_Host_20190803 as InterfaceToHost
 import Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
 import SanderlingMemoryMeasurement exposing (InfoPanelRouteRouteElementMarker, MemoryMeasurementShipUi)
 import SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
@@ -39,7 +39,7 @@ initState =
     SimpleSanderling.initState ()
 
 
-processEvent : InterfaceToHost.BotEventAtTime -> State -> ( State, InterfaceToHost.ProcessEventResponse )
+processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
     SimpleSanderling.processEvent simpleProcessEvent
 

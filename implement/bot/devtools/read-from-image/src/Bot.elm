@@ -14,7 +14,7 @@
     > Found matches in 4 locations:
     > [ { x = 23, y = 57 }, { x = 33, y = 57 }, { x = 43, y = 57 }, { x = 53, y = 57 } ]
 
-   bot-catalog-tags:demo,test,locate-object-in-image
+   bot-catalog-tags:devtool,test,locate-object-in-image
 -}
 
 
@@ -27,7 +27,7 @@ module Bot exposing
 import Base64.Decode
 import DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue)
 import Dict
-import Interface_To_Host_20190803 as InterfaceToHost exposing (BotEvent, BotResponse(..))
+import Interface_To_Host_20190803 as InterfaceToHost
 import Json.Decode
 import Maybe.Extra
 import VolatileHostSetup exposing (ReadFileContentResultStructure(..), RequestToVolatileHost(..), ResponseFromVolatileHost(..))
@@ -163,7 +163,7 @@ initState =
     }
 
 
-processEvent : BotEvent -> State -> ( State, BotResponse )
+processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent eventAtTime stateBefore =
     let
         state =
@@ -183,12 +183,12 @@ processEvent eventAtTime stateBefore =
         response =
             case nextStep of
                 StopWithResult { resultDescription } ->
-                    FinishSession
+                    InterfaceToHost.FinishSession
                         { statusDescriptionForOperator = generalStatusDescription ++ "Stopped with result: " ++ resultDescription
                         }
 
                 ContinueWithTask continue ->
-                    ContinueSession
+                    InterfaceToHost.ContinueSession
                         { startTasks = [ continue.task ]
                         , statusDescriptionForOperator = generalStatusDescription ++ "Current step: " ++ continue.taskDescription
                         , notifyWhenArrivedAtTime = Nothing
@@ -197,7 +197,7 @@ processEvent eventAtTime stateBefore =
     ( state, response )
 
 
-integrateEvent : BotEvent -> State -> State
+integrateEvent : InterfaceToHost.BotEvent -> State -> State
 integrateEvent event stateBefore =
     case event of
         InterfaceToHost.ArrivedAtTime configuration ->

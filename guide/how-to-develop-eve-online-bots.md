@@ -78,12 +78,6 @@ Thanks to the translation in the wrapping function discussed above, the types he
 
 > The actual names for the types used here are only conventions. You might find a bot code which uses different names. For example, the bot author might choose to abbreviate `InterfaceToHost.BotEvent` to `BotEvent`, by using a type alias.
 
-```todo
--> TODO:  
-  + Update the example bots and devtools for consistent names.  
-  + Look into improving type names for more consistency (`BotEventResponse`?)
-```
-
 I will quickly break down the Elm syntax here: The part after the last arrow (`->`) is the return type. It is a tuple with two components. The part between the colon (`:`) and the return type is the list of parameters. So we have two parameters, one of type `InterfaceToHost.BotEvent` and one of type `State`.
 
 Let's have a closer look at the three different types here:

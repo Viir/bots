@@ -2,7 +2,7 @@
    It takes any configuration string received from the user and stores it in the bot state.
    This bot also updates the status message to show the last received bot configuration, so you can check that a method (e.g., via command line) of setting the bot configuration works.
 
-   bot-catalog-tags:guide,demo-botengine
+   bot-catalog-tags:guide,demo-interface-to-host
 -}
 
 
@@ -12,7 +12,7 @@ module Bot exposing
     , processEvent
     )
 
-import Interface_To_Host_20190803 as InterfaceToHost exposing (BotEvent, BotResponse)
+import Interface_To_Host_20190803 as InterfaceToHost
 import Json.Encode
 
 
@@ -27,7 +27,7 @@ initState =
     { timeInMilliseconds = 0, lastSetConfiguration = Nothing }
 
 
-processEvent : BotEvent -> State -> ( State, BotResponse )
+processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent event stateBefore =
     let
         state =
@@ -42,7 +42,7 @@ processEvent event stateBefore =
     )
 
 
-integrateEvent : BotEvent -> State -> State
+integrateEvent : InterfaceToHost.BotEvent -> State -> State
 integrateEvent event stateBefore =
     case event of
         InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->

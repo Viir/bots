@@ -24,13 +24,11 @@ module Bot exposing
     , processEvent
     )
 
-import Base64.Decode
-import DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue)
 import Dict
 import Interface_To_Host_20190803 as InterfaceToHost
 import Json.Decode
 import Maybe.Extra
-import VolatileHostSetup exposing (ReadFileContentResultStructure(..), RequestToVolatileHost(..), ResponseFromVolatileHost(..))
+import VolatileHostSetup exposing (PixelValue)
 
 
 type alias State =
@@ -44,20 +42,24 @@ type ProcessStepResult
     = Initialized
     | VolatileHostCreated VolatileHostCreatedStructure
     | VolatileHostSetupCompleted VolatileHostCreatedStructure
-    | FileContentsRead FileContentsReadStructure
+    | GotImage GotImageStructure
+    | GotImagePixels GotImagePixelsStructure
 
 
 type alias VolatileHostCreatedStructure =
     { hostId : String }
 
 
-type alias FileContentsReadStructure =
+type alias GotImageStructure =
     { volatileHost : VolatileHostCreatedStructure
-    , decodeImageResult :
-        Result String
-            { image : DecodeBMPImageResult
-            , imageSearchResultLocations : List { x : Int, y : Int }
-            }
+    , volatileHostResponse : VolatileHostSetup.GetImageSuccessStructure
+    }
+
+
+type alias GotImagePixelsStructure =
+    { previousStep : GotImageStructure
+    , volatileHostResponse : VolatileHostSetup.GetPixels2DSuccessStructure
+    , imageSearchResultLocations : List { x : Int, y : Int }
     }
 
 
@@ -85,12 +87,7 @@ getMatchesLocationsFromImage image =
             )
 
 
-getMatchesLocationsFromDecodeImageResult : DecodeBMPImageResult -> List { x : Int, y : Int }
-getMatchesLocationsFromDecodeImageResult decodeImageResult =
-    decodeImageResult |> pixelValueDictFromDecodeBMPImageResult |> getMatchesLocationsFromImage
-
-
-{-| This is the square-shaped thing displayed in the route info panel in the game EVE Online.
+{-| This is the square-shaped thing displayed in the route info panel in the game EVE Online. There seems to be one for each solar system on the route.
 In the image <https://github.com/Viir/bots/blob/a755e00ae395d89cb586995fb7f4d07a21200a8a/explore/2019-07-10.read-from-screenshot/2019-07-11.example-from-eve-online-crop-0.bmp>, you can see 4 of these.
 -}
 image_matches_EVE_Online_Info_Panel_Route_Marker : ({ x : Int, y : Int } -> Maybe PixelValue) -> Bool
@@ -200,13 +197,13 @@ processEvent eventAtTime stateBefore =
 integrateEvent : InterfaceToHost.BotEvent -> State -> State
 integrateEvent event stateBefore =
     case event of
-        InterfaceToHost.ArrivedAtTime configuration ->
+        InterfaceToHost.ArrivedAtTime _ ->
             stateBefore
 
         InterfaceToHost.SetBotConfiguration configuration ->
             { stateBefore | imageFileName = Just configuration }
 
-        InterfaceToHost.TaskComplete { taskId, taskResult } ->
+        InterfaceToHost.TaskComplete { taskResult } ->
             case taskResult of
                 InterfaceToHost.CreateVolatileHostResponse createVolatileHostResponse ->
                     case createVolatileHostResponse of
@@ -231,9 +228,6 @@ integrateEvent event stateBefore =
                                         Initialized ->
                                             stateBefore
 
-                                        FileContentsRead _ ->
-                                            stateBefore
-
                                         VolatileHostCreated volatileHost ->
                                             if returnValueToString == "Setup Completed" then
                                                 { stateBefore | lastStepResult = VolatileHostSetupCompleted volatileHost }
@@ -248,35 +242,55 @@ integrateEvent event stateBefore =
 
                                                 Ok responseFromVolatileHost ->
                                                     case responseFromVolatileHost of
-                                                        ReadFileContentResult DidNotFindFileAtSpecifiedPath ->
-                                                            { stateBefore | error = Just "Reading the file failed: Did not find the file at the specified path." }
+                                                        VolatileHostSetup.GetImageResult VolatileHostSetup.DidNotFindFileAtSpecifiedPath ->
+                                                            { stateBefore | error = Just "Getting the file failed: Did not find the file at the specified path." }
 
-                                                        ReadFileContentResult (ExceptionAsString exceptionAsString) ->
-                                                            { stateBefore | error = Just ("Reading the file failed with exception: " ++ exceptionAsString) }
+                                                        VolatileHostSetup.GetImageResult (VolatileHostSetup.ExceptionAsString exceptionAsString) ->
+                                                            { stateBefore | error = Just ("Getting the file failed with exception: " ++ exceptionAsString) }
 
-                                                        ReadFileContentResult (FileContentAsBase64 fileContentBase64) ->
-                                                            case fileContentBase64 |> Base64.Decode.decode Base64.Decode.bytes of
-                                                                Err base64decodeError ->
-                                                                    { stateBefore | error = Just "Error decoding the file contents from base64." }
+                                                        VolatileHostSetup.GetImageResult (VolatileHostSetup.GetImageSuccess getImageSuccess) ->
+                                                            let
+                                                                gotImage =
+                                                                    { volatileHost = volatileHost
+                                                                    , volatileHostResponse = getImageSuccess
+                                                                    }
+                                                            in
+                                                            { stateBefore | lastStepResult = GotImage gotImage }
 
-                                                                Ok fileContents ->
+                                                        _ ->
+                                                            { stateBefore | error = Just "Unexpected response from volatile host." }
+
+                                        GotImage gotImage ->
+                                            case returnValueToString |> VolatileHostSetup.deserializeResponseFromVolatileHost of
+                                                Err error ->
+                                                    { stateBefore | error = Just ("Failed to parse response from volatile host: " ++ (error |> Json.Decode.errorToString)) }
+
+                                                Ok responseFromVolatileHost ->
+                                                    case responseFromVolatileHost of
+                                                        VolatileHostSetup.GetPixelsFromImageRectangleResult getPixelsFromImageRectangleResult ->
+                                                            case getPixelsFromImageRectangleResult of
+                                                                VolatileHostSetup.DidNotFindSpecifiedImage ->
+                                                                    { stateBefore | error = Just "Getting image pixels failed: Did not find specified image." }
+
+                                                                VolatileHostSetup.GetPixels2DSuccess getPixelsSuccess ->
                                                                     let
-                                                                        decodeImageResult =
-                                                                            fileContents
-                                                                                |> DecodeBMPImage.decodeBMPImageFile
-                                                                                |> Result.map
-                                                                                    (\decodeResult ->
-                                                                                        { image = decodeResult
-                                                                                        , imageSearchResultLocations = decodeResult |> getMatchesLocationsFromDecodeImageResult
-                                                                                        }
-                                                                                    )
+                                                                        pixelsDict =
+                                                                            getPixelsSuccess.pixels
+                                                                                |> dictWithTupleKeyFromNestedList
 
-                                                                        fileContentsRead =
-                                                                            { volatileHost = volatileHost
-                                                                            , decodeImageResult = decodeImageResult
+                                                                        gotImagePixels =
+                                                                            { previousStep = gotImage
+                                                                            , volatileHostResponse = getPixelsSuccess
+                                                                            , imageSearchResultLocations = pixelsDict |> getMatchesLocationsFromImage
                                                                             }
                                                                     in
-                                                                    { stateBefore | lastStepResult = FileContentsRead fileContentsRead }
+                                                                    { stateBefore | lastStepResult = GotImagePixels gotImagePixels }
+
+                                                        _ ->
+                                                            { stateBefore | error = Just ("Unexpected response from volatile host: " ++ returnValueToString) }
+
+                                        GotImagePixels _ ->
+                                            stateBefore
 
                 InterfaceToHost.CompleteWithoutResult ->
                     stateBefore
@@ -287,12 +301,50 @@ integrateEvent event stateBefore =
 
 statusDescriptionFromState : State -> String
 statusDescriptionFromState state =
-    case state.imageFileName |> Maybe.withDefault "" of
-        "" ->
-            "I have not received a path to an image to load."
+    let
+        portionConfiguration =
+            case state.imageFileName |> Maybe.withDefault "" of
+                "" ->
+                    "I have not received a path to an image to load."
 
-        imageFileName ->
-            "I received '" ++ imageFileName ++ "' as the path to the image to load."
+                imageFileName ->
+                    "I received '" ++ imageFileName ++ "' as the path to the image to load."
+
+        ( maybeGotImage, maybeGotImagePixels ) =
+            case state.lastStepResult of
+                GotImage gotImage ->
+                    ( Just gotImage.volatileHostResponse, Nothing )
+
+                GotImagePixels gotImagePixels ->
+                    ( Just gotImagePixels.previousStep.volatileHostResponse, Just gotImagePixels.volatileHostResponse )
+
+                _ ->
+                    ( Nothing, Nothing )
+
+        portionImage =
+            case maybeGotImage of
+                Nothing ->
+                    ""
+
+                Just gotImage ->
+                    "I got the image with id '"
+                        ++ gotImage.fileIdBase16
+                        ++ "', a width of "
+                        ++ (gotImage.widthInPixels |> String.fromInt)
+                        ++ ", and a height of "
+                        ++ (gotImage.heightInPixels |> String.fromInt)
+                        ++ "."
+
+        portionImagePixels =
+            case maybeGotImagePixels of
+                Nothing ->
+                    ""
+
+                Just gotImagePixels ->
+                    "I got " ++ (gotImagePixels.pixels |> List.concat |> List.length |> String.fromInt) ++ " pixels"
+    in
+    [ portionConfiguration, portionImage, portionImagePixels ]
+        |> String.join "\n"
 
 
 getNextRequestWithDescriptionFromState : State -> TestProcessStepActivity
@@ -335,36 +387,53 @@ getNextRequestWithDescriptionFromState state =
                     task =
                         InterfaceToHost.RunInVolatileHost
                             { hostId = volatileHost.hostId
-                            , script = { filePath = imageFilePath } |> ReadFileContent |> VolatileHostSetup.buildScriptToGetResponseFromVolatileHost
+                            , script = { filePath = imageFilePath } |> VolatileHostSetup.GetImage |> VolatileHostSetup.buildScriptToGetResponseFromVolatileHost
                             }
                 in
                 ContinueWithTask
-                    { task = { taskId = "read_file_content", task = task }
-                    , taskDescription = "Read content of file at '" ++ imageFilePath ++ "'"
+                    { task = { taskId = "get_image", task = task }
+                    , taskDescription = "Get image from '" ++ imageFilePath ++ "'"
                     }
 
-        FileContentsRead fileContentsRead ->
-            case fileContentsRead.decodeImageResult of
-                Err decodeImageError ->
-                    StopWithResult
-                        { resultDescription = "Failed to decode image: " ++ decodeImageError }
-
-                Ok decodeImageSuccess ->
-                    let
-                        describeSearchResults =
-                            let
-                                searchResultsLocationsToDisplay =
-                                    decodeImageSuccess.imageSearchResultLocations |> List.take 40
-                            in
-                            "Found matches in "
-                                ++ (decodeImageSuccess.imageSearchResultLocations |> List.length |> String.fromInt)
-                                ++ " locations:\n[ "
-                                ++ (searchResultsLocationsToDisplay |> List.map describeLocation |> String.join ", ")
-                                ++ " ]"
-                    in
-                    StopWithResult
-                        { resultDescription = "Decoded image: " ++ (decodeImageSuccess.image |> describeImage) ++ "\n" ++ describeSearchResults
+        GotImage gotImage ->
+            let
+                task =
+                    InterfaceToHost.RunInVolatileHost
+                        { hostId = gotImage.volatileHost.hostId
+                        , script =
+                            { fileIdBase16 = gotImage.volatileHostResponse.fileIdBase16
+                            , left = 0
+                            , top = 0
+                            , width = gotImage.volatileHostResponse.widthInPixels
+                            , height = gotImage.volatileHostResponse.heightInPixels
+                            , binningX = 1
+                            , binningY = 1
+                            }
+                                |> VolatileHostSetup.GetPixelsFromImageRectangle
+                                |> VolatileHostSetup.buildScriptToGetResponseFromVolatileHost
                         }
+            in
+            ContinueWithTask
+                { task = { taskId = "get_image_pixels", task = task }
+                , taskDescription = "Get image pixels"
+                }
+
+        GotImagePixels gotImagePixels ->
+            let
+                describeSearchResults =
+                    let
+                        searchResultsLocationsToDisplay =
+                            gotImagePixels.imageSearchResultLocations |> List.take 40
+                    in
+                    "Found matches in "
+                        ++ (gotImagePixels.imageSearchResultLocations |> List.length |> String.fromInt)
+                        ++ " locations:\n[ "
+                        ++ (searchResultsLocationsToDisplay |> List.map describeLocation |> String.join ", ")
+                        ++ " ]"
+            in
+            StopWithResult
+                { resultDescription = describeSearchResults
+                }
 
 
 describeLocation : { x : Int, y : Int } -> String
@@ -372,22 +441,16 @@ describeLocation { x, y } =
     "{ x = " ++ (x |> String.fromInt) ++ ", y = " ++ (y |> String.fromInt) ++ " }"
 
 
-pixelValueDictFromDecodeBMPImageResult : DecodeBMPImage.DecodeBMPImageResult -> Dict.Dict ( Int, Int ) PixelValue
-pixelValueDictFromDecodeBMPImageResult decodeImageResult =
-    decodeImageResult.pixelsLeftToRightTopToBottom
+dictWithTupleKeyFromNestedList : List (List a) -> Dict.Dict ( Int, Int ) a
+dictWithTupleKeyFromNestedList nestedList =
+    nestedList
         |> List.indexedMap
-            (\pixelIndex pixelValue ->
-                ( ( pixelIndex |> modBy decodeImageResult.bitmapWidthInPixels, pixelIndex // decodeImageResult.bitmapWidthInPixels )
-                , pixelValue
-                )
+            (\rowIndex list ->
+                list
+                    |> List.indexedMap
+                        (\columnIndex element ->
+                            ( ( columnIndex, rowIndex ), element )
+                        )
             )
+        |> List.concat
         |> Dict.fromList
-
-
-describeImage : DecodeBMPImageResult -> String
-describeImage image =
-    [ ( "bitmapWidthInPixels", image.bitmapWidthInPixels |> String.fromInt )
-    , ( "bitmapHeightInPixels", image.bitmapHeightInPixels |> String.fromInt )
-    ]
-        |> List.map (\( property, value ) -> property ++ ": " ++ value)
-        |> String.join ", "

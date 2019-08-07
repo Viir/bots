@@ -1,6 +1,5 @@
 module DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue, decodeBMPImageFile)
 
-import Bitwise
 import Bytes
 import Bytes.Decode
 

@@ -27,7 +27,7 @@ module Bot exposing
 import Base64.Decode
 import DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue)
 import Dict
-import Interface_To_Host_20190803 as InterfaceToHost
+import Interface_To_Host_20190808 as InterfaceToHost
 import Json.Decode
 import Maybe.Extra
 import VolatileHostSetup exposing (ReadFileContentResultStructure(..), RequestToVolatileHost(..), ResponseFromVolatileHost(..))
@@ -48,7 +48,7 @@ type ProcessStepResult
 
 
 type alias VolatileHostCreatedStructure =
-    { hostId : String }
+    { hostId : InterfaceToHost.VolatileHostId }
 
 
 type alias FileContentsReadStructure =
@@ -179,13 +179,13 @@ processEvent eventAtTime stateBefore =
             case nextStep of
                 StopWithResult { resultDescription } ->
                     InterfaceToHost.FinishSession
-                        { statusDescriptionForOperator = generalStatusDescription ++ "Stopped with result: " ++ resultDescription
+                        { statusDescriptionText = generalStatusDescription ++ "Stopped with result: " ++ resultDescription
                         }
 
                 ContinueWithTask continue ->
                     InterfaceToHost.ContinueSession
                         { startTasks = [ continue.task ]
-                        , statusDescriptionForOperator = generalStatusDescription ++ "Current step: " ++ continue.taskDescription
+                        , statusDescriptionText = generalStatusDescription ++ "Current step: " ++ continue.taskDescription
                         , notifyWhenArrivedAtTime = Nothing
                         }
     in
@@ -201,7 +201,7 @@ integrateEvent event stateBefore =
         InterfaceToHost.SetBotConfiguration configuration ->
             { stateBefore | imageFileName = Just configuration }
 
-        InterfaceToHost.TaskComplete { taskId, taskResult } ->
+        InterfaceToHost.CompletedTask { taskId, taskResult } ->
             case taskResult of
                 InterfaceToHost.CreateVolatileHostResponse createVolatileHostResponse ->
                     case createVolatileHostResponse of
@@ -301,7 +301,7 @@ getNextRequestWithDescriptionFromState state =
         Initialized ->
             ContinueWithTask
                 { task =
-                    { taskId = "create_volatile_host"
+                    { taskId = InterfaceToHost.taskIdFromString "create_volatile_host"
                     , task = InterfaceToHost.CreateVolatileHost
                     }
                 , taskDescription = "Create volatile host."
@@ -310,7 +310,7 @@ getNextRequestWithDescriptionFromState state =
         VolatileHostCreated volatileHost ->
             ContinueWithTask
                 { task =
-                    { taskId = "set_up_volatile_host"
+                    { taskId = InterfaceToHost.taskIdFromString "set_up_volatile_host"
                     , task =
                         InterfaceToHost.RunInVolatileHost
                             { hostId = volatileHost.hostId
@@ -339,7 +339,7 @@ getNextRequestWithDescriptionFromState state =
                             }
                 in
                 ContinueWithTask
-                    { task = { taskId = "read_file_content", task = task }
+                    { task = { taskId = InterfaceToHost.taskIdFromString "read_file_content", task = task }
                     , taskDescription = "Read content of file at '" ++ imageFilePath ++ "'"
                     }
 

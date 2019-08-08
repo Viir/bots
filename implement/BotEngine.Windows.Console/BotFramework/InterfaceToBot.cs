@@ -4,7 +4,7 @@
     {
         public TimeStructure ArrivedAtTime;
 
-        public ResultFromTaskWithId TaskComplete;
+        public CompletedTaskStructure CompletedTask;
 
         public TimeStructure SetSessionTimeLimit;
 
@@ -25,7 +25,7 @@
 
             public class ContinueSessionStructure
             {
-                public string statusDescriptionForOperator;
+                public string statusDescriptionText;
 
                 public StartTask[] startTasks;
 
@@ -34,7 +34,7 @@
 
             public class FinishSessionStructure
             {
-                public string statusDescriptionForOperator;
+                public string statusDescriptionText;
             }
         }
     }
@@ -46,11 +46,21 @@
         public OkT Ok;
     }
 
-    public class ResultFromTaskWithId
+    public class CompletedTaskStructure
     {
-        public string taskId;
+        public TaskId taskId;
 
         public TaskResult taskResult;
+    }
+
+    public class TaskId
+    {
+        public string TaskIdFromString;
+    }
+
+    public class VolatileHostId
+    {
+        public string VolatileHostIdFromString;
     }
 
     public class TaskResult
@@ -63,7 +73,7 @@
 
         public class CreateVolatileHostComplete
         {
-            public string hostId;
+            public VolatileHostId hostId;
         }
 
         public class RunInVolatileHostError
@@ -83,7 +93,7 @@
 
     public class StartTask
     {
-        public string taskId;
+        public TaskId taskId;
 
         public Task task;
     }
@@ -98,14 +108,14 @@
 
         public class RunInVolatileHostStructure
         {
-            public string hostId;
+            public VolatileHostId hostId;
 
             public string script;
         }
 
         public class ReleaseVolatileHostStructure
         {
-            public string hostId;
+            public VolatileHostId hostId;
         }
     }
 

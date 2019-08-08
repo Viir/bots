@@ -1,8 +1,9 @@
-{- Do not change this file, as it is used to tell the bot running app which framework your bot depends on.
- -}
+{- Do not change this file. The engine uses this file to see on which framework your bot depends.
+   The encoding and decoding of interface messages here mirrors the implementation of the bot running engine.
+-}
 
 
-module Interface_To_Host_20190803 exposing
+module Interface_To_Host_20190808 exposing
     ( BotEvent(..)
     , BotResponse(..)
     , ProcessSerializedEventResponse(..)
@@ -10,9 +11,12 @@ module Interface_To_Host_20190803 exposing
     , RunInVolatileHostError(..)
     , StartTaskStructure
     , Task(..)
+    , TaskId
     , TaskResultStructure(..)
+    , VolatileHostId
     , deserializeBotEvent
     , elmEntryPoint
+    , taskIdFromString
     , wrapForSerialInterface_processEvent
     )
 
@@ -23,7 +27,7 @@ import Json.Encode
 type BotEvent
     = ArrivedAtTime { timeInMilliseconds : Int }
     | SetBotConfiguration String
-    | TaskComplete ResultFromTaskWithId
+    | CompletedTask CompletedTaskStructure
     | SetSessionTimeLimit { timeInMilliseconds : Int }
 
 
@@ -32,7 +36,7 @@ type BotResponse
     | FinishSession BotResponseFinishSession
 
 
-type alias ResultFromTaskWithId =
+type alias CompletedTaskStructure =
     { taskId : TaskId
     , taskResult : TaskResultStructure
     }
@@ -49,7 +53,7 @@ type alias CreateVolatileHostError =
 
 
 type alias CreateVolatileHostComplete =
-    { hostId : String }
+    { hostId : VolatileHostId }
 
 
 type RunInVolatileHostError
@@ -64,7 +68,7 @@ type alias RunInVolatileHostComplete =
 
 
 type alias ReleaseVolatileHostStructure =
-    { hostId : String }
+    { hostId : VolatileHostId }
 
 
 type ProcessSerializedEventResponse
@@ -73,14 +77,14 @@ type ProcessSerializedEventResponse
 
 
 type alias BotResponseContinueSession =
-    { statusDescriptionForOperator : String
+    { statusDescriptionText : String
     , startTasks : List StartTaskStructure
     , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
     }
 
 
 type alias BotResponseFinishSession =
-    { statusDescriptionForOperator : String
+    { statusDescriptionText : String
     }
 
 
@@ -92,10 +96,6 @@ type alias StartTaskStructure =
     }
 
 
-type alias TaskId =
-    String
-
-
 type Task
     = CreateVolatileHost
     | RunInVolatileHost RunInVolatileHostStructure
@@ -103,9 +103,17 @@ type Task
 
 
 type alias RunInVolatileHostStructure =
-    { hostId : String
+    { hostId : VolatileHostId
     , script : String
     }
+
+
+type TaskId
+    = TaskIdFromString String
+
+
+type VolatileHostId
+    = VolatileHostIdFromString String
 
 
 wrapForSerialInterface_processEvent : (BotEvent -> state -> ( state, BotResponse )) -> String -> state -> ( state, String )
@@ -127,6 +135,30 @@ wrapForSerialInterface_processEvent processEvent serializedBotEventAtTime stateB
     ( state, response |> encodeProcessSerializedEventResponse |> Json.Encode.encode 0 )
 
 
+stringFromTaskId : TaskId -> String
+stringFromTaskId taskId =
+    case taskId of
+        TaskIdFromString asString ->
+            asString
+
+
+taskIdFromString : String -> TaskId
+taskIdFromString =
+    TaskIdFromString
+
+
+stringFromVolatileHostId : VolatileHostId -> String
+stringFromVolatileHostId volatileHostId =
+    case volatileHostId of
+        VolatileHostIdFromString asString ->
+            asString
+
+
+volatileHostIdFromString : String -> VolatileHostId
+volatileHostIdFromString =
+    VolatileHostIdFromString
+
+
 deserializeBotEvent : String -> Result Json.Decode.Error BotEvent
 deserializeBotEvent =
     Json.Decode.decodeString decodeBotEvent
@@ -139,17 +171,17 @@ decodeBotEvent =
             |> Json.Decode.map ArrivedAtTime
         , Json.Decode.field "SetBotConfiguration" Json.Decode.string
             |> Json.Decode.map SetBotConfiguration
-        , Json.Decode.field "TaskComplete" decodeResultFromTaskWithId
-            |> Json.Decode.map TaskComplete
+        , Json.Decode.field "CompletedTask" decodeCompletedTaskStructure
+            |> Json.Decode.map CompletedTask
         , Json.Decode.field "SetSessionTimeLimit" jsonDecodeRecordTimeInMilliseconds
             |> Json.Decode.map SetSessionTimeLimit
         ]
 
 
-decodeResultFromTaskWithId : Json.Decode.Decoder ResultFromTaskWithId
-decodeResultFromTaskWithId =
-    Json.Decode.map2 ResultFromTaskWithId
-        (Json.Decode.field "taskId" Json.Decode.string)
+decodeCompletedTaskStructure : Json.Decode.Decoder CompletedTaskStructure
+decodeCompletedTaskStructure =
+    Json.Decode.map2 CompletedTaskStructure
+        (Json.Decode.field "taskId" jsonDecodeTaskId)
         (Json.Decode.field "taskResult" decodeTaskResult)
 
 
@@ -167,7 +199,7 @@ decodeTaskResult =
 decodeCreateVolatileHostComplete : Json.Decode.Decoder CreateVolatileHostComplete
 decodeCreateVolatileHostComplete =
     Json.Decode.map CreateVolatileHostComplete
-        (Json.Decode.field "hostId" Json.Decode.string)
+        (Json.Decode.field "hostId" jsonDecodeVolatileHostId)
 
 
 decodeRunInVolatileHostComplete : Json.Decode.Decoder RunInVolatileHostComplete
@@ -208,7 +240,7 @@ encodeBotResponse botResponse =
 
 encodeContinueSession : BotResponseContinueSession -> Json.Encode.Value
 encodeContinueSession continueSession =
-    [ ( "statusDescriptionForOperator", continueSession.statusDescriptionForOperator |> Json.Encode.string )
+    [ ( "statusDescriptionText", continueSession.statusDescriptionText |> Json.Encode.string )
     , ( "startTasks", continueSession.startTasks |> Json.Encode.list encodeStartTask )
     , ( "notifyWhenArrivedAtTime", continueSession.notifyWhenArrivedAtTime |> jsonEncodeMaybeNothingAsNull jsonEncodeRecordTimeInMilliseconds )
     ]
@@ -217,7 +249,7 @@ encodeContinueSession continueSession =
 
 encodeFinishSession : BotResponseFinishSession -> Json.Encode.Value
 encodeFinishSession finishSession =
-    [ ( "statusDescriptionForOperator", finishSession.statusDescriptionForOperator |> Json.Encode.string )
+    [ ( "statusDescriptionText", finishSession.statusDescriptionText |> Json.Encode.string )
     ]
         |> Json.Encode.object
 
@@ -225,14 +257,9 @@ encodeFinishSession finishSession =
 encodeStartTask : StartTaskStructure -> Json.Encode.Value
 encodeStartTask startTaskAfterTime =
     Json.Encode.object
-        [ ( "taskId", startTaskAfterTime.taskId |> encodeTaskId )
+        [ ( "taskId", startTaskAfterTime.taskId |> jsonEncodeTaskId )
         , ( "task", startTaskAfterTime.task |> encodeTask )
         ]
-
-
-encodeTaskId : TaskId -> Json.Encode.Value
-encodeTaskId =
-    Json.Encode.string
 
 
 encodeTask : Task -> Json.Encode.Value
@@ -245,7 +272,7 @@ encodeTask task =
             Json.Encode.object
                 [ ( "runInVolatileHost"
                   , Json.Encode.object
-                        [ ( "hostId", runInVolatileHost.hostId |> Json.Encode.string )
+                        [ ( "hostId", runInVolatileHost.hostId |> jsonEncodeVolatileHostId )
                         , ( "script", runInVolatileHost.script |> Json.Encode.string )
                         ]
                   )
@@ -255,7 +282,7 @@ encodeTask task =
             Json.Encode.object
                 [ ( "releaseVolatileHost"
                   , Json.Encode.object
-                        [ ( "hostId", releaseVolatileHost.hostId |> Json.Encode.string )
+                        [ ( "hostId", releaseVolatileHost.hostId |> jsonEncodeVolatileHostId )
                         ]
                   )
                 ]
@@ -304,6 +331,34 @@ jsonDecodeSucceedWhenNotNull valueIfNotNull =
                 else
                     Json.Decode.succeed valueIfNotNull
             )
+
+
+jsonEncodeTaskId : TaskId -> Json.Encode.Value
+jsonEncodeTaskId taskId =
+    case taskId of
+        TaskIdFromString fromString ->
+            [ ( "TaskIdFromString", fromString |> Json.Encode.string ) ] |> Json.Encode.object
+
+
+jsonDecodeTaskId : Json.Decode.Decoder TaskId
+jsonDecodeTaskId =
+    Json.Decode.oneOf
+        [ Json.Decode.field "TaskIdFromString" Json.Decode.string |> Json.Decode.map TaskIdFromString
+        ]
+
+
+jsonEncodeVolatileHostId : VolatileHostId -> Json.Encode.Value
+jsonEncodeVolatileHostId volatileHostId =
+    case volatileHostId of
+        VolatileHostIdFromString fromString ->
+            [ ( "VolatileHostIdFromString", fromString |> Json.Encode.string ) ] |> Json.Encode.object
+
+
+jsonDecodeVolatileHostId : Json.Decode.Decoder VolatileHostId
+jsonDecodeVolatileHostId =
+    Json.Decode.oneOf
+        [ Json.Decode.field "VolatileHostIdFromString" Json.Decode.string |> Json.Decode.map VolatileHostIdFromString
+        ]
 
 
 {-| Support function-level dead code elimination (<https://elm-lang.org/blog/small-assets-without-the-headache>).

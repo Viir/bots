@@ -47,7 +47,7 @@ namespace BotEngine.Windows.Console
                     return System.IO.Path.Combine(directoryName, directoryName + "T" + time.ToString("HH") + ".composition.jsonl");
                 });
 
-            (DateTimeOffset time, string statusDescriptionForOperator, InterfaceToBot.BotResponse.DecodeEventSuccessStructure response)? lastBotStep = null;
+            (DateTimeOffset time, string statusDescriptionText, InterfaceToBot.BotResponse.DecodeEventSuccessStructure response)? lastBotStep = null;
 
             var botSessionTaskCancellationToken = new System.Threading.CancellationTokenSource();
             var activeBotTasks = new ConcurrentDictionary<InterfaceToBot.StartTask, System.Threading.Tasks.Task>();
@@ -80,7 +80,7 @@ namespace BotEngine.Windows.Console
                 foreach (var (request, engineTask) in activeBotTasks.ToList())
                 {
                     if (engineTask.Exception != null)
-                        throw new Exception("Bot task '" + request.taskId + "' has failed with exception", engineTask.Exception);
+                        throw new Exception("Bot task '" + request.taskId?.TaskIdFromString + "' has failed with exception", engineTask.Exception);
 
                     if (engineTask.IsCompleted)
                         activeBotTasks.TryRemove(request, out var _);
@@ -131,7 +131,7 @@ namespace BotEngine.Windows.Console
 
                 yield return "Status message from bot:\n";
 
-                yield return lastBotStep.Value.statusDescriptionForOperator;
+                yield return lastBotStep.Value.statusDescriptionText;
 
                 yield return "";
             }
@@ -185,7 +185,7 @@ namespace BotEngine.Windows.Console
             InterfaceToBot.Result<InterfaceToBot.TaskResult.RunInVolatileHostError, InterfaceToBot.TaskResult.RunInVolatileHostComplete> ExecuteRequestToRunInVolatileHost(
                 InterfaceToBot.Task.RunInVolatileHostStructure runInVolatileHost)
             {
-                if (!volatileHosts.TryGetValue(runInVolatileHost.hostId, out var volatileHost))
+                if (!volatileHosts.TryGetValue(runInVolatileHost.hostId.VolatileHostIdFromString, out var volatileHost))
                 {
                     return new InterfaceToBot.Result<InterfaceToBot.TaskResult.RunInVolatileHostError, InterfaceToBot.TaskResult.RunInVolatileHostComplete>
                     {
@@ -244,11 +244,11 @@ namespace BotEngine.Windows.Console
                         throw new Exception("Bot reported decode error: " + botResponse.DecodeEventError);
                     }
 
-                    var statusDescriptionForOperator =
-                        botResponse.DecodeEventSuccess?.ContinueSession?.statusDescriptionForOperator ??
-                        botResponse.DecodeEventSuccess?.FinishSession?.statusDescriptionForOperator;
+                    var statusDescriptionText =
+                        botResponse.DecodeEventSuccess?.ContinueSession?.statusDescriptionText ??
+                        botResponse.DecodeEventSuccess?.FinishSession?.statusDescriptionText;
 
-                    lastBotStep = (eventTime, statusDescriptionForOperator, botResponse.DecodeEventSuccess);
+                    lastBotStep = (eventTime, statusDescriptionText, botResponse.DecodeEventSuccess);
 
                     foreach (var startTask in botResponse.DecodeEventSuccess?.ContinueSession?.startTasks ?? Array.Empty<InterfaceToBot.StartTask>())
                     {
@@ -297,7 +297,7 @@ namespace BotEngine.Windows.Console
                     fireAndForgetReportToReactor(new RequestToReactorUseBotStruct
                     {
                         ContinueSession = new RequestToReactorUseBotStruct.ContinueSessionStruct
-                        { sessionId = sessionId, statusDescriptionForOperator = lastBotStep?.statusDescriptionForOperator }
+                        { sessionId = sessionId, statusDescriptionText = lastBotStep?.statusDescriptionText }
                     });
 
                 if (pauseBot)
@@ -331,7 +331,7 @@ namespace BotEngine.Windows.Console
 
                 processBotEvent(new InterfaceToBot.BotEvent
                 {
-                    TaskComplete = new InterfaceToBot.ResultFromTaskWithId
+                    CompletedTask = new InterfaceToBot.CompletedTaskStructure
                     {
                         taskId = startTask.taskId,
                         taskResult = taskResult,
@@ -353,7 +353,7 @@ namespace BotEngine.Windows.Console
                         {
                             Ok = new InterfaceToBot.TaskResult.CreateVolatileHostComplete
                             {
-                                hostId = volatileHostId,
+                                hostId = new InterfaceToBot.VolatileHostId { VolatileHostIdFromString = volatileHostId },
                             },
                         },
                     };
@@ -361,7 +361,7 @@ namespace BotEngine.Windows.Console
 
                 if (task?.ReleaseVolatileHost != null)
                 {
-                    volatileHosts.TryRemove(task?.ReleaseVolatileHost.hostId, out var volatileHost);
+                    volatileHosts.TryRemove(task?.ReleaseVolatileHost.hostId.VolatileHostIdFromString, out var volatileHost);
 
                     return new InterfaceToBot.TaskResult { CompleteWithoutResult = new object() };
                 }
@@ -419,7 +419,7 @@ namespace BotEngine.Windows.Console
             {
                 public string sessionId;
 
-                public string statusDescriptionForOperator;
+                public string statusDescriptionText;
             }
         }
     }

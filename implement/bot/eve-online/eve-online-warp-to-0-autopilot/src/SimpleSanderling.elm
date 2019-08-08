@@ -15,7 +15,7 @@ module SimpleSanderling exposing
     , processEvent
     )
 
-import Interface_To_Host_20190803 as InterfaceToHost
+import Interface_To_Host_20190808 as InterfaceToHost
 import Sanderling
 import SanderlingMemoryMeasurement
 import SanderlingVolatileHostSetup
@@ -63,7 +63,7 @@ type BotRequestTaskState
 
 
 type alias SetupState =
-    { volatileHost : Maybe ( String, VolatileHostState )
+    { volatileHost : Maybe ( InterfaceToHost.VolatileHostId, VolatileHostState )
     , lastRunScriptResult : Maybe (Result String (Maybe String))
     , eveOnlineProcessesIds : Maybe (List Int)
     , lastMemoryMeasurement : Maybe ( Int, Sanderling.GetMemoryMeasurementResultStructure )
@@ -119,8 +119,8 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
             case stateBefore.setup |> getNextSetupTask of
                 ContinueSetup setupState setupTask setupTaskDescription ->
                     ( { stateBefore | setup = setupState }
-                    , { startTasks = [ { taskId = "setup", task = setupTask } ]
-                      , statusDescriptionForOperator = "Continue setup: " ++ setupTaskDescription
+                    , { startTasks = [ { taskId = InterfaceToHost.taskIdFromString "setup", task = setupTask } ]
+                      , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
                       , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
                       }
                         |> InterfaceToHost.ContinueSession
@@ -193,7 +193,7 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
 
                         operateBotRequestStartTasks =
                             operateBotRequestTask
-                                |> Maybe.map (\task -> { taskId = "operate-bot", task = task })
+                                |> Maybe.map (\task -> { taskId = InterfaceToHost.taskIdFromString "operate-bot", task = task })
                                 |> Maybe.map List.singleton
                                 |> Maybe.withDefault []
 
@@ -202,7 +202,7 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                     in
                     ( { stateBefore | botState = botState }
                     , { startTasks = operateBotRequestStartTasks
-                      , statusDescriptionForOperator = "Operate bot:\n" ++ (botState.statusMessage |> Maybe.withDefault "")
+                      , statusDescriptionText = "Operate bot:\n" ++ (botState.statusMessage |> Maybe.withDefault "")
                       , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
                       }
                         |> InterfaceToHost.ContinueSession
@@ -210,7 +210,7 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
 
                 FinishSession reason ->
                     ( stateBefore
-                    , InterfaceToHost.FinishSession { statusDescriptionForOperator = "Finish session (" ++ reason ++ ")" }
+                    , InterfaceToHost.FinishSession { statusDescriptionText = "Finish session (" ++ reason ++ ")" }
                     )
 
         statusMessagePrefix =
@@ -220,13 +220,13 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
             case response of
                 InterfaceToHost.ContinueSession continueSession ->
                     { continueSession
-                        | statusDescriptionForOperator = statusMessagePrefix ++ continueSession.statusDescriptionForOperator
+                        | statusDescriptionText = statusMessagePrefix ++ continueSession.statusDescriptionText
                     }
                         |> InterfaceToHost.ContinueSession
 
                 InterfaceToHost.FinishSession finishSession ->
                     { finishSession
-                        | statusDescriptionForOperator = statusMessagePrefix ++ finishSession.statusDescriptionForOperator
+                        | statusDescriptionText = statusMessagePrefix ++ finishSession.statusDescriptionText
                     }
                         |> InterfaceToHost.FinishSession
     in
@@ -239,7 +239,7 @@ integrateFromHostEvent fromHostEvent stateBefore =
         InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
             ( { stateBefore | timeInMilliseconds = timeInMilliseconds }, Nothing )
 
-        InterfaceToHost.TaskComplete taskComplete ->
+        InterfaceToHost.CompletedTask taskComplete ->
             let
                 ( setupState, maybeBotEvent ) =
                     stateBefore.setup
@@ -406,11 +406,11 @@ getNextSetupTask stateBefore =
                         "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
 
                 SanderlingSetupCompleted ->
-                    getSetupTaskWhenVolatileHostSetupCompleted stateBefore { volatileHostId = volatileHostId }
+                    getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId
 
 
-getSetupTaskWhenVolatileHostSetupCompleted : SetupState -> { volatileHostId : String } -> SetupTask
-getSetupTaskWhenVolatileHostSetupCompleted stateBefore { volatileHostId } =
+getSetupTaskWhenVolatileHostSetupCompleted : SetupState -> InterfaceToHost.VolatileHostId -> SetupTask
+getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
     case stateBefore.eveOnlineProcessesIds of
         Nothing ->
             ContinueSetup stateBefore

@@ -12,7 +12,7 @@ module Bot exposing
     , processEvent
     )
 
-import Interface_To_Host_20190803 as InterfaceToHost
+import Interface_To_Host_20190808 as InterfaceToHost
 import Json.Encode
 
 
@@ -35,7 +35,7 @@ processEvent event stateBefore =
     in
     ( state
     , InterfaceToHost.ContinueSession
-        { statusDescriptionForOperator = state |> statusMessageFromState
+        { statusDescriptionText = state |> statusMessageFromState
         , startTasks = []
         , notifyWhenArrivedAtTime = Just { timeInMilliseconds = state.timeInMilliseconds + 1000 }
         }
@@ -53,7 +53,7 @@ integrateEvent event stateBefore =
                 | lastSetConfiguration = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, configuration = configuration }
             }
 
-        InterfaceToHost.TaskComplete _ ->
+        InterfaceToHost.CompletedTask _ ->
             stateBefore
 
         InterfaceToHost.SetSessionTimeLimit _ ->

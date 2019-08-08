@@ -85,11 +85,6 @@ getMatchesLocationsFromImage image =
             )
 
 
-getMatchesLocationsFromDecodeImageResult : DecodeBMPImageResult -> List { x : Int, y : Int }
-getMatchesLocationsFromDecodeImageResult decodeImageResult =
-    decodeImageResult |> pixelValueDictFromDecodeBMPImageResult |> getMatchesLocationsFromImage
-
-
 {-| This is the square-shaped thing displayed in the route info panel in the game EVE Online.
 In the image <https://github.com/Viir/bots/blob/a755e00ae395d89cb586995fb7f4d07a21200a8a/explore/2019-07-10.read-from-screenshot/2019-07-11.example-from-eve-online-crop-0.bmp>, you can see 4 of these.
 -}
@@ -266,8 +261,13 @@ integrateEvent event stateBefore =
                                                                                 |> DecodeBMPImage.decodeBMPImageFile
                                                                                 |> Result.map
                                                                                     (\decodeResult ->
+                                                                                        let
+                                                                                            pixelsDict =
+                                                                                                decodeResult.pixels
+                                                                                                    |> dictWithTupleKeyFromNestedList
+                                                                                        in
                                                                                         { image = decodeResult
-                                                                                        , imageSearchResultLocations = decodeResult |> getMatchesLocationsFromDecodeImageResult
+                                                                                        , imageSearchResultLocations = pixelsDict |> getMatchesLocationsFromImage
                                                                                         }
                                                                                     )
 
@@ -372,15 +372,18 @@ describeLocation { x, y } =
     "{ x = " ++ (x |> String.fromInt) ++ ", y = " ++ (y |> String.fromInt) ++ " }"
 
 
-pixelValueDictFromDecodeBMPImageResult : DecodeBMPImage.DecodeBMPImageResult -> Dict.Dict ( Int, Int ) PixelValue
-pixelValueDictFromDecodeBMPImageResult decodeImageResult =
-    decodeImageResult.pixelsLeftToRightTopToBottom
+dictWithTupleKeyFromNestedList : List (List a) -> Dict.Dict ( Int, Int ) a
+dictWithTupleKeyFromNestedList nestedList =
+    nestedList
         |> List.indexedMap
-            (\pixelIndex pixelValue ->
-                ( ( pixelIndex |> modBy decodeImageResult.bitmapWidthInPixels, pixelIndex // decodeImageResult.bitmapWidthInPixels )
-                , pixelValue
-                )
+            (\rowIndex list ->
+                list
+                    |> List.indexedMap
+                        (\columnIndex element ->
+                            ( ( columnIndex, rowIndex ), element )
+                        )
             )
+        |> List.concat
         |> Dict.fromList
 
 

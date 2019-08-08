@@ -10,7 +10,7 @@ type alias DecodeBMPImageResult =
     , bitmapWidthInPixels : Int
     , bitmapHeightInPixels : Int
     , bitsPerPixel : Int
-    , pixelsLeftToRightTopToBottom : List PixelValue
+    , pixels : List (List PixelValue)
     }
 
 
@@ -49,42 +49,75 @@ decodeBMPImageFile bytes =
                 Err "Failed to decode headers"
 
             Just { fileHeader, dibHeader } ->
-                let
-                    numberOfPixels =
-                        dibHeader.bitmapWidthInPixels * dibHeader.bitmapHeightInPixels
+                if dibHeader.bitsPerPixel /= 24 then
+                    Err ("Unsupported bitsPerPixel: " ++ (dibHeader.bitsPerPixel |> String.fromInt))
 
-                    pixelsDecoderFromFileBegin =
-                        Bytes.Decode.bytes fileHeader.pixelArrayOffset
-                            |> Bytes.Decode.andThen
-                                (\_ ->
-                                    pixelArrayDecoderLeftToRightTopToBottom
-                                        { bitmapWidthInPixels = dibHeader.bitmapWidthInPixels
-                                        , bitmapHeightInPixels = dibHeader.bitmapHeightInPixels
-                                        , bitsPerPixel = dibHeader.bitsPerPixel
-                                        }
-                                )
-                in
-                case
-                    bytes |> Bytes.Decode.decode pixelsDecoderFromFileBegin
-                of
-                    Nothing ->
-                        Err "Failed to decode pixel array"
+                else
+                    let
+                        bytesPerPixel =
+                            3
 
-                    Just pixelsLeftToRightTopToBottom ->
+                        numberOfPixels =
+                            dibHeader.bitmapWidthInPixels * dibHeader.bitmapHeightInPixels
+
+                        bytesPerRowBeforePadding =
+                            dibHeader.bitmapWidthInPixels * bytesPerPixel
+
+                        padding =
+                            (4 * dibHeader.bitmapWidthInPixels - bytesPerRowBeforePadding) |> modBy 4
+
+                        bytesPerRow =
+                            bytesPerRowBeforePadding + padding
+
+                        pixelArrayExpectedBytes =
+                            bytesPerRow * dibHeader.bitmapHeightInPixels
+
+                        pixelArrayBytes =
+                            fileSize - fileHeader.pixelArrayOffset
+                    in
+                    if pixelArrayBytes < pixelArrayExpectedBytes then
+                        Err
+                            ("Too few bytes in pixel array: "
+                                ++ (pixelArrayBytes |> String.fromInt)
+                                ++ " instead of "
+                                ++ (pixelArrayExpectedBytes |> String.fromInt)
+                            )
+
+                    else
+                        let
+                            rowsBytes =
+                                List.range 0 (dibHeader.bitmapHeightInPixels - 1)
+                                    |> List.map
+                                        (\rowIndex ->
+                                            let
+                                                rowStart =
+                                                    fileHeader.pixelArrayOffset + rowIndex * bytesPerRow
+
+                                                rowBytesDecoder =
+                                                    Bytes.Decode.bytes rowStart
+                                                        |> Bytes.Decode.andThen (always (Bytes.Decode.bytes bytesPerRow))
+                                            in
+                                            bytes |> Bytes.Decode.decode rowBytesDecoder
+                                        )
+                                    |> List.reverse
+
+                            rowDecoder =
+                                pixelRowDecoderLeftToRight
+                                    { bitmapWidthInPixels = dibHeader.bitmapWidthInPixels
+                                    , bitsPerPixel = dibHeader.bitsPerPixel
+                                    }
+
+                            pixels =
+                                rowsBytes
+                                    |> List.map (Maybe.andThen (Bytes.Decode.decode rowDecoder) >> Maybe.withDefault [])
+                        in
                         { fileSizeInBytes = fileHeader.fileSizeInBytes
                         , bitmapWidthInPixels = dibHeader.bitmapWidthInPixels
                         , bitmapHeightInPixels = dibHeader.bitmapHeightInPixels
                         , bitsPerPixel = dibHeader.bitsPerPixel
-                        , pixelsLeftToRightTopToBottom = pixelsLeftToRightTopToBottom
+                        , pixels = pixels
                         }
                             |> Ok
-
-
-pixelArrayDecoderLeftToRightTopToBottom : { bitmapWidthInPixels : Int, bitmapHeightInPixels : Int, bitsPerPixel : Int } -> Bytes.Decode.Decoder (List PixelValue)
-pixelArrayDecoderLeftToRightTopToBottom { bitmapWidthInPixels, bitmapHeightInPixels, bitsPerPixel } =
-    Bytes.Decode.loop ( bitmapHeightInPixels, [] )
-        (decodeListStep (pixelRowDecoderLeftToRight { bitmapWidthInPixels = bitmapWidthInPixels, bitsPerPixel = bitsPerPixel }))
-        |> Bytes.Decode.map List.concat
 
 
 pixelRowDecoderLeftToRight : { bitmapWidthInPixels : Int, bitsPerPixel : Int } -> Bytes.Decode.Decoder (List PixelValue)

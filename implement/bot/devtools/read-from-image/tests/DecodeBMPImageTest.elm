@@ -65,8 +65,8 @@ suite =
                             , bitmapWidthInPixels = 4
                             , bitmapHeightInPixels = 4
                             , bitsPerPixel = 24
-                            , pixelsLeftToRightTopToBottom =
-                                { red = 4, green = 5, blue = 6 } |> List.repeat 16
+                            , pixels =
+                                { red = 4, green = 5, blue = 6 } |> List.repeat 4 |> List.repeat 4
                             }
                         )
         , test
@@ -83,19 +83,23 @@ suite =
                             , bitmapWidthInPixels = 3
                             , bitmapHeightInPixels = 4
                             , bitsPerPixel = 24
-                            , pixelsLeftToRightTopToBottom =
-                                [ { red = 0, green = 0, blue = 0 }
-                                , { red = 0, green = 0, blue = 0 }
-                                , { red = 0, green = 0, blue = 0 }
-                                , { red = 255, green = 0, blue = 0 }
-                                , { red = 0, green = 0, blue = 0 }
-                                , { red = 0, green = 0, blue = 0 }
-                                , { red = 0, green = 255, blue = 0 }
-                                , { red = 0, green = 0, blue = 0 }
-                                , { red = 0, green = 0, blue = 0 }
-                                , { red = 0, green = 0, blue = 255 }
-                                , { red = 0, green = 0, blue = 0 }
-                                , { red = 0, green = 0, blue = 0 }
+                            , pixels =
+                                [ [ { red = 0, green = 0, blue = 0 }
+                                  , { red = 0, green = 0, blue = 0 }
+                                  , { red = 0, green = 0, blue = 0 }
+                                  ]
+                                , [ { red = 255, green = 0, blue = 0 }
+                                  , { red = 0, green = 0, blue = 0 }
+                                  , { red = 0, green = 0, blue = 0 }
+                                  ]
+                                , [ { red = 0, green = 255, blue = 0 }
+                                  , { red = 0, green = 0, blue = 0 }
+                                  , { red = 0, green = 0, blue = 0 }
+                                  ]
+                                , [ { red = 0, green = 0, blue = 255 }
+                                  , { red = 0, green = 0, blue = 0 }
+                                  , { red = 0, green = 0, blue = 0 }
+                                  ]
                                 ]
                             }
                         )

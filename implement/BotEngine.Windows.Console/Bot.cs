@@ -102,6 +102,9 @@ namespace BotEngine.Windows.Console
                     if (lastConsoleUpdate.text == textToDisplay && time < lastConsoleUpdate.time + TimeSpan.FromSeconds(1))
                         return;
 
+                    if (botSessionTaskCancellationToken.IsCancellationRequested)
+                        return;
+
                     DotNetConsole.Clear();
                     DotNetConsole.WriteLine(textToDisplay);
 

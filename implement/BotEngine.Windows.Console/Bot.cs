@@ -128,15 +128,28 @@ namespace BotEngine.Windows.Console
 
                 var lastBotStepAgeInSeconds = (int)((DateTimeOffset.UtcNow - lastBotStep.Value.time).TotalSeconds);
 
+                var activeBotTasksSnapshot = activeBotTasks.ToList();
+
+                var activeBotTasksDescription =
+                    TruncateWithEllipsis(string.Join(", ", activeBotTasksSnapshot.Select(task => task.Key.taskId.TaskIdFromString)), 60);
+
                 yield return
                     "Last bot event was " + lastBotStepAgeInSeconds + " seconds ago at " + lastBotStep.Value.time.ToString("HH-mm-ss.fff") + ". " +
-                    "There are " + activeBotTasks.Count + " tasks in progress.";
+                    "There are " + activeBotTasksSnapshot.Count + " tasks in progress (" + activeBotTasksDescription + ").";
 
                 yield return "Status message from bot:\n";
 
                 yield return lastBotStep.Value.statusDescriptionText;
 
                 yield return "";
+            }
+
+            string TruncateWithEllipsis(string originalString, int lengthLimit)
+            {
+                if (lengthLimit < originalString?.Length)
+                    return originalString.Substring(0, lengthLimit) + "...";
+
+                return originalString;
             }
 
             long lastRequestToReactorTimeInSeconds = 0;
@@ -181,6 +194,8 @@ namespace BotEngine.Windows.Console
                 { botId = botId, sessionId = sessionId, botSource = BotSourceIsPublic(botSource) ? botSource : null }
             });
 
+            var queuedBotEvents = new ConcurrentQueue<InterfaceToBot.BotEvent>();
+
             var createVolatileHostAttempts = 0;
 
             var volatileHosts = new ConcurrentDictionary<string, Kalmit.CSharpScriptContext>();
@@ -223,16 +238,23 @@ namespace BotEngine.Windows.Console
                 string serializedEvent = null;
                 string serializedResponse = null;
                 string compositionRecordHash = null;
+                long? processingTimeInMilliseconds = null;
 
                 try
                 {
                     serializedEvent = SerializeToJsonForBot(botEvent);
+
+                    var processingTimeStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
                     var processEventResult = process.ProcessEvents(
                         new[]
                         {
                             serializedEvent
                         });
+
+                    processingTimeStopwatch.Stop();
+
+                    processingTimeInMilliseconds = processingTimeStopwatch.ElapsedMilliseconds;
 
                     compositionRecordHash = Kalmit.CommonConversion.StringBase16FromByteArray(processEventResult.Item2.serializedCompositionRecordHash);
 
@@ -268,6 +290,7 @@ namespace BotEngine.Windows.Console
                 logProcessBotEventReport(new LogEntry.ProcessBotEventReport
                 {
                     time = eventTime,
+                    processingTimeInMilliseconds = processingTimeInMilliseconds,
                     exception = processEventException,
                     serializedResponse = serializedResponse,
                     compositionRecordHash = compositionRecordHash,
@@ -326,20 +349,26 @@ namespace BotEngine.Windows.Console
                         ArrivedAtTime = new InterfaceToBot.TimeStructure { timeInMilliseconds = botSessionClock.ElapsedMilliseconds },
                     });
                 }
+
+                if(queuedBotEvents.TryDequeue(out var botEvent))
+                {
+                    processBotEvent(botEvent);
+                }
             }
 
             void startTaskAndProcessEvent(InterfaceToBot.StartTask startTask)
             {
                 var taskResult = performTask(startTask.task);
 
-                processBotEvent(new InterfaceToBot.BotEvent
-                {
-                    CompletedTask = new InterfaceToBot.CompletedTaskStructure
+                queuedBotEvents.Enqueue(
+                    new InterfaceToBot.BotEvent
                     {
-                        taskId = startTask.taskId,
-                        taskResult = taskResult,
-                    },
-                });
+                        CompletedTask = new InterfaceToBot.CompletedTaskStructure
+                        {
+                            taskId = startTask.taskId,
+                            taskResult = taskResult,
+                        },
+                    });
             }
 
             InterfaceToBot.TaskResult performTask(InterfaceToBot.Task task)

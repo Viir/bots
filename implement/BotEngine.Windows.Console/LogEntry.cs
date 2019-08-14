@@ -37,6 +37,8 @@ namespace BotEngine.Windows.Console
         {
             public DateTimeOffset time;
 
+            public long? processingTimeInMilliseconds;
+
             public string serializedResponse;
 
             public Exception exception;

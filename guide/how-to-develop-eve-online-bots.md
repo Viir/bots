@@ -51,7 +51,7 @@ As we can see from the examples above, these events and tasks can be quite fine-
 The bot code is a set of files. Some of these files are located in subdirectories. The bot code contains the following files:
 
 + `src/Bot.elm`: When you code a bot from scratch, this file is where you start to edit.
-+ `src/Bot_Interface_To_Host_20190803.elm`: You don't need to edit anything in here.
++ `src/Interface_To_Host_20190808.elm`: You don't need to edit anything in here.
 + `elm.json`. This file is only edited to include Elm packages (That is a way to include functionality from external sources).
 
 You can distribute code into more `.elm` files. But this is not required, you can add everything to the `src/Bot.elm` file.
@@ -97,7 +97,7 @@ To achieve this, we combine the following tools:
 
 The following subsections explain in detail how to set up these tools.
 
-To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/faf59c8d5f24a7648c2d009949c2b440c0c06eab/implement/bot/eve-online/eve-online-warp-to-0-autopilot for this purpose.
+To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/a054948285918c5d8616e4f5941fcda015b7cee6/implement/bot/eve-online/eve-online-warp-to-0-autopilot for this purpose.
 
 ### Elm command line program
 
@@ -123,15 +123,15 @@ Success! Compiled 3 modules.
 ```
 That number of modules it mentions can vary; it should be at least one.
 
-To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on line 99, replace `shipUi` with `shipui`.
+To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on line 88, replace `shipUi` with `shipui`.
 If after this change we invoke Elm with the same command again, we now get a different output, informing us about a problem in the code:
 ```
 Detected errors in 1 module.
--- NAMING ERROR --------------------------------------------------- src/Main.elm
+-- NAMING ERROR --------------------------------------------------- src/Bot.elm
 
 I cannot find a `shipui` variable:
 
-99|                     if shipui |> isShipWarpingOrJumping then
+88|                     if shipui |> isShipWarpingOrJumping then
                            ^^^^^^
 These names seem close though:
 

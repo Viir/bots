@@ -17,18 +17,29 @@ module BotEngine.SimpleBotFramework exposing
     , BotResponse(..)
     , ImageSearchRegion(..)
     , ImageStructure
-    , KeyboardKey(..)
+    , KeyboardKey
     , LocatePatternInImageApproach(..)
-    , MouseButton(..)
+    , MouseButton
     , PixelValue
     , State
-    , Task(..)
+    , Task
     , TaskId
     , TaskResultStructure(..)
+    , bringWindowToForeground
     , dictWithTupleKeyFromIndicesInNestedList
     , initState
+    , keyboardKeyDown
+    , keyboardKeyFromVirtualKeyCode
+    , keyboardKeyUp
+    , keyboardKey_space
     , locatePatternInImage
+    , mouseButtonDown
+    , mouseButtonLeft
+    , mouseButtonRight
+    , mouseButtonUp
+    , moveMouseToLocation
     , processEvent
+    , takeScreenshot
     , taskIdFromString
     )
 
@@ -96,7 +107,7 @@ type TaskId
 
 
 type alias Location2d =
-    VolatileHostWindowsApi.Location2d
+    { x : Int, y : Int }
 
 
 type MouseButton
@@ -106,7 +117,6 @@ type MouseButton
 
 type KeyboardKey
     = KeyboardKeyFromVirtualKeyCode Int
-    | VK_SPACE
 
 
 type Task
@@ -773,10 +783,6 @@ volatileHostKeyboardKeyFromKeyboardKey keyboardKey =
         KeyboardKeyFromVirtualKeyCode keyCode ->
             VolatileHostWindowsApi.KeyboardKeyFromVirtualKeyCode keyCode
 
-        -- https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
-        VK_SPACE ->
-            VolatileHostWindowsApi.KeyboardKeyFromVirtualKeyCode 0x20
-
 
 dictWithTupleKeyFromIndicesInNestedList : List (List element) -> Dict.Dict ( Int, Int ) element
 dictWithTupleKeyFromIndicesInNestedList nestedList =
@@ -791,3 +797,60 @@ dictWithTupleKeyFromIndicesInNestedList nestedList =
             )
         |> List.concat
         |> Dict.fromList
+
+
+bringWindowToForeground : Task
+bringWindowToForeground =
+    BringWindowToForeground
+
+
+moveMouseToLocation : Location2d -> Task
+moveMouseToLocation =
+    MoveMouseToLocation
+
+
+mouseButtonDown : MouseButton -> Task
+mouseButtonDown =
+    MouseButtonDown
+
+
+mouseButtonUp : MouseButton -> Task
+mouseButtonUp =
+    MouseButtonUp
+
+
+keyboardKeyDown : KeyboardKey -> Task
+keyboardKeyDown =
+    KeyboardKeyDown
+
+
+keyboardKeyUp : KeyboardKey -> Task
+keyboardKeyUp =
+    KeyboardKeyUp
+
+
+takeScreenshot : Task
+takeScreenshot =
+    TakeScreenshot
+
+
+mouseButtonLeft : MouseButton
+mouseButtonLeft =
+    MouseButtonLeft
+
+
+mouseButtonRight : MouseButton
+mouseButtonRight =
+    MouseButtonRight
+
+
+{-| For documentation of virtual key codes, see <https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes>
+-}
+keyboardKeyFromVirtualKeyCode : Int -> KeyboardKey
+keyboardKeyFromVirtualKeyCode =
+    KeyboardKeyFromVirtualKeyCode
+
+
+keyboardKey_space : KeyboardKey
+keyboardKey_space =
+    keyboardKeyFromVirtualKeyCode 0x20

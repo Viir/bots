@@ -54,37 +54,12 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
     let
         stateBefore =
             stateBeforeIntegratingEvent |> integrateEvent event
-
-        lastScreenshotDescription =
-            case stateBefore.lastTakeScreenshotResult of
-                Nothing ->
-                    "Taking the first screenshot..."
-
-                Just lastTakeScreenshotResult ->
-                    let
-                        objectFoundLocationsToDescribe =
-                            lastTakeScreenshotResult.objectFoundLocations
-                                |> List.take 10
-
-                        objectFoundLocationsDescription =
-                            "I found the object in "
-                                ++ (lastTakeScreenshotResult.objectFoundLocations |> List.length |> String.fromInt)
-                                ++ " locations:\n[ "
-                                ++ (objectFoundLocationsToDescribe |> List.map describeLocation |> String.join ", ")
-                                ++ " ]"
-                    in
-                    "The last screenshot had a width of "
-                        ++ (lastTakeScreenshotResult.screenshot.imageWidth |> String.fromInt)
-                        ++ " and a height of "
-                        ++ (lastTakeScreenshotResult.screenshot.imageHeight |> String.fromInt)
-                        ++ " pixels.\n"
-                        ++ objectFoundLocationsDescription
     in
     -- Do not start a new task before the engine has completed the last task.
     if stateBefore.waitingForTaskToComplete /= Nothing then
         ( stateBefore
         , SimpleBotFramework.ContinueSession
-            { statusDescriptionText = lastScreenshotDescription ++ "\nWaiting for task to complete."
+            { statusDescriptionText = lastScreenshotDescription stateBefore ++ "\nWaiting for task to complete."
             , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 100 }
             , startTasks = []
             }
@@ -92,13 +67,15 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
 
     else
         let
-            taskId =
-                SimpleBotFramework.taskIdFromString ("take-screenshot-" ++ (stateBefore.nextTaskIndex |> String.fromInt))
+            taskToStart =
+                { taskId = SimpleBotFramework.taskIdFromString ("take-screenshot-" ++ (stateBefore.nextTaskIndex |> String.fromInt))
+                , task = SimpleBotFramework.takeScreenshot
+                }
         in
-        ( { stateBefore | nextTaskIndex = stateBefore.nextTaskIndex + 1, waitingForTaskToComplete = Just taskId }
+        ( { stateBefore | nextTaskIndex = stateBefore.nextTaskIndex + 1, waitingForTaskToComplete = Just taskToStart.taskId }
         , SimpleBotFramework.ContinueSession
-            { startTasks = [ { taskId = taskId, task = SimpleBotFramework.TakeScreenshot } ]
-            , statusDescriptionText = lastScreenshotDescription
+            { startTasks = [ taskToStart ]
+            , statusDescriptionText = lastScreenshotDescription stateBefore
             , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
             }
         )
@@ -124,17 +101,17 @@ integrateEvent event stateBefore =
                             SimpleBotFramework.NoResultValue ->
                                 stateBefore.lastTakeScreenshotResult
 
-                            SimpleBotFramework.TakeScreenshotResult takeScreenshotResult ->
+                            SimpleBotFramework.TakeScreenshotResult screenshot ->
                                 let
                                     objectFoundLocations =
-                                        takeScreenshotResult
-                                            |> SimpleBotFramework.locatePatternInImage
-                                                locate_EVE_Online_Undock_Button
-                                                SimpleBotFramework.SearchEverywhere
+                                        SimpleBotFramework.locatePatternInImage
+                                            locate_EVE_Online_Undock_Button
+                                            SimpleBotFramework.SearchEverywhere
+                                            screenshot
                                 in
                                 Just
                                     { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                    , screenshot = takeScreenshotResult
+                                    , screenshot = screenshot
                                     , objectFoundLocations = objectFoundLocations
                                     }
                 in
@@ -145,6 +122,33 @@ integrateEvent event stateBefore =
 
             else
                 stateBefore
+
+
+lastScreenshotDescription : SimpleState -> String
+lastScreenshotDescription stateBefore =
+    case stateBefore.lastTakeScreenshotResult of
+        Nothing ->
+            "Taking the first screenshot..."
+
+        Just lastTakeScreenshotResult ->
+            let
+                objectFoundLocationsToDescribe =
+                    lastTakeScreenshotResult.objectFoundLocations
+                        |> List.take 10
+
+                objectFoundLocationsDescription =
+                    "I found the object in "
+                        ++ (lastTakeScreenshotResult.objectFoundLocations |> List.length |> String.fromInt)
+                        ++ " locations:\n[ "
+                        ++ (objectFoundLocationsToDescribe |> List.map describeLocation |> String.join ", ")
+                        ++ " ]"
+            in
+            "The last screenshot had a width of "
+                ++ (lastTakeScreenshotResult.screenshot.imageWidth |> String.fromInt)
+                ++ " and a height of "
+                ++ (lastTakeScreenshotResult.screenshot.imageHeight |> String.fromInt)
+                ++ " pixels.\n"
+                ++ objectFoundLocationsDescription
 
 
 {-| This is from the game EVE Online, the undock button in the station window. For an example image, see the training data linked below:

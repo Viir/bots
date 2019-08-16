@@ -15,6 +15,17 @@ module Bot exposing
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
 import BotEngine.SimpleBotFramework as SimpleBotFramework
+    exposing
+        ( bringWindowToForeground
+        , keyboardKeyDown
+        , keyboardKeyUp
+        , keyboardKey_space
+        , mouseButtonDown
+        , mouseButtonLeft
+        , mouseButtonRight
+        , mouseButtonUp
+        , moveMouseToLocation
+        )
 
 
 type alias SimpleState =
@@ -34,23 +45,23 @@ initState =
         { timeInMilliseconds = 0
         , waitingForTaskToComplete = Nothing
         , remainingInputTasks =
-            [ SimpleBotFramework.BringWindowToForeground
-            , SimpleBotFramework.MoveMouseToLocation { x = 100, y = 250 }
-            , SimpleBotFramework.MouseButtonDown SimpleBotFramework.MouseButtonLeft
-            , SimpleBotFramework.MoveMouseToLocation { x = 200, y = 300 }
-            , SimpleBotFramework.MouseButtonUp SimpleBotFramework.MouseButtonLeft
-            , SimpleBotFramework.MouseButtonDown SimpleBotFramework.MouseButtonRight
-            , SimpleBotFramework.MoveMouseToLocation { x = 300, y = 230 }
-            , SimpleBotFramework.MouseButtonUp SimpleBotFramework.MouseButtonRight
-            , SimpleBotFramework.MoveMouseToLocation { x = 160, y = 235 }
-            , SimpleBotFramework.MouseButtonDown SimpleBotFramework.MouseButtonLeft
-            , SimpleBotFramework.MouseButtonUp SimpleBotFramework.MouseButtonLeft
+            [ bringWindowToForeground
+            , moveMouseToLocation { x = 100, y = 250 }
+            , mouseButtonDown mouseButtonLeft
+            , moveMouseToLocation { x = 200, y = 300 }
+            , mouseButtonUp mouseButtonLeft
+            , mouseButtonDown mouseButtonRight
+            , moveMouseToLocation { x = 300, y = 230 }
+            , mouseButtonUp mouseButtonRight
+            , moveMouseToLocation { x = 160, y = 235 }
+            , mouseButtonDown mouseButtonLeft
+            , mouseButtonUp mouseButtonLeft
 
             -- 2019-06-09 MS Paint did also draw when space key was pressed. Next, we draw a line without a mouse button, by holding the space key down.
-            , SimpleBotFramework.MoveMouseToLocation { x = 180, y = 230 }
-            , SimpleBotFramework.KeyboardKeyDown SimpleBotFramework.VK_SPACE
-            , SimpleBotFramework.MoveMouseToLocation { x = 210, y = 240 }
-            , SimpleBotFramework.KeyboardKeyUp SimpleBotFramework.VK_SPACE
+            , moveMouseToLocation { x = 180, y = 230 }
+            , keyboardKeyDown keyboardKey_space
+            , moveMouseToLocation { x = 210, y = 240 }
+            , keyboardKeyUp keyboardKey_space
             ]
         }
 

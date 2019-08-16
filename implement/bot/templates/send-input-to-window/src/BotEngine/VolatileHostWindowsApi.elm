@@ -1,4 +1,4 @@
-module VolatileHostWindowsApi exposing (
+module BotEngine.VolatileHostWindowsApi exposing (
     RequestToVolatileHost(..)
     , ResponseFromVolatileHost(..)
     , ReadFileContentResultStructure(..)

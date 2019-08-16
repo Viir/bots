@@ -3,7 +3,7 @@
 -}
 
 
-module Interface_To_Host_20190808 exposing
+module BotEngine.Interface_To_Host_20190808 exposing
     ( BotEvent(..)
     , BotResponse(..)
     , ProcessSerializedEventResponse(..)

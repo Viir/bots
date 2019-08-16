@@ -1,8 +1,8 @@
-{- This bot demonstrates how to work with bot configurations, and how to implement a bot which supports configuration.
+{- This bot demonstrates how to remember the bot configuration by keeping it in the bot state.
    It takes any configuration string received from the user and stores it in the bot state.
    This bot also updates the status message to show the last received bot configuration, so you can check that a method (e.g., via command line) of setting the bot configuration works.
 
-   bot-catalog-tags:guide,demo-interface-to-host
+   bot-catalog-tags:template,remember-bot-configuration,demo-interface-to-host
 -}
 
 
@@ -12,7 +12,7 @@ module Bot exposing
     , processEvent
     )
 
-import Interface_To_Host_20190808 as InterfaceToHost
+import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
 import Json.Encode
 
 

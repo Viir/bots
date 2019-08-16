@@ -7,12 +7,12 @@
 
    To use this framework:
 
-   + Wrap you bots `processEvent` function with `SimpleBotFramework.processEvent`.
-   + Wrap you bots `initState` function with `SimpleBotFramework.initState`.
+   + Wrap you bots `processEvent` function with `BotEngine.SimpleBotFramework.processEvent`.
+   + Wrap you bots `initState` function with `BotEngine.SimpleBotFramework.initState`.
 -}
 
 
-module SimpleBotFramework exposing
+module BotEngine.SimpleBotFramework exposing
     ( BotEvent(..)
     , BotResponse(..)
     , ImageSearchRegion(..)
@@ -32,10 +32,10 @@ module SimpleBotFramework exposing
     , taskIdFromString
     )
 
+import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
+import BotEngine.VolatileHostWindowsApi as VolatileHostWindowsApi
 import Dict
-import Interface_To_Host_20190808 as InterfaceToHost
 import Json.Decode
-import VolatileHostWindowsApi
 
 
 type BotEvent

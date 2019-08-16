@@ -13,8 +13,8 @@ module Bot exposing
     , processEvent
     )
 
-import Interface_To_Host_20190808 as InterfaceToHost
-import SimpleBotFramework
+import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
+import BotEngine.SimpleBotFramework as SimpleBotFramework
 
 
 type alias SimpleState =

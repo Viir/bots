@@ -25,9 +25,9 @@ module Bot exposing
     )
 
 import Base64.Decode
+import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
 import DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue)
 import Dict
-import Interface_To_Host_20190808 as InterfaceToHost
 import Json.Decode
 import Maybe.Extra
 import VolatileHostSetup exposing (ReadFileContentResultStructure(..), RequestToVolatileHost(..), ResponseFromVolatileHost(..))

@@ -1,9 +1,9 @@
 {-
-   This bot framework takes care of:
+   This framework helps with bot development by taking care of these common tasks:
 
-   + Identify the window the bot should work.
+   + Keeping track of the window the bot should work in so that the bot reads from and sends input to the right window.
    + Set up the volatile host to interface with Windows.
-   + Map typical tasks to the Windows API.
+   + Map typical tasks like sending inputs or taking screenshots to the Windows API.
 
    To use this framework:
 
@@ -15,17 +15,24 @@
 module SimpleBotFramework exposing
     ( BotEvent(..)
     , BotResponse(..)
-    , EffectOnWindowStructure(..)
+    , ImageSearchRegion(..)
+    , ImageStructure
     , KeyboardKey(..)
+    , LocatePatternInImageApproach(..)
     , MouseButton(..)
+    , PixelValue
     , State
     , Task(..)
     , TaskId
+    , TaskResultStructure(..)
+    , dictWithTupleKeyFromIndicesInNestedList
     , initState
+    , locatePatternInImage
     , processEvent
     , taskIdFromString
     )
 
+import Dict
 import Interface_To_Host_20190808 as InterfaceToHost
 import Json.Decode
 import VolatileHostWindowsApi
@@ -49,8 +56,21 @@ type alias CompletedTaskStructure =
     }
 
 
-type alias TaskResultStructure =
-    {}
+type TaskResultStructure
+    = NoResultValue
+    | TakeScreenshotResult ImageStructure
+
+
+type alias ImageStructure =
+    { imageWidth : Int
+    , imageHeight : Int
+    , imageAsDict : Dict.Dict ( Int, Int ) PixelValue
+    , imageBinned2x2AsDict : Dict.Dict ( Int, Int ) PixelValue
+    }
+
+
+type alias PixelValue =
+    { red : Int, green : Int, blue : Int }
 
 
 type alias BotResponseContinueSession =
@@ -75,11 +95,6 @@ type TaskId
     = TaskIdFromString String
 
 
-type Task
-    = EffectOnWindow EffectOnWindowStructure
-    | TakeScreenshot
-
-
 type alias Location2d =
     VolatileHostWindowsApi.Location2d
 
@@ -94,13 +109,14 @@ type KeyboardKey
     | VK_SPACE
 
 
-type EffectOnWindowStructure
+type Task
     = BringWindowToForeground
     | MoveMouseToLocation Location2d
     | MouseButtonDown MouseButton
     | MouseButtonUp MouseButton
     | KeyboardKeyDown KeyboardKey
     | KeyboardKeyUp KeyboardKey
+    | TakeScreenshot
 
 
 type alias State simpleBotState =
@@ -114,7 +130,7 @@ type alias State simpleBotState =
     , simpleBotInitState : simpleBotState
     , simpleBot : Maybe simpleBotState
     , simpleBotLastResponse : Maybe BotResponse
-    , simpleBotTasksInProgress : List ( InterfaceToHost.TaskId, TaskId )
+    , simpleBotTasksInProgress : List ( InterfaceToHost.TaskId, StartTaskStructure )
     }
 
 
@@ -127,6 +143,17 @@ type FrameworkSetupStepActivity
     = StopWithResult { resultDescription : String }
     | ContinueSetupWithTask { task : InterfaceToHost.StartTaskStructure, taskDescription : String }
     | OperateSimpleBot { buildTaskFromTaskOnWindow : VolatileHostWindowsApi.TaskOnWindowStructure -> InterfaceToHost.Task }
+
+
+type LocatePatternInImageApproach
+    = TestPerPixelWithBroadPhase2x2
+        { testOnBinned2x2 : ({ x : Int, y : Int } -> Maybe PixelValue) -> Bool
+        , testOnOriginalResolution : ({ x : Int, y : Int } -> Maybe PixelValue) -> Bool
+        }
+
+
+type ImageSearchRegion
+    = SearchEverywhere
 
 
 initState : simpleBotState -> State simpleBotState
@@ -225,93 +252,272 @@ processEvent simpleBotProcessEvent event stateBefore =
                                     else
                                         []
 
-                        ( simpleBotEventsFromCurrentEvent, simpleBotTasksInProgressAfterRemoval ) =
+                        mapCurrentEventToSimpleBotEventsResult =
                             case event of
                                 InterfaceToHost.ArrivedAtTime arrivedAtTime ->
-                                    ( [], state.simpleBotTasksInProgress )
+                                    Ok ( [], state.simpleBotTasksInProgress )
 
                                 InterfaceToHost.SetBotConfiguration setBotConfiguration ->
-                                    ( [ SetBotConfiguration setBotConfiguration ], state.simpleBotTasksInProgress )
+                                    Ok ( [ SetBotConfiguration setBotConfiguration ], state.simpleBotTasksInProgress )
 
                                 InterfaceToHost.SetSessionTimeLimit setSessionTimeLimit ->
-                                    ( [ SetSessionTimeLimit setSessionTimeLimit ], state.simpleBotTasksInProgress )
+                                    Ok ( [ SetSessionTimeLimit setSessionTimeLimit ], state.simpleBotTasksInProgress )
 
                                 InterfaceToHost.CompletedTask completedTask ->
                                     case state.simpleBotTasksInProgress |> List.filter (\( key, _ ) -> key == completedTask.taskId) |> List.head of
                                         Nothing ->
-                                            ( [], state.simpleBotTasksInProgress )
+                                            Ok ( [], state.simpleBotTasksInProgress )
 
-                                        Just ( completedTaskInterfaceId, simpleBotTaskId ) ->
-                                            ( [ CompletedTask { taskId = simpleBotTaskId, taskResult = {} } ]
-                                            , state.simpleBotTasksInProgress
-                                                |> List.filter
-                                                    (Tuple.first >> (/=) completedTaskInterfaceId)
-                                            )
+                                        Just ( completedTaskInterfaceId, simpleBotTask ) ->
+                                            let
+                                                taskResultResult =
+                                                    case completedTask.taskResult of
+                                                        InterfaceToHost.CreateVolatileHostResponse _ ->
+                                                            Err "CreateVolatileHostResponse"
 
-                        ( simpleBotState, simpleBotResponse ) =
-                            simpleBotStateBefore
-                                |> processSequenceOfSimpleBotEventsAndCombineResponses
-                                    simpleBotProcessEvent
-                                    (simpleBotEventsBefore ++ arriveAtTimeEvents ++ simpleBotEventsFromCurrentEvent)
+                                                        InterfaceToHost.CompleteWithoutResult ->
+                                                            Err "CompleteWithoutResult"
 
-                        simpleBotLastResponse =
-                            [ simpleBotResponse, state.simpleBotLastResponse ]
-                                |> List.filterMap identity
-                                |> List.head
+                                                        InterfaceToHost.RunInVolatileHostResponse volatileHostResponse ->
+                                                            case volatileHostResponse of
+                                                                Err InterfaceToHost.HostNotFound ->
+                                                                    Err "Error running script in volatile host: HostNotFound"
 
-                        ( response, simpleBotTasksInProgress ) =
-                            case simpleBotLastResponse of
-                                Nothing ->
-                                    ( InterfaceToHost.ContinueSession
-                                        { statusDescriptionText = generalStatusDescription ++ "Operate bot:\nNo response from bot so far."
-                                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = state.timeInMilliseconds + 1000 }
-                                        , startTasks = []
-                                        }
-                                    , simpleBotTasksInProgressAfterRemoval
+                                                                Ok volatileHostResponseSuccess ->
+                                                                    case volatileHostResponseSuccess.exceptionToString of
+                                                                        Just exceptionInVolatileHost ->
+                                                                            Err ("Exception in volatile host: " ++ exceptionInVolatileHost)
+
+                                                                        Nothing ->
+                                                                            case volatileHostResponseSuccess.returnValueToString |> Maybe.withDefault "" |> VolatileHostWindowsApi.deserializeResponseFromVolatileHost of
+                                                                                Err error ->
+                                                                                    Err ("Failed to parse response from volatile host: " ++ (error |> Json.Decode.errorToString))
+
+                                                                                Ok parsedResponse ->
+                                                                                    case simpleBotTask.task of
+                                                                                        BringWindowToForeground ->
+                                                                                            Ok NoResultValue
+
+                                                                                        MoveMouseToLocation _ ->
+                                                                                            Ok NoResultValue
+
+                                                                                        MouseButtonDown _ ->
+                                                                                            Ok NoResultValue
+
+                                                                                        MouseButtonUp _ ->
+                                                                                            Ok NoResultValue
+
+                                                                                        KeyboardKeyDown _ ->
+                                                                                            Ok NoResultValue
+
+                                                                                        KeyboardKeyUp _ ->
+                                                                                            Ok NoResultValue
+
+                                                                                        TakeScreenshot ->
+                                                                                            case parsedResponse of
+                                                                                                VolatileHostWindowsApi.TakeScreenshotResult takeScreenshotResult ->
+                                                                                                    Ok
+                                                                                                        (TakeScreenshotResult (deriveImageRepresentation takeScreenshotResult.pixels))
+
+                                                                                                _ ->
+                                                                                                    Err ("Unexpected return value from volatile host: " ++ (volatileHostResponseSuccess.returnValueToString |> Maybe.withDefault ""))
+                                            in
+                                            case taskResultResult of
+                                                Err error ->
+                                                    Err ("Unexpected task result: " ++ error)
+
+                                                Ok taskResultOk ->
+                                                    Ok
+                                                        ( [ CompletedTask { taskId = simpleBotTask.taskId, taskResult = taskResultOk } ]
+                                                        , state.simpleBotTasksInProgress
+                                                            |> List.filter (Tuple.first >> (/=) completedTaskInterfaceId)
+                                                        )
+
+                        ( stateAfterPropagatingEventToSimpleBot, response ) =
+                            case mapCurrentEventToSimpleBotEventsResult of
+                                Err error ->
+                                    ( { state | error = Just error }
+                                    , InterfaceToHost.FinishSession { statusDescriptionText = generalStatusDescription ++ "Error: " ++ error }
                                     )
 
-                                Just (ContinueSession continueSession) ->
+                                Ok ( simpleBotEventsFromCurrentEvent, simpleBotTasksInProgressAfterRemoval ) ->
                                     let
-                                        startTasks =
-                                            continueSession.startTasks
-                                                |> List.map
-                                                    (\simpleBotTaskWithId ->
-                                                        ( { taskId = simpleBotTaskWithId.taskId |> taskIdFromSimpleBotTaskId
-                                                          , task = simpleBotTaskWithId.task |> taskOnWindowFromSimpleBotTask |> buildTaskFromTaskOnWindow
-                                                          }
-                                                        , simpleBotTaskWithId
-                                                        )
+                                        ( simpleBotState, simpleBotResponse ) =
+                                            simpleBotStateBefore
+                                                |> processSequenceOfSimpleBotEventsAndCombineResponses
+                                                    simpleBotProcessEvent
+                                                    (simpleBotEventsBefore ++ arriveAtTimeEvents ++ simpleBotEventsFromCurrentEvent)
+
+                                        simpleBotLastResponse =
+                                            [ simpleBotResponse, state.simpleBotLastResponse ]
+                                                |> List.filterMap identity
+                                                |> List.head
+
+                                        ( responseFromSimpleBotLastResponse, simpleBotTasksInProgress ) =
+                                            case simpleBotLastResponse of
+                                                Nothing ->
+                                                    ( InterfaceToHost.ContinueSession
+                                                        { statusDescriptionText = generalStatusDescription ++ "Operate bot:\nNo response from bot so far."
+                                                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = state.timeInMilliseconds + 1000 }
+                                                        , startTasks = []
+                                                        }
+                                                    , simpleBotTasksInProgressAfterRemoval
                                                     )
 
-                                        addedSimpleBotTasksInProgress =
-                                            startTasks
-                                                |> List.map
-                                                    (\( interfaceStartTask, simpleBotStartTask ) ->
-                                                        ( interfaceStartTask.taskId, simpleBotStartTask.taskId )
+                                                Just (ContinueSession continueSession) ->
+                                                    let
+                                                        startTasks =
+                                                            continueSession.startTasks
+                                                                |> List.map
+                                                                    (\simpleBotTaskWithId ->
+                                                                        ( { taskId = simpleBotTaskWithId.taskId |> taskIdFromSimpleBotTaskId
+                                                                          , task = simpleBotTaskWithId.task |> taskOnWindowFromSimpleBotTask |> buildTaskFromTaskOnWindow
+                                                                          }
+                                                                        , simpleBotTaskWithId
+                                                                        )
+                                                                    )
+
+                                                        addedSimpleBotTasksInProgress =
+                                                            startTasks
+                                                                |> List.map
+                                                                    (\( interfaceStartTask, simpleBotStartTask ) ->
+                                                                        ( interfaceStartTask.taskId, simpleBotStartTask )
+                                                                    )
+                                                    in
+                                                    ( InterfaceToHost.ContinueSession
+                                                        { statusDescriptionText = generalStatusDescription ++ "Operate bot:\n" ++ continueSession.statusDescriptionText
+                                                        , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
+                                                        , startTasks = startTasks |> List.map Tuple.first
+                                                        }
+                                                    , simpleBotTasksInProgressAfterRemoval ++ addedSimpleBotTasksInProgress
+                                                    )
+
+                                                Just (FinishSession finishSession) ->
+                                                    ( InterfaceToHost.FinishSession
+                                                        { statusDescriptionText = generalStatusDescription ++ "Finish session: " ++ finishSession.statusDescriptionText
+                                                        }
+                                                    , simpleBotTasksInProgressAfterRemoval
                                                     )
                                     in
-                                    ( InterfaceToHost.ContinueSession
-                                        { statusDescriptionText = generalStatusDescription ++ "Operate bot:\n" ++ continueSession.statusDescriptionText
-                                        , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
-                                        , startTasks = startTasks |> List.map Tuple.first
-                                        }
-                                    , simpleBotTasksInProgressAfterRemoval ++ addedSimpleBotTasksInProgress
-                                    )
-
-                                Just (FinishSession finishSession) ->
-                                    ( InterfaceToHost.FinishSession
-                                        { statusDescriptionText = generalStatusDescription ++ "Finish session: " ++ finishSession.statusDescriptionText
-                                        }
-                                    , simpleBotTasksInProgressAfterRemoval
+                                    ( { state
+                                        | simpleBot = Just simpleBotState
+                                        , simpleBotLastResponse = simpleBotLastResponse
+                                        , simpleBotTasksInProgress = simpleBotTasksInProgress
+                                      }
+                                    , responseFromSimpleBotLastResponse
                                     )
                     in
-                    ( { state
-                        | simpleBot = Just simpleBotState
-                        , simpleBotLastResponse = simpleBotLastResponse
-                        , simpleBotTasksInProgress = simpleBotTasksInProgress
-                      }
-                    , response
+                    ( stateAfterPropagatingEventToSimpleBot, response )
+
+
+deriveImageRepresentation : List (List PixelValue) -> ImageStructure
+deriveImageRepresentation imageAsNestedList =
+    let
+        imageWidths =
+            imageAsNestedList |> List.map List.length
+
+        imageWidth =
+            imageWidths |> List.maximum |> Maybe.withDefault 0
+
+        imageHeight =
+            imageWidths |> List.length
+
+        imageAsDict =
+            imageAsNestedList |> dictWithTupleKeyFromIndicesInNestedList
+
+        imageBinned2x2AsDict =
+            List.range 0 (((imageAsNestedList |> List.length) - 1) // 2)
+                |> List.map
+                    (\binnedRowIndex ->
+                        let
+                            rowWidth =
+                                imageAsNestedList
+                                    |> List.drop (binnedRowIndex * 2)
+                                    |> List.take 2
+                                    |> List.map List.length
+                                    |> List.maximum
+                                    |> Maybe.withDefault 0
+
+                            rowBinnedWidth =
+                                (rowWidth - 1) // 2 + 1
+                        in
+                        List.range 0 (rowBinnedWidth - 1)
+                            |> List.map
+                                (\binnedColumnIndex ->
+                                    let
+                                        sourcePixelsValues =
+                                            [ ( 0, 0 ), ( 1, 0 ), ( 0, 1 ), ( 1, 1 ) ]
+                                                |> List.filterMap (\( relX, relY ) -> imageAsDict |> Dict.get ( binnedColumnIndex * 2 + relX, binnedRowIndex * 2 + relY ))
+
+                                        pixelValueSum =
+                                            sourcePixelsValues
+                                                |> List.foldl (\pixel sum -> { red = sum.red + pixel.red, green = sum.green + pixel.green, blue = sum.blue + pixel.blue }) { red = 0, green = 0, blue = 0 }
+
+                                        sourcePixelsValuesCount =
+                                            sourcePixelsValues |> List.length
+
+                                        pixelValue =
+                                            { red = pixelValueSum.red // sourcePixelsValuesCount
+                                            , green = pixelValueSum.green // sourcePixelsValuesCount
+                                            , blue = pixelValueSum.blue // sourcePixelsValuesCount
+                                            }
+                                    in
+                                    pixelValue
+                                )
                     )
+                |> dictWithTupleKeyFromIndicesInNestedList
+    in
+    { imageWidth = imageWidth
+    , imageHeight = imageHeight
+    , imageAsDict = imageAsDict
+    , imageBinned2x2AsDict = imageBinned2x2AsDict
+    }
+
+
+locatePatternInImage : LocatePatternInImageApproach -> ImageSearchRegion -> ImageStructure -> List Location2d
+locatePatternInImage searchPattern searchRegion image =
+    case searchPattern of
+        TestPerPixelWithBroadPhase2x2 { testOnBinned2x2, testOnOriginalResolution } ->
+            let
+                binnedSearchLocations =
+                    case searchRegion of
+                        SearchEverywhere ->
+                            image.imageBinned2x2AsDict |> Dict.keys |> List.map (\( x, y ) -> { x = x, y = y })
+
+                matchLocationsOnBinned2x2 =
+                    image.imageBinned2x2AsDict
+                        |> getMatchesLocationsFromImage testOnBinned2x2 binnedSearchLocations
+
+                originalResolutionSearchLocations =
+                    matchLocationsOnBinned2x2
+                        |> List.concatMap
+                            (\binnedLocation ->
+                                [ { x = binnedLocation.x * 2, y = binnedLocation.y * 2 }
+                                , { x = binnedLocation.x * 2 + 1, y = binnedLocation.y * 2 }
+                                , { x = binnedLocation.x * 2, y = binnedLocation.y * 2 + 1 }
+                                , { x = binnedLocation.x * 2 + 1, y = binnedLocation.y * 2 + 1 }
+                                ]
+                            )
+
+                matchLocations =
+                    image.imageAsDict
+                        |> getMatchesLocationsFromImage testOnOriginalResolution originalResolutionSearchLocations
+            in
+            matchLocations
+
+
+getMatchesLocationsFromImage :
+    (({ x : Int, y : Int } -> Maybe PixelValue) -> Bool)
+    -> List { x : Int, y : Int }
+    -> Dict.Dict ( Int, Int ) PixelValue
+    -> List { x : Int, y : Int }
+getMatchesLocationsFromImage imageMatchesPatternAtOrigin locationsToSearchAt image =
+    locationsToSearchAt
+        |> List.filter
+            (\searchOrigin ->
+                imageMatchesPatternAtOrigin
+                    (\relativeLocation -> image |> Dict.get ( relativeLocation.x + searchOrigin.x, relativeLocation.y + searchOrigin.y ))
+            )
 
 
 processSequenceOfSimpleBotEventsAndCombineResponses : (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse )) -> List BotEvent -> simpleBotState -> ( simpleBotState, Maybe BotResponse )
@@ -367,29 +573,27 @@ taskIdFromSimpleBotTaskId simpleBotTaskId =
 taskOnWindowFromSimpleBotTask : Task -> VolatileHostWindowsApi.TaskOnWindowStructure
 taskOnWindowFromSimpleBotTask simpleBotTask =
     case simpleBotTask of
-        EffectOnWindow effectOnWindow ->
-            case effectOnWindow of
-                BringWindowToForeground ->
-                    VolatileHostWindowsApi.BringWindowToForeground
+        BringWindowToForeground ->
+            VolatileHostWindowsApi.BringWindowToForeground
 
-                MoveMouseToLocation location ->
-                    VolatileHostWindowsApi.MoveMouseToLocation location
+        MoveMouseToLocation location ->
+            VolatileHostWindowsApi.MoveMouseToLocation location
 
-                MouseButtonDown button ->
-                    VolatileHostWindowsApi.MouseButtonDown
-                        (volatileHostMouseButtonFromMouseButton button)
+        MouseButtonDown button ->
+            VolatileHostWindowsApi.MouseButtonDown
+                (volatileHostMouseButtonFromMouseButton button)
 
-                MouseButtonUp button ->
-                    VolatileHostWindowsApi.MouseButtonUp
-                        (volatileHostMouseButtonFromMouseButton button)
+        MouseButtonUp button ->
+            VolatileHostWindowsApi.MouseButtonUp
+                (volatileHostMouseButtonFromMouseButton button)
 
-                KeyboardKeyDown key ->
-                    VolatileHostWindowsApi.KeyboardKeyDown
-                        (volatileHostKeyboardKeyFromKeyboardKey key)
+        KeyboardKeyDown key ->
+            VolatileHostWindowsApi.KeyboardKeyDown
+                (volatileHostKeyboardKeyFromKeyboardKey key)
 
-                KeyboardKeyUp key ->
-                    VolatileHostWindowsApi.KeyboardKeyUp
-                        (volatileHostKeyboardKeyFromKeyboardKey key)
+        KeyboardKeyUp key ->
+            VolatileHostWindowsApi.KeyboardKeyUp
+                (volatileHostKeyboardKeyFromKeyboardKey key)
 
         TakeScreenshot ->
             VolatileHostWindowsApi.TakeScreenshot
@@ -572,3 +776,18 @@ volatileHostKeyboardKeyFromKeyboardKey keyboardKey =
         -- https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
         VK_SPACE ->
             VolatileHostWindowsApi.KeyboardKeyFromVirtualKeyCode 0x20
+
+
+dictWithTupleKeyFromIndicesInNestedList : List (List element) -> Dict.Dict ( Int, Int ) element
+dictWithTupleKeyFromIndicesInNestedList nestedList =
+    nestedList
+        |> List.indexedMap
+            (\rowIndex list ->
+                list
+                    |> List.indexedMap
+                        (\columnIndex element ->
+                            ( ( columnIndex, rowIndex ), element )
+                        )
+            )
+        |> List.concat
+        |> Dict.fromList

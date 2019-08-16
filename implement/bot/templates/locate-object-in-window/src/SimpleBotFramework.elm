@@ -1,9 +1,9 @@
 {-
-   This bot framework takes care of:
+   This framework helps with bot development by taking care of these common tasks:
 
    + Keeping track of the window the bot should work in so that the bot reads from and sends input to the right window.
    + Set up the volatile host to interface with Windows.
-   + Map typical tasks to the Windows API.
+   + Map typical tasks like sending inputs or taking screenshots to the Windows API.
 
    To use this framework:
 

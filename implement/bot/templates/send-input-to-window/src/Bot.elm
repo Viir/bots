@@ -3,7 +3,7 @@
    As the example input sequence below shows, we can implement drag&drop operations by using the inputs `MouseButtonDown`, `MoveMouseToLocation`, and `MouseButtonUp`.
    A good way to test and visualize the mouse paths is to use this bot on a canvas in the MS Paint app.
 
-   bot-catalog-tags:template,test,send-input-to-window
+   bot-catalog-tags:template,send-input-to-window,test
 -}
 
 
@@ -19,7 +19,7 @@ import SimpleBotFramework
 
 type alias SimpleState =
     { timeInMilliseconds : Int
-    , remainingInputs : List SimpleBotFramework.EffectOnWindowStructure
+    , remainingInputTasks : List SimpleBotFramework.Task
     , waitingForTaskToComplete : Maybe SimpleBotFramework.TaskId
     }
 
@@ -33,7 +33,7 @@ initState =
     SimpleBotFramework.initState
         { timeInMilliseconds = 0
         , waitingForTaskToComplete = Nothing
-        , remainingInputs =
+        , remainingInputTasks =
             [ SimpleBotFramework.BringWindowToForeground
             , SimpleBotFramework.MoveMouseToLocation { x = 100, y = 250 }
             , SimpleBotFramework.MouseButtonDown SimpleBotFramework.MouseButtonLeft
@@ -77,8 +77,8 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
         )
 
     else
-        case stateBefore.remainingInputs of
-            nextInput :: remainingInputs ->
+        case stateBefore.remainingInputTasks of
+            nextInputTask :: nextRemainingInputTasks ->
                 let
                     { state, startTask, statusDescription, notifyWhenArrivedAtTime } =
                         let
@@ -87,11 +87,11 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
                         in
                         { state =
                             { stateBefore
-                                | remainingInputs = remainingInputs
+                                | remainingInputTasks = nextRemainingInputTasks
                                 , waitingForTaskToComplete = Just taskId
                             }
                         , startTask =
-                            { taskId = taskId, task = SimpleBotFramework.EffectOnWindow nextInput }
+                            { taskId = taskId, task = nextInputTask }
                                 |> Just
                         , statusDescription = "Sending next input."
                         , notifyWhenArrivedAtTime = stateBefore.timeInMilliseconds + 100

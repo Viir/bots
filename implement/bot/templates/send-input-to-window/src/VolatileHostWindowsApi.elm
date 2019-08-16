@@ -11,6 +11,7 @@ module VolatileHostWindowsApi exposing (
     , deserializeResponseFromVolatileHost
     , setupScript)
 
+
 import Json.Decode
 import Json.Encode
 
@@ -24,6 +25,7 @@ type RequestToVolatileHost
 type ResponseFromVolatileHost
     = GetForegroundWindowResult WindowId
     | GetWindowTextResult String
+    | TakeScreenshotResult TakeScreenshotResultStructure
     | NoReturnValue
 
 
@@ -31,6 +33,14 @@ type alias TaskOnIdentifiedWindowStructure =
     { windowId : WindowId
     , task : TaskOnWindowStructure
     }
+
+
+type alias TakeScreenshotResultStructure =
+    { pixels : List (List PixelValue) }
+
+
+type alias PixelValue =
+    { red : Int, green : Int, blue : Int }
 
 
 type ReadFileContentResultStructure
@@ -101,8 +111,28 @@ decodeResponseFromVolatileHost =
             |> Json.Decode.map GetForegroundWindowResult
         , Json.Decode.field "GetWindowTextResult" Json.Decode.string
             |> Json.Decode.map GetWindowTextResult
+        , Json.Decode.field "TakeScreenshotResult" jsonDecodeTakeScreenshotResult
+            |> Json.Decode.map TakeScreenshotResult
         , Json.Decode.field "NoReturnValue" (jsonDecodeSucceedWhenNotNull NoReturnValue)
         ]
+
+
+jsonDecodeTakeScreenshotResult : Json.Decode.Decoder TakeScreenshotResultStructure
+jsonDecodeTakeScreenshotResult =
+    Json.Decode.field "pixels" (Json.Decode.list (Json.Decode.list jsonDecodePixelValue))
+        |> Json.Decode.map TakeScreenshotResultStructure
+
+
+jsonDecodePixelValue : Json.Decode.Decoder PixelValue
+jsonDecodePixelValue =
+    Json.Decode.int
+        |> Json.Decode.map
+            (\asInt ->
+                { red = asInt // (256 * 256)
+                , green = asInt // 256 |> modBy 256
+                , blue = asInt |> modBy 256
+                }
+            )
 
 
 encodeWindowId : WindowId -> Json.Encode.Value
@@ -153,14 +183,6 @@ encodeTaskOnWindowStructure taskOnWindow =
     TakeScreenshot ->
         [("TakeScreenshot", [] |> Json.Encode.object )]
             |> Json.Encode.object
-
-decodeReadFileContentResultStructure : Json.Decode.Decoder ReadFileContentResultStructure
-decodeReadFileContentResultStructure =
-    Json.Decode.oneOf
-        [ Json.Decode.field "didNotFindFileAtSpecifiedPath" (Json.Decode.succeed DidNotFindFileAtSpecifiedPath)
-        , Json.Decode.field "exceptionAsString" Json.Decode.string |> Json.Decode.map ExceptionAsString
-        , Json.Decode.field "fileContentAsBase64" Json.Decode.string |> Json.Decode.map FileContentAsBase64
-        ]
 
 
 jsonEncodeLocation2d : Location2d -> Json.Encode.Value
@@ -223,6 +245,12 @@ setupScript =
 //  "WindowsInput"
 #r "sha256:81110D44256397F0F3C572A20CA94BB4C669E5DE89F9348ABAD263FBD81C54B9"
 
+//  "System.Drawing.Common"
+#r "sha256:C5333AA60281006DFCFBBC0BC04C217C581EFF886890565E994900FB60448B02"
+
+//  "System.Drawing.Primitives"
+#r "sha256:CA24032E6D39C44A01D316498E18FE9A568D59C6009842029BC129AA6B989BCD"
+
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -260,6 +288,8 @@ public class Request
         public KeyboardKey KeyboardKeyDown;
 
         public KeyboardKey KeyboardKeyUp;
+
+        public object TakeScreenshot;
     }
 
     public class Location2d
@@ -286,7 +316,15 @@ public class Response
     public object NoReturnValue;
 
     public string GetWindowTextResult;
+
+    public TakeScreenshotResultStructure TakeScreenshotResult;
+
+    public class TakeScreenshotResultStructure
+    {
+        public int[][] pixels;
+    }
 }
+
 
 public class WindowId
 {
@@ -345,8 +383,7 @@ public Response request(Request request)
 
     if (request.TaskOnWindow != null)
     {
-        performTaskOnWindow(request.TaskOnWindow);
-        return new Response { NoReturnValue = new object() };
+        return performTaskOnWindow(request.TaskOnWindow);
     }
 
     throw new Exception("Unexpected request value.");
@@ -355,13 +392,9 @@ public Response request(Request request)
 public WindowId GetForegroundWindow() =>
     new WindowId { WindowHandleFromInt = WinApi.GetForegroundWindow().ToInt64() };
 
-void performTaskOnWindow(Request.TaskOnIdentifiedWindowStructure taskOnIdentifiedWindow)
+Response performTaskOnWindow(Request.TaskOnIdentifiedWindowStructure taskOnIdentifiedWindow)
 {
     var windowHandle = new IntPtr(taskOnIdentifiedWindow.windowId.WindowHandleFromInt);
-
-    var windowRect = new WinApi.Rect();
-    if (WinApi.GetWindowRect(windowHandle, ref windowRect) == IntPtr.Zero)
-        return;
 
     var inputSimulator = new WindowsInput.InputSimulator();
 
@@ -371,13 +404,20 @@ void performTaskOnWindow(Request.TaskOnIdentifiedWindowStructure taskOnIdentifie
     {
         WinApi.SetForegroundWindow(windowHandle);
         WinApi.ShowWindow(windowHandle, WinApi.SW_RESTORE);
+        return new Response { NoReturnValue = new object() };
     }
 
     if (task.MoveMouseToLocation != null)
     {
+        var windowRect = new WinApi.Rect();
+        if (WinApi.GetWindowRect(windowHandle, ref windowRect) == IntPtr.Zero)
+            throw new Exception("GetWindowRect failed");
+
         WinApi.SetCursorPos(
             task.MoveMouseToLocation.x + windowRect.left,
             task.MoveMouseToLocation.y + windowRect.top);
+
+        return new Response { NoReturnValue = new object() };
     }
 
     if (task.MouseButtonDown != null)
@@ -387,6 +427,8 @@ void performTaskOnWindow(Request.TaskOnIdentifiedWindowStructure taskOnIdentifie
 
         if (task.MouseButtonDown.MouseButtonRight != null)
             inputSimulator.Mouse.RightButtonDown();
+
+        return new Response { NoReturnValue = new object() };
     }
 
     if (task.MouseButtonUp != null)
@@ -396,13 +438,34 @@ void performTaskOnWindow(Request.TaskOnIdentifiedWindowStructure taskOnIdentifie
 
         if (task.MouseButtonUp.MouseButtonRight != null)
             inputSimulator.Mouse.RightButtonUp();
+
+        return new Response { NoReturnValue = new object() };
     }
 
     if (task.KeyboardKeyDown != null)
+    {
         inputSimulator.Keyboard.KeyDown((WindowsInput.Native.VirtualKeyCode)task.KeyboardKeyDown.KeyboardKeyFromVirtualKeyCode);
+        return new Response { NoReturnValue = new object() };
+    }
 
     if (task.KeyboardKeyUp != null)
+    {
         inputSimulator.Keyboard.KeyUp((WindowsInput.Native.VirtualKeyCode)task.KeyboardKeyUp.KeyboardKeyFromVirtualKeyCode);
+        return new Response { NoReturnValue = new object() };
+    }
+
+    if (task.TakeScreenshot != null)
+    {
+        return new Response
+        {
+            TakeScreenshotResult = new Response.TakeScreenshotResultStructure
+            {
+                pixels = GetScreenshotOfWindowAsPixelsValues(windowHandle)
+            }
+        };
+    }
+
+    throw new Exception("Unexpected task in request: " + task);
 }
 
 void SetProcessDPIAware()
@@ -412,6 +475,87 @@ void SetProcessDPIAware()
     //  https://github.com/dotnet/winforms/issues/135
     WinApi.SetProcessDPIAware();
 }
+
+public byte[] GetScreenshotOfWindowAsImageFileBMP(IntPtr windowHandle)
+{
+    var screenshotAsBitmap = GetScreenshotOfWindowAsBitmap(windowHandle);
+
+    if (screenshotAsBitmap == null)
+        return null;
+
+    using (var stream = new System.IO.MemoryStream())
+    {
+        screenshotAsBitmap.Save(stream, format: System.Drawing.Imaging.ImageFormat.Bmp);
+        return stream.ToArray();
+    }
+}
+
+public int[][] GetScreenshotOfWindowAsPixelsValues(IntPtr windowHandle)
+{
+    var screenshotAsBitmap = GetScreenshotOfWindowAsBitmap(windowHandle);
+
+    if (screenshotAsBitmap == null)
+        return null;
+
+    var bitmapData = screenshotAsBitmap.LockBits(
+        new System.Drawing.Rectangle(0, 0, screenshotAsBitmap.Width, screenshotAsBitmap.Height),
+        System.Drawing.Imaging.ImageLockMode.ReadOnly,
+        System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+    int byteCount = bitmapData.Stride * screenshotAsBitmap.Height;
+    byte[] pixelsArray = new byte[byteCount];
+    IntPtr ptrFirstPixel = bitmapData.Scan0;
+    Marshal.Copy(ptrFirstPixel, pixelsArray, 0, pixelsArray.Length);
+
+    screenshotAsBitmap.UnlockBits(bitmapData);
+
+    var pixels = new int[screenshotAsBitmap.Height][];
+
+    for (var rowIndex = 0; rowIndex < screenshotAsBitmap.Height; ++rowIndex)
+    {
+        var rowPixelValues = new int[screenshotAsBitmap.Width];
+
+        for (var columnIndex = 0; columnIndex < screenshotAsBitmap.Width; ++columnIndex)
+        {
+            var pixelBeginInArray = bitmapData.Stride * rowIndex + columnIndex * 3;
+
+            var red = pixelsArray[pixelBeginInArray + 2];
+            var green = pixelsArray[pixelBeginInArray + 1];
+            var blue = pixelsArray[pixelBeginInArray + 0];
+
+            rowPixelValues[columnIndex] = (red << 16) | (green << 8) | blue;
+        }
+
+        pixels[rowIndex] = rowPixelValues;
+    }
+
+    return pixels;
+}
+
+public System.Drawing.Bitmap GetScreenshotOfWindowAsBitmap(IntPtr windowHandle)
+{
+    SetProcessDPIAware();
+
+    var windowRect = new WinApi.Rect();
+    if (WinApi.GetWindowRect(windowHandle, ref windowRect) == IntPtr.Zero)
+        return null;
+
+    int width = windowRect.right - windowRect.left;
+    int height = windowRect.bottom - windowRect.top;
+
+    var asBitmap = new System.Drawing.Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+    System.Drawing.Graphics.FromImage(asBitmap).CopyFromScreen(
+        windowRect.left,
+        windowRect.top,
+        0,
+        0,
+        new System.Drawing.Size(width, height),
+        System.Drawing.CopyPixelOperation.SourceCopy);
+
+    return asBitmap;
+}
+
 
 static public class WinApi
 {

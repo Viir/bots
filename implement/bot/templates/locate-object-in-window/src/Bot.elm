@@ -2,7 +2,7 @@
 
    You can test this by placing a screenshot in a paint app like MS Paint or Paint.NET, where you can change its location within the window easily.
 
-   bot-catalog-tags:template,test,locate-object-in-window
+   bot-catalog-tags:template,locate-object-in-window,test
 -}
 
 

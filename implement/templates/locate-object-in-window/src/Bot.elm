@@ -151,8 +151,13 @@ lastScreenshotDescription stateBefore =
                 ++ objectFoundLocationsDescription
 
 
-{-| This is from the game EVE Online, the undock button in the station window. For an example image, see the training data linked below:
-<https://github.com/Viir/bots/blob/0a283d8476c49418a5ef449d5a30d98383933d8c/implement/bot/eve-online/training-data/2019-08-06.eve-online-station-window-undock-and-other-buttons.png>
+{-| This is from the game EVE Online, the undock button in the station window.
+This pattern is based on the following training images:
+<https://github.com/Viir/bots/blob/f8331eb236137026e415fe535c7f48958974d0f4/implement/applications/eve-online/training-data/2019-08-06.eve-online-station-window-undock-and-other-buttons.png>
+<https://github.com/Viir/bots/blob/f8331eb236137026e415fe535c7f48958974d0f4/implement/applications/eve-online/training-data/2019-08-06.eve-online-station-window-undock-button-mouse-over.png>
+
+Beyond considering the original training images, this pattern applies additional tolerance to account for pixel value changes which can result from lossy compression (e.g. tinypng, JPEG).
+
 -}
 locate_EVE_Online_Undock_Button : SimpleBotFramework.LocatePatternInImageApproach
 locate_EVE_Online_Undock_Button =
@@ -169,9 +174,9 @@ locate_EVE_Online_Undock_Button =
 
                 pixelColorMatchesButtonCornerColor : PixelValue -> Bool
                 pixelColorMatchesButtonCornerColor pixelValue =
-                    (((pixelValue.red - 187) |> abs) < 20)
-                        && (((pixelValue.green - 138) |> abs) < 20)
-                        && (pixelValue.blue < 20)
+                    (((pixelValue.red - 187) |> abs) < 30)
+                        && (((pixelValue.green - 138) |> abs) < 30)
+                        && (pixelValue.blue < 30)
             in
             case cornerLocationsToCheck |> List.map getPixelValueAtLocation |> Maybe.Extra.combine of
                 Nothing ->
@@ -186,7 +191,7 @@ locate_EVE_Online_Undock_Button =
             getPixelValueAtLocation { x = -30, y = -5 }
                 |> Maybe.map
                     (\pixelValue ->
-                        (pixelValue.red - 77 |> abs) < 20 && (pixelValue.green - 57 |> abs) < 20 && pixelValue.blue < 20
+                        (pixelValue.red - 106 |> abs) < 40 && (pixelValue.green - 78 |> abs) < 30 && pixelValue.blue < 20
                     )
                 |> Maybe.withDefault False
     in

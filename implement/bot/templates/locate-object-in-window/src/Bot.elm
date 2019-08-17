@@ -169,9 +169,9 @@ locate_EVE_Online_Undock_Button =
 
                 pixelColorMatchesButtonCornerColor : PixelValue -> Bool
                 pixelColorMatchesButtonCornerColor pixelValue =
-                    (((pixelValue.red - 191) |> abs) < 30)
-                        && (((pixelValue.green - 143) |> abs) < 30)
-                        && (pixelValue.blue < 30)
+                    (((pixelValue.red - 187) |> abs) < 20)
+                        && (((pixelValue.green - 138) |> abs) < 20)
+                        && (pixelValue.blue < 20)
             in
             case cornerLocationsToCheck |> List.map getPixelValueAtLocation |> Maybe.Extra.combine of
                 Nothing ->
@@ -185,7 +185,9 @@ locate_EVE_Online_Undock_Button =
         testOnBinned2x2 getPixelValueAtLocation =
             getPixelValueAtLocation { x = -30, y = -5 }
                 |> Maybe.map
-                    (\pixelValue -> (pixelValue.red - 105 |> abs) < 40 && (pixelValue.green - 80 |> abs) < 30 && pixelValue.blue < 10)
+                    (\pixelValue ->
+                        (pixelValue.red - 77 |> abs) < 20 && (pixelValue.green - 57 |> abs) < 20 && pixelValue.blue < 20
+                    )
                 |> Maybe.withDefault False
     in
     SimpleBotFramework.TestPerPixelWithBroadPhase2x2

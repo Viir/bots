@@ -10,7 +10,7 @@ namespace BotEngine.Windows.Console
 {
     class BotEngine
     {
-        static public string AppVersionId => "2019-08-14";
+        static public string AppVersionId => "2019-09-01";
 
         static string uiTimeFormatToString => "yyyy-MM-ddTHH-mm-ss";
 
@@ -361,8 +361,12 @@ namespace BotEngine.Windows.Console
             return fromWeb;
         }
 
-        static string CacheDirectoryPath => System.IO.Path.Combine(
-            GetExecutingAssemblyLocationDirectory, ".cache");
+        static public string CacheDirectoryPath =>
+            System.IO.Path.Combine(
+                //  To pick a cache directory, use the approach as seen at https://github.com/Viir/Kalmit/commit/f0b6a624f68efe255eb00a32aa8edd40369e64b8
+                Environment.GetEnvironmentVariable(
+                    System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? "LOCALAPPDATA" : "HOME"),
+                "botengine", ".cache");
 
         static string CacheByIdentityDirectoryPath = System.IO.Path.Combine(
             CacheDirectoryPath, "by-sha256");

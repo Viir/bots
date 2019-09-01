@@ -60,7 +60,7 @@ namespace BotEngine.Windows.Console
 
                     var botSessionDirectory =
                         System.IO.Path.Combine(
-                            GetExecutingAssemblyLocationDirectory, "bot-session", sessionId);
+                            System.IO.Directory.GetCurrentDirectory(), "bot-session", sessionId);
 
                     var logFileName = "session." + sessionId + ".jsonl";
 
@@ -370,9 +370,6 @@ namespace BotEngine.Windows.Console
 
         static string CacheByIdentityDirectoryPath = System.IO.Path.Combine(
             CacheDirectoryPath, "by-sha256");
-
-        static string GetExecutingAssemblyLocationDirectory =>
-            System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
 
         static byte[] ReadValueFromCacheSHA256(string expectedFileName)
         {

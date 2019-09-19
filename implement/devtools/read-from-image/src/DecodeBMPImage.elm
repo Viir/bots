@@ -132,6 +132,7 @@ pixelRowDecoderLeftToRight { bitmapWidthInPixels, bitsPerPixel } =
         padding =
             (4 * bitmapWidthInPixels - bytesPerRowBeforePadding) |> modBy 4
     in
+    -- Maybe this can be simplified with `Bytes.Parser.repeat` from https://package.elm-lang.org/packages/zwilias/elm-bytes-parser/
     Bytes.Decode.loop ( bitmapWidthInPixels, [] )
         (decodeListStep (pixelDecoder { bitsPerPixel = bitsPerPixel }))
         |> Bytes.Decode.map List.reverse
@@ -174,10 +175,6 @@ decodeBMPImageFileHeaderDecoder =
         (Bytes.Decode.unsignedInt32 Bytes.LE)
 
 
-
--- TODO: Evaluate https://package.elm-lang.org/packages/zwilias/elm-bytes-parser/
-
-
 decoder_for_BITMAPINFOHEADER :
     Bytes.Decode.Decoder
         { headerSizeInBytes : Int
@@ -187,37 +184,29 @@ decoder_for_BITMAPINFOHEADER :
         , compressionMethod : Int
         }
 decoder_for_BITMAPINFOHEADER =
-    Bytes.Decode.unsignedInt32 Bytes.LE
+    Bytes.Decode.map3
+        (\headerSizeInBytes bitmapWidthInPixels bitmapHeightInPixels ->
+            { headerSizeInBytes = headerSizeInBytes
+            , bitmapWidthInPixels = bitmapWidthInPixels
+            , bitmapHeightInPixels = bitmapHeightInPixels
+            }
+        )
+        (Bytes.Decode.unsignedInt32 Bytes.LE)
+        (Bytes.Decode.unsignedInt32 Bytes.LE)
+        (Bytes.Decode.unsignedInt32 Bytes.LE)
         |> Bytes.Decode.andThen
-            (\headerSizeInBytes ->
-                Bytes.Decode.unsignedInt32 Bytes.LE
-                    |> Bytes.Decode.andThen
-                        (\bitmapWidthInPixels ->
-                            Bytes.Decode.unsignedInt32 Bytes.LE
-                                |> Bytes.Decode.andThen
-                                    (\bitmapHeightInPixels ->
-                                        Bytes.Decode.unsignedInt16 Bytes.LE
-                                            |> Bytes.Decode.andThen
-                                                (\numberOfColorPlanes ->
-                                                    Bytes.Decode.unsignedInt16 Bytes.LE
-                                                        |> Bytes.Decode.andThen
-                                                            (\bitsPerPixel ->
-                                                                Bytes.Decode.unsignedInt32 Bytes.LE
-                                                                    |> Bytes.Decode.andThen
-                                                                        (\compressionMethod ->
-                                                                            Bytes.Decode.bytes (4 * 5)
-                                                                                |> Bytes.Decode.map
-                                                                                    (\rest ->
-                                                                                        { headerSizeInBytes = headerSizeInBytes
-                                                                                        , bitmapWidthInPixels = bitmapWidthInPixels
-                                                                                        , bitmapHeightInPixels = bitmapHeightInPixels
-                                                                                        , bitsPerPixel = bitsPerPixel
-                                                                                        , compressionMethod = compressionMethod
-                                                                                        }
-                                                                                    )
-                                                                        )
-                                                            )
-                                                )
-                                    )
-                        )
+            (\headerAndSize ->
+                Bytes.Decode.map4
+                    (\numberOfColorPlanes bitsPerPixel compressionMethod rest ->
+                        { headerSizeInBytes = headerAndSize.headerSizeInBytes
+                        , bitmapWidthInPixels = headerAndSize.bitmapWidthInPixels
+                        , bitmapHeightInPixels = headerAndSize.bitmapHeightInPixels
+                        , bitsPerPixel = bitsPerPixel
+                        , compressionMethod = compressionMethod
+                        }
+                    )
+                    (Bytes.Decode.unsignedInt16 Bytes.LE)
+                    (Bytes.Decode.unsignedInt16 Bytes.LE)
+                    (Bytes.Decode.unsignedInt32 Bytes.LE)
+                    (Bytes.Decode.bytes (4 * 5))
             )

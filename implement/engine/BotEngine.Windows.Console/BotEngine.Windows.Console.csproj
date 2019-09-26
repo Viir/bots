@@ -4,8 +4,8 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.0</TargetFramework>
     <AssemblyName>BotEngine</AssemblyName>
-    <AssemblyVersion>2019.0901.0.0</AssemblyVersion>
-    <FileVersion>2019.0901.0.0</FileVersion>
+    <AssemblyVersion>2019.0926.0.0</AssemblyVersion>
+    <FileVersion>2019.0926.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,5 +23,10 @@
       <HintPath>..\lib\Kalmit\2019-05-28\PersistentProcess.Common.dll</HintPath>
     </Reference>
   </ItemGroup>
+
+  <PropertyGroup>
+    <!--Workaround problem with `dotnet publish` as discovered at https://github.com/dotnet/cli/issues/12723#issuecomment-535624758-->
+    <IncludeSymbolsInSingleFile>true</IncludeSymbolsInSingleFile>
+  </PropertyGroup>
 
 </Project>

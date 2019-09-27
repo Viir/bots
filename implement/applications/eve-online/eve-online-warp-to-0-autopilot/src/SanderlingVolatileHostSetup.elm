@@ -29,12 +29,13 @@ sanderlingSetupScript =
 #r "System.Security.Cryptography.Algorithms"
 #r "System.Security.Cryptography.Primitives"
 
+using Sanderling.ExploreProcessMeasurement;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Security.Cryptography;
-using Sanderling.ExploreProcessMeasurement;
+using System.Runtime.InteropServices;
 
 var trigger_assembly_load = new BotEngine.Interface.ColorHSV().ToString();
 
@@ -144,6 +145,8 @@ UiTreeRootSearchResultCache? uiTreeRootSearchResultCache = null;
 
 Response request(Request request)
 {
+    SetProcessDPIAware();
+
     if (request.getEveOnlineProcessesIds != null)
     {
         return new Response
@@ -319,6 +322,20 @@ IEnumerable<Sanderling.Interface.MemoryStruct.IUIElement> EnumerateReferencedSan
     parent == null ? null :
     Sanderling.Interface.MemoryStruct.Extension.EnumerateReferencedUIElementTransitive(parent)
     .Distinct();
+
+void SetProcessDPIAware()
+{
+    //  https://www.google.com/search?q=GetWindowRect+dpi
+    //  https://github.com/dotnet/wpf/issues/859
+    //  https://github.com/dotnet/winforms/issues/135
+    WinApi.SetProcessDPIAware();
+}
+
+static public class WinApi
+{
+    [DllImport("user32.dll", SetLastError = true)]
+    static public extern bool SetProcessDPIAware();
+}
 
 struct Rectangle
 {

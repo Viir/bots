@@ -41,6 +41,8 @@ type alias StateIncludingSetup simpleBotState =
     { setup : SetupState
     , botState : BotState simpleBotState
     , timeInMilliseconds : Int
+    , lastTaskIndex : Int
+    , taskInProgress : Maybe { startTimeInMilliseconds : Int, taskIdString : String, taskDescription : String }
     }
 
 
@@ -102,6 +104,8 @@ initState simpleBotState =
             }
         }
     , timeInMilliseconds = 0
+    , lastTaskIndex = 0
+    , taskInProgress = Nothing
     }
 
 
@@ -115,109 +119,25 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
         ( stateBefore, maybeBotEvent ) =
             stateBeforeIntegratingEvent |> integrateFromHostEvent fromHostEvent
 
-        ( state, response ) =
-            case stateBefore.setup |> getNextSetupTask of
-                ContinueSetup setupState setupTask setupTaskDescription ->
-                    ( { stateBefore | setup = setupState }
-                    , { startTasks = [ { taskId = InterfaceToHost.taskIdFromString "setup", task = setupTask } ]
-                      , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
-                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
-                      }
-                        |> InterfaceToHost.ContinueSession
-                    )
+        ( state, responseBeforeAddingStatusMessage ) =
+            case stateBefore.taskInProgress of
+                Nothing ->
+                    processEventNotWaitingForTask simpleBotProcessEvent maybeBotEvent stateBefore
 
-                OperateBot operateBot ->
-                    let
-                        botStateBefore =
-                            stateBefore.botState
-
-                        maybeSimpleBotEventResult =
-                            maybeBotEvent
-                                |> Maybe.map
-                                    (\botEvent -> botStateBefore.simpleBotState |> simpleBotProcessEvent botEvent)
-
-                        botStateBeforeRequest =
-                            case maybeSimpleBotEventResult of
-                                Nothing ->
-                                    stateBefore.botState
-
-                                Just simpleBotEventResult ->
-                                    let
-                                        requestQueueBefore =
-                                            botStateBefore.requestQueue
-
-                                        requestQueue =
-                                            { requestQueueBefore
-                                                | queuedRequests =
-                                                    simpleBotEventResult.requests
-                                                        |> List.map (\botRequest -> ( stateBefore.timeInMilliseconds, botRequest ))
-                                            }
-                                    in
-                                    { botStateBefore
-                                        | simpleBotState = simpleBotEventResult.newState
-                                        , statusMessage = Just simpleBotEventResult.statusMessage
-                                        , requestQueue = requestQueue
-                                    }
-
-                        ( botRequestQueue, operateBotRequestTask ) =
-                            case
-                                botStateBeforeRequest.requestQueue
-                                    |> dequeueNextRequestFromBotState { currentTimeInMs = stateBefore.timeInMilliseconds }
-                            of
-                                NoRequest ->
-                                    let
-                                        timeForNewMemoryMeasurement =
-                                            case stateBefore.setup.lastMemoryMeasurement of
-                                                Nothing ->
-                                                    True
-
-                                                Just ( lastMemoryMeasurementTime, _ ) ->
-                                                    lastMemoryMeasurementTime + 10000 < stateBefore.timeInMilliseconds
-
-                                        memoryMeasurementTask =
-                                            if timeForNewMemoryMeasurement then
-                                                Just (operateBot.taskFromBotRequest (TakeMemoryMeasurementAfterDelayInMilliseconds 0))
-
-                                            else
-                                                Nothing
-                                    in
-                                    ( botStateBeforeRequest.requestQueue, memoryMeasurementTask )
-
-                                WaitForNextRequest { durationInMilliseconds } ->
-                                    ( botStateBeforeRequest.requestQueue
-                                    , Nothing
-                                    )
-
-                                ForwardRequest forward ->
-                                    ( forward.newQueueState, forward.request |> operateBot.taskFromBotRequest |> Just )
-
-                        operateBotRequestStartTasks =
-                            operateBotRequestTask
-                                |> Maybe.map (\task -> { taskId = InterfaceToHost.taskIdFromString "operate-bot", task = task })
-                                |> Maybe.map List.singleton
-                                |> Maybe.withDefault []
-
-                        botState =
-                            { botStateBeforeRequest | requestQueue = botRequestQueue }
-                    in
-                    ( { stateBefore | botState = botState }
-                    , { startTasks = operateBotRequestStartTasks
-                      , statusDescriptionText = "Operate bot:\n" ++ (botState.statusMessage |> Maybe.withDefault "")
-                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
-                      }
-                        |> InterfaceToHost.ContinueSession
-                    )
-
-                FinishSession reason ->
+                Just taskInProgress ->
                     ( stateBefore
-                    , InterfaceToHost.FinishSession { statusDescriptionText = "Finish session (" ++ reason ++ ")" }
+                    , { statusDescriptionText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
+                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
+                      , startTasks = []
+                      }
+                        |> InterfaceToHost.ContinueSession
                     )
 
         statusMessagePrefix =
             (state |> statusReportFromState) ++ "\nCurrent activity: "
 
-        responseWithAddedStatusMessage =
-            case response of
+        response =
+            case responseBeforeAddingStatusMessage of
                 InterfaceToHost.ContinueSession continueSession ->
                     { continueSession
                         | statusDescriptionText = statusMessagePrefix ++ continueSession.statusDescriptionText
@@ -230,7 +150,127 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                     }
                         |> InterfaceToHost.FinishSession
     in
-    ( state, responseWithAddedStatusMessage )
+    ( state, response )
+
+
+processEventNotWaitingForTask :
+    (BotEventAtTime -> simpleBotState -> { newState : simpleBotState, requests : List BotRequest, statusMessage : String })
+    -> Maybe BotEventAtTime
+    -> StateIncludingSetup simpleBotState
+    -> ( StateIncludingSetup simpleBotState, InterfaceToHost.BotResponse )
+processEventNotWaitingForTask simpleBotProcessEvent maybeBotEvent stateBefore =
+    case stateBefore.setup |> getNextSetupTask of
+        ContinueSetup setupState setupTask setupTaskDescription ->
+            let
+                taskIndex =
+                    stateBefore.lastTaskIndex + 1
+
+                taskIdString =
+                    "setup-" ++ (taskIndex |> String.fromInt)
+            in
+            ( { stateBefore
+                | setup = setupState
+                , lastTaskIndex = taskIndex
+                , taskInProgress =
+                    Just
+                        { startTimeInMilliseconds = stateBefore.timeInMilliseconds
+                        , taskIdString = taskIdString
+                        , taskDescription = setupTaskDescription
+                        }
+              }
+            , { startTasks = [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = setupTask } ]
+              , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
+              , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
+              }
+                |> InterfaceToHost.ContinueSession
+            )
+
+        OperateBot operateBot ->
+            let
+                botStateBefore =
+                    stateBefore.botState
+
+                maybeSimpleBotEventResult =
+                    maybeBotEvent
+                        |> Maybe.map
+                            (\botEvent -> botStateBefore.simpleBotState |> simpleBotProcessEvent botEvent)
+
+                botStateBeforeRequest =
+                    case maybeSimpleBotEventResult of
+                        Nothing ->
+                            stateBefore.botState
+
+                        Just simpleBotEventResult ->
+                            let
+                                requestQueueBefore =
+                                    botStateBefore.requestQueue
+
+                                requestQueue =
+                                    { requestQueueBefore
+                                        | queuedRequests =
+                                            simpleBotEventResult.requests
+                                                |> List.map (\botRequest -> ( stateBefore.timeInMilliseconds, botRequest ))
+                                    }
+                            in
+                            { botStateBefore
+                                | simpleBotState = simpleBotEventResult.newState
+                                , statusMessage = Just simpleBotEventResult.statusMessage
+                                , requestQueue = requestQueue
+                            }
+
+                ( botRequestQueue, operateBotRequestTask ) =
+                    case
+                        botStateBeforeRequest.requestQueue
+                            |> dequeueNextRequestFromBotState { currentTimeInMs = stateBefore.timeInMilliseconds }
+                    of
+                        NoRequest ->
+                            let
+                                timeForNewMemoryMeasurement =
+                                    case stateBefore.setup.lastMemoryMeasurement of
+                                        Nothing ->
+                                            True
+
+                                        Just ( lastMemoryMeasurementTime, _ ) ->
+                                            lastMemoryMeasurementTime + 10000 < stateBefore.timeInMilliseconds
+
+                                memoryMeasurementTask =
+                                    if timeForNewMemoryMeasurement then
+                                        Just (operateBot.taskFromBotRequest (TakeMemoryMeasurementAfterDelayInMilliseconds 0))
+
+                                    else
+                                        Nothing
+                            in
+                            ( botStateBeforeRequest.requestQueue, memoryMeasurementTask )
+
+                        WaitForNextRequest { durationInMilliseconds } ->
+                            ( botStateBeforeRequest.requestQueue
+                            , Nothing
+                            )
+
+                        ForwardRequest forward ->
+                            ( forward.newQueueState, forward.request |> operateBot.taskFromBotRequest |> Just )
+
+                operateBotRequestStartTasks =
+                    operateBotRequestTask
+                        |> Maybe.map (\task -> { taskId = InterfaceToHost.taskIdFromString "operate-bot", task = task })
+                        |> Maybe.map List.singleton
+                        |> Maybe.withDefault []
+
+                botState =
+                    { botStateBeforeRequest | requestQueue = botRequestQueue }
+            in
+            ( { stateBefore | botState = botState }
+            , { startTasks = operateBotRequestStartTasks
+              , statusDescriptionText = "Operate bot:\n" ++ (botState.statusMessage |> Maybe.withDefault "")
+              , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
+              }
+                |> InterfaceToHost.ContinueSession
+            )
+
+        FinishSession reason ->
+            ( stateBefore
+            , InterfaceToHost.FinishSession { statusDescriptionText = "Finish session (" ++ reason ++ ")" }
+            )
 
 
 integrateFromHostEvent : InterfaceToHost.BotEvent -> StateIncludingSetup a -> ( StateIncludingSetup a, Maybe BotEventAtTime )
@@ -251,7 +291,7 @@ integrateFromHostEvent fromHostEvent stateBefore =
                                 )
                             )
             in
-            ( { stateBefore | setup = setupState }, maybeBotEvent )
+            ( { stateBefore | setup = setupState, taskInProgress = Nothing }, maybeBotEvent )
 
         InterfaceToHost.SetBotConfiguration newBotConfiguration ->
             ( stateBefore

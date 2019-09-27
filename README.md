@@ -6,7 +6,7 @@ In this repository, I share what I learn about making bots and automating activi
 
 ## Guides
 
-+ How to use EVE Online bots: [./guide/how-to-use-eve-online-bots.md](./guide/how-to-use-eve-online-bots.md)
++ How to use bots: [./guide/how-to-use-bots.md](./guide/how-to-use-bots.md)
 + How to develop EVE Online bots: [./guide/how-to-develop-eve-online-bots.md](./guide/how-to-develop-eve-online-bots.md)
 
 ## Bots

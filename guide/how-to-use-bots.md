@@ -1,6 +1,4 @@
-# How to Use EVE Online Bots
-
-In this guide, I show how to run EVE Online bots using the BotEngine console.
+# How to Use Bots
 
 ## What is a Bot?
 
@@ -13,40 +11,22 @@ The bot runs as a continual process repeating these steps again and again until 
 
 There also exists monitoring software which does not send any input to the game, but notifications to inform you about in-game events. You can use the BotEngine console to run these too.
 
-## Prerequisites - Windows and .NET Framework
-
-Before you can use the BotEngine console, you need to have the following software installed on your machine:
-+ Windows 10 x64
-+ `.NET Core 3.0 SDK Preview 5` for Windows x64. You can download the installer from https://dotnet.microsoft.com/download/thank-you/dotnet-sdk-3.0.100-preview5-windows-x64-installer
-+ `.NET Framework 4.8 - Dev Pack` for Windows x64. You can download the installer from https://dotnet.microsoft.com/download/thank-you/net48-developer-pack
-
-If no version of `.NET Core 3.0` is installed, the app might display an error message like the following on startup:
-
-> The specified framework 'Microsoft.NETCore.App', version '3.0.0-preview5-27626-15' was not found.
->   - Check application dependencies and target a framework version installed at:
->       C:\Program Files\dotnet
->   - Installing .NET Core prerequisites might help resolve this problem:
->       https://go.microsoft.com/fwlink/?LinkID=798306&clcid=0x409
->   - The .NET Core framework and SDK can be installed from:
->       https://aka.ms/dotnet-download    
-> [...]
-
 ## Starting a Bot
 
 Download the BotEngine console from the following URL:
-[https://botengine.blob.core.windows.net/blob-library/by-name/2019-08-14.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-08-14.BotEngine.Console.zip)
+[https://botengine.blob.core.windows.net/blob-library/by-name/2019-09-26.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-09-26.BotEngine.Console.zip)
 
-Extract this Zip-Archive to a directory. In this directory, you will find a file named `BotEngine.exe`. To start a bot, call this program with a command like the following:
+Extract this Zip-Archive. This will give you a file named `BotEngine.exe`. To start a bot, call this program with a command like the following:
 
 ```cmd
-C:\path\to\the\botengine.exe  start-bot  --bot-source="https://github.com/Viir/bots/tree/a054948285918c5d8616e4f5941fcda015b7cee6/implement/bot/eve-online/eve-online-warp-to-0-autopilot"
+C:\path\to\the\BotEngine.exe  start-bot  --bot-source="https://github.com/Viir/bots/tree/a054948285918c5d8616e4f5941fcda015b7cee6/implement/bot/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
 You can use such a command, for example, in the Windows command line (cmd.exe).
 
 The engine then loads the bot from the specified location and runs it until you stop it or the bot stops itself.
 
-### `--Bot-Source` Parameter
+### `--bot-source` Parameter
 
 The `--bot-source` parameter tells the engine where to load the bot code from. The `--bot-source` can point to following different kinds of sources:
 

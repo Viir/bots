@@ -7,6 +7,9 @@ In this repository, I share what I learn about making bots and automating activi
 ## Guides
 
 + How to use bots: [./guide/how-to-use-bots.md](./guide/how-to-use-bots.md)
+
++ [How to Automate Traveling in EVE Online - Using a Warp-To-0 Autopilot](./guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md)
+
 + How to develop EVE Online bots: [./guide/how-to-develop-eve-online-bots.md](./guide/how-to-develop-eve-online-bots.md)
 
 ## Bots

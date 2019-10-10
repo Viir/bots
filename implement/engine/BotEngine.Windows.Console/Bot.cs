@@ -36,7 +36,10 @@ namespace BotEngine.Windows.Console
              * */
 
             var process = new Kalmit.PersistentProcess.PersistentProcessWithHistoryOnFileFromElm019Code(
-                new EmptyProcessStore(), kalmitElmApp);
+                new EmptyProcessStore(),
+                kalmitElmApp,
+                kalmitProcessLogEntry => logEntry("kalmitProcessLogEntry: " + kalmitProcessLogEntry),
+                new Kalmit.ElmAppInterfaceConfig { RootModuleFilePath = "src/Main.elm", RootModuleName = "Main" });
 
             var processStore = new ProcessStoreInFileDirectory(
                 processStoreDirectory,
@@ -350,7 +353,7 @@ namespace BotEngine.Windows.Console
                     });
                 }
 
-                if(queuedBotEvents.TryDequeue(out var botEvent))
+                if (queuedBotEvents.TryDequeue(out var botEvent))
                 {
                     processBotEvent(botEvent);
                 }

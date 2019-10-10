@@ -19,7 +19,7 @@
 
   <ItemGroup>
     <Reference Include="PersistentProcess.Common">
-      <HintPath>..\lib\Kalmit\2019-05-28\PersistentProcess.Common.dll</HintPath>
+      <HintPath>..\lib\Kalmit\2019-10-10\PersistentProcess.Common.dll</HintPath>
     </Reference>
   </ItemGroup>
 

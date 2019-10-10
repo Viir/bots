@@ -10,7 +10,7 @@ namespace BotEngine.Windows.Console
 {
     class BotEngine
     {
-        static public string AppVersionId => "2019-09-26";
+        static public string AppVersionId => "2019-10-10";
 
         static string uiTimeFormatToString => "yyyy-MM-ddTHH-mm-ss";
 
@@ -19,6 +19,9 @@ namespace BotEngine.Windows.Console
         public static int Main(string[] args)
         {
             UserInterface.SetConsoleTitle(null);
+
+            Kalmit.BlobLibrary.OverrideGetBlobWithSHA256 =
+                defaultGetter => (hashSHA256 => GetFileFromHashSHA256(hashSHA256) ?? defaultGetter(hashSHA256));
 
             //  Build interface based on sample from https://github.com/natemcmaster/CommandLineUtils/blob/be230400aaae2f00b29dac005c1b59a386a42165/docs/samples/subcommands/builder-api/Program.cs
 
@@ -338,6 +341,13 @@ namespace BotEngine.Windows.Console
             }
         }
 
+        static (string inflatedHash, string deflatedHashBase16)[] hashesOfDeflatedFiles => new[]
+        {
+            //  Elm 0.19.0 Windows
+            ("08931A8DB552E67EF09C4ECD0A9E8E464FFDFF29BC58DAD2990DDE5D4FDC7C6F"
+            ,"5EE782239E28D6483F5EA71E8E57EB4AABFDD897278B7E663AC3835B546813FF")
+        };
+
         static byte[] GetFileFromHashSHA256(byte[] hashSHA256)
         {
             var fileName = GetHashFileNameInCacheSHA256(hashSHA256);
@@ -347,18 +357,77 @@ namespace BotEngine.Windows.Console
             if (fromCache != null)
                 return fromCache;
 
-            var addressBase = "https://botengine.blob.core.windows.net/blob-library/by-sha256/";
+            byte[] getFile()
+            {
+                //  Speed up starting a bot: Use compressed versions of files.
+                var deflatedHashBase16 =
+                    hashesOfDeflatedFiles.FirstOrDefault((hashes => hashes.inflatedHash == fileName)).deflatedHashBase16;
 
-            var address = addressBase + fileName;
+                if (deflatedHashBase16 != null)
+                {
+                    var deflated = GetFileFromHashSHA256(
+                        Kalmit.CommonConversion.ByteArrayFromStringBase16(deflatedHashBase16));
 
-            var fromWeb = new System.Net.WebClient().DownloadData(address);
+                    return Inflate(deflated);
+                }
 
-            if (!(GetValueFileNameInCacheSHA256(fromWeb) == fileName))
+                var addressBase = "https://botengine.blob.core.windows.net/blob-library/by-sha256/";
+
+                var address = addressBase + fileName;
+
+                var handler = new System.Net.Http.HttpClientHandler()
+                {
+                    AutomaticDecompression = System.Net.DecompressionMethods.Deflate | System.Net.DecompressionMethods.GZip
+                };
+
+                using (var httpClient = new System.Net.Http.HttpClient(handler))
+                {
+                    httpClient.Timeout = TimeSpan.FromMinutes(4);
+                    httpClient.DefaultRequestHeaders.AcceptEncoding.Add(new System.Net.Http.Headers.StringWithQualityHeaderValue("gzip"));
+                    httpClient.DefaultRequestHeaders.AcceptEncoding.Add(new System.Net.Http.Headers.StringWithQualityHeaderValue("deflate"));
+
+                    var response = httpClient.GetAsync(address).Result;
+
+                    var responseContent = response.Content.ReadAsByteArrayAsync().Result;
+
+                    return responseContent;
+                }
+            }
+
+            var file = getFile();
+
+            if (!(GetValueFileNameInCacheSHA256(file) == fileName))
                 return null;
 
-            WriteValueToCacheBySHA256(fromWeb);
+            WriteValueToCacheBySHA256(file);
 
-            return fromWeb;
+            return file;
+        }
+
+        static byte[] Deflate(byte[] input)
+        {
+            using (var deflatedStream = new System.IO.MemoryStream())
+            using (var compressor = new System.IO.Compression.DeflateStream(
+                deflatedStream, System.IO.Compression.CompressionMode.Compress))
+            {
+                compressor.Write(input, 0, input.Length);
+                compressor.Close();
+                return deflatedStream.ToArray();
+            }
+        }
+
+        static byte[] Inflate(byte[] input)
+        {
+            using (var inflatedStream = new System.IO.MemoryStream())
+            {
+                using (var deflateStream = new System.IO.Compression.DeflateStream(
+                    new System.IO.MemoryStream(input), System.IO.Compression.CompressionMode.Decompress))
+                {
+                    deflateStream.CopyTo(inflatedStream);
+
+                    return inflatedStream.ToArray();
+                }
+            }
         }
 
         static public string CacheDirectoryPath =>

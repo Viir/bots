@@ -15,7 +15,13 @@ module Bot exposing
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
 import Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
-import SanderlingMemoryMeasurement exposing (InfoPanelRouteRouteElementMarker, MemoryMeasurementShipUi)
+import SanderlingMemoryMeasurement
+    exposing
+        ( InfoPanelRouteRouteElementMarker
+        , MemoryMeasurementShipUi
+        , PossiblyInvisible(..)
+        , maybeNothingFromCanNotSeeIt
+        )
 import SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
 
 
@@ -79,12 +85,12 @@ botRequestsFromGameClientState memoryMeasurement =
 
         Just infoPanelRouteFirstMarker ->
             case memoryMeasurement.shipUi of
-                Nothing ->
+                CanNotSeeIt ->
                     ( [ TakeMemoryMeasurementAfterDelayInMilliseconds 4000 ]
                     , "I cannot see if the ship is warping or jumping. I wait for the ship UI to appear on the screen."
                     )
 
-                Just shipUi ->
+                CanSee shipUi ->
                     if shipUi |> isShipWarpingOrJumping then
                         ( [ TakeMemoryMeasurementAfterDelayInMilliseconds 4000 ]
                         , "I see the ship is warping or jumping. I wait until that maneuver ends."
@@ -148,6 +154,7 @@ botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMa
 infoPanelRouteFirstMarkerFromMemoryMeasurement : MemoryMeasurement -> Maybe InfoPanelRouteRouteElementMarker
 infoPanelRouteFirstMarkerFromMemoryMeasurement =
     .infoPanelRoute
+        >> maybeNothingFromCanNotSeeIt
         >> Maybe.map .routeElementMarker
         >> Maybe.map (List.sortBy (\routeMarker -> routeMarker.uiElement.region.left + routeMarker.uiElement.region.top))
         >> Maybe.andThen List.head
@@ -156,7 +163,8 @@ infoPanelRouteFirstMarkerFromMemoryMeasurement =
 isShipWarpingOrJumping : MemoryMeasurementShipUi -> Bool
 isShipWarpingOrJumping =
     .indication
-        >> Maybe.andThen .maneuverType
+        >> maybeNothingFromCanNotSeeIt
+        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
         >> Maybe.map
             (\maneuverType ->
                 [ SanderlingMemoryMeasurement.Warp, SanderlingMemoryMeasurement.Jump ]

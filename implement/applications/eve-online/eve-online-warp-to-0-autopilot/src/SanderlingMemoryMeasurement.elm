@@ -6,9 +6,11 @@ module SanderlingMemoryMeasurement exposing
     , MemoryMeasurementReducedWithNamedNodes
     , MemoryMeasurementShipUi
     , MemoryMeasurementShipUiIndication
+    , PossiblyInvisible(..)
     , ShipManeuverType(..)
     , UIElement
     , UIElementRegion
+    , maybeNothingFromCanNotSeeIt
     , parseMemoryMeasurementReducedWithNamedNodesFromJson
     )
 
@@ -18,8 +20,8 @@ import Json.Encode
 
 
 type alias MemoryMeasurementReducedWithNamedNodes =
-    { shipUi : Maybe MemoryMeasurementShipUi
-    , infoPanelRoute : Maybe MemoryMeasurementInfoPanelRoute
+    { shipUi : PossiblyInvisible MemoryMeasurementShipUi
+    , infoPanelRoute : PossiblyInvisible MemoryMeasurementInfoPanelRoute
     , menus : List MemoryMeasurementMenu
     }
 
@@ -45,11 +47,16 @@ type alias InfoPanelRouteRouteElementMarker =
 
 
 type alias MemoryMeasurementShipUi =
-    { indication : Maybe MemoryMeasurementShipUiIndication }
+    { indication : PossiblyInvisible MemoryMeasurementShipUiIndication }
 
 
 type alias MemoryMeasurementShipUiIndication =
-    { maneuverType : Maybe ShipManeuverType }
+    { maneuverType : PossiblyInvisible ShipManeuverType }
+
+
+type PossiblyInvisible feature
+    = CanNotSeeIt
+    | CanSee feature
 
 
 type ShipManeuverType
@@ -87,8 +94,8 @@ memoryMeasurementReducedWithNamedNodesJsonDecoder : Json.Decode.Decoder MemoryMe
 memoryMeasurementReducedWithNamedNodesJsonDecoder =
     Json.Decode.map3 MemoryMeasurementReducedWithNamedNodes
         -- TODO: Consider treating 'null' value like field is not present, to avoid breakage when server encodes fiels with 'null' values too.
-        (Json.Decode.Extra.optionalField "ShipUi" shipUIDecoder)
-        (Json.Decode.Extra.optionalField "InfoPanelRoute" infoPanelRouteDecoder)
+        (Json.Decode.Extra.optionalField "ShipUi" shipUIDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
+        (Json.Decode.Extra.optionalField "InfoPanelRoute" infoPanelRouteDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
         (Json.Decode.Extra.optionalField "Menu" (Json.Decode.list menuDecoder) |> Json.Decode.map (Maybe.withDefault []))
 
 
@@ -97,6 +104,7 @@ shipUIDecoder =
     Json.Decode.map MemoryMeasurementShipUi
         (Json.Decode.maybe
             (Json.Decode.field "Indication" shipUIIndicationDecoder)
+            |> Json.Decode.map canNotSeeItFromMaybeNothing
         )
 
 
@@ -126,6 +134,7 @@ shipUIIndicationFromJsonValue jsonValue =
                             Nothing
                     )
                 |> List.head
+                |> canNotSeeItFromMaybeNothing
     in
     { maneuverType = maneuverType }
 
@@ -173,3 +182,23 @@ menuEntryDecoder =
     Json.Decode.map2 MemoryMeasurementMenuEntry
         uiElementDecoder
         (Json.Decode.field "Text" Json.Decode.string)
+
+
+canNotSeeItFromMaybeNothing : Maybe a -> PossiblyInvisible a
+canNotSeeItFromMaybeNothing maybe =
+    case maybe of
+        Nothing ->
+            CanNotSeeIt
+
+        Just feature ->
+            CanSee feature
+
+
+maybeNothingFromCanNotSeeIt : PossiblyInvisible a -> Maybe a
+maybeNothingFromCanNotSeeIt possiblyInvisible =
+    case possiblyInvisible of
+        CanNotSeeIt ->
+            Nothing
+
+        CanSee feature ->
+            Just feature

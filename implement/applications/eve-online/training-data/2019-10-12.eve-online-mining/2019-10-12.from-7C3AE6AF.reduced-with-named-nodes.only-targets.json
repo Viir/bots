@@ -1,0 +1,154 @@
+{
+    "UserDefaultLocaleName": "en-AU",
+    "ScreenSize": {
+        "A": 1087,
+        "B": 716
+    },
+    "Target": [
+        {
+            "LabelText": [
+                {
+                    "Text": "<center>Asteroid (Pyroxeres)",
+                    "Region": {
+                        "Min0": 545,
+                        "Min1": 100,
+                        "Max0": 655,
+                        "Max1": 113
+                    },
+                    "InTreeIndex": 804,
+                    "Id": 695619696
+                },
+                {
+                    "Text": "<center>3,871 m",
+                    "Region": {
+                        "Min0": 545,
+                        "Min1": 113,
+                        "Max0": 655,
+                        "Max1": 126
+                    },
+                    "InTreeIndex": 801,
+                    "Id": 800586256
+                }
+            ],
+            "IsSelected": false,
+            "Hitpoints": {},
+            "RegionInteractionElement": {
+                "Region": {
+                    "Min0": 562,
+                    "Min1": 15,
+                    "Max0": 639,
+                    "Max1": 85
+                },
+                "InTreeIndex": 805,
+                "ChildLastInTreeIndex": 813,
+                "Id": 796207728
+            },
+            "RegionInteraction": {
+                "Region": {
+                    "Min0": 580,
+                    "Min1": 30,
+                    "Max0": 620,
+                    "Max1": 70
+                },
+                "InTreeIndex": 805,
+                "ChildLastInTreeIndex": 813,
+                "Id": 796207728
+            },
+            "Region": {
+                "Min0": 545,
+                "Min1": 0,
+                "Max0": 655,
+                "Max1": 181
+            },
+            "InTreeIndex": 797,
+            "ChildLastInTreeIndex": 813,
+            "Id": 568574960
+        },
+        {
+            "LabelText": [
+                {
+                    "Text": "<center>Asteroid (Condensed",
+                    "Region": {
+                        "Min0": 655,
+                        "Min1": 100,
+                        "Max0": 765,
+                        "Max1": 113
+                    },
+                    "InTreeIndex": 824,
+                    "Id": 569667280
+                },
+                {
+                    "Text": "<center>Scordite)",
+                    "Region": {
+                        "Min0": 655,
+                        "Min1": 113,
+                        "Max0": 765,
+                        "Max1": 126
+                    },
+                    "InTreeIndex": 823,
+                    "Id": 568945456
+                },
+                {
+                    "Text": "<center>2,858 m",
+                    "Region": {
+                        "Min0": 655,
+                        "Min1": 126,
+                        "Max0": 765,
+                        "Max1": 139
+                    },
+                    "InTreeIndex": 821,
+                    "Id": 569664080
+                }
+            ],
+            "IsSelected": true,
+            "Hitpoints": {},
+            "RegionInteractionElement": {
+                "Region": {
+                    "Min0": 672,
+                    "Min1": 15,
+                    "Max0": 749,
+                    "Max1": 85
+                },
+                "InTreeIndex": 825,
+                "ChildLastInTreeIndex": 835,
+                "Id": 543665936
+            },
+            "RegionInteraction": {
+                "Region": {
+                    "Min0": 690,
+                    "Min1": 30,
+                    "Max0": 730,
+                    "Max1": 70
+                },
+                "InTreeIndex": 825,
+                "ChildLastInTreeIndex": 835,
+                "Id": 543665936
+            },
+            "Assigned": [
+                {
+                    "IconTexture": {
+                        "Id": 876602232
+                    },
+                    "Region": {
+                        "Min0": 694,
+                        "Min1": 139,
+                        "Max0": 726,
+                        "Max1": 171
+                    },
+                    "InTreeIndex": 817,
+                    "ChildLastInTreeIndex": 819,
+                    "Id": 758031024
+                }
+            ],
+            "Region": {
+                "Min0": 655,
+                "Min1": 0,
+                "Max0": 765,
+                "Max1": 181
+            },
+            "InTreeIndex": 814,
+            "ChildLastInTreeIndex": 835,
+            "Id": 574411472
+        }
+    ]
+}

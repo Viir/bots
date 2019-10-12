@@ -1,0 +1,2011 @@
+{
+    "UserDefaultLocaleName": "en-AU",
+    "ScreenSize": {
+        "A": 1087,
+        "B": 716
+    },
+    "WindowInventory": [
+        {
+            "LeftTreeListEntry": [
+                {
+                    "IsSelected": false,
+                    "RegionInteraction": {
+                        "Text": "PLEX Vault",
+                        "Region": {
+                            "Min0": 246,
+                            "Min1": 582,
+                            "Max0": 302,
+                            "Max1": 598
+                        },
+                        "InTreeIndex": 400,
+                        "Id": 794549680
+                    },
+                    "Text": "PLEX Vault",
+                    "LabelText": [
+                        {
+                            "Text": "PLEX Vault",
+                            "Region": {
+                                "Min0": 246,
+                                "Min1": 582,
+                                "Max0": 302,
+                                "Max1": 598
+                            },
+                            "InTreeIndex": 400,
+                            "Id": 794549680
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 204,
+                        "Min1": 579,
+                        "Max0": 360,
+                        "Max1": 601
+                    },
+                    "InTreeIndex": 397,
+                    "ChildLastInTreeIndex": 401,
+                    "Id": 695241712
+                },
+                {
+                    "IsSelected": false,
+                    "RegionInteraction": {
+                        "Text": "Item hangar",
+                        "Region": {
+                            "Min0": 246,
+                            "Min1": 560,
+                            "Max0": 308,
+                            "Max1": 576
+                        },
+                        "InTreeIndex": 404,
+                        "Id": 569971312
+                    },
+                    "Text": "Item hangar",
+                    "LabelText": [
+                        {
+                            "Text": "Item hangar",
+                            "Region": {
+                                "Min0": 246,
+                                "Min1": 560,
+                                "Max0": 308,
+                                "Max1": 576
+                            },
+                            "InTreeIndex": 404,
+                            "Id": 569971312
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 204,
+                        "Min1": 557,
+                        "Max0": 360,
+                        "Max1": 579
+                    },
+                    "InTreeIndex": 402,
+                    "ChildLastInTreeIndex": 405,
+                    "Id": 543915376
+                },
+                {
+                    "Child": [
+                        {
+                            "IsSelected": false,
+                            "RegionInteraction": {
+                                "Text": "Profit (Mackinaw)",
+                                "Region": {
+                                    "Min0": 256,
+                                    "Min1": 533,
+                                    "Max0": 339,
+                                    "Max1": 549
+                                },
+                                "InTreeIndex": 412,
+                                "Id": 569831568
+                            },
+                            "Text": "Profit (Mackinaw)",
+                            "LabelText": [
+                                {
+                                    "Text": "Profit (Mackinaw)",
+                                    "Region": {
+                                        "Min0": 256,
+                                        "Min1": 533,
+                                        "Max0": 339,
+                                        "Max1": 549
+                                    },
+                                    "InTreeIndex": 412,
+                                    "Id": 569831568
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 204,
+                                "Min1": 530,
+                                "Max0": 360,
+                                "Max1": 552
+                            },
+                            "InTreeIndex": 408,
+                            "ChildLastInTreeIndex": 413,
+                            "Id": 543800048
+                        }
+                    ],
+                    "IsSelected": false,
+                    "RegionInteraction": {
+                        "Text": "Profit (Mackinaw)",
+                        "Region": {
+                            "Min0": 256,
+                            "Min1": 533,
+                            "Max0": 339,
+                            "Max1": 549
+                        },
+                        "InTreeIndex": 412,
+                        "Id": 569831568
+                    },
+                    "Text": "Ship hangar",
+                    "LabelText": [
+                        {
+                            "Text": "Ship hangar",
+                            "Region": {
+                                "Min0": 246,
+                                "Min1": 511,
+                                "Max0": 308,
+                                "Max1": 527
+                            },
+                            "InTreeIndex": 417,
+                            "Id": 798607920
+                        },
+                        {
+                            "Text": "Profit (Mackinaw)",
+                            "Region": {
+                                "Min0": 256,
+                                "Min1": 533,
+                                "Max0": 339,
+                                "Max1": 549
+                            },
+                            "InTreeIndex": 412,
+                            "Id": 569831568
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 204,
+                        "Min1": 508,
+                        "Max0": 360,
+                        "Max1": 557
+                    },
+                    "InTreeIndex": 406,
+                    "ChildLastInTreeIndex": 418,
+                    "Id": 798459440
+                },
+                {
+                    "Child": [
+                        {
+                            "IsSelected": true,
+                            "RegionInteraction": {
+                                "Text": "Ore Hold",
+                                "Region": {
+                                    "Min0": 256,
+                                    "Min1": 484,
+                                    "Max0": 301,
+                                    "Max1": 500
+                                },
+                                "InTreeIndex": 423,
+                                "Id": 798608016
+                            },
+                            "Text": "Ore Hold",
+                            "LabelText": [
+                                {
+                                    "Text": "Ore Hold",
+                                    "Region": {
+                                        "Min0": 256,
+                                        "Min1": 484,
+                                        "Max0": 301,
+                                        "Max1": 500
+                                    },
+                                    "InTreeIndex": 423,
+                                    "Id": 798608016
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 204,
+                                "Min1": 481,
+                                "Max0": 360,
+                                "Max1": 503
+                            },
+                            "InTreeIndex": 421,
+                            "ChildLastInTreeIndex": 424,
+                            "Id": 794546320
+                        },
+                        {
+                            "IsSelected": false,
+                            "RegionInteraction": {
+                                "Text": "Drone Bay",
+                                "Region": {
+                                    "Min0": 256,
+                                    "Min1": 462,
+                                    "Max0": 310,
+                                    "Max1": 478
+                                },
+                                "InTreeIndex": 427,
+                                "Id": 798609200
+                            },
+                            "Text": "Drone Bay",
+                            "LabelText": [
+                                {
+                                    "Text": "Drone Bay",
+                                    "Region": {
+                                        "Min0": 256,
+                                        "Min1": 462,
+                                        "Max0": 310,
+                                        "Max1": 478
+                                    },
+                                    "InTreeIndex": 427,
+                                    "Id": 798609200
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 204,
+                                "Min1": 459,
+                                "Max0": 360,
+                                "Max1": 481
+                            },
+                            "InTreeIndex": 425,
+                            "ChildLastInTreeIndex": 428,
+                            "Id": 798458512
+                        }
+                    ],
+                    "IsSelected": false,
+                    "RegionInteraction": {
+                        "Text": "Ship Name (Venture)",
+                        "Region": {
+                            "Min0": 246,
+                            "Min1": 440,
+                            "Max0": 420,
+                            "Max1": 456
+                        },
+                        "InTreeIndex": 432,
+                        "Id": 710134384
+                    },
+                    "Text": "Ship Name (Venture)",
+                    "LabelText": [
+                        {
+                            "Text": "Ship Name (Venture)",
+                            "Region": {
+                                "Min0": 246,
+                                "Min1": 440,
+                                "Max0": 420,
+                                "Max1": 456
+                            },
+                            "InTreeIndex": 432,
+                            "Id": 710134384
+                        },
+                        {
+                            "Text": "Drone Bay",
+                            "Region": {
+                                "Min0": 256,
+                                "Min1": 462,
+                                "Max0": 310,
+                                "Max1": 478
+                            },
+                            "InTreeIndex": 427,
+                            "Id": 798609200
+                        },
+                        {
+                            "Text": "Ore Hold",
+                            "Region": {
+                                "Min0": 256,
+                                "Min1": 484,
+                                "Max0": 301,
+                                "Max1": 500
+                            },
+                            "InTreeIndex": 423,
+                            "Id": 798608016
+                        }
+                    ],
+                    "Region": {
+                        "Min0": 204,
+                        "Min1": 437,
+                        "Max0": 360,
+                        "Max1": 508
+                    },
+                    "InTreeIndex": 419,
+                    "ChildLastInTreeIndex": 433,
+                    "Id": 543353264
+                }
+            ],
+            "LeftTreeViewportScroll": {
+                "Clipper": {
+                    "Region": {
+                        "Min0": 204,
+                        "Min1": 437,
+                        "Max0": 360,
+                        "Max1": 636
+                    },
+                    "InTreeIndex": 395,
+                    "ChildLastInTreeIndex": 433,
+                    "Id": 699651888
+                },
+                "Region": {
+                    "Min0": 204,
+                    "Min1": 437,
+                    "Max0": 360,
+                    "Max1": 636
+                },
+                "InTreeIndex": 394,
+                "ChildLastInTreeIndex": 435,
+                "Id": 568574608
+            },
+            "SelectedRightInventoryPathLabel": {
+                "Text": "<url=localsvc:method=OnBreadcrumbTextClicked&linkNum=0&windowID1=InventoryStation&windowID2=None><color=#55FFFFFF>Ship Name (Venture) > </color></url>Ore Hold",
+                "Region": {
+                    "Min0": 384,
+                    "Min1": 418,
+                    "Max0": 611,
+                    "Max1": 432
+                },
+                "InTreeIndex": 369,
+                "Id": 800577712
+            },
+            "SelectedRightInventory": {
+                "ListView": {
+                    "ColumnHeader": [
+                        {
+                            "Text": "Name",
+                            "LabelText": [
+                                {
+                                    "Text": "Name",
+                                    "Region": {
+                                        "Min0": 371,
+                                        "Min1": 463,
+                                        "Max0": 399,
+                                        "Max1": 476
+                                    },
+                                    "InTreeIndex": 338,
+                                    "Id": 772687856
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 371,
+                                "Min1": 463,
+                                "Max0": 463,
+                                "Max1": 476
+                            },
+                            "InTreeIndex": 337,
+                            "ChildLastInTreeIndex": 338,
+                            "Id": 772686832
+                        },
+                        {
+                            "Text": "Quantity",
+                            "LabelText": [
+                                {
+                                    "Text": "Quantity",
+                                    "Region": {
+                                        "Min0": 477,
+                                        "Min1": 463,
+                                        "Max0": 519,
+                                        "Max1": 476
+                                    },
+                                    "InTreeIndex": 333,
+                                    "Id": 777276912
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 477,
+                                "Min1": 463,
+                                "Max0": 536,
+                                "Max1": 476
+                            },
+                            "InTreeIndex": 332,
+                            "ChildLastInTreeIndex": 333,
+                            "Id": 777274096
+                        },
+                        {
+                            "Text": "Group",
+                            "LabelText": [
+                                {
+                                    "Text": "Group",
+                                    "Region": {
+                                        "Min0": 550,
+                                        "Min1": 463,
+                                        "Max0": 579,
+                                        "Max1": 476
+                                    },
+                                    "InTreeIndex": 328,
+                                    "Id": 777277360
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 550,
+                                "Min1": 463,
+                                "Max0": 600,
+                                "Max1": 476
+                            },
+                            "InTreeIndex": 327,
+                            "ChildLastInTreeIndex": 328,
+                            "Id": 777275472
+                        },
+                        {
+                            "Text": "Size",
+                            "LabelText": [
+                                {
+                                    "Text": "Size",
+                                    "Region": {
+                                        "Min0": 614,
+                                        "Min1": 463,
+                                        "Max0": 636,
+                                        "Max1": 476
+                                    },
+                                    "InTreeIndex": 323,
+                                    "Id": 777274800
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 614,
+                                "Min1": 463,
+                                "Max0": 640,
+                                "Max1": 476
+                            },
+                            "InTreeIndex": 322,
+                            "ChildLastInTreeIndex": 323,
+                            "Id": 777274000
+                        },
+                        {
+                            "Text": "Slot",
+                            "LabelText": [
+                                {
+                                    "Text": "Slot",
+                                    "Region": {
+                                        "Min0": 654,
+                                        "Min1": 463,
+                                        "Max0": 674,
+                                        "Max1": 476
+                                    },
+                                    "InTreeIndex": 318,
+                                    "Id": 568572272
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 654,
+                                "Min1": 463,
+                                "Max0": 683,
+                                "Max1": 476
+                            },
+                            "InTreeIndex": 317,
+                            "ChildLastInTreeIndex": 318,
+                            "Id": 568570704
+                        },
+                        {
+                            "Text": "Volume",
+                            "LabelText": [
+                                {
+                                    "Text": "Volume",
+                                    "Region": {
+                                        "Min0": 697,
+                                        "Min1": 463,
+                                        "Max0": 733,
+                                        "Max1": 476
+                                    },
+                                    "InTreeIndex": 313,
+                                    "Id": 800250480
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 697,
+                                "Min1": 463,
+                                "Max0": 751,
+                                "Max1": 476
+                            },
+                            "InTreeIndex": 312,
+                            "ChildLastInTreeIndex": 313,
+                            "Id": 800248240
+                        },
+                        {
+                            "Text": "Est. Price",
+                            "LabelText": [
+                                {
+                                    "Text": "Est. Price",
+                                    "Region": {
+                                        "Min0": 765,
+                                        "Min1": 463,
+                                        "Max0": 813,
+                                        "Max1": 476
+                                    },
+                                    "InTreeIndex": 308,
+                                    "Id": 695404720
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 765,
+                                "Min1": 463,
+                                "Max0": 841,
+                                "Max1": 476
+                            },
+                            "InTreeIndex": 307,
+                            "ChildLastInTreeIndex": 308,
+                            "Id": 695403664
+                        }
+                    ],
+                    "Entry": [
+                        {
+                            "ContentBoundLeft": 377,
+                            "ListColumnCellLabel": [
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 0,
+                                        "Text": "Name",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Name",
+                                                "Region": {
+                                                    "Min0": 371,
+                                                    "Min1": 463,
+                                                    "Max0": 399,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 338,
+                                                "Id": 772687856
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 371,
+                                            "Min1": 463,
+                                            "Max0": 463,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 337,
+                                        "ChildLastInTreeIndex": 338,
+                                        "Id": 772686832
+                                    },
+                                    "Value": "Massive Scordite"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 1,
+                                        "Text": "Quantity",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Quantity",
+                                                "Region": {
+                                                    "Min0": 477,
+                                                    "Min1": 463,
+                                                    "Max0": 519,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 333,
+                                                "Id": 777276912
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 477,
+                                            "Min1": 463,
+                                            "Max0": 536,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 332,
+                                        "ChildLastInTreeIndex": 333,
+                                        "Id": 777274096
+                                    },
+                                    "Value": "598"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 2,
+                                        "Text": "Group",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Group",
+                                                "Region": {
+                                                    "Min0": 550,
+                                                    "Min1": 463,
+                                                    "Max0": 579,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 328,
+                                                "Id": 777277360
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 550,
+                                            "Min1": 463,
+                                            "Max0": 600,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 327,
+                                        "ChildLastInTreeIndex": 328,
+                                        "Id": 777275472
+                                    },
+                                    "Value": "Scordite"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 3,
+                                        "Text": "Size",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Size",
+                                                "Region": {
+                                                    "Min0": 614,
+                                                    "Min1": 463,
+                                                    "Max0": 636,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 323,
+                                                "Id": 777274800
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 614,
+                                            "Min1": 463,
+                                            "Max0": 640,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 322,
+                                        "ChildLastInTreeIndex": 323,
+                                        "Id": 777274000
+                                    },
+                                    "Value": ""
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 4,
+                                        "Text": "Slot",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Slot",
+                                                "Region": {
+                                                    "Min0": 654,
+                                                    "Min1": 463,
+                                                    "Max0": 674,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 318,
+                                                "Id": 568572272
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 654,
+                                            "Min1": 463,
+                                            "Max0": 683,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 317,
+                                        "ChildLastInTreeIndex": 318,
+                                        "Id": 568570704
+                                    },
+                                    "Value": ""
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 5,
+                                        "Text": "Volume",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Volume",
+                                                "Region": {
+                                                    "Min0": 697,
+                                                    "Min1": 463,
+                                                    "Max0": 733,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 313,
+                                                "Id": 800250480
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 697,
+                                            "Min1": 463,
+                                            "Max0": 751,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 312,
+                                        "ChildLastInTreeIndex": 313,
+                                        "Id": 800248240
+                                    },
+                                    "Value": "89.70 m3"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 6,
+                                        "Text": "Est. Price",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Est. Price",
+                                                "Region": {
+                                                    "Min0": 765,
+                                                    "Min1": 463,
+                                                    "Max0": 813,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 308,
+                                                "Id": 695404720
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 765,
+                                            "Min1": 463,
+                                            "Max0": 841,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 307,
+                                        "ChildLastInTreeIndex": 308,
+                                        "Id": 695403664
+                                    },
+                                    "Value": "11,954.02 ISK"
+                                }
+                            ],
+                            "IsGroup": false,
+                            "IsSelected": false,
+                            "LabelText": [
+                                {
+                                    "Text": "Massive Scordite<t><right>598<t>Scordite<t><t><t><right>89.70 m3<t><right>11,954.02 ISK",
+                                    "Region": {
+                                        "Min0": 377,
+                                        "Min1": 480,
+                                        "Max0": 1464,
+                                        "Max1": 496
+                                    },
+                                    "InTreeIndex": 303,
+                                    "Id": 569850992
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 365,
+                                "Min1": 477,
+                                "Max0": 727,
+                                "Max1": 498
+                            },
+                            "InTreeIndex": 301,
+                            "ChildLastInTreeIndex": 303,
+                            "Id": 697598480
+                        },
+                        {
+                            "ContentBoundLeft": 377,
+                            "ListColumnCellLabel": [
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 0,
+                                        "Text": "Name",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Name",
+                                                "Region": {
+                                                    "Min0": 371,
+                                                    "Min1": 463,
+                                                    "Max0": 399,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 338,
+                                                "Id": 772687856
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 371,
+                                            "Min1": 463,
+                                            "Max0": 463,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 337,
+                                        "ChildLastInTreeIndex": 338,
+                                        "Id": 772686832
+                                    },
+                                    "Value": "Scordite"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 1,
+                                        "Text": "Quantity",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Quantity",
+                                                "Region": {
+                                                    "Min0": 477,
+                                                    "Min1": 463,
+                                                    "Max0": 519,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 333,
+                                                "Id": 777276912
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 477,
+                                            "Min1": 463,
+                                            "Max0": 536,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 332,
+                                        "ChildLastInTreeIndex": 333,
+                                        "Id": 777274096
+                                    },
+                                    "Value": "6,649"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 2,
+                                        "Text": "Group",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Group",
+                                                "Region": {
+                                                    "Min0": 550,
+                                                    "Min1": 463,
+                                                    "Max0": 579,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 328,
+                                                "Id": 777277360
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 550,
+                                            "Min1": 463,
+                                            "Max0": 600,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 327,
+                                        "ChildLastInTreeIndex": 328,
+                                        "Id": 777275472
+                                    },
+                                    "Value": "Scordite"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 3,
+                                        "Text": "Size",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Size",
+                                                "Region": {
+                                                    "Min0": 614,
+                                                    "Min1": 463,
+                                                    "Max0": 636,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 323,
+                                                "Id": 777274800
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 614,
+                                            "Min1": 463,
+                                            "Max0": 640,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 322,
+                                        "ChildLastInTreeIndex": 323,
+                                        "Id": 777274000
+                                    },
+                                    "Value": ""
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 4,
+                                        "Text": "Slot",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Slot",
+                                                "Region": {
+                                                    "Min0": 654,
+                                                    "Min1": 463,
+                                                    "Max0": 674,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 318,
+                                                "Id": 568572272
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 654,
+                                            "Min1": 463,
+                                            "Max0": 683,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 317,
+                                        "ChildLastInTreeIndex": 318,
+                                        "Id": 568570704
+                                    },
+                                    "Value": ""
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 5,
+                                        "Text": "Volume",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Volume",
+                                                "Region": {
+                                                    "Min0": 697,
+                                                    "Min1": 463,
+                                                    "Max0": 733,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 313,
+                                                "Id": 800250480
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 697,
+                                            "Min1": 463,
+                                            "Max0": 751,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 312,
+                                        "ChildLastInTreeIndex": 313,
+                                        "Id": 800248240
+                                    },
+                                    "Value": "997.35 m3"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 6,
+                                        "Text": "Est. Price",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Est. Price",
+                                                "Region": {
+                                                    "Min0": 765,
+                                                    "Min1": 463,
+                                                    "Max0": 813,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 308,
+                                                "Id": 695404720
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 765,
+                                            "Min1": 463,
+                                            "Max0": 841,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 307,
+                                        "ChildLastInTreeIndex": 308,
+                                        "Id": 695403664
+                                    },
+                                    "Value": "122,075.64 ISK"
+                                }
+                            ],
+                            "IsGroup": false,
+                            "IsSelected": false,
+                            "LabelText": [
+                                {
+                                    "Text": "Scordite<t><right>6,649<t>Scordite<t><t><t><right>997.35 m3<t><right>122,075.64 ISK",
+                                    "Region": {
+                                        "Min0": 377,
+                                        "Min1": 501,
+                                        "Max0": 1464,
+                                        "Max1": 517
+                                    },
+                                    "InTreeIndex": 300,
+                                    "Id": 569851120
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 365,
+                                "Min1": 498,
+                                "Max0": 727,
+                                "Max1": 519
+                            },
+                            "InTreeIndex": 298,
+                            "ChildLastInTreeIndex": 300,
+                            "Id": 569849616
+                        },
+                        {
+                            "ContentBoundLeft": 377,
+                            "ListColumnCellLabel": [
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 0,
+                                        "Text": "Name",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Name",
+                                                "Region": {
+                                                    "Min0": 371,
+                                                    "Min1": 463,
+                                                    "Max0": 399,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 338,
+                                                "Id": 772687856
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 371,
+                                            "Min1": 463,
+                                            "Max0": 463,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 337,
+                                        "ChildLastInTreeIndex": 338,
+                                        "Id": 772686832
+                                    },
+                                    "Value": "Solid Pyroxeres"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 1,
+                                        "Text": "Quantity",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Quantity",
+                                                "Region": {
+                                                    "Min0": 477,
+                                                    "Min1": 463,
+                                                    "Max0": 519,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 333,
+                                                "Id": 777276912
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 477,
+                                            "Min1": 463,
+                                            "Max0": 536,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 332,
+                                        "ChildLastInTreeIndex": 333,
+                                        "Id": 777274096
+                                    },
+                                    "Value": "416"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 2,
+                                        "Text": "Group",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Group",
+                                                "Region": {
+                                                    "Min0": 550,
+                                                    "Min1": 463,
+                                                    "Max0": 579,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 328,
+                                                "Id": 777277360
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 550,
+                                            "Min1": 463,
+                                            "Max0": 600,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 327,
+                                        "ChildLastInTreeIndex": 328,
+                                        "Id": 777275472
+                                    },
+                                    "Value": "Pyroxeres"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 3,
+                                        "Text": "Size",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Size",
+                                                "Region": {
+                                                    "Min0": 614,
+                                                    "Min1": 463,
+                                                    "Max0": 636,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 323,
+                                                "Id": 777274800
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 614,
+                                            "Min1": 463,
+                                            "Max0": 640,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 322,
+                                        "ChildLastInTreeIndex": 323,
+                                        "Id": 777274000
+                                    },
+                                    "Value": ""
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 4,
+                                        "Text": "Slot",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Slot",
+                                                "Region": {
+                                                    "Min0": 654,
+                                                    "Min1": 463,
+                                                    "Max0": 674,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 318,
+                                                "Id": 568572272
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 654,
+                                            "Min1": 463,
+                                            "Max0": 683,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 317,
+                                        "ChildLastInTreeIndex": 318,
+                                        "Id": 568570704
+                                    },
+                                    "Value": ""
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 5,
+                                        "Text": "Volume",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Volume",
+                                                "Region": {
+                                                    "Min0": 697,
+                                                    "Min1": 463,
+                                                    "Max0": 733,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 313,
+                                                "Id": 800250480
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 697,
+                                            "Min1": 463,
+                                            "Max0": 751,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 312,
+                                        "ChildLastInTreeIndex": 313,
+                                        "Id": 800248240
+                                    },
+                                    "Value": "124.80 m3"
+                                },
+                                {
+                                    "Key": {
+                                        "ColumnIndex": 6,
+                                        "Text": "Est. Price",
+                                        "LabelText": [
+                                            {
+                                                "Text": "Est. Price",
+                                                "Region": {
+                                                    "Min0": 765,
+                                                    "Min1": 463,
+                                                    "Max0": 813,
+                                                    "Max1": 476
+                                                },
+                                                "InTreeIndex": 308,
+                                                "Id": 695404720
+                                            }
+                                        ],
+                                        "Region": {
+                                            "Min0": 765,
+                                            "Min1": 463,
+                                            "Max0": 841,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 307,
+                                        "ChildLastInTreeIndex": 308,
+                                        "Id": 695403664
+                                    },
+                                    "Value": "17,343.04 ISK"
+                                }
+                            ],
+                            "IsGroup": false,
+                            "IsSelected": false,
+                            "LabelText": [
+                                {
+                                    "Text": "Solid Pyroxeres<t><right>416<t>Pyroxeres<t><t><t><right>124.80 m3<t><right>17,343.04 ISK",
+                                    "Region": {
+                                        "Min0": 377,
+                                        "Min1": 522,
+                                        "Max0": 1464,
+                                        "Max1": 538
+                                    },
+                                    "InTreeIndex": 297,
+                                    "Id": 569851152
+                                }
+                            ],
+                            "Region": {
+                                "Min0": 365,
+                                "Min1": 519,
+                                "Max0": 727,
+                                "Max1": 540
+                            },
+                            "InTreeIndex": 295,
+                            "ChildLastInTreeIndex": 297,
+                            "Id": 569851632
+                        }
+                    ],
+                    "Scroll": {
+                        "ColumnHeader": [
+                            {
+                                "Text": "Name",
+                                "LabelText": [
+                                    {
+                                        "Text": "Name",
+                                        "Region": {
+                                            "Min0": 371,
+                                            "Min1": 463,
+                                            "Max0": 399,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 338,
+                                        "Id": 772687856
+                                    }
+                                ],
+                                "Region": {
+                                    "Min0": 371,
+                                    "Min1": 463,
+                                    "Max0": 463,
+                                    "Max1": 476
+                                },
+                                "InTreeIndex": 337,
+                                "ChildLastInTreeIndex": 338,
+                                "Id": 772686832
+                            },
+                            {
+                                "Text": "Quantity",
+                                "LabelText": [
+                                    {
+                                        "Text": "Quantity",
+                                        "Region": {
+                                            "Min0": 477,
+                                            "Min1": 463,
+                                            "Max0": 519,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 333,
+                                        "Id": 777276912
+                                    }
+                                ],
+                                "Region": {
+                                    "Min0": 477,
+                                    "Min1": 463,
+                                    "Max0": 536,
+                                    "Max1": 476
+                                },
+                                "InTreeIndex": 332,
+                                "ChildLastInTreeIndex": 333,
+                                "Id": 777274096
+                            },
+                            {
+                                "Text": "Group",
+                                "LabelText": [
+                                    {
+                                        "Text": "Group",
+                                        "Region": {
+                                            "Min0": 550,
+                                            "Min1": 463,
+                                            "Max0": 579,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 328,
+                                        "Id": 777277360
+                                    }
+                                ],
+                                "Region": {
+                                    "Min0": 550,
+                                    "Min1": 463,
+                                    "Max0": 600,
+                                    "Max1": 476
+                                },
+                                "InTreeIndex": 327,
+                                "ChildLastInTreeIndex": 328,
+                                "Id": 777275472
+                            },
+                            {
+                                "Text": "Size",
+                                "LabelText": [
+                                    {
+                                        "Text": "Size",
+                                        "Region": {
+                                            "Min0": 614,
+                                            "Min1": 463,
+                                            "Max0": 636,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 323,
+                                        "Id": 777274800
+                                    }
+                                ],
+                                "Region": {
+                                    "Min0": 614,
+                                    "Min1": 463,
+                                    "Max0": 640,
+                                    "Max1": 476
+                                },
+                                "InTreeIndex": 322,
+                                "ChildLastInTreeIndex": 323,
+                                "Id": 777274000
+                            },
+                            {
+                                "Text": "Slot",
+                                "LabelText": [
+                                    {
+                                        "Text": "Slot",
+                                        "Region": {
+                                            "Min0": 654,
+                                            "Min1": 463,
+                                            "Max0": 674,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 318,
+                                        "Id": 568572272
+                                    }
+                                ],
+                                "Region": {
+                                    "Min0": 654,
+                                    "Min1": 463,
+                                    "Max0": 683,
+                                    "Max1": 476
+                                },
+                                "InTreeIndex": 317,
+                                "ChildLastInTreeIndex": 318,
+                                "Id": 568570704
+                            },
+                            {
+                                "Text": "Volume",
+                                "LabelText": [
+                                    {
+                                        "Text": "Volume",
+                                        "Region": {
+                                            "Min0": 697,
+                                            "Min1": 463,
+                                            "Max0": 733,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 313,
+                                        "Id": 800250480
+                                    }
+                                ],
+                                "Region": {
+                                    "Min0": 697,
+                                    "Min1": 463,
+                                    "Max0": 751,
+                                    "Max1": 476
+                                },
+                                "InTreeIndex": 312,
+                                "ChildLastInTreeIndex": 313,
+                                "Id": 800248240
+                            },
+                            {
+                                "Text": "Est. Price",
+                                "LabelText": [
+                                    {
+                                        "Text": "Est. Price",
+                                        "Region": {
+                                            "Min0": 765,
+                                            "Min1": 463,
+                                            "Max0": 813,
+                                            "Max1": 476
+                                        },
+                                        "InTreeIndex": 308,
+                                        "Id": 695404720
+                                    }
+                                ],
+                                "Region": {
+                                    "Min0": 765,
+                                    "Min1": 463,
+                                    "Max0": 841,
+                                    "Max1": 476
+                                },
+                                "InTreeIndex": 307,
+                                "ChildLastInTreeIndex": 308,
+                                "Id": 695403664
+                            }
+                        ],
+                        "Clipper": {
+                            "Region": {
+                                "Min0": 365,
+                                "Min1": 477,
+                                "Max0": 727,
+                                "Max1": 627
+                            },
+                            "InTreeIndex": 286,
+                            "ChildLastInTreeIndex": 303,
+                            "Id": 569834224
+                        },
+                        "Region": {
+                            "Min0": 364,
+                            "Min1": 460,
+                            "Max0": 728,
+                            "Max1": 628
+                        },
+                        "InTreeIndex": 283,
+                        "ChildLastInTreeIndex": 342,
+                        "Id": 699561072
+                    },
+                    "Region": {
+                        "Min0": 364,
+                        "Min1": 460,
+                        "Max0": 728,
+                        "Max1": 628
+                    },
+                    "InTreeIndex": 283,
+                    "ChildLastInTreeIndex": 342,
+                    "Id": 699561072
+                },
+                "Region": {
+                    "Min0": 364,
+                    "Min1": 460,
+                    "Max0": 728,
+                    "Max1": 628
+                },
+                "InTreeIndex": 282,
+                "ChildLastInTreeIndex": 342,
+                "Id": 568981072
+            },
+            "SelectedRightInventoryCapacity": {
+                "Text": "1,211.9/5,000.0 m³",
+                "Region": {
+                    "Min0": 438,
+                    "Min1": 442,
+                    "Max0": 533,
+                    "Max1": 455
+                },
+                "InTreeIndex": 357,
+                "Id": 777335312
+            },
+            "SelectedRightControlViewButton": [
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/Icons/38_16_188.png",
+                    "Region": {
+                        "Min0": 680,
+                        "Min1": 419,
+                        "Max0": 696,
+                        "Max1": 435
+                    },
+                    "InTreeIndex": 385,
+                    "Id": 695166384
+                },
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/Icons/38_16_189.png",
+                    "Region": {
+                        "Min0": 696,
+                        "Min1": 419,
+                        "Max0": 712,
+                        "Max1": 435
+                    },
+                    "InTreeIndex": 382,
+                    "Id": 695168240
+                },
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/Icons/38_16_190.png",
+                    "Region": {
+                        "Min0": 712,
+                        "Min1": 419,
+                        "Max0": 728,
+                        "Max1": 435
+                    },
+                    "InTreeIndex": 379,
+                    "Id": 568981360
+                }
+            ],
+            "SelectedRightItemDisplayedCount": 3,
+            "isModal": false,
+            "Caption": "Inventory",
+            "HeaderButtonsVisible": false,
+            "InputText": [
+                {
+                    "Text": "Search",
+                    "Region": {
+                        "Min0": 608,
+                        "Min1": 438,
+                        "Max0": 728,
+                        "Max1": 456
+                    },
+                    "InTreeIndex": 359,
+                    "ChildLastInTreeIndex": 365,
+                    "Id": 800577520
+                }
+            ],
+            "LabelText": [
+                {
+                    "Text": "Inventory",
+                    "Region": {
+                        "Min0": 208,
+                        "Min1": 398,
+                        "Max0": 254,
+                        "Max1": 411
+                    },
+                    "InTreeIndex": 506,
+                    "Id": 542967120
+                },
+                {
+                    "Text": "Index",
+                    "Region": {
+                        "Min0": 226,
+                        "Min1": 417,
+                        "Max0": 253,
+                        "Max1": 433
+                    },
+                    "InTreeIndex": 495,
+                    "Id": 543684432
+                },
+                {
+                    "Text": "<url=localsvc:method=OnBreadcrumbTextClicked&linkNum=0&windowID1=InventoryStation&windowID2=None><color=#55FFFFFF>Ship Name (Venture) > </color></url>Ore Hold",
+                    "Region": {
+                        "Min0": 384,
+                        "Min1": 418,
+                        "Max0": 611,
+                        "Max1": 432
+                    },
+                    "InTreeIndex": 369,
+                    "Id": 800577712
+                },
+                {
+                    "Text": "Ship Name (Venture)",
+                    "Region": {
+                        "Min0": 246,
+                        "Min1": 440,
+                        "Max0": 420,
+                        "Max1": 456
+                    },
+                    "InTreeIndex": 432,
+                    "Id": 710134384
+                },
+                {
+                    "Text": "1,211.9/5,000.0 m³",
+                    "Region": {
+                        "Min0": 438,
+                        "Min1": 442,
+                        "Max0": 533,
+                        "Max1": 455
+                    },
+                    "InTreeIndex": 357,
+                    "Id": 777335312
+                },
+                {
+                    "Text": "Name",
+                    "Region": {
+                        "Min0": 371,
+                        "Min1": 463,
+                        "Max0": 399,
+                        "Max1": 476
+                    },
+                    "InTreeIndex": 338,
+                    "Id": 772687856
+                },
+                {
+                    "Text": "Quantity",
+                    "Region": {
+                        "Min0": 477,
+                        "Min1": 463,
+                        "Max0": 519,
+                        "Max1": 476
+                    },
+                    "InTreeIndex": 333,
+                    "Id": 777276912
+                },
+                {
+                    "Text": "Group",
+                    "Region": {
+                        "Min0": 550,
+                        "Min1": 463,
+                        "Max0": 579,
+                        "Max1": 476
+                    },
+                    "InTreeIndex": 328,
+                    "Id": 777277360
+                },
+                {
+                    "Text": "Size",
+                    "Region": {
+                        "Min0": 614,
+                        "Min1": 463,
+                        "Max0": 636,
+                        "Max1": 476
+                    },
+                    "InTreeIndex": 323,
+                    "Id": 777274800
+                },
+                {
+                    "Text": "Slot",
+                    "Region": {
+                        "Min0": 654,
+                        "Min1": 463,
+                        "Max0": 674,
+                        "Max1": 476
+                    },
+                    "InTreeIndex": 318,
+                    "Id": 568572272
+                },
+                {
+                    "Text": "Volume",
+                    "Region": {
+                        "Min0": 697,
+                        "Min1": 463,
+                        "Max0": 733,
+                        "Max1": 476
+                    },
+                    "InTreeIndex": 313,
+                    "Id": 800250480
+                },
+                {
+                    "Text": "Est. Price",
+                    "Region": {
+                        "Min0": 765,
+                        "Min1": 463,
+                        "Max0": 813,
+                        "Max1": 476
+                    },
+                    "InTreeIndex": 308,
+                    "Id": 695404720
+                },
+                {
+                    "Text": "Drone Bay",
+                    "Region": {
+                        "Min0": 256,
+                        "Min1": 462,
+                        "Max0": 310,
+                        "Max1": 478
+                    },
+                    "InTreeIndex": 427,
+                    "Id": 798609200
+                },
+                {
+                    "Text": "Massive Scordite<t><right>598<t>Scordite<t><t><t><right>89.70 m3<t><right>11,954.02 ISK",
+                    "Region": {
+                        "Min0": 377,
+                        "Min1": 480,
+                        "Max0": 1464,
+                        "Max1": 496
+                    },
+                    "InTreeIndex": 303,
+                    "Id": 569850992
+                },
+                {
+                    "Text": "Ore Hold",
+                    "Region": {
+                        "Min0": 256,
+                        "Min1": 484,
+                        "Max0": 301,
+                        "Max1": 500
+                    },
+                    "InTreeIndex": 423,
+                    "Id": 798608016
+                },
+                {
+                    "Text": "Scordite<t><right>6,649<t>Scordite<t><t><t><right>997.35 m3<t><right>122,075.64 ISK",
+                    "Region": {
+                        "Min0": 377,
+                        "Min1": 501,
+                        "Max0": 1464,
+                        "Max1": 517
+                    },
+                    "InTreeIndex": 300,
+                    "Id": 569851120
+                },
+                {
+                    "Text": "Ship hangar",
+                    "Region": {
+                        "Min0": 246,
+                        "Min1": 511,
+                        "Max0": 308,
+                        "Max1": 527
+                    },
+                    "InTreeIndex": 417,
+                    "Id": 798607920
+                },
+                {
+                    "Text": "Solid Pyroxeres<t><right>416<t>Pyroxeres<t><t><t><right>124.80 m3<t><right>17,343.04 ISK",
+                    "Region": {
+                        "Min0": 377,
+                        "Min1": 522,
+                        "Max0": 1464,
+                        "Max1": 538
+                    },
+                    "InTreeIndex": 297,
+                    "Id": 569851152
+                },
+                {
+                    "Text": "Profit (Mackinaw)",
+                    "Region": {
+                        "Min0": 256,
+                        "Min1": 533,
+                        "Max0": 339,
+                        "Max1": 549
+                    },
+                    "InTreeIndex": 412,
+                    "Id": 569831568
+                },
+                {
+                    "Text": "Item hangar",
+                    "Region": {
+                        "Min0": 246,
+                        "Min1": 560,
+                        "Max0": 308,
+                        "Max1": 576
+                    },
+                    "InTreeIndex": 404,
+                    "Id": 569971312
+                },
+                {
+                    "Text": "PLEX Vault",
+                    "Region": {
+                        "Min0": 246,
+                        "Min1": 582,
+                        "Max0": 302,
+                        "Max1": 598
+                    },
+                    "InTreeIndex": 400,
+                    "Id": 794549680
+                },
+                {
+                    "Text": "3 <color=gray>Items",
+                    "Region": {
+                        "Min0": 683,
+                        "Min1": 632,
+                        "Max0": 723,
+                        "Max1": 648
+                    },
+                    "InTreeIndex": 345,
+                    "Id": 569654416
+                },
+                {
+                    "Text": "My filters",
+                    "Region": {
+                        "Min0": 226,
+                        "Min1": 643,
+                        "Max0": 275,
+                        "Max1": 659
+                    },
+                    "InTreeIndex": 487,
+                    "Id": 777317264
+                },
+                {
+                    "Text": "151,000 ISK <color=gray>Est. price",
+                    "Region": {
+                        "Min0": 607,
+                        "Min1": 648,
+                        "Max0": 723,
+                        "Max1": 664
+                    },
+                    "InTreeIndex": 346,
+                    "Id": 572871344
+                },
+                {
+                    "Text": "Ammunition",
+                    "Region": {
+                        "Min0": 226,
+                        "Min1": 665,
+                        "Max0": 285,
+                        "Max1": 681
+                    },
+                    "InTreeIndex": 473,
+                    "Id": 777168304
+                },
+                {
+                    "Text": "Ore and Materials",
+                    "Region": {
+                        "Min0": 226,
+                        "Min1": 687,
+                        "Max0": 318,
+                        "Max1": 703
+                    },
+                    "InTreeIndex": 465,
+                    "Id": 568937296
+                },
+                {
+                    "Text": "Ship modules",
+                    "Region": {
+                        "Min0": 226,
+                        "Min1": 709,
+                        "Max0": 296,
+                        "Max1": 725
+                    },
+                    "InTreeIndex": 457,
+                    "Id": 798455600
+                },
+                {
+                    "Text": "Skillbooks",
+                    "Region": {
+                        "Min0": 226,
+                        "Min1": 731,
+                        "Max0": 276,
+                        "Max1": 747
+                    },
+                    "InTreeIndex": 449,
+                    "Id": 777339216
+                },
+                {
+                    "Text": "Valuable Items",
+                    "Region": {
+                        "Min0": 226,
+                        "Min1": 753,
+                        "Max0": 303,
+                        "Max1": 769
+                    },
+                    "InTreeIndex": 441,
+                    "Id": 570084976
+                }
+            ],
+            "Sprite": [
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/classes/Neocom/arrowDown.png",
+                    "Region": {
+                        "Min0": 371,
+                        "Min1": 421,
+                        "Max0": 378,
+                        "Max1": 428
+                    },
+                    "InTreeIndex": 388,
+                    "Id": 572874384
+                },
+                {
+                    "Texture0Id": {
+                        "Id": 876573280
+                    },
+                    "Region": {
+                        "Min0": 364,
+                        "Min1": 415,
+                        "Max0": 728,
+                        "Max1": 434
+                    },
+                    "InTreeIndex": 389,
+                    "Id": 572873552
+                },
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/SettingsCogwheel.png",
+                    "Region": {
+                        "Min0": 208,
+                        "Min1": 416,
+                        "Max0": 226,
+                        "Max1": 434
+                    },
+                    "InTreeIndex": 498,
+                    "Id": 572840112
+                },
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/icons/38_16_223.png",
+                    "Region": {
+                        "Min0": 643,
+                        "Min1": 417,
+                        "Max0": 659,
+                        "Max1": 433
+                    },
+                    "InTreeIndex": 372,
+                    "Id": 800578736
+                },
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/icons/38_16_224.png",
+                    "Region": {
+                        "Min0": 659,
+                        "Min1": 417,
+                        "Max0": 675,
+                        "Max1": 433
+                    },
+                    "InTreeIndex": 375,
+                    "Id": 568878352
+                },
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/Icons/38_16_188.png",
+                    "Region": {
+                        "Min0": 680,
+                        "Min1": 419,
+                        "Max0": 696,
+                        "Max1": 435
+                    },
+                    "InTreeIndex": 385,
+                    "Id": 695166384
+                },
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/Icons/38_16_189.png",
+                    "Region": {
+                        "Min0": 696,
+                        "Min1": 419,
+                        "Max0": 712,
+                        "Max1": 435
+                    },
+                    "InTreeIndex": 382,
+                    "Id": 695168240
+                },
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/Icons/38_16_190.png",
+                    "Region": {
+                        "Min0": 712,
+                        "Min1": 419,
+                        "Max0": 728,
+                        "Max1": 435
+                    },
+                    "InTreeIndex": 379,
+                    "Id": 568981360
+                },
+                {
+                    "Texture0Id": {
+                        "Id": 876628104
+                    },
+                    "Region": {
+                        "Min0": 366,
+                        "Min1": 440,
+                        "Max0": 366,
+                        "Max1": 455
+                    },
+                    "InTreeIndex": 355,
+                    "Id": 800577680
+                },
+                {
+                    "Texture0Id": {
+                        "Id": 876635496
+                    },
+                    "Region": {
+                        "Min0": 366,
+                        "Min1": 440,
+                        "Max0": 423,
+                        "Max1": 455
+                    },
+                    "InTreeIndex": 353,
+                    "Id": 569652752
+                },
+                {
+                    "Texture0Id": {
+                        "Id": 876585600
+                    },
+                    "Region": {
+                        "Min0": 423,
+                        "Min1": 440,
+                        "Max0": 423,
+                        "Max1": 455
+                    },
+                    "InTreeIndex": 352,
+                    "Id": 569654352
+                },
+                {
+                    "Name": "directionIcon",
+                    "Texture0Id": {
+                        "Id": 782180656
+                    },
+                    "Region": {
+                        "Min0": 452,
+                        "Min1": 460,
+                        "Max0": 468,
+                        "Max1": 477
+                    },
+                    "InTreeIndex": 341,
+                    "Id": 695140848
+                },
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/classes/Neocom/arrowDown.png",
+                    "Region": {
+                        "Min0": 212,
+                        "Min1": 648,
+                        "Max0": 219,
+                        "Max1": 655
+                    },
+                    "InTreeIndex": 486,
+                    "Id": 777315120
+                },
+                {
+                    "Name": "icon",
+                    "TexturePath": "res:/UI/Texture/Icons/Plus.png",
+                    "Region": {
+                        "Min0": 321,
+                        "Min1": 647,
+                        "Max0": 330,
+                        "Max1": 656
+                    },
+                    "InTreeIndex": 490,
+                    "Id": 699494512
+                }
+            ],
+            "Region": {
+                "Min0": 200,
+                "Min1": 393,
+                "Max0": 732,
+                "Max1": 668
+            },
+            "InTreeIndex": 277,
+            "ChildLastInTreeIndex": 518,
+            "Id": 568554320
+        }
+    ]
+}

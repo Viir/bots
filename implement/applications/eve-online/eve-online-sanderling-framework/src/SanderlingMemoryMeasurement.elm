@@ -11,18 +11,22 @@ module SanderlingMemoryMeasurement exposing
     , UIElement
     , UIElementRegion
     , maybeNothingFromCanNotSeeIt
+    , parseInventoryDecoder
+    , parseInventoryWindowCapacityGaugeDecoder
     , parseMemoryMeasurementReducedWithNamedNodesFromJson
     )
 
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
+import Set
 
 
 type alias MemoryMeasurementReducedWithNamedNodes =
-    { shipUi : PossiblyInvisible MemoryMeasurementShipUi
+    { menus : List MemoryMeasurementMenu
+    , shipUi : PossiblyInvisible MemoryMeasurementShipUi
     , infoPanelRoute : PossiblyInvisible MemoryMeasurementInfoPanelRoute
-    , menus : List MemoryMeasurementMenu
+    , inventoryWindow : PossiblyInvisible InventoryWindow
     }
 
 
@@ -52,6 +56,28 @@ type alias MemoryMeasurementShipUi =
 
 type alias MemoryMeasurementShipUiIndication =
     { maneuverType : PossiblyInvisible ShipManeuverType }
+
+
+type alias InventoryWindow =
+    { leftTreeEntries : List InventoryWindowLeftTreeEntry
+    , selectedContainedCapacityGauge : Maybe InventoryWindowCapacityGauge
+    , selectedContainerInventory : Maybe Inventory
+    }
+
+
+type alias Inventory =
+    { listViewItems : List UIElement
+    }
+
+
+type alias InventoryWindowLeftTreeEntry =
+    { uiElement : UIElement
+    , text : String
+    }
+
+
+type alias InventoryWindowCapacityGauge =
+    { isFull : Bool }
 
 
 type PossiblyInvisible feature
@@ -92,11 +118,12 @@ parseMemoryMeasurementReducedWithNamedNodesFromJson =
 
 memoryMeasurementReducedWithNamedNodesJsonDecoder : Json.Decode.Decoder MemoryMeasurementReducedWithNamedNodes
 memoryMeasurementReducedWithNamedNodesJsonDecoder =
-    Json.Decode.map3 MemoryMeasurementReducedWithNamedNodes
+    Json.Decode.map4 MemoryMeasurementReducedWithNamedNodes
         -- TODO: Consider treating 'null' value like field is not present, to avoid breakage when server encodes fiels with 'null' values too.
+        (Json.Decode.Extra.optionalField "Menu" (Json.Decode.list menuDecoder) |> Json.Decode.map (Maybe.withDefault []))
         (Json.Decode.Extra.optionalField "ShipUi" shipUIDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
         (Json.Decode.Extra.optionalField "InfoPanelRoute" infoPanelRouteDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
-        (Json.Decode.Extra.optionalField "Menu" (Json.Decode.list menuDecoder) |> Json.Decode.map (Maybe.withDefault []))
+        (Json.Decode.Extra.optionalField "WindowInventory" (Json.Decode.list parseInventoryWindowDecoder) |> Json.Decode.map (Maybe.andThen List.head >> canNotSeeItFromMaybeNothing))
 
 
 shipUIDecoder : Json.Decode.Decoder MemoryMeasurementShipUi
@@ -182,6 +209,47 @@ menuEntryDecoder =
     Json.Decode.map2 MemoryMeasurementMenuEntry
         uiElementDecoder
         (Json.Decode.field "Text" Json.Decode.string)
+
+
+parseInventoryWindowDecoder : Json.Decode.Decoder InventoryWindow
+parseInventoryWindowDecoder =
+    Json.Decode.map3 InventoryWindow
+        (Json.Decode.field "LeftTreeListEntry" (Json.Decode.list parseInventoryWindowLeftTreeEntry))
+        (Json.Decode.Extra.optionalField "SelectedRightInventoryCapacity" parseInventoryWindowCapacityGaugeDecoder)
+        (Json.Decode.Extra.optionalField "SelectedRightInventory" parseInventoryDecoder)
+
+
+parseInventoryWindowLeftTreeEntry : Json.Decode.Decoder InventoryWindowLeftTreeEntry
+parseInventoryWindowLeftTreeEntry =
+    Json.Decode.map2 InventoryWindowLeftTreeEntry
+        uiElementDecoder
+        (Json.Decode.field "Text" Json.Decode.string)
+
+
+parseInventoryWindowCapacityGaugeDecoder : Json.Decode.Decoder InventoryWindowCapacityGauge
+parseInventoryWindowCapacityGaugeDecoder =
+    Json.Decode.map InventoryWindowCapacityGauge
+        (Json.Decode.field "Text" Json.Decode.string |> Json.Decode.map inventoryCapacityGaugeTextIndicatesIsFull)
+
+
+inventoryCapacityGaugeTextIndicatesIsFull : String -> Bool
+inventoryCapacityGaugeTextIndicatesIsFull =
+    {- Observed Example:
+       "1,211.9/5,000.0 m³"
+    -}
+    String.replace "m³" ""
+        >> String.split "/"
+        >> List.map String.trim
+        -- Test if all components are the same:
+        >> Set.fromList
+        >> Set.size
+        >> (==) 1
+
+
+parseInventoryDecoder : Json.Decode.Decoder Inventory
+parseInventoryDecoder =
+    Json.Decode.map Inventory
+        (Json.Decode.field "ListView" (Json.Decode.field "Entry" (Json.Decode.list uiElementDecoder)))
 
 
 canNotSeeItFromMaybeNothing : Maybe a -> PossiblyInvisible a

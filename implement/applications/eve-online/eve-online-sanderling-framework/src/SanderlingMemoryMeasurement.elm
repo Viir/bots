@@ -11,6 +11,7 @@ module SanderlingMemoryMeasurement exposing
     , UIElement
     , UIElementRegion
     , maybeNothingFromCanNotSeeIt
+    , parseInventoryCapacityGaugeText
     , parseInventoryDecoder
     , parseInventoryWindowCapacityGaugeDecoder
     , parseMemoryMeasurementReducedWithNamedNodesFromJson
@@ -19,7 +20,8 @@ module SanderlingMemoryMeasurement exposing
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
-import Set
+import Regex
+import Result.Extra
 
 
 type alias MemoryMeasurementReducedWithNamedNodes =
@@ -77,7 +79,9 @@ type alias InventoryWindowLeftTreeEntry =
 
 
 type alias InventoryWindowCapacityGauge =
-    { isFull : Bool }
+    { maximum : Int
+    , used : Int
+    }
 
 
 type PossiblyInvisible feature
@@ -228,22 +232,51 @@ parseInventoryWindowLeftTreeEntry =
 
 parseInventoryWindowCapacityGaugeDecoder : Json.Decode.Decoder InventoryWindowCapacityGauge
 parseInventoryWindowCapacityGaugeDecoder =
-    Json.Decode.map InventoryWindowCapacityGauge
-        (Json.Decode.field "Text" Json.Decode.string |> Json.Decode.map inventoryCapacityGaugeTextIndicatesIsFull)
+    Json.Decode.field "Text" Json.Decode.string
+        |> Json.Decode.andThen (Json.Decode.Extra.fromResult << parseInventoryCapacityGaugeText)
 
 
-inventoryCapacityGaugeTextIndicatesIsFull : String -> Bool
-inventoryCapacityGaugeTextIndicatesIsFull =
+parseInventoryCapacityGaugeText : String -> Result String InventoryWindowCapacityGauge
+parseInventoryCapacityGaugeText capacityText =
     {- Observed Example:
        "1,211.9/5,000.0 m³"
     -}
-    String.replace "m³" ""
-        >> String.split "/"
-        >> List.map String.trim
-        -- Test if all components are the same:
-        >> Set.fromList
-        >> Set.size
-        >> (==) 1
+    let
+        numbersParseResults =
+            capacityText
+                |> String.replace "m³" ""
+                |> String.split "/"
+                |> List.map (String.trim >> parseNumberTruncatingAfterDecimalSeparator)
+    in
+    case numbersParseResults |> Result.Extra.combine of
+        Err parseError ->
+            Err ("Failed to parse numbers: " ++ parseError)
+
+        Ok numbers ->
+            case numbers of
+                [ leftNumber, rightNumber ] ->
+                    Ok { used = leftNumber, maximum = rightNumber }
+
+                _ ->
+                    Err ("Unexpected number of components in capacityText '" ++ capacityText ++ "'")
+
+
+parseNumberTruncatingAfterDecimalSeparator : String -> Result String Int
+parseNumberTruncatingAfterDecimalSeparator numberDisplayText =
+    case "^([\\d\\,]+)" |> Regex.fromString of
+        Nothing ->
+            Err "Regex code error"
+
+        Just regex ->
+            case numberDisplayText |> Regex.find regex |> List.head of
+                Nothing ->
+                    Err ("Text did not match expected number format: '" ++ numberDisplayText ++ "'")
+
+                Just match ->
+                    match.match
+                        |> String.replace "," ""
+                        |> String.toInt
+                        |> Result.fromMaybe ("Failed to parse to integer: " ++ match.match)
 
 
 parseInventoryDecoder : Json.Decode.Decoder Inventory

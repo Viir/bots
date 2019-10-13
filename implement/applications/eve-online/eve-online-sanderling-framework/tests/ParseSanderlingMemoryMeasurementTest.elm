@@ -23,9 +23,9 @@ allTests =
         , parseMemoryMeasurement_from_97DAA8E6F1_reduced_infopanel_route_routeelementmarker
         , parseMemoryMeasurement_from_F8E7BF79FF_reduced_menu
         , from_measurement_root_inventoryWindow_with_left_tree
-        , inventoryWindow_Selected_Container_Is_full
-        , inventoryWindow_Selected_Container_Is_not_full
+        , inventoryWindow_Selected_Container_capacity_gauge
         , inventory_containing_three_items
+        , inventory_capacity_gauge_text
         ]
 
 
@@ -414,32 +414,9 @@ from_measurement_root_inventoryWindow_with_left_tree =
                     )
 
 
-inventoryWindow_Selected_Container_Is_full : Test
-inventoryWindow_Selected_Container_Is_full =
-    test "Inventory capacity gauge is full" <|
-        \_ ->
-            -- Sample from https://github.com/Viir/bots/blob/479e1f9b870c1e0e00764e318eeda77938b95e81/implement/applications/eve-online/training-data/2019-10-12.eve-online-mining/2019-10-12.from-D61A3AAC.reduced-with-named-nodes.only-inventory-window.json
-            """
-{
-    "Text": "5,000.0/5,000.0 m³",
-    "Region": {
-        "Min0": 438,
-        "Min1": 442,
-        "Max0": 533,
-        "Max1": 455
-    },
-    "InTreeIndex": 357,
-    "Id": 777335312
-}
-"""
-                |> Json.Decode.decodeString SanderlingMemoryMeasurement.parseInventoryWindowCapacityGaugeDecoder
-                |> Expect.equal
-                    (Ok { isFull = True })
-
-
-inventoryWindow_Selected_Container_Is_not_full : Test
-inventoryWindow_Selected_Container_Is_not_full =
-    test "Inventory capacity gauge is not full" <|
+inventoryWindow_Selected_Container_capacity_gauge : Test
+inventoryWindow_Selected_Container_capacity_gauge =
+    test "Inventory window capacity gauge" <|
         \_ ->
             -- Sample from https://github.com/Viir/bots/blob/479e1f9b870c1e0e00764e318eeda77938b95e81/implement/applications/eve-online/training-data/2019-10-12.eve-online-mining/2019-10-12.from-D61A3AAC.reduced-with-named-nodes.only-inventory-window.json
             """
@@ -457,7 +434,23 @@ inventoryWindow_Selected_Container_Is_not_full =
 """
                 |> Json.Decode.decodeString SanderlingMemoryMeasurement.parseInventoryWindowCapacityGaugeDecoder
                 |> Expect.equal
-                    (Ok { isFull = False })
+                    (Ok { used = 1211, maximum = 5000 })
+
+
+inventory_capacity_gauge_text : Test
+inventory_capacity_gauge_text =
+    [ ( "1,211.9/5,000.0 m³", Ok { used = 1211, maximum = 5000 } )
+    , ( " 123.4 / 5,000.0 m³ ", Ok { used = 123, maximum = 5000 } )
+    ]
+        |> List.map
+            (\( text, expectedResult ) ->
+                test text <|
+                    \_ ->
+                        text
+                            |> SanderlingMemoryMeasurement.parseInventoryCapacityGaugeText
+                            |> Expect.equal expectedResult
+            )
+        |> describe "Inventory capacity gauge text"
 
 
 inventory_containing_three_items : Test

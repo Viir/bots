@@ -6,7 +6,7 @@ module SanderlingMemoryMeasurement exposing
     , MemoryMeasurementReducedWithNamedNodes
     , MemoryMeasurementShipUi
     , MemoryMeasurementShipUiIndication
-    , PossiblyInvisible(..)
+    , MaybeVisible(..)
     , ShipManeuverType(..)
     , UIElement
     , UIElementRegion
@@ -26,9 +26,9 @@ import Result.Extra
 
 type alias MemoryMeasurementReducedWithNamedNodes =
     { menus : List MemoryMeasurementMenu
-    , shipUi : PossiblyInvisible MemoryMeasurementShipUi
-    , infoPanelRoute : PossiblyInvisible MemoryMeasurementInfoPanelRoute
-    , inventoryWindow : PossiblyInvisible InventoryWindow
+    , shipUi : MaybeVisible MemoryMeasurementShipUi
+    , infoPanelRoute : MaybeVisible MemoryMeasurementInfoPanelRoute
+    , inventoryWindow : MaybeVisible InventoryWindow
     }
 
 
@@ -53,11 +53,11 @@ type alias InfoPanelRouteRouteElementMarker =
 
 
 type alias MemoryMeasurementShipUi =
-    { indication : PossiblyInvisible MemoryMeasurementShipUiIndication }
+    { indication : MaybeVisible MemoryMeasurementShipUiIndication }
 
 
 type alias MemoryMeasurementShipUiIndication =
-    { maneuverType : PossiblyInvisible ShipManeuverType }
+    { maneuverType : MaybeVisible ShipManeuverType }
 
 
 type alias InventoryWindow =
@@ -84,7 +84,7 @@ type alias InventoryWindowCapacityGauge =
     }
 
 
-type PossiblyInvisible feature
+type MaybeVisible feature
     = CanNotSeeIt
     | CanSee feature
 
@@ -285,7 +285,7 @@ parseInventoryDecoder =
         (Json.Decode.field "ListView" (Json.Decode.field "Entry" (Json.Decode.list uiElementDecoder)))
 
 
-canNotSeeItFromMaybeNothing : Maybe a -> PossiblyInvisible a
+canNotSeeItFromMaybeNothing : Maybe a -> MaybeVisible a
 canNotSeeItFromMaybeNothing maybe =
     case maybe of
         Nothing ->
@@ -295,9 +295,9 @@ canNotSeeItFromMaybeNothing maybe =
             CanSee feature
 
 
-maybeNothingFromCanNotSeeIt : PossiblyInvisible a -> Maybe a
-maybeNothingFromCanNotSeeIt possiblyInvisible =
-    case possiblyInvisible of
+maybeNothingFromCanNotSeeIt : MaybeVisible a -> Maybe a
+maybeNothingFromCanNotSeeIt maybeVisible =
+    case maybeVisible of
         CanNotSeeIt ->
             Nothing
 

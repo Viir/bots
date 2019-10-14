@@ -6,9 +6,9 @@ module ParseSanderlingMemoryMeasurementTest exposing (allTests)
    + https://github.com/Viir/bots/commit/1950486ef8e0c8016b3a7f6c08a67ba0c403abc4
 -}
 
-import Expect exposing (Expectation)
+import Expect
 import Json.Decode
-import SanderlingMemoryMeasurement exposing (PossiblyInvisible(..))
+import SanderlingMemoryMeasurement exposing (MaybeVisible(..))
 import Test exposing (..)
 
 

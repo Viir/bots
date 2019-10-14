@@ -1,12 +1,12 @@
 module SanderlingMemoryMeasurement exposing
     ( InfoPanelRouteRouteElementMarker
+    , MaybeVisible(..)
     , MemoryMeasurementInfoPanelRoute
     , MemoryMeasurementMenu
     , MemoryMeasurementMenuEntry
     , MemoryMeasurementReducedWithNamedNodes
     , MemoryMeasurementShipUi
     , MemoryMeasurementShipUiIndication
-    , MaybeVisible(..)
     , ShipManeuverType(..)
     , UIElement
     , UIElementRegion
@@ -15,6 +15,10 @@ module SanderlingMemoryMeasurement exposing
     , parseInventoryDecoder
     , parseInventoryWindowCapacityGaugeDecoder
     , parseMemoryMeasurementReducedWithNamedNodesFromJson
+    , parseOverviewEntryDistanceInMetersFromText
+    , parseOverviewWindowListViewEntryDecoder
+    , shipUIDecoder
+    , shipUIModuleDecoder
     )
 
 import Json.Decode
@@ -28,6 +32,7 @@ type alias MemoryMeasurementReducedWithNamedNodes =
     { menus : List MemoryMeasurementMenu
     , shipUi : MaybeVisible MemoryMeasurementShipUi
     , infoPanelRoute : MaybeVisible MemoryMeasurementInfoPanelRoute
+    , overviewWindow : MaybeVisible OverviewWindow
     , inventoryWindow : MaybeVisible InventoryWindow
     }
 
@@ -39,9 +44,7 @@ type alias MemoryMeasurementMenu =
 
 
 type alias MemoryMeasurementMenuEntry =
-    { uiElement : UIElement
-    , text : String
-    }
+    TextLabel
 
 
 type alias MemoryMeasurementInfoPanelRoute =
@@ -53,11 +56,33 @@ type alias InfoPanelRouteRouteElementMarker =
 
 
 type alias MemoryMeasurementShipUi =
-    { indication : MaybeVisible MemoryMeasurementShipUiIndication }
+    { indication : MaybeVisible MemoryMeasurementShipUiIndication
+    , modules : List ShipUiModule
+    , shipIsStopped : Maybe Bool
+    }
+
+
+type alias ShipUiModule =
+    { uiElement : UIElement
+    , isActive : Maybe Bool
+    }
 
 
 type alias MemoryMeasurementShipUiIndication =
     { maneuverType : MaybeVisible ShipManeuverType }
+
+
+type alias OverviewWindow =
+    { uiElement : UIElement
+    , entries : List OverviewWindowEntry
+    }
+
+
+type alias OverviewWindowEntry =
+    { uiElement : UIElement
+    , textsLeftToRight : List String
+    , distanceInMeters : Result String Int
+    }
 
 
 type alias InventoryWindow =
@@ -96,6 +121,12 @@ type ShipManeuverType
     | Approach
 
 
+type alias TextLabel =
+    { uiElement : UIElement
+    , text : String
+    }
+
+
 type alias UIElement =
     { id : Int
     , region : UIElementRegion
@@ -122,21 +153,34 @@ parseMemoryMeasurementReducedWithNamedNodesFromJson =
 
 memoryMeasurementReducedWithNamedNodesJsonDecoder : Json.Decode.Decoder MemoryMeasurementReducedWithNamedNodes
 memoryMeasurementReducedWithNamedNodesJsonDecoder =
-    Json.Decode.map4 MemoryMeasurementReducedWithNamedNodes
+    Json.Decode.map5 MemoryMeasurementReducedWithNamedNodes
         -- TODO: Consider treating 'null' value like field is not present, to avoid breakage when server encodes fiels with 'null' values too.
         (Json.Decode.Extra.optionalField "Menu" (Json.Decode.list menuDecoder) |> Json.Decode.map (Maybe.withDefault []))
         (Json.Decode.Extra.optionalField "ShipUi" shipUIDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
         (Json.Decode.Extra.optionalField "InfoPanelRoute" infoPanelRouteDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
+        (Json.Decode.Extra.optionalField "WindowOverview" (Json.Decode.list parseOverviewWindowDecoder) |> Json.Decode.map (Maybe.andThen List.head >> canNotSeeItFromMaybeNothing))
         (Json.Decode.Extra.optionalField "WindowInventory" (Json.Decode.list parseInventoryWindowDecoder) |> Json.Decode.map (Maybe.andThen List.head >> canNotSeeItFromMaybeNothing))
 
 
 shipUIDecoder : Json.Decode.Decoder MemoryMeasurementShipUi
 shipUIDecoder =
-    Json.Decode.map MemoryMeasurementShipUi
+    Json.Decode.map3 MemoryMeasurementShipUi
         (Json.Decode.maybe
             (Json.Decode.field "Indication" shipUIIndicationDecoder)
             |> Json.Decode.map canNotSeeItFromMaybeNothing
         )
+        (Json.Decode.maybe
+            (Json.Decode.field "Module" (Json.Decode.list shipUIModuleDecoder))
+            |> Json.Decode.map (Maybe.withDefault [])
+        )
+        shipUIIsStoppedDecoder
+
+
+shipUIModuleDecoder : Json.Decode.Decoder ShipUiModule
+shipUIModuleDecoder =
+    Json.Decode.map2 ShipUiModule
+        uiElementDecoder
+        (Json.Decode.maybe (Json.Decode.field "RampActive" Json.Decode.bool))
 
 
 shipUIIndicationDecoder : Json.Decode.Decoder MemoryMeasurementShipUiIndication
@@ -170,6 +214,34 @@ shipUIIndicationFromJsonValue jsonValue =
     { maneuverType = maneuverType }
 
 
+shipUIIsStoppedDecoder : Json.Decode.Decoder (Maybe Bool)
+shipUIIsStoppedDecoder =
+    case "\\d" |> Regex.fromString of
+        Nothing ->
+            Json.Decode.fail "Regex code error"
+
+        Just digitRegex ->
+            Json.Decode.maybe
+                (Json.Decode.field "SpeedLabel" textLabelDecoder)
+                |> Json.Decode.map
+                    (Maybe.andThen
+                        (\speedLabel ->
+                            let
+                                digitTexts =
+                                    speedLabel.text
+                                        |> Regex.find digitRegex
+                                        |> List.map .match
+                            in
+                            -- Is stopped means: All decimal digit characters are '0'.
+                            if (digitTexts |> List.length) < 1 then
+                                Nothing
+
+                            else
+                                Just (digitTexts |> List.all ((==) "0"))
+                        )
+                    )
+
+
 infoPanelRouteDecoder : Json.Decode.Decoder MemoryMeasurementInfoPanelRoute
 infoPanelRouteDecoder =
     Json.Decode.map MemoryMeasurementInfoPanelRoute
@@ -185,22 +257,6 @@ infoPanelRouteRouteElementMarkerDecoder =
         |> Json.Decode.map (\uiElement -> { uiElement = uiElement })
 
 
-uiElementDecoder : Json.Decode.Decoder UIElement
-uiElementDecoder =
-    Json.Decode.map2 UIElement
-        (Json.Decode.field "Id" Json.Decode.int)
-        (Json.Decode.field "Region" uiElementRegionDecoder)
-
-
-uiElementRegionDecoder : Json.Decode.Decoder UIElementRegion
-uiElementRegionDecoder =
-    Json.Decode.map4 UIElementRegion
-        (Json.Decode.field "Min0" Json.Decode.float |> Json.Decode.map round)
-        (Json.Decode.field "Min1" Json.Decode.float |> Json.Decode.map round)
-        (Json.Decode.field "Max0" Json.Decode.float |> Json.Decode.map round)
-        (Json.Decode.field "Max1" Json.Decode.float |> Json.Decode.map round)
-
-
 menuDecoder : Json.Decode.Decoder MemoryMeasurementMenu
 menuDecoder =
     Json.Decode.map2 MemoryMeasurementMenu
@@ -210,9 +266,90 @@ menuDecoder =
 
 menuEntryDecoder : Json.Decode.Decoder MemoryMeasurementMenuEntry
 menuEntryDecoder =
-    Json.Decode.map2 MemoryMeasurementMenuEntry
+    textLabelDecoder
+
+
+parseOverviewWindowDecoder : Json.Decode.Decoder OverviewWindow
+parseOverviewWindowDecoder =
+    Json.Decode.map2 OverviewWindow
         uiElementDecoder
-        (Json.Decode.field "Text" Json.Decode.string)
+        (Json.Decode.Extra.optionalField "ListView" parseOverviewWindowListViewDecoder |> Json.Decode.map (Maybe.withDefault []))
+
+
+parseOverviewWindowListViewDecoder : Json.Decode.Decoder (List OverviewWindowEntry)
+parseOverviewWindowListViewDecoder =
+    Json.Decode.field "Entry" (Json.Decode.list parseOverviewWindowListViewEntryDecoder)
+
+
+parseOverviewWindowListViewEntryDecoder : Json.Decode.Decoder OverviewWindowEntry
+parseOverviewWindowListViewEntryDecoder =
+    Json.Decode.map2
+        (\uiElement textLabels ->
+            let
+                textsLeftToRight =
+                    textLabels |> List.sortBy (.uiElement >> .region >> .left) |> List.map .text
+            in
+            { uiElement = uiElement
+            , textsLeftToRight = textsLeftToRight
+            , distanceInMeters = textsLeftToRight |> parseOverviewEntryDistanceInMetersFromTexts
+            }
+        )
+        uiElementDecoder
+        (Json.Decode.field "LabelText" (Json.Decode.list textLabelDecoder))
+
+
+parseOverviewEntryDistanceInMetersFromTexts : List String -> Result String Int
+parseOverviewEntryDistanceInMetersFromTexts texts =
+    let
+        parseResults =
+            texts |> List.map parseOverviewEntryDistanceInMetersFromText
+    in
+    case parseResults |> List.filterMap Result.toMaybe |> List.head of
+        Nothing ->
+            Err
+                ("Parsing did not succeed for any of the texts: "
+                    ++ ((parseResults |> List.filterMap (Result.Extra.unpack Just (always Nothing))) |> String.join ", ")
+                )
+
+        Just distanceInMeters ->
+            Ok distanceInMeters
+
+
+parseOverviewEntryDistanceInMetersFromText : String -> Result String Int
+parseOverviewEntryDistanceInMetersFromText distanceDisplayTextBeforeTrim =
+    case "^[\\d\\,]+(?=\\s*m)" |> Regex.fromString of
+        Nothing ->
+            Err "Regex code error"
+
+        Just regexForUnitMeter ->
+            case "^[\\d\\,]+(?=\\s*km)" |> Regex.fromString of
+                Nothing ->
+                    Err "Regex code error"
+
+                Just regexForUnitKilometer ->
+                    let
+                        distanceDisplayText =
+                            distanceDisplayTextBeforeTrim |> String.trim
+                    in
+                    case distanceDisplayText |> Regex.find regexForUnitMeter |> List.head of
+                        Just match ->
+                            match.match
+                                |> String.replace "," ""
+                                |> String.toInt
+                                |> Result.fromMaybe ("Failed to parse to integer: " ++ match.match)
+
+                        Nothing ->
+                            case distanceDisplayText |> Regex.find regexForUnitKilometer |> List.head of
+                                Just match ->
+                                    match.match
+                                        |> String.replace "," ""
+                                        |> String.toInt
+                                        -- unit 'km'
+                                        |> Maybe.map ((*) 1000)
+                                        |> Result.fromMaybe ("Failed to parse to integer: " ++ match.match)
+
+                                Nothing ->
+                                    Err ("Text did not match expected number format: '" ++ distanceDisplayText ++ "'")
 
 
 parseInventoryWindowDecoder : Json.Decode.Decoder InventoryWindow
@@ -283,6 +420,29 @@ parseInventoryDecoder : Json.Decode.Decoder Inventory
 parseInventoryDecoder =
     Json.Decode.map Inventory
         (Json.Decode.field "ListView" (Json.Decode.field "Entry" (Json.Decode.list uiElementDecoder)))
+
+
+textLabelDecoder : Json.Decode.Decoder TextLabel
+textLabelDecoder =
+    Json.Decode.map2 TextLabel
+        uiElementDecoder
+        (Json.Decode.field "Text" Json.Decode.string)
+
+
+uiElementDecoder : Json.Decode.Decoder UIElement
+uiElementDecoder =
+    Json.Decode.map2 UIElement
+        (Json.Decode.field "Id" Json.Decode.int)
+        (Json.Decode.field "Region" uiElementRegionDecoder)
+
+
+uiElementRegionDecoder : Json.Decode.Decoder UIElementRegion
+uiElementRegionDecoder =
+    Json.Decode.map4 UIElementRegion
+        (Json.Decode.field "Min0" Json.Decode.float |> Json.Decode.map round)
+        (Json.Decode.field "Min1" Json.Decode.float |> Json.Decode.map round)
+        (Json.Decode.field "Max0" Json.Decode.float |> Json.Decode.map round)
+        (Json.Decode.field "Max1" Json.Decode.float |> Json.Decode.map round)
 
 
 canNotSeeItFromMaybeNothing : Maybe a -> MaybeVisible a

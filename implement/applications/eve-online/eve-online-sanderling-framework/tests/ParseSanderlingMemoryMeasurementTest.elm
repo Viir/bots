@@ -20,10 +20,15 @@ allTests : Test
 allTests =
     describe "Parse memory measurement"
         [ parseMemoryMeasurement_from_97DAA8E6F1_reduced_shipui_indication
+        , ship_ui_module
+        , ship_ui_ship_is_stopped
+        , ship_ui_ship_is_not_stopped
         , parseMemoryMeasurement_from_97DAA8E6F1_reduced_infopanel_route_routeelementmarker
         , parseMemoryMeasurement_from_F8E7BF79FF_reduced_menu
         , from_measurement_root_inventoryWindow_with_left_tree
-        , inventoryWindow_Selected_Container_capacity_gauge
+        , overview_window_entry
+        , overview_entry_distance_text_to_meter
+        , inventory_window_selected_container_capacity_gauge
         , inventory_containing_three_items
         , inventory_capacity_gauge_text
         ]
@@ -80,9 +85,119 @@ parseMemoryMeasurement_from_97DAA8E6F1_reduced_shipui_indication =
                     (Ok
                         (CanSee
                             { indication = CanSee { maneuverType = CanSee SanderlingMemoryMeasurement.Warp }
+                            , modules = []
+                            , shipIsStopped = Nothing
                             }
                         )
                     )
+
+
+ship_ui_module : Test
+ship_ui_module =
+    test "Ship UI Module" <|
+        \_ ->
+            """
+{
+    "ModuleButtonVisible": true,
+    "ModuleButtonIconTexture": {
+        "Id": 876602232
+    },
+    "RampActive": true,
+    "GlowVisible": true,
+    "OverloadOn": false,
+    "RegionInteraction": {
+        "Region": {
+            "Min0": 656,
+            "Min1": 563,
+            "Max0": 672,
+            "Max1": 579
+        },
+        "InTreeIndex": 699,
+        "ChildLastInTreeIndex": 715,
+        "Id": 543723600
+    },
+    "Region": {
+        "Min0": 632,
+        "Min1": 539,
+        "Max0": 696,
+        "Max1": 603
+    },
+    "InTreeIndex": 699,
+    "ChildLastInTreeIndex": 715,
+    "Id": 543723600
+}
+"""
+                |> Json.Decode.decodeString SanderlingMemoryMeasurement.shipUIModuleDecoder
+                |> Expect.equal
+                    (Ok
+                        { uiElement = { id = 543723600, region = { left = 632, top = 539, right = 696, bottom = 603 } }
+                        , isActive = Just True
+                        }
+                    )
+
+
+ship_ui_ship_is_stopped : Test
+ship_ui_ship_is_stopped =
+    test "Ship UI ship is stopped" <|
+        \_ ->
+            -- Sample from https://github.com/Viir/bots/blob/a272acde3fd79bc834cf6e0f6ef0c41c82419c7d/implement/applications/eve-online/training-data/2019-10-12.eve-online-mining/2019-10-12.from-7C3AE6AF.reduced-with-named-nodes.only-shipui.json
+            """
+{
+    "SpeedLabel": {
+        "Text": "0 m/s",
+        "Region": {
+            "Min0": 523,
+            "Min1": 663,
+            "Max0": 566,
+            "Max1": 676
+        },
+        "InTreeIndex": 729,
+        "Id": 777412336
+    },
+    "Region": {
+        "Min0": 0,
+        "Min1": 0,
+        "Max0": 0,
+        "Max1": 0
+    },
+    "Id": 0
+}
+"""
+                |> Json.Decode.decodeString SanderlingMemoryMeasurement.shipUIDecoder
+                |> Result.map .shipIsStopped
+                |> Expect.equal (Ok (Just True))
+
+
+ship_ui_ship_is_not_stopped : Test
+ship_ui_ship_is_not_stopped =
+    test "Ship UI ship is not stopped" <|
+        \_ ->
+            -- Sample from https://github.com/Viir/bots/blob/a272acde3fd79bc834cf6e0f6ef0c41c82419c7d/implement/applications/eve-online/training-data/2019-10-12.eve-online-mining/2019-10-12.from-7C3AE6AF.reduced-with-named-nodes.only-shipui.json
+            """
+{
+    "SpeedLabel": {
+        "Text": "352 m/s",
+        "Region": {
+            "Min0": 523,
+            "Min1": 663,
+            "Max0": 566,
+            "Max1": 676
+        },
+        "InTreeIndex": 729,
+        "Id": 777412336
+    },
+    "Region": {
+        "Min0": 0,
+        "Min1": 0,
+        "Max0": 0,
+        "Max1": 0
+    },
+    "Id": 0
+}
+"""
+                |> Json.Decode.decodeString SanderlingMemoryMeasurement.shipUIDecoder
+                |> Result.map .shipIsStopped
+                |> Expect.equal (Ok (Just False))
 
 
 parseMemoryMeasurement_from_97DAA8E6F1_reduced_infopanel_route_routeelementmarker : Test
@@ -414,8 +529,103 @@ from_measurement_root_inventoryWindow_with_left_tree =
                     )
 
 
-inventoryWindow_Selected_Container_capacity_gauge : Test
-inventoryWindow_Selected_Container_capacity_gauge =
+overview_window_entry : Test
+overview_window_entry =
+    test "Overview window entry" <|
+        \_ ->
+            -- Sample from https://github.com/Viir/bots/blob/479e1f9b870c1e0e00764e318eeda77938b95e81/implement/applications/eve-online/training-data/2019-10-12.eve-online-mining/2019-10-12.from-7C3AE6AF.reduced-with-named-nodes.only-overview-window.json
+            """
+{
+    "MainIconSetIndicatorName": [
+        "attackingMeIndicator"
+    ],
+    "ContentBoundLeft": 772,
+    "IsGroup": false,
+    "IsSelected": false,
+    "ListBackgroundColor": [
+        {
+            "OMilli": 0,
+            "RMilli": 250,
+            "GMilli": 250,
+            "BMilli": 250
+        }
+    ],
+    "LabelText": [
+        {
+            "Text": "2,856 m",
+            "Region": {
+                "Min0": 826,
+                "Min1": 162,
+                "Max0": 868,
+                "Max1": 178
+            },
+            "InTreeIndex": 1340,
+            "Id": 569849648
+        },
+        {
+            "Text": "Guristas Arrogator",
+            "Region": {
+                "Min0": 876,
+                "Min1": 162,
+                "Max0": 971,
+                "Max1": 178
+            },
+            "InTreeIndex": 1341,
+            "Id": 569851408
+        },
+        {
+            "Text": "Guristas Arrogator",
+            "Region": {
+                "Min0": 988,
+                "Min1": 162,
+                "Max0": 1083,
+                "Max1": 178
+            },
+            "InTreeIndex": 1342,
+            "Id": 569847856
+        }
+    ],
+    "Region": {
+        "Min0": 770,
+        "Min1": 160,
+        "Max0": 1059,
+        "Max1": 179
+    },
+    "InTreeIndex": 1336,
+    "ChildLastInTreeIndex": 1342,
+    "Id": 793528816
+}
+"""
+                |> Json.Decode.decodeString SanderlingMemoryMeasurement.parseOverviewWindowListViewEntryDecoder
+                |> Expect.equal
+                    (Ok
+                        { uiElement = { id = 793528816, region = { left = 770, top = 160, right = 1059, bottom = 179 } }
+                        , textsLeftToRight = [ "2,856 m", "Guristas Arrogator", "Guristas Arrogator" ]
+                        , distanceInMeters = Ok 2856
+                        }
+                    )
+
+
+overview_entry_distance_text_to_meter : Test
+overview_entry_distance_text_to_meter =
+    [ ( "2,856 m", Ok 2856 )
+    , ( "123 m", Ok 123 )
+    , ( "16 km", Ok 16000 )
+    , ( "   345 m  ", Ok 345 )
+    ]
+        |> List.map
+            (\( displayText, expectedResult ) ->
+                test displayText <|
+                    \_ ->
+                        displayText
+                            |> SanderlingMemoryMeasurement.parseOverviewEntryDistanceInMetersFromText
+                            |> Expect.equal expectedResult
+            )
+        |> describe "Overview entry distance text"
+
+
+inventory_window_selected_container_capacity_gauge : Test
+inventory_window_selected_container_capacity_gauge =
     test "Inventory window capacity gauge" <|
         \_ ->
             -- Sample from https://github.com/Viir/bots/blob/479e1f9b870c1e0e00764e318eeda77938b95e81/implement/applications/eve-online/training-data/2019-10-12.eve-online-mining/2019-10-12.from-D61A3AAC.reduced-with-named-nodes.only-inventory-window.json

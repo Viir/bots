@@ -23,6 +23,7 @@ allTests =
         , ship_ui_module
         , ship_ui_ship_is_stopped
         , ship_ui_ship_is_not_stopped
+        , target
         , parseMemoryMeasurement_from_97DAA8E6F1_reduced_infopanel_route_routeelementmarker
         , parseMemoryMeasurement_from_F8E7BF79FF_reduced_menu
         , from_measurement_root_inventoryWindow_with_left_tree
@@ -198,6 +199,81 @@ ship_ui_ship_is_not_stopped =
                 |> Json.Decode.decodeString SanderlingMemoryMeasurement.shipUIDecoder
                 |> Result.map .shipIsStopped
                 |> Expect.equal (Ok (Just False))
+
+
+target : Test
+target =
+    test "Target" <|
+        \_ ->
+            -- Sample from https://github.com/Viir/bots/blob/a272acde3fd79bc834cf6e0f6ef0c41c82419c7d/implement/applications/eve-online/training-data/2019-10-12.eve-online-mining/2019-10-12.from-7C3AE6AF.reduced-with-named-nodes.only-targets.json
+            """
+{
+    "LabelText": [
+        {
+            "Text": "<center>Asteroid (Pyroxeres)",
+            "Region": {
+                "Min0": 545,
+                "Min1": 100,
+                "Max0": 655,
+                "Max1": 113
+            },
+            "InTreeIndex": 804,
+            "Id": 695619696
+        },
+        {
+            "Text": "<center>3,871 m",
+            "Region": {
+                "Min0": 545,
+                "Min1": 113,
+                "Max0": 655,
+                "Max1": 126
+            },
+            "InTreeIndex": 801,
+            "Id": 800586256
+        }
+    ],
+    "IsSelected": false,
+    "Hitpoints": {},
+    "RegionInteractionElement": {
+        "Region": {
+            "Min0": 562,
+            "Min1": 15,
+            "Max0": 639,
+            "Max1": 85
+        },
+        "InTreeIndex": 805,
+        "ChildLastInTreeIndex": 813,
+        "Id": 796207728
+    },
+    "RegionInteraction": {
+        "Region": {
+            "Min0": 580,
+            "Min1": 30,
+            "Max0": 620,
+            "Max1": 70
+        },
+        "InTreeIndex": 805,
+        "ChildLastInTreeIndex": 813,
+        "Id": 796207728
+    },
+    "Region": {
+        "Min0": 545,
+        "Min1": 0,
+        "Max0": 655,
+        "Max1": 181
+    },
+    "InTreeIndex": 797,
+    "ChildLastInTreeIndex": 813,
+    "Id": 568574960
+}
+"""
+                |> Json.Decode.decodeString SanderlingMemoryMeasurement.targetDecoder
+                |> Expect.equal
+                    (Ok
+                        { uiElement = { id = 568574960, region = { left = 545, top = 0, right = 655, bottom = 181 } }
+                        , textsTopToBottom = [ "<center>Asteroid (Pyroxeres)", "<center>3,871 m" ]
+                        }
+                    )
 
 
 parseMemoryMeasurement_from_97DAA8E6F1_reduced_infopanel_route_routeelementmarker : Test

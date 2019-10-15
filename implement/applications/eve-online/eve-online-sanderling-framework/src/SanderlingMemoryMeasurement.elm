@@ -19,6 +19,7 @@ module SanderlingMemoryMeasurement exposing
     , parseOverviewWindowListViewEntryDecoder
     , shipUIDecoder
     , shipUIModuleDecoder
+    , targetDecoder
     )
 
 import Json.Decode
@@ -31,6 +32,7 @@ import Result.Extra
 type alias MemoryMeasurementReducedWithNamedNodes =
     { menus : List MemoryMeasurementMenu
     , shipUi : MaybeVisible MemoryMeasurementShipUi
+    , targets : List Target
     , infoPanelRoute : MaybeVisible MemoryMeasurementInfoPanelRoute
     , overviewWindow : MaybeVisible OverviewWindow
     , inventoryWindow : MaybeVisible InventoryWindow
@@ -70,6 +72,12 @@ type alias ShipUiModule =
 
 type alias MemoryMeasurementShipUiIndication =
     { maneuverType : MaybeVisible ShipManeuverType }
+
+
+type alias Target =
+    { uiElement : UIElement
+    , textsTopToBottom : List String
+    }
 
 
 type alias OverviewWindow =
@@ -153,10 +161,11 @@ parseMemoryMeasurementReducedWithNamedNodesFromJson =
 
 memoryMeasurementReducedWithNamedNodesJsonDecoder : Json.Decode.Decoder MemoryMeasurementReducedWithNamedNodes
 memoryMeasurementReducedWithNamedNodesJsonDecoder =
-    Json.Decode.map5 MemoryMeasurementReducedWithNamedNodes
+    Json.Decode.map6 MemoryMeasurementReducedWithNamedNodes
         -- TODO: Consider treating 'null' value like field is not present, to avoid breakage when server encodes fiels with 'null' values too.
         (Json.Decode.Extra.optionalField "Menu" (Json.Decode.list menuDecoder) |> Json.Decode.map (Maybe.withDefault []))
         (Json.Decode.Extra.optionalField "ShipUi" shipUIDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
+        (Json.Decode.Extra.optionalField "Target" (Json.Decode.list targetDecoder) |> Json.Decode.map (Maybe.withDefault []))
         (Json.Decode.Extra.optionalField "InfoPanelRoute" infoPanelRouteDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
         (Json.Decode.Extra.optionalField "WindowOverview" (Json.Decode.list parseOverviewWindowDecoder) |> Json.Decode.map (Maybe.andThen List.head >> canNotSeeItFromMaybeNothing))
         (Json.Decode.Extra.optionalField "WindowInventory" (Json.Decode.list parseInventoryWindowDecoder) |> Json.Decode.map (Maybe.andThen List.head >> canNotSeeItFromMaybeNothing))
@@ -240,6 +249,22 @@ shipUIIsStoppedDecoder =
                                 Just (digitTexts |> List.all ((==) "0"))
                         )
                     )
+
+
+targetDecoder : Json.Decode.Decoder Target
+targetDecoder =
+    Json.Decode.map2
+        (\uiElement textLabels ->
+            let
+                textsTopToBottom =
+                    textLabels |> List.sortBy (.uiElement >> .region >> .top) |> List.map .text
+            in
+            { uiElement = uiElement
+            , textsTopToBottom = textsTopToBottom
+            }
+        )
+        uiElementDecoder
+        (Json.Decode.field "LabelText" (Json.Decode.list textLabelDecoder))
 
 
 infoPanelRouteDecoder : Json.Decode.Decoder MemoryMeasurementInfoPanelRoute

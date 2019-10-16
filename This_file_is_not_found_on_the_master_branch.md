@@ -1,0 +1,1 @@
+Use this file to test loading from GitHub, specifying a commit not referenced from the master branch. The functionality to load from GitHub should support loading from other branches than the master branch, so we test this scenario in the automated tests.

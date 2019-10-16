@@ -26,8 +26,8 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
-import Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
-import SanderlingMemoryMeasurement
+import Sanderling.Sanderling as Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
+import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
     exposing
         ( InfoPanelRouteRouteElementMarker
         , MaybeVisible(..)
@@ -37,7 +37,7 @@ import SanderlingMemoryMeasurement
         , UIElement
         , maybeNothingFromCanNotSeeIt
         )
-import SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
+import Sanderling.SimpleSanderling as SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
 
 
 type alias MemoryMeasurement =

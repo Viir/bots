@@ -1,4 +1,4 @@
-module SanderlingVolatileHostSetup exposing ( sanderlingSetupScript )
+module Sanderling.SanderlingVolatileHostSetup exposing ( sanderlingSetupScript )
 
 
 sanderlingSetupScript : String

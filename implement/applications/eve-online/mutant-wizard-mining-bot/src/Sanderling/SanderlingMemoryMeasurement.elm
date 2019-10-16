@@ -1,4 +1,4 @@
-module SanderlingMemoryMeasurement exposing
+module Sanderling.SanderlingMemoryMeasurement exposing
     ( InfoPanelRouteRouteElementMarker
     , MaybeVisible(..)
     , MemoryMeasurementInfoPanelRoute

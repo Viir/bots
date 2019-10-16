@@ -4,7 +4,7 @@
 -}
 
 
-module SimpleSanderling exposing
+module Sanderling.SimpleSanderling exposing
     ( BotEvent(..)
     , BotEventAtTime
     , BotRequest(..)
@@ -16,9 +16,9 @@ module SimpleSanderling exposing
     )
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
-import Sanderling
-import SanderlingMemoryMeasurement
-import SanderlingVolatileHostSetup
+import Sanderling.Sanderling as Sanderling
+import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
+import Sanderling.SanderlingVolatileHostSetup as SanderlingVolatileHostSetup
 
 
 type alias BotEventAtTime =

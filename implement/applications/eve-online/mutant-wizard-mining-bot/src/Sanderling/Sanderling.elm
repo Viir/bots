@@ -1,4 +1,4 @@
-module Sanderling exposing
+module Sanderling.Sanderling exposing
     ( EffectOnWindowStructure(..)
     , GetMemoryMeasurementResultStructure(..)
     , Location2d
@@ -15,7 +15,7 @@ module Sanderling exposing
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
-import SanderlingMemoryMeasurement
+import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
 
 
 type RequestToVolatileHost

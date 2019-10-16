@@ -2,7 +2,8 @@
     + https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/43?u=viir
     + https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/70?u=viir
 
-    Setup instructions:
+    Setup instructions for the EVE Online client:
+    + Disable `Run clients with 64 bit` in the settings, because this bot only works with the 32-bit version of the EVE Online client.
     + Set the UI language to English.
     + In Overview window, make asteroids visible.
     + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
@@ -12,6 +13,7 @@
     + Enable the info panel ‘System info’.
     + Create bookmark 'mining' for the asteroid belt.
     + Create bookmark 'unload' for the station.
+    + Before starting this bot, start the game client and dock in a station in the same system containing your mining bookmark.
 
    bot-catalog-tags:eve-online,mining
 -}
@@ -241,7 +243,8 @@ getProgramSequence sequenceName =
 
 initState : State
 initState =
-    SimpleSanderling.initState { remainingSequence = getProgramSequence TravelToAsteroidBelt }
+    SimpleSanderling.initState
+        { remainingSequence = { steps = [], continueWith = TravelToAsteroidBelt } }
 
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )

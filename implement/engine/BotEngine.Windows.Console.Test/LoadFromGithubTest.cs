@@ -113,5 +113,27 @@ namespace BotEngine.Windows.Console.Test
                 .ToLowerInvariant(),
                 "Loaded blob content hash equals expected hash.");
         }
+
+        [TestMethod]
+        public void Test_LoadFromGithub_Commit_not_on_master_branch()
+        {
+            var expectedFileHash = "6a52b3364a10c2e2709513d936c4305439f62e6fbb552cbdbe26a8e75481ca8c";
+
+            var loadFromGithubResult =
+                LoadFromGithub.LoadFromUrl(
+                    "https://github.com/Viir/bots/blob/d366c5831bdddd33a20206a6487e8432b558b619/This_file_is_not_found_on_the_master_branch.md");
+
+            Assert.IsNull(loadFromGithubResult.Error, "No error: " + loadFromGithubResult.Error);
+
+            var blobContent = loadFromGithubResult.Success.BlobContent;
+
+            Assert.IsNotNull(blobContent, "Found blobContent.");
+
+            Assert.AreEqual(expectedFileHash,
+                Kalmit.CommonConversion.StringBase16FromByteArray(
+                    Kalmit.CommonConversion.HashSHA256(blobContent))
+                .ToLowerInvariant(),
+                "Loaded blob content hash equals expected hash.");
+        }
     }
 }

@@ -26,6 +26,7 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
+import Regex
 import Sanderling.Sanderling as Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
 import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
     exposing
@@ -118,8 +119,13 @@ getProgramSequence sequenceName =
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
+                , ( "Travel to asteroid belt: click menu entry 'Warp to Within'"
+                  , menuEntryInLastMenuContainingRegex menuEntry_Warp_to_Within_regex
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
+                        >> Maybe.withDefault Wait
+                  )
                 , ( "Travel to asteroid belt: click menu entry to start warp"
-                  , menuEntryInLastMenuContainingTextIgnoringCase "Warp to Location Within 0 m"
+                  , menuEntryInLastMenuContainingTextIgnoringCase "Within 0 m"
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
@@ -333,9 +339,21 @@ shipIsStopped =
     .shipUi >> maybeNothingFromCanNotSeeIt >> Maybe.andThen .shipIsStopped
 
 
+{-| <https://regex101.com/?regex=Warp%20to%20Within%28%3F%3D%5Cs%2A%24%29&testString=Warp%20to%20Within%0AWarp%20to%20Within%200%0AWarp%20to%20Within%20df%0AWarp%20to%20Within%20%0A>
+-}
+menuEntry_Warp_to_Within_regex : Regex.Regex
+menuEntry_Warp_to_Within_regex =
+    "Warp to Within(?=\\s*$)" |> Regex.fromStringWith { caseInsensitive = True, multiline = False } |> Maybe.withDefault Regex.never
+
+
 menuEntryInLastMenuContainingTextIgnoringCase : String -> MemoryMeasurement -> Maybe SanderlingMemoryMeasurement.MemoryMeasurementMenuEntry
 menuEntryInLastMenuContainingTextIgnoringCase textToSearch =
     menuEntryInLastMenuMatchingPredicate (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
+
+
+menuEntryInLastMenuContainingRegex : Regex.Regex -> MemoryMeasurement -> Maybe SanderlingMemoryMeasurement.MemoryMeasurementMenuEntry
+menuEntryInLastMenuContainingRegex regex =
+    menuEntryInLastMenuMatchingPredicate (.text >> String.toLower >> Regex.contains regex)
 
 
 firstAsteroidFromOverviewWindow : MemoryMeasurement -> Maybe OverviewWindowEntry

@@ -108,6 +108,12 @@ getProgramSequence sequenceName =
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
+                , ( "Travel to asteroid belt: wait for overview window"
+                  , .overviewWindow
+                        >> maybeNothingFromCanNotSeeIt
+                        >> Maybe.map (always Continue)
+                        >> Maybe.withDefault Wait
+                  )
                 , ( "Travel to asteroid belt: open solar system menu"
                   , .infoPanelCurrentSystem
                         >> maybeNothingFromCanNotSeeIt

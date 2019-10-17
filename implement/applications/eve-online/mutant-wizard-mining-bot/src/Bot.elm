@@ -104,7 +104,8 @@ getProgramSequence sequenceName =
                         >> Maybe.withDefault Wait
                   )
                 , ( "Undock ship: click menu entry"
-                  , menuEntryInLastMenuContainingTextIgnoringCase "Undock"
+                  , getLastMenu
+                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Undock")
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
@@ -121,17 +122,20 @@ getProgramSequence sequenceName =
                         >> Maybe.withDefault Wait
                   )
                 , ( "Travel to asteroid belt: open bookmark"
-                  , menuEntryInLastMenuContainingTextIgnoringCase asteroidBookmarkName
+                  , getLastMenu
+                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase asteroidBookmarkName)
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
                 , ( "Travel to asteroid belt: click menu entry 'Warp to Within'"
-                  , menuEntryInLastMenuContainingRegex menuEntry_Warp_to_Within_regex
+                  , getLastMenu
+                        >> Maybe.andThen (menuEntryContainingRegex menuEntry_Warp_to_Within_regex)
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
                 , ( "Travel to asteroid belt: click menu entry to start warp"
-                  , menuEntryInLastMenuContainingTextIgnoringCase "Within 0 m"
+                  , getLastMenu
+                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Within 0 m")
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
@@ -154,7 +158,8 @@ getProgramSequence sequenceName =
                         >> Maybe.withDefault Wait
                   )
                 , ( "and approach"
-                  , menuEntryInLastMenuContainingTextIgnoringCase "approach"
+                  , getLastMenu
+                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
@@ -169,7 +174,8 @@ getProgramSequence sequenceName =
                         >> Maybe.withDefault Wait
                   )
                 , ( "and lock target"
-                  , menuEntryInLastMenuContainingTextIgnoringCase "lock"
+                  , getLastMenu
+                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
@@ -212,12 +218,14 @@ getProgramSequence sequenceName =
                         >> Maybe.withDefault Wait
                   )
                 , ( "Travel to station: open bookmark"
-                  , menuEntryInLastMenuContainingTextIgnoringCase stationBookmarkName
+                  , getLastMenu
+                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase stationBookmarkName)
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
                 , ( "and dock"
-                  , menuEntryInLastMenuContainingTextIgnoringCase "dock"
+                  , getLastMenu
+                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "dock")
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
@@ -352,14 +360,24 @@ menuEntry_Warp_to_Within_regex =
     "Warp to Within(?=\\s*$)" |> Regex.fromStringWith { caseInsensitive = True, multiline = False } |> Maybe.withDefault Regex.never
 
 
-menuEntryInLastMenuContainingTextIgnoringCase : String -> MemoryMeasurement -> Maybe SanderlingMemoryMeasurement.MemoryMeasurementMenuEntry
-menuEntryInLastMenuContainingTextIgnoringCase textToSearch =
-    menuEntryInLastMenuMatchingPredicate (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
+menuEntryContainingTextIgnoringCase : String -> SanderlingMemoryMeasurement.MemoryMeasurementMenu -> Maybe SanderlingMemoryMeasurement.MemoryMeasurementMenuEntry
+menuEntryContainingTextIgnoringCase textToSearch =
+    menuEntryMatchingPredicate (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
 
 
-menuEntryInLastMenuContainingRegex : Regex.Regex -> MemoryMeasurement -> Maybe SanderlingMemoryMeasurement.MemoryMeasurementMenuEntry
-menuEntryInLastMenuContainingRegex regex =
-    menuEntryInLastMenuMatchingPredicate (.text >> String.toLower >> Regex.contains regex)
+menuEntryContainingRegex : Regex.Regex -> SanderlingMemoryMeasurement.MemoryMeasurementMenu -> Maybe SanderlingMemoryMeasurement.MemoryMeasurementMenuEntry
+menuEntryContainingRegex regex =
+    menuEntryMatchingPredicate (.text >> String.toLower >> Regex.contains regex)
+
+
+menuEntryMatchingPredicate : (SanderlingMemoryMeasurement.MemoryMeasurementMenuEntry -> Bool) -> SanderlingMemoryMeasurement.MemoryMeasurementMenu -> Maybe SanderlingMemoryMeasurement.MemoryMeasurementMenuEntry
+menuEntryMatchingPredicate predicate =
+    .entries >> List.filter predicate >> List.head
+
+
+getLastMenu : MemoryMeasurement -> Maybe SanderlingMemoryMeasurement.MemoryMeasurementMenu
+getLastMenu =
+    .menus >> List.reverse >> List.head
 
 
 firstAsteroidFromOverviewWindow : MemoryMeasurement -> Maybe OverviewWindowEntry
@@ -428,14 +446,6 @@ inventoryWindowItemHangar =
         >> Maybe.map .leftTreeEntries
         >> Maybe.andThen (List.filter (.text >> String.toLower >> String.contains "item hangar") >> List.head)
         >> Maybe.map .uiElement
-
-
-menuEntryInLastMenuMatchingPredicate : (SanderlingMemoryMeasurement.MemoryMeasurementMenuEntry -> Bool) -> MemoryMeasurement -> Maybe SanderlingMemoryMeasurement.MemoryMeasurementMenuEntry
-menuEntryInLastMenuMatchingPredicate predicate =
-    .menus
-        >> List.reverse
-        >> List.head
-        >> Maybe.andThen (.entries >> List.filter predicate >> List.head)
 
 
 clickOnUIElement : MouseButton -> UIElement -> Sanderling.EffectOnWindowStructure

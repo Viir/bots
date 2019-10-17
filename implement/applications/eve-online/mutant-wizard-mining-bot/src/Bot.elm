@@ -270,7 +270,11 @@ simpleProcessEvent eventAtTime stateBefore =
         SimpleSanderling.MemoryMeasurementCompleted memoryMeasurement ->
             let
                 remainingSequenceBefore =
-                    stateBefore.remainingSequence
+                    if 0 < (stateBefore.remainingSequence.steps |> List.length) then
+                        stateBefore.remainingSequence
+
+                    else
+                        getProgramSequence stateBefore.remainingSequence.continueWith
 
                 ( stepResult, stepDescription ) =
                     -- 'remainingSequence' stores only the remaining steps, so we always execute the first of the steps in there.
@@ -282,11 +286,7 @@ simpleProcessEvent eventAtTime stateBefore =
                             ( decideBasedOnMemoryMeasurement memoryMeasurement, currentStepDescription )
 
                 advancedSequence =
-                    if (remainingSequenceBefore.steps |> List.length) > 0 then
-                        { remainingSequenceBefore | steps = remainingSequenceBefore.steps |> List.drop 1 }
-
-                    else
-                        remainingSequenceBefore.continueWith |> getProgramSequence
+                    { remainingSequenceBefore | steps = remainingSequenceBefore.steps |> List.drop 1 }
 
                 ( remainingSequence, effects ) =
                     case stepResult of

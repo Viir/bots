@@ -126,9 +126,9 @@ getProgramSequence sequenceName =
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )
-                , ( "Travel to asteroid belt: click menu entry 'Warp to Within'"
+                , ( "Travel to asteroid belt: click menu entry 'Warp to Location'"
                   , getLastMenu
-                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Within")
+                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Location")
                         >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
                         >> Maybe.withDefault Wait
                   )

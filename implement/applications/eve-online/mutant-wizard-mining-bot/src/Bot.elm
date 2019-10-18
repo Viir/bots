@@ -52,10 +52,10 @@ type BotProgramSequenceName
 
 
 type BotProgramStepResult
-    = ApplyEffectAndContinue Sanderling.EffectOnWindowStructure
-    | Continue
-    | JumpToSequence BotProgramSequenceName
-    | Wait
+    = ApplyEffectAndFinishStep Sanderling.EffectOnWindowStructure
+    | FinishStep
+    | RepeatStep
+    | JumpToNewSequence BotProgramSequenceName
 
 
 type alias BotProgramStep =
@@ -99,44 +99,44 @@ getProgramSequence sequenceName =
             { steps =
                 [ ( "Undock ship: open menu"
                   , activeShipUiElementFromInventoryWindow
-                        >> Maybe.map (clickLocationOnInventoryShipEntry >> effectMouseClickAtLocation MouseButtonRight >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (clickLocationOnInventoryShipEntry >> effectMouseClickAtLocation MouseButtonRight >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "Undock ship: click menu entry"
                   , getLastMenu
                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Undock")
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "Travel to asteroid belt: wait for overview window"
                   , .overviewWindow
                         >> maybeNothingFromCanNotSeeIt
-                        >> Maybe.map (always Continue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (always FinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "Travel to asteroid belt: open solar system menu"
                   , .infoPanelCurrentSystem
                         >> maybeNothingFromCanNotSeeIt
-                        >> Maybe.map (.listSurroundingsButton >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.listSurroundingsButton >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "Travel to asteroid belt: open bookmark"
                   , getLastMenu
                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase asteroidBookmarkName)
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "Travel to asteroid belt: click menu entry 'Warp to Location'"
                   , getLastMenu
                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Location")
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "Travel to asteroid belt: click menu entry to start warp"
                   , getLastMenu
                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Within 0 m")
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 ]
             , continueWith = MineInBelt
@@ -149,60 +149,60 @@ getProgramSequence sequenceName =
                         >> maybeNothingFromCanNotSeeIt
                         >> Maybe.map isShipWarpingOrJumping
                         >> Maybe.withDefault True
-                        >> mapBoolToOtherType { true = Wait, false = Continue }
+                        >> mapBoolToOtherType { true = RepeatStep, false = FinishStep }
                   )
                 , ( "right click first ore asteroid"
                   , firstAsteroidFromOverviewWindow
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonRight >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonRight >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "and approach"
                   , getLastMenu
                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "(for reliability wait until ship stopped)"
                   , shipIsStopped
                         >> Maybe.withDefault False
-                        >> mapBoolToOtherType { true = Continue, false = Wait }
+                        >> mapBoolToOtherType { true = FinishStep, false = RepeatStep }
                   )
                 , ( "when in range right click ore asteroid"
                   , firstAsteroidFromOverviewWindowInRange
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonRight >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonRight >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "and lock target"
                   , getLastMenu
                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
 
                 -- Assume all visible modules are miners: Setup EVE Online client to hide any other module.
                 , ( "click first high slot with mining laser"
                   , shipUiModules
                         >> List.head
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "click second high slot with mining laser"
                   , shipUiModules
                         >> List.drop 1
                         >> List.head
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "wait until ore hold full or asteroid depleted (both mining lasers stopped)"
                   , \memoryMeasurement ->
                         if memoryMeasurement |> isOreHoldFull |> Maybe.withDefault False then
-                            Continue
+                            FinishStep
 
                         else if memoryMeasurement |> shipUiModules |> List.all (.isActive >> (==) (Just False)) then
-                            JumpToSequence MineInBelt
+                            JumpToNewSequence MineInBelt
 
                         else
-                            Wait
+                            RepeatStep
                   )
                 ]
             , continueWith = TravelToStation
@@ -213,20 +213,20 @@ getProgramSequence sequenceName =
                 [ ( "Travel to station: open solar system menu"
                   , .infoPanelCurrentSystem
                         >> maybeNothingFromCanNotSeeIt
-                        >> Maybe.map (.listSurroundingsButton >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.listSurroundingsButton >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "Travel to station: open bookmark"
                   , getLastMenu
                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase stationBookmarkName)
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 , ( "and dock"
                   , getLastMenu
                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "dock")
-                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndContinue)
-                        >> Maybe.withDefault Wait
+                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft >> ApplyEffectAndFinishStep)
+                        >> Maybe.withDefault RepeatStep
                   )
                 ]
             , continueWith = TransferFromOreHold
@@ -238,12 +238,12 @@ getProgramSequence sequenceName =
                   , \memoryMeasurement ->
                         case memoryMeasurement |> inventoryWindowItemHangar of
                             Nothing ->
-                                Wait
+                                RepeatStep
 
                             Just itemHangar ->
                                 case memoryMeasurement |> inventoryWindowSelectedContainerFirstItem of
                                     Nothing ->
-                                        JumpToSequence TravelToAsteroidBelt
+                                        JumpToNewSequence TravelToAsteroidBelt
 
                                     Just itemInInventory ->
                                         { startLocation = itemInInventory.region |> centerFromRegion
@@ -251,7 +251,7 @@ getProgramSequence sequenceName =
                                         , mouseButton = MouseButtonLeft
                                         }
                                             |> Sanderling.SimpleDragAndDrop
-                                            |> ApplyEffectAndContinue
+                                            |> ApplyEffectAndFinishStep
                   )
                 ]
 
@@ -287,7 +287,7 @@ simpleProcessEvent eventAtTime stateBefore =
                     -- 'remainingSequence' stores only the remaining steps, so we always execute the first of the steps in there.
                     case remainingSequenceBefore.steps |> List.head of
                         Nothing ->
-                            ( Continue, "Error: no step remaining" )
+                            ( FinishStep, "Error: no step remaining" )
 
                         Just ( currentStepDescription, decideBasedOnMemoryMeasurement ) ->
                             ( decideBasedOnMemoryMeasurement memoryMeasurement, currentStepDescription )
@@ -297,16 +297,16 @@ simpleProcessEvent eventAtTime stateBefore =
 
                 ( remainingSequence, effects ) =
                     case stepResult of
-                        Continue ->
+                        FinishStep ->
                             ( advancedSequence, [] )
 
-                        ApplyEffectAndContinue effect ->
+                        ApplyEffectAndFinishStep effect ->
                             ( advancedSequence, [ effect ] )
 
-                        Wait ->
+                        RepeatStep ->
                             ( remainingSequenceBefore, [] )
 
-                        JumpToSequence sequenceName ->
+                        JumpToNewSequence sequenceName ->
                             ( getProgramSequence sequenceName, [] )
 
                 effectsRequests =

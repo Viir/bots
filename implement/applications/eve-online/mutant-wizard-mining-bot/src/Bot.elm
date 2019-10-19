@@ -31,8 +31,8 @@ import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
     exposing
         ( InfoPanelRouteRouteElementMarker
         , MaybeVisible(..)
-        , MemoryMeasurementShipUi
         , OverviewWindowEntry
+        , ShipUi
         , ShipUiModule
         , UIElement
         , maybeNothingFromCanNotSeeIt
@@ -356,7 +356,7 @@ shipIsStopped =
 If there are multiple such entries, these are sorted by the length of their text, minus whitespaces in the beginning and the end.
 The one with the shortest text is returned.
 -}
-menuEntryContainingTextIgnoringCase : String -> SanderlingMemoryMeasurement.MemoryMeasurementMenu -> Maybe SanderlingMemoryMeasurement.MemoryMeasurementMenuEntry
+menuEntryContainingTextIgnoringCase : String -> SanderlingMemoryMeasurement.Menu -> Maybe SanderlingMemoryMeasurement.MenuEntry
 menuEntryContainingTextIgnoringCase textToSearch =
     .entries
         >> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
@@ -364,7 +364,7 @@ menuEntryContainingTextIgnoringCase textToSearch =
         >> List.head
 
 
-getLastMenu : MemoryMeasurement -> Maybe SanderlingMemoryMeasurement.MemoryMeasurementMenu
+getLastMenu : MemoryMeasurement -> Maybe SanderlingMemoryMeasurement.Menu
 getLastMenu =
     .menus >> List.reverse >> List.head
 
@@ -461,7 +461,7 @@ infoPanelRouteFirstMarkerFromMemoryMeasurement =
         >> Maybe.andThen List.head
 
 
-isShipWarpingOrJumping : MemoryMeasurementShipUi -> Bool
+isShipWarpingOrJumping : ShipUi -> Bool
 isShipWarpingOrJumping =
     .indication
         >> maybeNothingFromCanNotSeeIt

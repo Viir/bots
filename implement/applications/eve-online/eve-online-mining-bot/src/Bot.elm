@@ -124,7 +124,7 @@ decideNextActionWhenDocked memoryReading =
                                                 |> effectMouseClickAtLocation MouseButtonRight
                                         , followingSteps =
                                             [ ( "Click menu entry 'undock'."
-                                              , getLastMenu
+                                              , lastContextMenuOrSubmenu
                                                     >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Undock")
                                                     >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
                                               )
@@ -178,7 +178,7 @@ decideNextActionWhenInSpace memoryReading =
                                                         { firstAction = asteroidInOverview.uiElement |> clickOnUIElement MouseButtonRight
                                                         , followingSteps =
                                                             [ ( "Click menu entry 'lock'."
-                                                              , getLastMenu
+                                                              , lastContextMenuOrSubmenu
                                                                     >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
                                                                     >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
                                                               )
@@ -194,7 +194,7 @@ decideNextActionWhenInSpace memoryReading =
                                                         { firstAction = asteroidInOverview.uiElement |> clickOnUIElement MouseButtonRight
                                                         , followingSteps =
                                                             [ ( "Click menu entry 'approach'."
-                                                              , getLastMenu
+                                                              , lastContextMenuOrSubmenu
                                                                     >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
                                                                     >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
                                                               )
@@ -234,12 +234,12 @@ dockToStation memoryReading =
                     { firstAction = infoPanelCurrentSystem.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
                     , followingSteps =
                         [ ( "Click on menu entry representing the station bookmark."
-                          , getLastMenu
+                          , lastContextMenuOrSubmenu
                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase stationBookmarkName)
                                 >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
                           )
                         , ( "Click on menu entry 'dock'"
-                          , getLastMenu
+                          , lastContextMenuOrSubmenu
                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase "dock")
                                 >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
                           )
@@ -260,17 +260,17 @@ warpToMiningSite memoryReading =
                     { firstAction = infoPanelCurrentSystem.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
                     , followingSteps =
                         [ ( "Click on menu entry representing the mining site."
-                          , getLastMenu
+                          , lastContextMenuOrSubmenu
                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase miningSiteBookmarkName)
                                 >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
                           )
                         , ( "Click menu entry 'Warp to Location'"
-                          , getLastMenu
+                          , lastContextMenuOrSubmenu
                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Location")
                                 >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
                           )
                         , ( "Click menu entry 'Within 0 m'"
-                          , getLastMenu
+                          , lastContextMenuOrSubmenu
                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Within 0 m")
                                 >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
                           )
@@ -390,7 +390,7 @@ shipUiModules =
 If there are multiple such entries, these are sorted by the length of their text, minus whitespaces in the beginning and the end.
 The one with the shortest text is returned.
 -}
-menuEntryContainingTextIgnoringCase : String -> SanderlingMemoryMeasurement.Menu -> Maybe SanderlingMemoryMeasurement.MenuEntry
+menuEntryContainingTextIgnoringCase : String -> SanderlingMemoryMeasurement.ContextMenu -> Maybe SanderlingMemoryMeasurement.ContextMenuEntry
 menuEntryContainingTextIgnoringCase textToSearch =
     .entries
         >> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
@@ -398,9 +398,9 @@ menuEntryContainingTextIgnoringCase textToSearch =
         >> List.head
 
 
-getLastMenu : MemoryReading -> Maybe SanderlingMemoryMeasurement.Menu
-getLastMenu =
-    .menus >> List.reverse >> List.head
+lastContextMenuOrSubmenu : MemoryReading -> Maybe SanderlingMemoryMeasurement.ContextMenu
+lastContextMenuOrSubmenu =
+    .contextMenus >> List.reverse >> List.head
 
 
 firstAsteroidFromOverviewWindow : MemoryReading -> Maybe OverviewWindowEntry

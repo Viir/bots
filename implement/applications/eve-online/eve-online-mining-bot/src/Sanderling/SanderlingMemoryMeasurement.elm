@@ -1,10 +1,10 @@
 module Sanderling.SanderlingMemoryMeasurement exposing
-    ( InfoPanelRoute
+    ( ContextMenu
+    , ContextMenuEntry
+    , InfoPanelRoute
     , InfoPanelRouteRouteElementMarker
     , MaybeVisible(..)
     , MemoryMeasurementReducedWithNamedNodes
-    , Menu
-    , MenuEntry
     , OverviewWindowEntry
     , ShipManeuverType(..)
     , ShipUi
@@ -32,7 +32,7 @@ import Result.Extra
 
 
 type alias MemoryMeasurementReducedWithNamedNodes =
-    { menus : List Menu
+    { contextMenus : List ContextMenu
     , shipUi : MaybeVisible ShipUi
     , targets : List Target
     , infoPanelCurrentSystem : MaybeVisible InfoPanelCurrentSystem
@@ -42,13 +42,13 @@ type alias MemoryMeasurementReducedWithNamedNodes =
     }
 
 
-type alias Menu =
+type alias ContextMenu =
     { uiElement : UIElement
-    , entries : List MenuEntry
+    , entries : List ContextMenuEntry
     }
 
 
-type alias MenuEntry =
+type alias ContextMenuEntry =
     TextLabel
 
 
@@ -170,7 +170,7 @@ memoryMeasurementReducedWithNamedNodesJsonDecoder : Json.Decode.Decoder MemoryMe
 memoryMeasurementReducedWithNamedNodesJsonDecoder =
     Json.Decode.map7 MemoryMeasurementReducedWithNamedNodes
         -- TODO: Consider treating 'null' value like field is not present, to avoid breakage when server encodes fiels with 'null' values too.
-        (Json.Decode.Extra.optionalField "Menu" (Json.Decode.list menuDecoder) |> Json.Decode.map (Maybe.withDefault []))
+        (Json.Decode.Extra.optionalField "Menu" (Json.Decode.list contextMenuDecoder) |> Json.Decode.map (Maybe.withDefault []))
         (Json.Decode.Extra.optionalField "ShipUi" shipUiDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
         (Json.Decode.Extra.optionalField "Target" (Json.Decode.list targetDecoder) |> Json.Decode.map (Maybe.withDefault []))
         (Json.Decode.Extra.optionalField "InfoPanelCurrentSystem" infoPanelCurrentSystemDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
@@ -296,15 +296,15 @@ infoPanelRouteRouteElementMarkerDecoder =
         |> Json.Decode.map (\uiElement -> { uiElement = uiElement })
 
 
-menuDecoder : Json.Decode.Decoder Menu
-menuDecoder =
-    Json.Decode.map2 Menu
+contextMenuDecoder : Json.Decode.Decoder ContextMenu
+contextMenuDecoder =
+    Json.Decode.map2 ContextMenu
         uiElementDecoder
-        (Json.Decode.field "Entry" (Json.Decode.list menuEntryDecoder))
+        (Json.Decode.field "Entry" (Json.Decode.list contextMenuEntryDecoder))
 
 
-menuEntryDecoder : Json.Decode.Decoder MenuEntry
-menuEntryDecoder =
+contextMenuEntryDecoder : Json.Decode.Decoder ContextMenuEntry
+contextMenuEntryDecoder =
     textLabelDecoder
 
 

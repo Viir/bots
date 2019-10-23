@@ -157,68 +157,72 @@ decideNextActionWhenInSpace memoryReading =
 
         Just fillPercent ->
             if 99 <= fillPercent then
-                DescribeBranch "The ore hold is full enough. Dock to station."
-                    (dockToStation memoryReading)
+                DescribeBranch "The ore hold is full enough. Dock to station." (dockToStation memoryReading)
 
             else
                 DescribeBranch "The ore hold is not full enough yet. Get more ore."
                     (case memoryReading.targets |> List.head of
                         Nothing ->
-                            DescribeBranch "I see no locked target."
-                                (case memoryReading |> firstAsteroidFromOverviewWindow of
-                                    Nothing ->
-                                        DescribeBranch "I see no asteroid in the overview. Warp to mining site."
-                                            (warpToMiningSite memoryReading)
-
-                                    Just asteroidInOverview ->
-                                        if asteroidInOverview |> overviewWindowEntryIsInRange |> Maybe.withDefault False then
-                                            DescribeBranch "Asteroid is in range. Lock target."
-                                                (EndDecisionPath
-                                                    (Act
-                                                        { firstAction = asteroidInOverview.uiElement |> clickOnUIElement MouseButtonRight
-                                                        , followingSteps =
-                                                            [ ( "Click menu entry 'lock'."
-                                                              , lastContextMenuOrSubmenu
-                                                                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
-                                                                    >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
-                                                              )
-                                                            ]
-                                                        }
-                                                    )
-                                                )
-
-                                        else
-                                            DescribeBranch "Asteroid is not in range. Approach."
-                                                (EndDecisionPath
-                                                    (Act
-                                                        { firstAction = asteroidInOverview.uiElement |> clickOnUIElement MouseButtonRight
-                                                        , followingSteps =
-                                                            [ ( "Click menu entry 'approach'."
-                                                              , lastContextMenuOrSubmenu
-                                                                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
-                                                                    >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
-                                                              )
-                                                            ]
-                                                        }
-                                                    )
-                                                )
-                                )
+                            DescribeBranch "I see no locked target." (decideNextActionAcquireLockedTarget memoryReading)
 
                         Just _ ->
-                            case memoryReading |> shipUiMiningModules |> List.filter (.isActive >> Maybe.withDefault True >> not) |> List.head of
-                                -- TODO: Check previous memory reading too for module activity.
-                                Nothing ->
-                                    DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
+                            DescribeBranch "I see a locked target."
+                                (case memoryReading |> shipUiMiningModules |> List.filter (.isActive >> Maybe.withDefault True >> not) |> List.head of
+                                    -- TODO: Check previous memory reading too for module activity.
+                                    Nothing ->
+                                        DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
 
-                                Just inactiveModule ->
-                                    DescribeBranch "I see an inactive mining module. Click on it to activate."
-                                        (EndDecisionPath
-                                            (Act
-                                                { firstAction = inactiveModule.uiElement |> clickOnUIElement MouseButtonLeft
-                                                , followingSteps = []
-                                                }
+                                    Just inactiveModule ->
+                                        DescribeBranch "I see an inactive mining module. Click on it to activate."
+                                            (EndDecisionPath
+                                                (Act
+                                                    { firstAction = inactiveModule.uiElement |> clickOnUIElement MouseButtonLeft
+                                                    , followingSteps = []
+                                                    }
+                                                )
                                             )
-                                        )
+                                )
+                    )
+
+
+decideNextActionAcquireLockedTarget : MemoryReading -> DecisionPathNode
+decideNextActionAcquireLockedTarget memoryReading =
+    case memoryReading |> firstAsteroidFromOverviewWindow of
+        Nothing ->
+            DescribeBranch "I see no asteroid in the overview. Warp to mining site."
+                (warpToMiningSite memoryReading)
+
+        Just asteroidInOverview ->
+            if asteroidInOverview |> overviewWindowEntryIsInRange |> Maybe.withDefault False then
+                DescribeBranch "Asteroid is in range. Lock target."
+                    (EndDecisionPath
+                        (Act
+                            { firstAction = asteroidInOverview.uiElement |> clickOnUIElement MouseButtonRight
+                            , followingSteps =
+                                [ ( "Click menu entry 'lock'."
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
+                                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                  )
+                                ]
+                            }
+                        )
+                    )
+
+            else
+                DescribeBranch "Asteroid is not in range. Approach."
+                    (EndDecisionPath
+                        (Act
+                            { firstAction = asteroidInOverview.uiElement |> clickOnUIElement MouseButtonRight
+                            , followingSteps =
+                                [ ( "Click menu entry 'approach'."
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
+                                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                  )
+                                ]
+                            }
+                        )
                     )
 
 

@@ -336,8 +336,9 @@ simpleProcessEvent eventAtTime stateBefore =
                     effectsRequests ++ [ TakeMemoryMeasurementAfterDelayInMilliseconds generalStepDelayMilliseconds ]
 
                 statusMessage =
-                    decisionStagesDescriptions
-                        ++ [ currentStepDescription ]
+                    (decisionStagesDescriptions ++ [ currentStepDescription ])
+                        |> List.indexedMap
+                            (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
                         |> String.join "\n"
             in
             { newState = { stateBefore | programState = programState }

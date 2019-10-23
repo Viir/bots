@@ -47,14 +47,14 @@ type alias TreeLeafAct =
     }
 
 
-type TreeLeaf
-    = Repeat
+type EndDecisionPathStructure
+    = Wait
     | Act TreeLeafAct
 
 
 type DecisionPathNode
     = DescribeBranch String DecisionPathNode
-    | Leaf TreeLeaf
+    | EndDecisionPath EndDecisionPathStructure
 
 
 type alias SimpleState =
@@ -91,7 +91,7 @@ decideNextAction : MemoryReading -> DecisionPathNode
 decideNextAction memoryReading =
     if memoryReading |> isShipWarpingOrJumping then
         -- TODO: Look also on the previous memory reading.
-        DescribeBranch "I see we are warping. Wait until warp ends." (Leaf Repeat)
+        DescribeBranch "I see we are warping." (EndDecisionPath Wait)
 
     else if memoryReading.overviewWindow == CanNotSeeIt then
         DescribeBranch "I see no overview window, assume we are docked." (decideNextActionWhenDocked memoryReading)
@@ -105,7 +105,7 @@ decideNextActionWhenDocked : MemoryReading -> DecisionPathNode
 decideNextActionWhenDocked memoryReading =
     case memoryReading |> inventoryWindowItemHangar of
         Nothing ->
-            DescribeBranch "I do not see the item hangar in the inventory." (Leaf Repeat)
+            DescribeBranch "I do not see the item hangar in the inventory." (EndDecisionPath Wait)
 
         Just itemHangar ->
             case memoryReading |> inventoryWindowSelectedContainerFirstItem of
@@ -113,10 +113,10 @@ decideNextActionWhenDocked memoryReading =
                     DescribeBranch "I see no item in the ore hold. Time to undock."
                         (case memoryReading |> activeShipUiElementFromInventoryWindow of
                             Nothing ->
-                                Leaf Repeat
+                                EndDecisionPath Wait
 
                             Just activeShipEntry ->
-                                Leaf
+                                EndDecisionPath
                                     (Act
                                         { firstAction =
                                             activeShipEntry
@@ -135,7 +135,7 @@ decideNextActionWhenDocked memoryReading =
 
                 Just itemInInventory ->
                     DescribeBranch "I see at least one item in the ore hold. Move this to the item hangar."
-                        (Leaf
+                        (EndDecisionPath
                             (Act
                                 { firstAction =
                                     Sanderling.SimpleDragAndDrop
@@ -153,7 +153,7 @@ decideNextActionWhenInSpace : MemoryReading -> DecisionPathNode
 decideNextActionWhenInSpace memoryReading =
     case memoryReading |> oreHoldFillPercent of
         Nothing ->
-            DescribeBranch "I cannot see the ore hold capacity gauge." (Leaf Repeat)
+            DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
         Just fillPercent ->
             if 99 <= fillPercent then
@@ -173,7 +173,7 @@ decideNextActionWhenInSpace memoryReading =
                                     Just asteroidInOverview ->
                                         if asteroidInOverview |> overviewWindowEntryIsInRange |> Maybe.withDefault False then
                                             DescribeBranch "Asteroid is in range. Lock target."
-                                                (Leaf
+                                                (EndDecisionPath
                                                     (Act
                                                         { firstAction = asteroidInOverview.uiElement |> clickOnUIElement MouseButtonRight
                                                         , followingSteps =
@@ -189,7 +189,7 @@ decideNextActionWhenInSpace memoryReading =
 
                                         else
                                             DescribeBranch "Asteroid is not in range. Approach."
-                                                (Leaf
+                                                (EndDecisionPath
                                                     (Act
                                                         { firstAction = asteroidInOverview.uiElement |> clickOnUIElement MouseButtonRight
                                                         , followingSteps =
@@ -208,11 +208,11 @@ decideNextActionWhenInSpace memoryReading =
                             case memoryReading |> shipUiModules |> List.filter (.isActive >> Maybe.withDefault True >> not) |> List.head of
                                 -- TODO: Check previous memory reading too for module activity.
                                 Nothing ->
-                                    DescribeBranch "All mining laser modules are active. Wait." (Leaf Repeat)
+                                    DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
 
                                 Just inactiveModule ->
                                     DescribeBranch "I see an inactive mining module. Click on it to activate."
-                                        (Leaf
+                                        (EndDecisionPath
                                             (Act
                                                 { firstAction = inactiveModule.uiElement |> clickOnUIElement MouseButtonLeft
                                                 , followingSteps = []
@@ -226,10 +226,10 @@ dockToStation : MemoryReading -> DecisionPathNode
 dockToStation memoryReading =
     case memoryReading.infoPanelCurrentSystem of
         CanNotSeeIt ->
-            DescribeBranch "I cannot see the current system info panel." (Leaf Repeat)
+            DescribeBranch "I cannot see the current system info panel." (EndDecisionPath Wait)
 
         CanSee infoPanelCurrentSystem ->
-            Leaf
+            EndDecisionPath
                 (Act
                     { firstAction = infoPanelCurrentSystem.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
                     , followingSteps =
@@ -252,10 +252,10 @@ warpToMiningSite : MemoryReading -> DecisionPathNode
 warpToMiningSite memoryReading =
     case memoryReading.infoPanelCurrentSystem of
         CanNotSeeIt ->
-            DescribeBranch "I cannot see the current system info panel." (Leaf Repeat)
+            DescribeBranch "I cannot see the current system info panel." (EndDecisionPath Wait)
 
         CanSee infoPanelCurrentSystem ->
-            Leaf
+            EndDecisionPath
                 (Act
                     { firstAction = infoPanelCurrentSystem.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
                     , followingSteps =
@@ -304,8 +304,8 @@ simpleProcessEvent eventAtTime stateBefore =
 
                 ( currentStepDescription, effects, programState ) =
                     case decisionLeaf of
-                        Repeat ->
-                            ( "Repeat", [], Nothing )
+                        Wait ->
+                            ( "Wait", [], Nothing )
 
                         Act act ->
                             let
@@ -357,10 +357,10 @@ simpleProcessEvent eventAtTime stateBefore =
             }
 
 
-unpackToDecisionStagesDescriptionsAndLeaf : DecisionPathNode -> ( List String, TreeLeaf )
+unpackToDecisionStagesDescriptionsAndLeaf : DecisionPathNode -> ( List String, EndDecisionPathStructure )
 unpackToDecisionStagesDescriptionsAndLeaf node =
     case node of
-        Leaf leaf ->
+        EndDecisionPath leaf ->
             ( [], leaf )
 
         DescribeBranch branchDescription childNode ->

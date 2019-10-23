@@ -7,7 +7,7 @@
     + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
     + In the Inventory window select the 'List' view.
     + Setup inventory window so that 'Ore Hold' is always selected.
-    + In the ship UI, hide all modules which are no miners.
+    + In the ship UI, arrange the mining modules to appear all in the upper row of modules.
     + Enable the info panel 'System info'.
     + Create bookmark 'mining' for the mining site, for example an asteroid belt.
     + Create bookmark 'unload' for the station to store the mined ore in.
@@ -205,7 +205,7 @@ decideNextActionWhenInSpace memoryReading =
                                 )
 
                         Just _ ->
-                            case memoryReading |> shipUiModules |> List.filter (.isActive >> Maybe.withDefault True >> not) |> List.head of
+                            case memoryReading |> shipUiMiningModules |> List.filter (.isActive >> Maybe.withDefault True >> not) |> List.head of
                                 -- TODO: Check previous memory reading too for module activity.
                                 Nothing ->
                                     DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
@@ -381,9 +381,43 @@ activeShipUiElementFromInventoryWindow =
         >> Maybe.map .uiElement
 
 
+{-| Assume upper row of modules only contains mining modules.
+-}
+shipUiMiningModules : MemoryReading -> List ShipUiModule
+shipUiMiningModules =
+    shipUiModulesRows >> List.head >> Maybe.withDefault []
+
+
 shipUiModules : MemoryReading -> List ShipUiModule
 shipUiModules =
     .shipUi >> maybeNothingFromCanNotSeeIt >> Maybe.map .modules >> Maybe.withDefault []
+
+
+{-| Groups the modules into rows.
+-}
+shipUiModulesRows : MemoryReading -> List (List ShipUiModule)
+shipUiModulesRows =
+    let
+        putModulesInSameGroup moduleA moduleB =
+            let
+                distanceY =
+                    (moduleA.uiElement.region |> centerFromRegion).y
+                        - (moduleB.uiElement.region |> centerFromRegion).y
+            in
+            abs distanceY < 10
+    in
+    shipUiModules
+        >> List.sortBy (.uiElement >> .region >> .top)
+        >> List.foldl
+            (\shipModule groups ->
+                case groups |> List.filter (List.any (putModulesInSameGroup shipModule)) |> List.head of
+                    Nothing ->
+                        groups ++ [ [ shipModule ] ]
+
+                    Just matchingGroup ->
+                        (groups |> listRemove matchingGroup) ++ [ matchingGroup ++ [ shipModule ] ]
+            )
+            []
 
 
 {-| Returns the menu entry containing the string from the parameter `textToSearch`.
@@ -480,3 +514,8 @@ isShipWarpingOrJumping =
             )
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
+
+
+listRemove : element -> List element -> List element
+listRemove elementToRemove =
+    List.filter ((/=) elementToRemove)

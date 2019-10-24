@@ -8,14 +8,19 @@ In this repository, I share what I learn about making bots and automating activi
 
 + How to use bots: [./guide/how-to-use-bots.md](./guide/how-to-use-bots.md)
 
-+ [How to Automate Traveling in EVE Online - Using a Warp-To-0 Autopilot](./guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md)
++ How to automate traveling in EVE Online - Using a warp-to-0 autopilot: [./guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md](./guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md)
+
++ How to automate mining asteroids in EVE Online: [./guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md](./guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md)
 
 + How to develop EVE Online bots: [./guide/how-to-develop-eve-online-bots.md](./guide/how-to-develop-eve-online-bots.md)
 
 ## Bots
 
-+ EVE Online Warp to 0 Auto-Pilot: [./implement/applications/eve-online/eve-online-warp-to-0-autopilot](./implement/applications/eve-online/eve-online-warp-to-0-autopilot)
-+ Ready-to-use Tribal Wars 2 farmbot: https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406
++ EVE Online warp-to-0 autopilot: [./implement/applications/eve-online/eve-online-warp-to-0-autopilot](./implement/applications/eve-online/eve-online-warp-to-0-autopilot)
+
++ Tribal Wars 2 farmbot: https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406
+
++ More bots: [botcatalog.org](http://botcatalog.org)
 
 ## Exploration
 

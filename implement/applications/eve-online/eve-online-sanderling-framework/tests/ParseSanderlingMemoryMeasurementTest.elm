@@ -8,7 +8,7 @@ module ParseSanderlingMemoryMeasurementTest exposing (allTests)
 
 import Expect
 import Json.Decode
-import SanderlingMemoryMeasurement exposing (MaybeVisible(..))
+import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement exposing (MaybeVisible(..))
 import Test exposing (..)
 
 
@@ -128,7 +128,7 @@ ship_ui_module =
     "Id": 543723600
 }
 """
-                |> Json.Decode.decodeString SanderlingMemoryMeasurement.shipUIModuleDecoder
+                |> Json.Decode.decodeString SanderlingMemoryMeasurement.shipUiModuleDecoder
                 |> Expect.equal
                     (Ok
                         { uiElement = { id = 543723600, region = { left = 632, top = 539, right = 696, bottom = 603 } }
@@ -164,7 +164,7 @@ ship_ui_ship_is_stopped =
     "Id": 0
 }
 """
-                |> Json.Decode.decodeString SanderlingMemoryMeasurement.shipUIDecoder
+                |> Json.Decode.decodeString SanderlingMemoryMeasurement.shipUiDecoder
                 |> Result.map .shipIsStopped
                 |> Expect.equal (Ok (Just True))
 
@@ -196,7 +196,7 @@ ship_ui_ship_is_not_stopped =
     "Id": 0
 }
 """
-                |> Json.Decode.decodeString SanderlingMemoryMeasurement.shipUIDecoder
+                |> Json.Decode.decodeString SanderlingMemoryMeasurement.shipUiDecoder
                 |> Result.map .shipIsStopped
                 |> Expect.equal (Ok (Just False))
 
@@ -417,7 +417,7 @@ parseMemoryMeasurement_from_F8E7BF79FF_reduced_menu =
 }
 """
                 |> parseMemoryMeasurementFromJson
-                |> Result.map .menus
+                |> Result.map .contextMenus
                 |> Expect.equal
                     (Ok
                         [ { uiElement = { id = 792406864, region = { left = 934, top = 433, right = 1104, bottom = 552 } }

@@ -14,15 +14,15 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
-import Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
-import SanderlingMemoryMeasurement
+import Sanderling.Sanderling as Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
+import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
     exposing
         ( InfoPanelRouteRouteElementMarker
-        , MemoryMeasurementShipUi
-        , PossiblyInvisible(..)
+        , MaybeVisible(..)
+        , ShipUi
         , maybeNothingFromCanNotSeeIt
         )
-import SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
+import Sanderling.SimpleSanderling as SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
 
 
 type alias MemoryMeasurement =
@@ -115,14 +115,14 @@ botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMa
         openMenuAnnouncementAndEffect =
             ( [ EffectOnGameClientWindow
                     (effectMouseClickAtLocation
-                        (infoPanelRouteFirstMarker.uiElement.region |> centerFromRegion)
                         Sanderling.MouseButtonRight
+                        (infoPanelRouteFirstMarker.uiElement.region |> centerFromRegion)
                     )
               ]
             , "I click on the route marker in the info panel to open the menu."
             )
     in
-    case memoryMeasurement.menus |> List.head of
+    case memoryMeasurement.contextMenus |> List.head of
         Nothing ->
             openMenuAnnouncementAndEffect
 
@@ -146,7 +146,7 @@ botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMa
                     openMenuAnnouncementAndEffect
 
                 Just menuEntryToClick ->
-                    ( [ EffectOnGameClientWindow (effectMouseClickAtLocation (menuEntryToClick.uiElement.region |> centerFromRegion) MouseButtonLeft) ]
+                    ( [ EffectOnGameClientWindow (effectMouseClickAtLocation MouseButtonLeft (menuEntryToClick.uiElement.region |> centerFromRegion)) ]
                     , "I click on the menu entry '" ++ menuEntryToClick.text ++ "' to start the next ship maneuver."
                     )
 
@@ -160,7 +160,7 @@ infoPanelRouteFirstMarkerFromMemoryMeasurement =
         >> Maybe.andThen List.head
 
 
-isShipWarpingOrJumping : MemoryMeasurementShipUi -> Bool
+isShipWarpingOrJumping : ShipUi -> Bool
 isShipWarpingOrJumping =
     .indication
         >> maybeNothingFromCanNotSeeIt

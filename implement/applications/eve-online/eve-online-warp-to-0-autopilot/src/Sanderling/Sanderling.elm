@@ -1,4 +1,4 @@
-module Sanderling exposing
+module Sanderling.Sanderling exposing
     ( EffectOnWindowStructure(..)
     , GetMemoryMeasurementResultStructure(..)
     , Location2d
@@ -15,7 +15,7 @@ module Sanderling exposing
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
-import SanderlingMemoryMeasurement
+import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
 
 
 type RequestToVolatileHost
@@ -66,6 +66,7 @@ type
        | TextEntry String
     -}
     = SimpleMouseClickAtLocation MouseClickAtLocation
+    | SimpleDragAndDrop SimpleDragAndDropStructure
     | KeyDown VirtualKeyCode
     | KeyUp VirtualKeyCode
 
@@ -100,6 +101,13 @@ type alias WindowId =
 type alias MouseClickAtLocation =
     { location : Location2d
     , mouseButton : MouseButton
+    }
+
+
+type alias SimpleDragAndDropStructure =
+    { startLocation : Location2d
+    , mouseButton : MouseButton
+    , endLocation : Location2d
     }
 
 
@@ -157,6 +165,11 @@ encodeEffectOnWindowStructure effectOnWindow =
                 [ ( "simpleMouseClickAtLocation", mouseClickAtLocation |> encodeMouseClickAtLocation )
                 ]
 
+        SimpleDragAndDrop dragAndDrop ->
+            Json.Encode.object
+                [ ( "simpleDragAndDrop", dragAndDrop |> encodeSimpleDragAndDrop )
+                ]
+
         KeyDown virtualKeyCode ->
             Json.Encode.object
                 [ ( "keyDown", virtualKeyCode |> encodeKey )
@@ -178,6 +191,15 @@ encodeMouseClickAtLocation mouseClickAtLocation_ =
     Json.Encode.object
         [ ( "location", mouseClickAtLocation_.location |> encodeLocation2d )
         , ( "mouseButton", mouseClickAtLocation_.mouseButton |> encodeMouseButton )
+        ]
+
+
+encodeSimpleDragAndDrop : SimpleDragAndDropStructure -> Json.Encode.Value
+encodeSimpleDragAndDrop simpleDragAndDrop =
+    Json.Encode.object
+        [ ( "startLocation", simpleDragAndDrop.startLocation |> encodeLocation2d )
+        , ( "mouseButton", simpleDragAndDrop.mouseButton |> encodeMouseButton )
+        , ( "endLocation", simpleDragAndDrop.endLocation |> encodeLocation2d )
         ]
 
 
@@ -239,8 +261,8 @@ centerFromRegion region =
     { x = (region.left + region.right) // 2, y = (region.top + region.bottom) // 2 }
 
 
-effectMouseClickAtLocation : Location2d -> MouseButton -> EffectOnWindowStructure
-effectMouseClickAtLocation location mouseButton =
+effectMouseClickAtLocation : MouseButton -> Location2d -> EffectOnWindowStructure
+effectMouseClickAtLocation mouseButton location =
     SimpleMouseClickAtLocation
         { location = location, mouseButton = mouseButton }
 

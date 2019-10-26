@@ -1,14 +1,14 @@
-module SanderlingMemoryMeasurement exposing
-    ( InfoPanelRouteRouteElementMarker
+module Sanderling.SanderlingMemoryMeasurement exposing
+    ( ContextMenu
+    , ContextMenuEntry
+    , InfoPanelRoute
+    , InfoPanelRouteRouteElementMarker
     , MaybeVisible(..)
-    , MemoryMeasurementInfoPanelRoute
-    , MemoryMeasurementMenu
-    , MemoryMeasurementMenuEntry
     , MemoryMeasurementReducedWithNamedNodes
-    , MemoryMeasurementShipUi
-    , MemoryMeasurementShipUiIndication
     , OverviewWindowEntry
     , ShipManeuverType(..)
+    , ShipUi
+    , ShipUiIndication
     , ShipUiModule
     , UIElement
     , UIElementRegion
@@ -19,8 +19,8 @@ module SanderlingMemoryMeasurement exposing
     , parseMemoryMeasurementReducedWithNamedNodesFromJson
     , parseOverviewEntryDistanceInMetersFromText
     , parseOverviewWindowListViewEntryDecoder
-    , shipUIDecoder
-    , shipUIModuleDecoder
+    , shipUiDecoder
+    , shipUiModuleDecoder
     , targetDecoder
     )
 
@@ -32,23 +32,23 @@ import Result.Extra
 
 
 type alias MemoryMeasurementReducedWithNamedNodes =
-    { menus : List MemoryMeasurementMenu
-    , shipUi : MaybeVisible MemoryMeasurementShipUi
+    { contextMenus : List ContextMenu
+    , shipUi : MaybeVisible ShipUi
     , targets : List Target
     , infoPanelCurrentSystem : MaybeVisible InfoPanelCurrentSystem
-    , infoPanelRoute : MaybeVisible MemoryMeasurementInfoPanelRoute
+    , infoPanelRoute : MaybeVisible InfoPanelRoute
     , overviewWindow : MaybeVisible OverviewWindow
     , inventoryWindow : MaybeVisible InventoryWindow
     }
 
 
-type alias MemoryMeasurementMenu =
+type alias ContextMenu =
     { uiElement : UIElement
-    , entries : List MemoryMeasurementMenuEntry
+    , entries : List ContextMenuEntry
     }
 
 
-type alias MemoryMeasurementMenuEntry =
+type alias ContextMenuEntry =
     TextLabel
 
 
@@ -56,7 +56,7 @@ type alias InfoPanelCurrentSystem =
     { listSurroundingsButton : UIElement }
 
 
-type alias MemoryMeasurementInfoPanelRoute =
+type alias InfoPanelRoute =
     { routeElementMarker : List InfoPanelRouteRouteElementMarker }
 
 
@@ -64,8 +64,8 @@ type alias InfoPanelRouteRouteElementMarker =
     { uiElement : UIElement }
 
 
-type alias MemoryMeasurementShipUi =
-    { indication : MaybeVisible MemoryMeasurementShipUiIndication
+type alias ShipUi =
+    { indication : MaybeVisible ShipUiIndication
     , modules : List ShipUiModule
     , shipIsStopped : Maybe Bool
     }
@@ -77,7 +77,7 @@ type alias ShipUiModule =
     }
 
 
-type alias MemoryMeasurementShipUiIndication =
+type alias ShipUiIndication =
     { maneuverType : MaybeVisible ShipManeuverType }
 
 
@@ -170,8 +170,8 @@ memoryMeasurementReducedWithNamedNodesJsonDecoder : Json.Decode.Decoder MemoryMe
 memoryMeasurementReducedWithNamedNodesJsonDecoder =
     Json.Decode.map7 MemoryMeasurementReducedWithNamedNodes
         -- TODO: Consider treating 'null' value like field is not present, to avoid breakage when server encodes fiels with 'null' values too.
-        (Json.Decode.Extra.optionalField "Menu" (Json.Decode.list menuDecoder) |> Json.Decode.map (Maybe.withDefault []))
-        (Json.Decode.Extra.optionalField "ShipUi" shipUIDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
+        (Json.Decode.Extra.optionalField "Menu" (Json.Decode.list contextMenuDecoder) |> Json.Decode.map (Maybe.withDefault []))
+        (Json.Decode.Extra.optionalField "ShipUi" shipUiDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
         (Json.Decode.Extra.optionalField "Target" (Json.Decode.list targetDecoder) |> Json.Decode.map (Maybe.withDefault []))
         (Json.Decode.Extra.optionalField "InfoPanelCurrentSystem" infoPanelCurrentSystemDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
         (Json.Decode.Extra.optionalField "InfoPanelRoute" infoPanelRouteDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
@@ -179,34 +179,34 @@ memoryMeasurementReducedWithNamedNodesJsonDecoder =
         (Json.Decode.Extra.optionalField "WindowInventory" (Json.Decode.list parseInventoryWindowDecoder) |> Json.Decode.map (Maybe.andThen List.head >> canNotSeeItFromMaybeNothing))
 
 
-shipUIDecoder : Json.Decode.Decoder MemoryMeasurementShipUi
-shipUIDecoder =
-    Json.Decode.map3 MemoryMeasurementShipUi
+shipUiDecoder : Json.Decode.Decoder ShipUi
+shipUiDecoder =
+    Json.Decode.map3 ShipUi
         (Json.Decode.maybe
-            (Json.Decode.field "Indication" shipUIIndicationDecoder)
+            (Json.Decode.field "Indication" shipUiIndicationDecoder)
             |> Json.Decode.map canNotSeeItFromMaybeNothing
         )
         (Json.Decode.maybe
-            (Json.Decode.field "Module" (Json.Decode.list shipUIModuleDecoder))
+            (Json.Decode.field "Module" (Json.Decode.list shipUiModuleDecoder))
             |> Json.Decode.map (Maybe.withDefault [])
         )
-        shipUIIsStoppedDecoder
+        shipUiIsStoppedDecoder
 
 
-shipUIModuleDecoder : Json.Decode.Decoder ShipUiModule
-shipUIModuleDecoder =
+shipUiModuleDecoder : Json.Decode.Decoder ShipUiModule
+shipUiModuleDecoder =
     Json.Decode.map2 ShipUiModule
         uiElementDecoder
         (Json.Decode.maybe (Json.Decode.field "RampActive" Json.Decode.bool))
 
 
-shipUIIndicationDecoder : Json.Decode.Decoder MemoryMeasurementShipUiIndication
-shipUIIndicationDecoder =
-    Json.Decode.value |> Json.Decode.map shipUIIndicationFromJsonValue
+shipUiIndicationDecoder : Json.Decode.Decoder ShipUiIndication
+shipUiIndicationDecoder =
+    Json.Decode.value |> Json.Decode.map shipUiIndicationFromJsonValue
 
 
-shipUIIndicationFromJsonValue : Json.Encode.Value -> MemoryMeasurementShipUiIndication
-shipUIIndicationFromJsonValue jsonValue =
+shipUiIndicationFromJsonValue : Json.Encode.Value -> ShipUiIndication
+shipUiIndicationFromJsonValue jsonValue =
     let
         jsonString =
             Json.Encode.encode 0 jsonValue
@@ -231,8 +231,8 @@ shipUIIndicationFromJsonValue jsonValue =
     { maneuverType = maneuverType }
 
 
-shipUIIsStoppedDecoder : Json.Decode.Decoder (Maybe Bool)
-shipUIIsStoppedDecoder =
+shipUiIsStoppedDecoder : Json.Decode.Decoder (Maybe Bool)
+shipUiIsStoppedDecoder =
     case "\\d" |> Regex.fromString of
         Nothing ->
             Json.Decode.fail "Regex code error"
@@ -281,9 +281,9 @@ infoPanelCurrentSystemDecoder =
         (Json.Decode.field "ListSurroundingsButton" uiElementDecoder)
 
 
-infoPanelRouteDecoder : Json.Decode.Decoder MemoryMeasurementInfoPanelRoute
+infoPanelRouteDecoder : Json.Decode.Decoder InfoPanelRoute
 infoPanelRouteDecoder =
-    Json.Decode.map MemoryMeasurementInfoPanelRoute
+    Json.Decode.map InfoPanelRoute
         (Json.Decode.maybe
             (Json.Decode.field "RouteElementMarker" (Json.Decode.list infoPanelRouteRouteElementMarkerDecoder))
             |> Json.Decode.map (Maybe.withDefault [])
@@ -296,15 +296,15 @@ infoPanelRouteRouteElementMarkerDecoder =
         |> Json.Decode.map (\uiElement -> { uiElement = uiElement })
 
 
-menuDecoder : Json.Decode.Decoder MemoryMeasurementMenu
-menuDecoder =
-    Json.Decode.map2 MemoryMeasurementMenu
+contextMenuDecoder : Json.Decode.Decoder ContextMenu
+contextMenuDecoder =
+    Json.Decode.map2 ContextMenu
         uiElementDecoder
-        (Json.Decode.field "Entry" (Json.Decode.list menuEntryDecoder))
+        (Json.Decode.field "Entry" (Json.Decode.list contextMenuEntryDecoder))
 
 
-menuEntryDecoder : Json.Decode.Decoder MemoryMeasurementMenuEntry
-menuEntryDecoder =
+contextMenuEntryDecoder : Json.Decode.Decoder ContextMenuEntry
+contextMenuEntryDecoder =
     textLabelDecoder
 
 

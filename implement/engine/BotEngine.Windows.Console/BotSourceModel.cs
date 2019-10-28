@@ -34,6 +34,42 @@ namespace BotEngine.Windows.Console.BotSourceModel
                 }
             }
         }
+
+        static public IImmutableList<(string name, LiteralNodeObject obj)> FilterBlobsInTreeContent(
+            IImmutableList<(string name, LiteralNodeObject obj)> treeContent,
+            System.Func<string[], byte[], bool> keepBlob)
+        {
+            return
+                treeContent.Select(treeNode =>
+                {
+                    LiteralNodeObject getFilteredObj()
+                    {
+                        var treeNodePrefix = new string[] { treeNode.name };
+
+                        if (treeNode.obj.BlobContent != null)
+                        {
+                            if (keepBlob(treeNodePrefix, treeNode.obj.BlobContent))
+                                return treeNode.obj;
+
+                            return null;
+                        }
+
+                        var childFilteredTreeContent =
+                            FilterBlobsInTreeContent(
+                                treeNode.obj.TreeContent,
+                                (childNodeNames, blobContent) => keepBlob(treeNodePrefix.Concat(childNodeNames).ToArray(), blobContent));
+
+                        if (0 < childFilteredTreeContent.Count)
+                            return new LiteralNodeObject { TreeContent = childFilteredTreeContent };
+
+                        return null;
+                    }
+
+                    return (treeNode.name, obj: getFilteredObj());
+                })
+                .Where(filteredNode => filteredNode.obj != null)
+                .ToImmutableList();
+        }
     }
 
     public class BotPropertiesFromCode
@@ -41,16 +77,21 @@ namespace BotEngine.Windows.Console.BotSourceModel
         public string[] tags;
 
         public string descriptionText;
+
+        public string frameworkId;
     }
 
     static public class BotCode
     {
+        static public bool BlobPathIsBotModule(IEnumerable<string> path) =>
+            path.Select(pathNode => pathNode.ToLowerInvariant()).SequenceEqual(new[] { "src", "bot.elm" });
+
         static public BotPropertiesFromCode ReadPropertiesFromBotCode(LiteralNodeObject botCode)
         {
             var mainBotFile =
                 botCode
                 .EnumerateBlobsTransitive()
-                .FirstOrDefault(blob => blob.path.Select(pathNode => pathNode.ToLowerInvariant()).SequenceEqual(new[] { "src", "bot.elm" }));
+                .FirstOrDefault(blob => BlobPathIsBotModule(blob.path));
 
             if (mainBotFile.blobContent == null)
                 return null;
@@ -105,10 +146,42 @@ namespace BotEngine.Windows.Console.BotSourceModel
                 }
             }
 
+            string readFrameworkId()
+            {
+                try
+                {
+                    var frameworkCodeNode =
+                        new LiteralNodeObject
+                        {
+                            TreeContent = LiteralNodeObject.FilterBlobsInTreeContent(botCode.TreeContent,
+                                (blobPath, blobContent) => !BlobPathIsBotModule(blobPath)),
+                        };
+
+                    var frameworkCodeFilesFromSource =
+                        frameworkCodeNode
+                        ?.EnumerateBlobsTransitive()
+                        .Select(blobPathAndContent => (path: string.Join("/", blobPathAndContent.path), blobPathAndContent.blobContent))
+                        .ToImmutableList();
+
+                    var frameworkCodeZip = Kalmit.ZipArchive.ZipArchiveFromEntries(
+                        frameworkCodeFilesFromSource,
+                        System.IO.Compression.CompressionLevel.NoCompression);
+
+                    return
+                        Kalmit.CommonConversion.StringBase16FromByteArray(
+                            Kalmit.CommonConversion.HashSHA256(frameworkCodeZip));
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
             return new BotPropertiesFromCode
             {
                 tags = readTags(),
                 descriptionText = readDescriptionText(),
+                frameworkId = readFrameworkId(),
             };
         }
     }

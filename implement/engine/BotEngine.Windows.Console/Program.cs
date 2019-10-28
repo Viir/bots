@@ -10,7 +10,7 @@ namespace BotEngine.Windows.Console
 {
     class BotEngine
     {
-        static public string AppVersionId => "2019-10-10";
+        static public string AppVersionId => "2019-10-28";
 
         static string uiTimeFormatToString => "yyyy-MM-ddTHH-mm-ss";
 
@@ -295,7 +295,8 @@ namespace BotEngine.Windows.Console
                             },
                             botConfiguration,
                             sessionId,
-                            botSourceArgument.argumentValue);
+                            botSourceArgument.argumentValue,
+                            botCodeNodeFromSource);
                     }
                     catch (Exception e)
                     {

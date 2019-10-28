@@ -24,7 +24,8 @@ namespace BotEngine.Windows.Console
             Action<LogEntry.ProcessBotEventReport> logProcessBotEventReport,
             string botConfiguration,
             string sessionId,
-            string botSource)
+            string botSource,
+            BotSourceModel.LiteralNodeObject botCode)
         {
             var botId = Kalmit.CommonConversion.StringBase16FromByteArray(Kalmit.CommonConversion.HashSHA256(kalmitElmApp));
 
@@ -177,11 +178,11 @@ namespace BotEngine.Windows.Console
                 var responseString = await response.Content.ReadAsStringAsync();
             }
 
-            void fireAndForgetReportToReactor(RequestToReactorUseBotStruct report)
+            System.Threading.Tasks.Task fireAndForgetReportToReactor(RequestToReactorUseBotStruct report)
             {
                 lastRequestToReactorTimeInSeconds = (long)botSessionClock.Elapsed.TotalSeconds;
 
-                System.Threading.Tasks.Task.Run(() =>
+                return System.Threading.Tasks.Task.Run(() =>
                 {
                     try
                     {
@@ -191,10 +192,18 @@ namespace BotEngine.Windows.Console
                 });
             }
 
+            var botSourceIsPublic = BotSourceIsPublic(botSource);
+            var botPropertiesFromCode = BotSourceModel.BotCode.ReadPropertiesFromBotCode(botCode);
+
             fireAndForgetReportToReactor(new RequestToReactorUseBotStruct
             {
                 StartSession = new RequestToReactorUseBotStruct.StartSessionStruct
-                { botId = botId, sessionId = sessionId, botSource = BotSourceIsPublic(botSource) ? botSource : null }
+                {
+                    botId = botId,
+                    sessionId = sessionId,
+                    botSource = botSourceIsPublic ? botSource : null,
+                    botPropertiesFromCode = botSourceIsPublic ? botPropertiesFromCode : null,
+                }
             });
 
             var queuedBotEvents = new ConcurrentQueue<InterfaceToBot.BotEvent>();
@@ -322,7 +331,7 @@ namespace BotEngine.Windows.Console
 
                 var lastRequestToReactorAgeInSeconds = (long)botSessionClock.Elapsed.TotalSeconds - lastRequestToReactorTimeInSeconds;
 
-                if (30 <= lastRequestToReactorAgeInSeconds)
+                if (10 <= lastRequestToReactorAgeInSeconds)
                     fireAndForgetReportToReactor(new RequestToReactorUseBotStruct
                     {
                         ContinueSession = new RequestToReactorUseBotStruct.ContinueSessionStruct
@@ -341,6 +350,13 @@ namespace BotEngine.Windows.Console
                 {
                     logEntry("Bot has finished.");
                     botSessionTaskCancellationToken.Cancel();
+
+                    fireAndForgetReportToReactor(new RequestToReactorUseBotStruct
+                    {
+                        FinishSession = new RequestToReactorUseBotStruct.ContinueSessionStruct
+                        { sessionId = sessionId, statusDescriptionText = lastBotStep?.statusDescriptionText }
+                    }).Wait(TimeSpan.FromSeconds(3));
+
                     return 0;
                 }
 
@@ -441,6 +457,8 @@ namespace BotEngine.Windows.Console
 
             public ContinueSessionStruct ContinueSession;
 
+            public ContinueSessionStruct FinishSession;
+
             public class StartSessionStruct
             {
                 public string sessionId;
@@ -448,6 +466,8 @@ namespace BotEngine.Windows.Console
                 public string botId;
 
                 public string botSource;
+
+                public BotSourceModel.BotPropertiesFromCode botPropertiesFromCode;
             }
 
             public class ContinueSessionStruct

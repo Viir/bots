@@ -1,15 +1,22 @@
 # How to Automate Mining Asteroids in EVE Online
 
-This guide walks you through the steps to set up an asteroid mining bot in EVE Online.
+For this guide, I picked a mining bot optimal for beginners, which means easy to set up and use. After several iterations in development, this bot has matured to be robust regarding interruptions and changes in the game environment.
 
-In this guide, I use a particular mining bot that is known to be easy to set up for beginners. You might find more powerfull or flexible mining bots on the bot catalog, but this one here is optimal for beginners.
+Maybe you have seen some bots or 'macros' which follow a fixed sequence of actions to perform an in-game task. The bot we will use here does not just follow a rigid series of steps but frequently looks at the current state of the game to decide the next action. This also means it can detect if it failed to perform a particular subtask, (for example, warping to the mining site) and try again. So it also does not matter if your ship is docked or in space when you start the bot.
+
+Before going into the setup, a quick overview of this bot and what it does:
+
++ Mines from asteroids.
++ When the ore hold is full, warps and docks to a station to unload the ore into the item hangar.
++ Uses bookmarks to warp to the mining site and warp to the station.
++ At least so far, does not use drones or any defence against rats. (Maybe we will add this later.)
 
 If you haven't yet, follow the [guide on using a warp-to-0 autopilot bot](./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md), because it covers the details of setting up and using an EVE Online bot:
 https://github.com/Viir/bots/blob/master/guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md
 
 When you have successfully used the warp-to-0 autopilot bot, you can continue here to upgrade to the mining bot.
 
-Before starting this particular mining bot, set up the EVE Online client as follows:
+Despite being quite robust, this mining bot is far from being as smart as a human. For example, its perception is more limited than ours, so we need to set up the game to make sure that the bot can see everything it needs to. Following is the list of setup instructions for the EVE Online client:
 
 + Disable `Run clients with 64 bit` in the EVE Online client settings, as explained in the travel bot guide.
 + Set the UI language to English.
@@ -25,10 +32,17 @@ Before starting this particular mining bot, set up the EVE Online client as foll
 +  Create bookmark 'mining' for the mining site, for example, an asteroid belt.
 + Create bookmark 'unload' for the station to store the mined ore in.
 
-To start the mining bot, you use almost the same command as for the travel bot. The only difference is that you supply this value for the `bot-source` parameter:
+To start the mining bot, you use almost the same command as shown in the guide on the warp-to-0 autopilot bot. The only difference is that to start the mining bot, you supply this value for the `bot-source` parameter:
 
-```text
-https://github.com/Viir/bots/tree/cccdd729f42c752740b88b4e41e26161b9f8c434/implement/applications/eve-online/eve-online-mining-bot
-```
+[https://github.com/Viir/bots/tree/cccdd729f42c752740b88b4e41e26161b9f8c434/implement/applications/eve-online/eve-online-mining-bot](https://github.com/Viir/bots/tree/cccdd729f42c752740b88b4e41e26161b9f8c434/implement/applications/eve-online/eve-online-mining-bot)
 
 In case the bot does not work as expected, the first place to look is in the status message of the bot. Depending on what the bot is seeing and doing at the moment, it can display many different status messages.
+For example, if you disable the solar system info panel in the EVE Online client, the bot displays the following message:
+
+> I cannot see the current system info panel.
+
+As soon as you enable this info panel again, the bot will also continue working.
+
+The bot repeats the cycle of mining and unloading until you tell it to pause (`CTRL`+`ALT` keys) or stop it.
+
+In case I forgot to add something here or you have any questions, don't hesitate to ask on the [BotEngine forum](https://forum.botengine.org/).

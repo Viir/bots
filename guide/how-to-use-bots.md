@@ -22,7 +22,7 @@ Extract this Zip-Archive. This will give you a file named `BotEngine.exe`. To st
 C:\path\to\the\BotEngine.exe  start-bot  --bot-source="https://github.com/Viir/bots/tree/74f8d3783de8cb78d2896d835b96dd728c9f3cad/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
-You can use such a command, for example, in the Windows command line (cmd.exe).
+You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
 
 The engine then loads the bot from the specified location and runs it until you stop it or the bot stops itself.
 

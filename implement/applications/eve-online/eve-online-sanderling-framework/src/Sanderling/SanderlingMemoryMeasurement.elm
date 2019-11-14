@@ -417,15 +417,12 @@ parseInventoryWindowCapacityGaugeDecoder =
 
 parseInventoryCapacityGaugeText : String -> Result String InventoryWindowCapacityGauge
 parseInventoryCapacityGaugeText capacityText =
-    {- Observed Example:
-       "1,211.9/5,000.0 m³"
-    -}
     let
         numbersParseResults =
             capacityText
                 |> String.replace "m³" ""
                 |> String.split "/"
-                |> List.map (String.trim >> parseNumberTruncatingAfterDecimalSeparator)
+                |> List.map (String.trim >> parseNumberTruncatingAfterOptionalDecimalSeparator)
     in
     case numbersParseResults |> Result.Extra.combine of
         Err parseError ->
@@ -440,20 +437,21 @@ parseInventoryCapacityGaugeText capacityText =
                     Err ("Unexpected number of components in capacityText '" ++ capacityText ++ "'")
 
 
-parseNumberTruncatingAfterDecimalSeparator : String -> Result String Int
-parseNumberTruncatingAfterDecimalSeparator numberDisplayText =
-    case "^([\\d\\,]+)" |> Regex.fromString of
+parseNumberTruncatingAfterOptionalDecimalSeparator : String -> Result String Int
+parseNumberTruncatingAfterOptionalDecimalSeparator numberDisplayText =
+    case "^([\\d\\,\\s]+?)(?=(|[,\\.]\\d)$)" |> Regex.fromString of
         Nothing ->
             Err "Regex code error"
 
         Just regex ->
-            case numberDisplayText |> Regex.find regex |> List.head of
+            case numberDisplayText |> String.trim |> Regex.find regex |> List.head of
                 Nothing ->
                     Err ("Text did not match expected number format: '" ++ numberDisplayText ++ "'")
 
                 Just match ->
                     match.match
                         |> String.replace "," ""
+                        |> String.replace " " ""
                         |> String.toInt
                         |> Result.fromMaybe ("Failed to parse to integer: " ++ match.match)
 

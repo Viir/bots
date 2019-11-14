@@ -727,6 +727,9 @@ inventory_capacity_gauge_text : Test
 inventory_capacity_gauge_text =
     [ ( "1,211.9/5,000.0 m³", Ok { used = 1211, maximum = 5000 } )
     , ( " 123.4 / 5,000.0 m³ ", Ok { used = 123, maximum = 5000 } )
+
+    -- Example from https://forum.botengine.org/t/standard-mining-bot-problems/2715/14?u=viir
+    , ( "4 999,8/5 000,0 m³", Ok { used = 4999, maximum = 5000 } )
     ]
         |> List.map
             (\( text, expectedResult ) ->

@@ -4,6 +4,7 @@
    Make sure you are undocked before starting the bot because the bot does not undock.
 
    bot-catalog-tags:eve-online,auto-pilot,travel
+   authors-forum-usernames:viir
 -}
 
 

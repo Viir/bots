@@ -76,6 +76,8 @@ namespace BotEngine.Windows.Console.BotSourceModel
     {
         public string[] tags;
 
+        public string[] authorsForumUsernames;
+
         public string descriptionText;
 
         public string frameworkId;
@@ -117,7 +119,36 @@ namespace BotEngine.Windows.Console.BotSourceModel
 
                     var aggregatedTags = catalogTagsLineMatch.Groups[1].Value;
 
-                    return aggregatedTags.Split(new[] { ',' });
+                    return aggregatedTags.Split(new[] { ',' }).Select(tag => tag.Trim()).ToArray();
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            string[] readAuthorsForumUsernames()
+            {
+                try
+                {
+                    var mainBotFileSourceLines =
+                        System.Text.Encoding.UTF8.GetString(mainBotFile.blobContent)
+                        .Split(new char[] { (char)10, (char)13 });
+
+                    var authorsForumUsernamesLineMatch =
+                        mainBotFileSourceLines
+                        .Select(line => System.Text.RegularExpressions.Regex.Match(
+                            line,
+                            "\\s*authors-forum-usernames:([\\w\\d\\-,]+)",
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                        .FirstOrDefault(match => match.Success);
+
+                    if (authorsForumUsernamesLineMatch == null)
+                        return null;
+
+                    var aggregatedAuthorsForumUsernames = authorsForumUsernamesLineMatch.Groups[1].Value;
+
+                    return aggregatedAuthorsForumUsernames.Split(new[] { ',' }).Select(name => name.Trim()).ToArray();
                 }
                 catch
                 {
@@ -180,6 +211,7 @@ namespace BotEngine.Windows.Console.BotSourceModel
             return new BotPropertiesFromCode
             {
                 tags = readTags(),
+                authorsForumUsernames = readAuthorsForumUsernames(),
                 descriptionText = readDescriptionText(),
                 frameworkId = readFrameworkId(),
             };

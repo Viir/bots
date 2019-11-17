@@ -13,6 +13,7 @@
     + Create bookmark 'unload' for the station to store the mined ore in.
 
    bot-catalog-tags:eve-online,mining
+   authors-forum-usernames:viir
 -}
 
 

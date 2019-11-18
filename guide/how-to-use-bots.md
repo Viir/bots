@@ -14,7 +14,7 @@ There also exists monitoring software which does not send any input to the game,
 ## Starting a Bot
 
 Download the BotEngine console from the following URL:
-[https://botengine.blob.core.windows.net/blob-library/by-name/2019-09-26.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-09-26.BotEngine.Console.zip)
+[https://botengine.blob.core.windows.net/blob-library/by-name/2019-11-17.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-11-17.BotEngine.Console.zip)
 
 Extract this Zip-Archive. This will give you a file named `BotEngine.exe`. To start a bot, call this program with a command like the following:
 

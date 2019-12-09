@@ -5,7 +5,7 @@ When playing EVE Online, you might spend significant time traveling between sola
 Fortunately, this process can be automated using a bot. The bot we are using here follows the route set in the in-game autopilot and uses the context menu to initiate warp and dock commands. Using the following steps, you can set up your warp-to-0 auto-pilot bot, to travel fast and safe in EVE Online.
 
 + Download the BotEngine console from the following URL:
-[https://botengine.blob.core.windows.net/blob-library/by-name/2019-11-17.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-11-17.BotEngine.Console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
+[https://botengine.blob.core.windows.net/blob-library/by-name/2019-12-09.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-12-09.BotEngine.Console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
 + The bot we will use in this guide only works when the EVE Online client is configured to not run in 64-bit mode. Make sure that the setting `Run clients with 64 bit` is *disabled* for the EVE Online client. You can check this in the settings dialog shown in the screenshot below:
 
 ![Settings Dialog in EVE Online](./image/2019-10-08.eve-online-launcher-settings-dialog.png)
@@ -13,7 +13,7 @@ Fortunately, this process can be automated using a bot. The bot we are using her
 + To start the autopilot bot, run the `BotEngine.exe` program with the following command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  start-bot  --bot-source="https://github.com/Viir/bots/tree/a4c8cb687ffb1fa0638e0e77761ff6854565bad8/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+C:\path\to\the\BotEngine.exe  run-bot  --bot-source="https://github.com/Viir/bots/tree/a4c8cb687ffb1fa0638e0e77761ff6854565bad8/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
 
@@ -34,4 +34,4 @@ As soon as we undock, the bot will start to send mouse clicks to the game client
 
 Alright, I think that is all there is to know about the basic autopilot bot. If you have questions about this bot or are searching for other bots, don't hesitate to ask on the [BotEngine forum](https://forum.botengine.org/).
 
-(This guide is based on the more general guide at [/guide/how-to-use-bots.md](./../how-to-use-bots.md))
+(This guide is based on the more general guide at [/guide/how-to-run-a-bot.md](./../how-to-run-a-bot.md))

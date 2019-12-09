@@ -1,7 +1,7 @@
 # How to Develop EVE Online Bots
 
 This is a guide for beginners on how to develop EVE Online bots. You don't need prior experience in programming or software development, as I explain the process and tools from the ground up.
-There is a separate guide on how to run EVE Online bots, read that first, as this guide assumes you already know how to load, start, configure, and operate a bot. You can find that guide at [./how-to-use-eve-online-bots.md](./how-to-use-eve-online-bots.md).
+There is a separate guide on how to run EVE Online bots, read that first, as this guide assumes you already know how to load, start, configure, and operate a bot. You can find that guide at [./how-to-run-a-bot.md](./how-to-run-a-bot.md).
 
 This guide goes beyond just running and configuring bots. The tools I show here give you the power to automate anything in EVE Online. I will also summarize what I learned during bot development projects like the EVE Online mission running and anomaly ratting bots, or the Tribal Wars 2 farmbot. The goal is to present the methods and approaches which make the development process efficient and a pleasant experience.
 
@@ -30,7 +30,7 @@ This event/response cycle repeats for every event happening during the operation
 
 Some examples of events:
 
-+ The user sets the bot configuration (as explained in the [guide on how to use bots](./how-to-use-eve-online-bots.md)).
++ The user sets the bot configuration (as explained in the [guide on how to run a bot](./how-to-run-a-bot.md#configuring-a-bot)).
 + The engine completes executing one of the tasks it received from the bot in an earlier cycle. The event contains the result of the execution of this task.
 
 Examples of tasks the bot can give to the engine:

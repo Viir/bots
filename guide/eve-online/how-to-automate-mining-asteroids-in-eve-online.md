@@ -34,7 +34,7 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 To start the mining bot, you use almost the same command as shown in the guide on the warp-to-0 autopilot bot. The only difference is that to start the mining bot, you supply this value for the `bot-source` parameter:
 
-[https://github.com/Viir/bots/tree/a4c8cb687ffb1fa0638e0e77761ff6854565bad8/implement/applications/eve-online/eve-online-mining-bot](https://github.com/Viir/bots/tree/a4c8cb687ffb1fa0638e0e77761ff6854565bad8/implement/applications/eve-online/eve-online-mining-bot)
+[https://github.com/Viir/bots/tree/cba8167a7b02120315b1adb2d7c697f29b95c09b/implement/applications/eve-online/eve-online-mining-bot](https://github.com/Viir/bots/tree/cba8167a7b02120315b1adb2d7c697f29b95c09b/implement/applications/eve-online/eve-online-mining-bot)
 
 In case the bot does not work as expected, the first place to look is in the status message of the bot. Depending on what the bot is seeing and doing at the moment, it can display many different status messages.
 For example, if you disable the solar system info panel in the EVE Online client, the bot displays the following message:

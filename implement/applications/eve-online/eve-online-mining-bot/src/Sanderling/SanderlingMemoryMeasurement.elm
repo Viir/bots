@@ -13,6 +13,7 @@ module Sanderling.SanderlingMemoryMeasurement exposing
     , UIElement
     , UIElementRegion
     , maybeNothingFromCanNotSeeIt
+    , maybeVisibleAndThen
     , parseInventoryCapacityGaugeText
     , parseInventoryDecoder
     , parseInventoryWindowCapacityGaugeDecoder
@@ -53,7 +54,14 @@ type alias ContextMenuEntry =
 
 
 type alias InfoPanelCurrentSystem =
-    { listSurroundingsButton : UIElement }
+    { listSurroundingsButton : UIElement
+    , expandedContent : MaybeVisible InfoPanelCurrentSystemExpandedContent
+    }
+
+
+type alias InfoPanelCurrentSystemExpandedContent =
+    { currentStationName : Maybe String
+    }
 
 
 type alias InfoPanelRoute =
@@ -277,8 +285,40 @@ targetDecoder =
 
 infoPanelCurrentSystemDecoder : Json.Decode.Decoder InfoPanelCurrentSystem
 infoPanelCurrentSystemDecoder =
-    Json.Decode.map InfoPanelCurrentSystem
+    Json.Decode.map2 InfoPanelCurrentSystem
         (Json.Decode.field "ListSurroundingsButton" uiElementDecoder)
+        (fieldMapNotPresentOrNullToMaybe "ExpandedContent" infoPanelCurrentSystemExpandedContentDecoder |> Json.Decode.map canNotSeeItFromMaybeNothing)
+
+
+infoPanelCurrentSystemExpandedContentDecoder : Json.Decode.Decoder InfoPanelCurrentSystemExpandedContent
+infoPanelCurrentSystemExpandedContentDecoder =
+    fieldMapNotPresentOrNullToMaybe "LabelText" (Json.Decode.list textLabelDecoder)
+        |> Json.Decode.map (Maybe.withDefault [])
+        |> Json.Decode.map (List.filterMap (.text >> parseCurrentSystemFromInfoPanelCurrentSystemLabelText) >> List.head)
+        |> Json.Decode.map InfoPanelCurrentSystemExpandedContent
+
+
+parseCurrentSystemFromInfoPanelCurrentSystemLabelText : String -> Maybe String
+parseCurrentSystemFromInfoPanelCurrentSystemLabelText labelText =
+    if labelText |> String.toLower |> String.contains "alt='current station'" |> not then
+        Nothing
+
+    else
+        {- Note: 2019-12-10 with 'JavaScriptEngineSwitcher.ChakraCore.Native.win-x64', the following regex pattern led to failing 'Regex.fromString': '(?<=\\>).+?(?=\\<)'
+              (The same pattern worked in chrome)
+           case "(?<=\\>).+?(?=\\<)" |> Regex.fromString of
+               Nothing ->
+                   Just "Regex code error"
+
+               Just regex ->
+                   labelText |> Regex.find regex |> List.map .match |> List.head
+        -}
+        labelText
+            |> String.split ">"
+            |> List.drop 1
+            |> List.head
+            |> Maybe.andThen (String.split "<" >> List.head)
+            |> Maybe.map String.trim
 
 
 infoPanelRouteDecoder : Json.Decode.Decoder InfoPanelRoute
@@ -503,3 +543,19 @@ maybeNothingFromCanNotSeeIt maybeVisible =
 
         CanSee feature ->
             Just feature
+
+
+maybeVisibleAndThen : (a -> MaybeVisible b) -> MaybeVisible a -> MaybeVisible b
+maybeVisibleAndThen map maybeVisible =
+    case maybeVisible of
+        CanNotSeeIt ->
+            CanNotSeeIt
+
+        CanSee visible ->
+            map visible
+
+
+fieldMapNotPresentOrNullToMaybe : String -> Json.Decode.Decoder a -> Json.Decode.Decoder (Maybe a)
+fieldMapNotPresentOrNullToMaybe fieldName decoderIfPresentAndNotNull =
+    Json.Decode.Extra.optionalField fieldName (Json.Decode.nullable decoderIfPresentAndNotNull)
+        |> Json.Decode.map (Maybe.andThen identity)

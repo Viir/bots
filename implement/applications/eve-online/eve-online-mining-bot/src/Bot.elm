@@ -1,5 +1,8 @@
 {- This is an asteroid mining bot for EVE Online
 
+    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
+    It remembers the station in which it was last docked, and docks again at the same station.
+
     Setup instructions for the EVE Online client:
     + Disable `Run clients with 64 bit` in the settings, because this bot only works with the 32-bit version of the EVE Online client.
     + Set the UI language to English.
@@ -9,11 +12,9 @@
     + Setup inventory window so that 'Ore Hold' is always selected.
     + In the ship UI, arrange the mining modules to appear all in the upper row of modules.
     + Enable the info panel 'System info'.
-    + Create bookmark 'mining' for the mining site, for example an asteroid belt.
-    + Create bookmark 'unload' for the station to store the mined ore in.
 
-   bot-catalog-tags:eve-online,mining
-   authors-forum-usernames:viir
+    bot-catalog-tags:eve-online,mining
+    authors-forum-usernames:viir
 -}
 
 
@@ -27,13 +28,12 @@ import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
 import Sanderling.Sanderling as Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
 import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
     exposing
-        ( InfoPanelRouteRouteElementMarker
-        , MaybeVisible(..)
+        ( MaybeVisible(..)
         , OverviewWindowEntry
-        , ShipUi
         , ShipUiModule
         , UIElement
         , maybeNothingFromCanNotSeeIt
+        , maybeVisibleAndThen
         )
 import Sanderling.SimpleSanderling as SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
 
@@ -64,21 +64,17 @@ type alias SimpleState =
             { decision : DecisionPathNode
             , lastStepIndexInSequence : Int
             }
+    , botMemory : BotMemory
+    }
+
+
+type alias BotMemory =
+    { lastDockedStationNameFromInfoPanel : Maybe String
     }
 
 
 type alias State =
     SimpleSanderling.StateIncludingSetup SimpleState
-
-
-miningSiteBookmarkName : String
-miningSiteBookmarkName =
-    "mining"
-
-
-stationBookmarkName : String
-stationBookmarkName =
-    "unload"
 
 
 generalStepDelayMilliseconds : Int
@@ -88,8 +84,8 @@ generalStepDelayMilliseconds =
 
 {-| A first outline of the decision tree for a mining bot is coming from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
 -}
-decideNextAction : MemoryReading -> DecisionPathNode
-decideNextAction memoryReading =
+decideNextAction : BotMemory -> MemoryReading -> DecisionPathNode
+decideNextAction botMemory memoryReading =
     if memoryReading |> isShipWarpingOrJumping then
         -- TODO: Look also on the previous memory reading.
         DescribeBranch "I see we are warping." (EndDecisionPath Wait)
@@ -99,7 +95,7 @@ decideNextAction memoryReading =
 
     else
         -- TODO: For robustness, also look also on the previous memory reading. Only continue when both indicate is undocked.
-        DescribeBranch "I see we are in space." (decideNextActionWhenInSpace memoryReading)
+        DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory memoryReading)
 
 
 decideNextActionWhenDocked : MemoryReading -> DecisionPathNode
@@ -150,15 +146,22 @@ decideNextActionWhenDocked memoryReading =
                         )
 
 
-decideNextActionWhenInSpace : MemoryReading -> DecisionPathNode
-decideNextActionWhenInSpace memoryReading =
+decideNextActionWhenInSpace : BotMemory -> MemoryReading -> DecisionPathNode
+decideNextActionWhenInSpace botMemory memoryReading =
     case memoryReading |> oreHoldFillPercent of
         Nothing ->
             DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
         Just fillPercent ->
             if 99 <= fillPercent then
-                DescribeBranch "The ore hold is full enough. Dock to station." (dockToStation memoryReading)
+                DescribeBranch "The ore hold is full enough. Dock to station."
+                    (case botMemory.lastDockedStationNameFromInfoPanel of
+                        Nothing ->
+                            DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
+
+                        Just lastDockedStationNameFromInfoPanel ->
+                            dockToStation { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel } memoryReading
+                    )
 
             else
                 DescribeBranch "The ore hold is not full enough yet. Get more ore."
@@ -227,8 +230,8 @@ decideNextActionAcquireLockedTarget memoryReading =
                     )
 
 
-dockToStation : MemoryReading -> DecisionPathNode
-dockToStation memoryReading =
+dockToStation : { stationNameFromInfoPanel : String } -> MemoryReading -> DecisionPathNode
+dockToStation { stationNameFromInfoPanel } memoryReading =
     case memoryReading.infoPanelCurrentSystem of
         CanNotSeeIt ->
             DescribeBranch "I cannot see the current system info panel." (EndDecisionPath Wait)
@@ -238,9 +241,19 @@ dockToStation memoryReading =
                 (Act
                     { firstAction = infoPanelCurrentSystem.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
                     , followingSteps =
-                        [ ( "Click on menu entry representing the station bookmark."
+                        [ ( "Click on menu entry 'stations'."
                           , lastContextMenuOrSubmenu
-                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase stationBookmarkName)
+                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "stations")
+                                >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                          )
+                        , ( "Click on menu entry representing the station '" ++ stationNameFromInfoPanel ++ "'."
+                          , lastContextMenuOrSubmenu
+                                >> Maybe.andThen
+                                    (.entries
+                                        >> List.filter
+                                            (menuEntryMatchesStationNameFromCurrentSystemInfoPanel stationNameFromInfoPanel)
+                                        >> List.head
+                                    )
                                 >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
                           )
                         , ( "Click on menu entry 'dock'"
@@ -264,14 +277,20 @@ warpToMiningSite memoryReading =
                 (Act
                     { firstAction = infoPanelCurrentSystem.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
                     , followingSteps =
-                        [ ( "Click on menu entry representing the mining site."
+                        [ ( "Click on menu entry 'asteroid belts'."
                           , lastContextMenuOrSubmenu
-                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase miningSiteBookmarkName)
+                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "asteroid belts")
                                 >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
                           )
-                        , ( "Click menu entry 'Warp to Location'"
+                        , ( "Click on one of the menu entries."
                           , lastContextMenuOrSubmenu
-                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Location")
+                                >> Maybe.andThen
+                                    (.entries >> listElementAtWrappedIndex (getEntropyIntFromMemoryReading memoryReading))
+                                >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                          )
+                        , ( "Click menu entry 'Warp to Within'"
+                          , lastContextMenuOrSubmenu
+                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Within")
                                 >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
                           )
                         , ( "Click menu entry 'Within 0 m'"
@@ -287,7 +306,9 @@ warpToMiningSite memoryReading =
 initState : State
 initState =
     SimpleSanderling.initState
-        { programState = Nothing }
+        { programState = Nothing
+        , botMemory = { lastDockedStationNameFromInfoPanel = Nothing }
+        }
 
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
@@ -300,9 +321,12 @@ simpleProcessEvent eventAtTime stateBefore =
     case eventAtTime.event of
         SimpleSanderling.MemoryMeasurementCompleted memoryReading ->
             let
+                botMemory =
+                    stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory memoryReading
+
                 programStateBefore =
                     stateBefore.programState
-                        |> Maybe.withDefault { decision = decideNextAction memoryReading, lastStepIndexInSequence = 0 }
+                        |> Maybe.withDefault { decision = decideNextAction botMemory memoryReading, lastStepIndexInSequence = 0 }
 
                 ( decisionStagesDescriptions, decisionLeaf ) =
                     unpackToDecisionStagesDescriptionsAndLeaf programStateBefore.decision
@@ -346,7 +370,7 @@ simpleProcessEvent eventAtTime stateBefore =
                             (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
                         |> String.join "\n"
             in
-            { newState = { stateBefore | programState = programState }
+            { newState = { stateBefore | botMemory = botMemory, programState = programState }
             , requests = requests
             , statusMessage = statusMessage
             }
@@ -361,6 +385,22 @@ simpleProcessEvent eventAtTime stateBefore =
                 else
                     "I have a problem with this configuration: I am not programmed to support configuration at all. Maybe the bot catalog (https://to.botengine.org/bot-catalog) has a bot which better matches your use case?"
             }
+
+
+integrateCurrentReadingsIntoBotMemory : MemoryReading -> BotMemory -> BotMemory
+integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
+    let
+        currentStationNameFromInfoPanel =
+            currentReading.infoPanelCurrentSystem
+                |> maybeVisibleAndThen .expandedContent
+                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.andThen .currentStationName
+    in
+    { lastDockedStationNameFromInfoPanel =
+        [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
+            |> List.filterMap identity
+            |> List.head
+    }
 
 
 unpackToDecisionStagesDescriptionsAndLeaf : DecisionPathNode -> ( List String, EndDecisionPathStructure )
@@ -436,6 +476,14 @@ menuEntryContainingTextIgnoringCase textToSearch =
         >> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
         >> List.sortBy (.text >> String.trim >> String.length)
         >> List.head
+
+
+{-| The names are at least sometimes displayed different: 'Moon 7' can become 'M7'
+-}
+menuEntryMatchesStationNameFromCurrentSystemInfoPanel : String -> SanderlingMemoryMeasurement.ContextMenuEntry -> Bool
+menuEntryMatchesStationNameFromCurrentSystemInfoPanel stationNameFromInfoPanel menuEntry =
+    (stationNameFromInfoPanel |> String.toLower |> String.replace "moon " "m")
+        == (menuEntry.text |> String.trim |> String.toLower)
 
 
 lastContextMenuOrSubmenu : MemoryReading -> Maybe SanderlingMemoryMeasurement.ContextMenu
@@ -520,6 +568,41 @@ isShipWarpingOrJumping =
             )
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
+
+
+getEntropyIntFromMemoryReading : MemoryReading -> Int
+getEntropyIntFromMemoryReading memoryReading =
+    let
+        entropyFromUiElement uiElement =
+            [ uiElement.id, uiElement.region.left, uiElement.region.right, uiElement.region.top, uiElement.region.bottom ]
+                |> List.sum
+
+        entropyFromOverviewEntry overviewEntry =
+            [ overviewEntry.uiElement |> entropyFromUiElement, overviewEntry.distanceInMeters |> Result.withDefault 0 ]
+                |> List.sum
+
+        fromMenus =
+            memoryReading.contextMenus
+                |> List.concatMap (.entries >> List.map .uiElement)
+                |> List.map entropyFromUiElement
+
+        fromOverview =
+            memoryReading.overviewWindow
+                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.map .entries
+                |> Maybe.withDefault []
+                |> List.map entropyFromOverviewEntry
+    in
+    (fromMenus ++ fromOverview) |> List.sum
+
+
+listElementAtWrappedIndex : Int -> List element -> Maybe element
+listElementAtWrappedIndex indexToWrap list =
+    if (list |> List.length) < 1 then
+        Nothing
+
+    else
+        list |> List.drop (indexToWrap |> modBy (list |> List.length)) |> List.head
 
 
 listRemove : element -> List element -> List element

@@ -538,22 +538,12 @@ runScriptResultDisplayString result =
             "Success: " ++ (successResult |> Maybe.withDefault "null")
 
 
-stringFromVolatileHostState : VolatileHostState -> String
-stringFromVolatileHostState volatileHostState =
-    case volatileHostState of
-        Initial ->
-            "Initial"
-
-        SanderlingSetupCompleted ->
-            "SanderlingSetupCompleted"
-
-
 statusReportFromState : StateIncludingSetup s -> String
 statusReportFromState state =
     let
         lastScriptRunResult =
-            "Last script run result is: "
-                ++ (state.setup.lastRunScriptResult |> Maybe.map (runScriptResultDisplayString >> stringEllipsis 100 "....") |> Maybe.withDefault "Nothing")
+            "Last Sanderling script run result is: "
+                ++ (state.setup.lastRunScriptResult |> Maybe.map (runScriptResultDisplayString >> stringEllipsis 140 "....") |> Maybe.withDefault "Nothing")
 
         botRequestQueueLength =
             state.botState.requestQueue.queuedRequests |> List.length

@@ -76,6 +76,15 @@ type alias ShipUi =
     { indication : MaybeVisible ShipUiIndication
     , modules : List ShipUiModule
     , shipIsStopped : Maybe Bool
+    , hitpointsAndEnergyMilli : HitpointsAndEnergy
+    }
+
+
+type alias HitpointsAndEnergy =
+    { struct : Int
+    , armor : Int
+    , shield : Int
+    , capacitor : Int
     }
 
 
@@ -189,7 +198,7 @@ memoryMeasurementReducedWithNamedNodesJsonDecoder =
 
 shipUiDecoder : Json.Decode.Decoder ShipUi
 shipUiDecoder =
-    Json.Decode.map3 ShipUi
+    Json.Decode.map4 ShipUi
         (Json.Decode.maybe
             (Json.Decode.field "Indication" shipUiIndicationDecoder)
             |> Json.Decode.map canNotSeeItFromMaybeNothing
@@ -199,6 +208,14 @@ shipUiDecoder =
             |> Json.Decode.map (Maybe.withDefault [])
         )
         shipUiIsStoppedDecoder
+        (Json.Decode.field "HitpointsAndEnergy"
+            (Json.Decode.map4 HitpointsAndEnergy
+                (Json.Decode.field "Struct" Json.Decode.int)
+                (Json.Decode.field "Armor" Json.Decode.int)
+                (Json.Decode.field "Shield" Json.Decode.int)
+                (Json.Decode.field "Capacitor" Json.Decode.int)
+            )
+        )
 
 
 shipUiModuleDecoder : Json.Decode.Decoder ShipUiModule

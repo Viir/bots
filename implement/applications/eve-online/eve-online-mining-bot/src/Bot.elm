@@ -1,20 +1,20 @@
 {- This is an asteroid mining bot for EVE Online
 
-    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
-    It remembers the station in which it was last docked, and docks again at the same station.
+   The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
+   It remembers the station in which it was last docked, and docks again at the same station.
 
-    Setup instructions for the EVE Online client:
-    + Disable `Run clients with 64 bit` in the settings, because this bot only works with the 32-bit version of the EVE Online client.
-    + Set the UI language to English.
-    + In Overview window, make asteroids visible.
-    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
-    + In the Inventory window select the 'List' view.
-    + Setup inventory window so that 'Ore Hold' is always selected.
-    + In the ship UI, arrange the mining modules to appear all in the upper row of modules.
-    + Enable the info panel 'System info'.
+   Setup instructions for the EVE Online client:
+   + Disable `Run clients with 64 bit` in the settings, because this bot only works with the 32-bit version of the EVE Online client.
+   + Set the UI language to English.
+   + In Overview window, make asteroids visible.
+   + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
+   + In the Inventory window select the 'List' view.
+   + Setup inventory window so that 'Ore Hold' is always selected.
+   + In the ship UI, arrange the mining modules to appear all in the upper row of modules.
+   + Enable the info panel 'System info'.
 
-    bot-catalog-tags:eve-online,mining
-    authors-forum-usernames:viir
+   bot-catalog-tags:eve-online,mining
+   authors-forum-usernames:viir
 -}
 
 
@@ -364,10 +364,14 @@ simpleProcessEvent eventAtTime stateBefore =
                 requests =
                     effectsRequests ++ [ TakeMemoryMeasurementAfterDelayInMilliseconds generalStepDelayMilliseconds ]
 
-                statusMessage =
+                describeActivity =
                     (decisionStagesDescriptions ++ [ currentStepDescription ])
                         |> List.indexedMap
                             (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
+                        |> String.join "\n"
+
+                statusMessage =
+                    [ memoryReading |> describeMemoryReadingForMonitoring, describeActivity ]
                         |> String.join "\n"
             in
             { newState = { stateBefore | botMemory = botMemory, programState = programState }
@@ -385,6 +389,28 @@ simpleProcessEvent eventAtTime stateBefore =
                 else
                     "I have a problem with this configuration: I am not programmed to support configuration at all. Maybe the bot catalog (https://to.botengine.org/bot-catalog) has a bot which better matches your use case?"
             }
+
+
+describeMemoryReadingForMonitoring : MemoryReading -> String
+describeMemoryReadingForMonitoring memoryReading =
+    let
+        describeShip =
+            case memoryReading.shipUi of
+                CanSee shipUi ->
+                    "I am in space, shield HP at " ++ ((shipUi.hitpointsAndEnergyMilli.shield // 10) |> String.fromInt) ++ "%."
+
+                CanNotSeeIt ->
+                    case memoryReading.infoPanelCurrentSystem |> maybeVisibleAndThen .expandedContent |> maybeNothingFromCanNotSeeIt |> Maybe.andThen .currentStationName of
+                        Just stationName ->
+                            "I am docked at '" ++ stationName ++ "'."
+
+                        Nothing ->
+                            "I cannot see if I am docked or in space. Please set up game client first."
+
+        describeOreHold =
+            "Ore hold filled " ++ (memoryReading |> oreHoldFillPercent |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown") ++ "%."
+    in
+    [ describeShip, describeOreHold ] |> String.join " "
 
 
 integrateCurrentReadingsIntoBotMemory : MemoryReading -> BotMemory -> BotMemory

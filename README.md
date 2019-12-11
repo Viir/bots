@@ -18,6 +18,8 @@ In this repository, I share what I learn about making bots and automating activi
 
 + EVE Online warp-to-0 autopilot: [./implement/applications/eve-online/eve-online-warp-to-0-autopilot](./implement/applications/eve-online/eve-online-warp-to-0-autopilot)
 
++ EVE Online mining bot: [./implement/applications/eve-online/eve-online-mining-bot](./implement/applications/eve-online/eve-online-mining-bot)
+
 + Tribal Wars 2 farmbot: https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/1406
 
 + More bots: [botcatalog.org](http://botcatalog.org)

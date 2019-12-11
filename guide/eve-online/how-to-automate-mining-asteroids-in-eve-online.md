@@ -6,9 +6,9 @@ Maybe you have seen some bots or 'macros' which follow a fixed sequence of actio
 
 Before going into the setup, a quick overview of this bot and what it does:
 
++ When the ore hold is not full, warps to an asteroid belt.
 + Mines from asteroids.
-+ When the ore hold is full, warps and docks to a station to unload the ore into the item hangar.
-+ Uses bookmarks to warp to the mining site and warp to the station.
++ When the ore hold is full, warps and docks to a station to unload the ore into the item hangar. (It remembers the station in which it was last docked, and docks again at the same station.)
 + At least so far, does not use drones or any defence against rats. (Maybe we will add this later.)
 
 If you haven't yet, follow the [guide on using a warp-to-0 autopilot bot](./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md), because it covers the details of setting up and using an EVE Online bot:
@@ -24,17 +24,15 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
 + Activate a ship with an ore hold.
 + In the Inventory window, select the 'List' view.
-+ Enable the info panel 'System info'. The bot needs this to find your bookmarks or asteroid belts and stations.
++ Enable the info panel 'System info'. The bot uses this to warp to asteroid belts and stations.
 + Arrange windows not to occlude ship modules or info panels.
 + In the ship UI, disable 'Display Passive Modules' and disable 'Display Empty Slots'.
 + Set up the inventory window so that the 'Ore Hold' is always selected.
 + In the ship UI, arrange the mining modules to appear all in the upper row of modules. The bot activates all modules in the top row.
-+  Create bookmark 'mining' for the mining site, for example, an asteroid belt.
-+ Create bookmark 'unload' for the station to store the mined ore in.
 
 To start the mining bot, you use almost the same command as shown in the guide on the warp-to-0 autopilot bot. The only difference is that to start the mining bot, you supply this value for the `bot-source` parameter:
 
-[https://github.com/Viir/bots/tree/cba8167a7b02120315b1adb2d7c697f29b95c09b/implement/applications/eve-online/eve-online-mining-bot](https://github.com/Viir/bots/tree/cba8167a7b02120315b1adb2d7c697f29b95c09b/implement/applications/eve-online/eve-online-mining-bot)
+[https://github.com/Viir/bots/tree/b1d764229b9145e7d308642004cc1b010d45bc67/implement/applications/eve-online/eve-online-mining-bot](https://github.com/Viir/bots/tree/b1d764229b9145e7d308642004cc1b010d45bc67/implement/applications/eve-online/eve-online-mining-bot)
 
 In case the bot does not work as expected, the first place to look is in the status message of the bot. Depending on what the bot is seeing and doing at the moment, it can display many different status messages.
 For example, if you disable the solar system info panel in the EVE Online client, the bot displays the following message:

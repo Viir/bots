@@ -134,7 +134,7 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                     )
 
         statusMessagePrefix =
-            (state |> statusReportFromState) ++ "\nCurrent activity: "
+            (state |> statusReportFromState) ++ "\n\nCurrent activity: "
 
         response =
             case responseBeforeAddingStatusMessage of
@@ -553,7 +553,7 @@ statusReportFromState state =
     let
         lastScriptRunResult =
             "Last script run result is: "
-                ++ (state.setup.lastRunScriptResult |> Maybe.map (runScriptResultDisplayString >> stringEllipsis 500 "....") |> Maybe.withDefault "Nothing")
+                ++ (state.setup.lastRunScriptResult |> Maybe.map (runScriptResultDisplayString >> stringEllipsis 100 "....") |> Maybe.withDefault "Nothing")
 
         botRequestQueueLength =
             state.botState.requestQueue.queuedRequests |> List.length

@@ -14,6 +14,8 @@ In this repository, I share what I learn about making bots and automating activi
 
 + How to develop EVE Online bots: [./guide/how-to-develop-eve-online-bots.md](./guide/how-to-develop-eve-online-bots.md)
 
++ How to collect samples for 64-bit memory reading development: [./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md](./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md)
+
 ## Bots
 
 + EVE Online warp-to-0 autopilot: [./implement/applications/eve-online/eve-online-warp-to-0-autopilot](./implement/applications/eve-online/eve-online-warp-to-0-autopilot)

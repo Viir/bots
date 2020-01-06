@@ -22,6 +22,7 @@ import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
 import Dict
 import Json.Decode
 import Limbara.SimpleLimbara as SimpleLimbara exposing (BotEventAtTime, BotRequest(..))
+import Set
 
 
 type alias SimpleState =
@@ -32,6 +33,8 @@ type alias SimpleState =
             }
     , gameRootInformation : Maybe TribalWars2RootInformation
     , ownVillagesDetails : Dict.Dict Int VillageDetails
+    , searchVillageByCoordinatesResults : Dict.Dict ( Int, Int ) VillageByCoordinatesResult
+    , parseResponseError : Maybe Json.Decode.Error
     }
 
 
@@ -42,6 +45,7 @@ type alias State =
 type ResponseFromBrowser
     = RootInformation RootInformationStructure
     | ReadSelectedCharacterVillageDetailsResponse ReadSelectedCharacterVillageDetailsResponseStructure
+    | ReadVillageByCoordinatesResponse ReadVillageByCoordinatesResponseStructure
 
 
 type alias RootInformationStructure =
@@ -62,9 +66,35 @@ type alias ReadSelectedCharacterVillageDetailsResponseStructure =
     }
 
 
+type alias ReadVillageByCoordinatesResponseStructure =
+    { villageCoordinates : VillageCoordinates
+    }
+
+
 type alias VillageDetails =
     { locationX : Int
     , locationY : Int
+    }
+
+
+type VillageByCoordinatesResult
+    = NoVillageThere
+    | VillageThere VillageByCoordinatesDetails
+
+
+type alias VillageByCoordinatesDetails =
+    { affiliation : VillageByCoordinatesAffiliation
+    }
+
+
+type VillageByCoordinatesAffiliation
+    = AffiliationBarbarian
+    | AffiliationOther
+
+
+type alias VillageCoordinates =
+    { x : Int
+    , y : Int
     }
 
 
@@ -74,6 +104,8 @@ initState =
         { lastRunJavascriptResult = Nothing
         , gameRootInformation = Nothing
         , ownVillagesDetails = Dict.empty
+        , searchVillageByCoordinatesResults = Dict.empty
+        , parseResponseError = Nothing
         }
 
 
@@ -110,23 +142,49 @@ simpleProcessEvent eventAtTime stateBefore =
                                 |> Json.Decode.decodeString decodeResponseFromBrowser
                     in
                     case parseResult of
-                        Err _ ->
-                            stateAfterIntegrateResponse
+                        Err error ->
+                            { stateAfterIntegrateResponse | parseResponseError = Just error }
 
-                        Ok (RootInformation rootInformation) ->
-                            case rootInformation.tribalWars2 of
-                                Nothing ->
-                                    stateAfterIntegrateResponse
+                        Ok parseSuccess ->
+                            let
+                                stateAfterParseSuccess =
+                                    { stateAfterIntegrateResponse | parseResponseError = Nothing }
+                            in
+                            case parseSuccess of
+                                RootInformation rootInformation ->
+                                    case rootInformation.tribalWars2 of
+                                        Nothing ->
+                                            stateAfterIntegrateResponse
 
-                                Just gameRootInformation ->
-                                    { stateAfterIntegrateResponse | gameRootInformation = Just gameRootInformation }
+                                        Just gameRootInformation ->
+                                            { stateAfterParseSuccess | gameRootInformation = Just gameRootInformation }
 
-                        Ok (ReadSelectedCharacterVillageDetailsResponse readVillageDetailsResponse) ->
-                            { stateAfterIntegrateResponse
-                                | ownVillagesDetails =
-                                    stateAfterIntegrateResponse.ownVillagesDetails
-                                        |> Dict.insert readVillageDetailsResponse.villageId readVillageDetailsResponse.villageDetails
-                            }
+                                ReadSelectedCharacterVillageDetailsResponse readVillageDetailsResponse ->
+                                    { stateAfterParseSuccess
+                                        | ownVillagesDetails =
+                                            stateAfterParseSuccess.ownVillagesDetails
+                                                |> Dict.insert readVillageDetailsResponse.villageId readVillageDetailsResponse.villageDetails
+                                    }
+
+                                ReadVillageByCoordinatesResponse readVillageByCoordinatesResponse ->
+                                    case runJavascriptInCurrentPageResponse.callbackReturnValueAsString of
+                                        Nothing ->
+                                            -- This case indicates the timeout while waiting for the result from the callback.
+                                            stateAfterParseSuccess
+
+                                        Just callbackReturnValueAsString ->
+                                            case callbackReturnValueAsString |> Json.Decode.decodeString decodeVillageByCoordinatesResult of
+                                                Err error ->
+                                                    { stateAfterParseSuccess | parseResponseError = Just error }
+
+                                                Ok villageByCoordinates ->
+                                                    { stateAfterParseSuccess
+                                                        | searchVillageByCoordinatesResults =
+                                                            stateAfterParseSuccess.searchVillageByCoordinatesResults
+                                                                |> Dict.insert
+                                                                    ( readVillageByCoordinatesResponse.villageCoordinates.x, readVillageByCoordinatesResponse.villageCoordinates.y )
+                                                                    villageByCoordinates
+                                                    }
     in
     { newState = state
     , request = requestToFramework state
@@ -149,17 +207,58 @@ requestToFramework state =
                                 |> List.filter (\villageId -> state.ownVillagesDetails |> Dict.member villageId |> not)
                     in
                     case villagesWithoutDetails of
-                        [] ->
-                            readRootInformationScript
-
                         villageWithoutDetailsId :: _ ->
                             readSelectedCharacterVillageDetailsScript villageWithoutDetailsId
+
+                        [] ->
+                            let
+                                allCoordinatesToInspect =
+                                    state.ownVillagesDetails
+                                        |> Dict.values
+                                        |> List.map (\village -> { x = village.locationX, y = village.locationY })
+                                        |> coordinatesToSearchFromOwnVillagesCoordinates
+
+                                remainingCoordinatesToInspect =
+                                    allCoordinatesToInspect
+                                        |> List.filter (\coordinates -> state.searchVillageByCoordinatesResults |> Dict.member ( coordinates.x, coordinates.y ) |> not)
+                            in
+                            case remainingCoordinatesToInspect |> List.head of
+                                Nothing ->
+                                    readRootInformationScript
+
+                                Just coordinates ->
+                                    startReadVillageByCoordinatesScript coordinates
     in
     SimpleLimbara.RunJavascriptInCurrentPageRequest
         { javascript = javascript
         , requestId = "request-id"
-        , timeToWaitForCallbackMilliseconds = 5000
+        , timeToWaitForCallbackMilliseconds = 1000
         }
+
+
+coordinatesToSearchFromOwnVillagesCoordinates : List VillageCoordinates -> List VillageCoordinates
+coordinatesToSearchFromOwnVillagesCoordinates ownVillagesCoordinates =
+    let
+        radius =
+            4
+
+        coordinatesFromSingleOwnVillageCoordinates ownVillageCoordinates =
+            List.range -radius radius
+                |> List.concatMap
+                    (\offsetX ->
+                        List.range -radius radius
+                            |> List.map (\offsetY -> ( ownVillageCoordinates.x + offsetX, ownVillageCoordinates.y + offsetY ))
+                    )
+
+        allCoordinates : Set.Set ( Int, Int )
+        allCoordinates =
+            ownVillagesCoordinates
+                |> List.concatMap coordinatesFromSingleOwnVillageCoordinates
+                |> Set.fromList
+    in
+    allCoordinates
+        |> Set.toList
+        |> List.map (\( x, y ) -> { x = x, y = y })
 
 
 readRootInformationScript : String
@@ -190,6 +289,7 @@ decodeResponseFromBrowser =
     Json.Decode.oneOf
         [ decodeRootInformation |> Json.Decode.map RootInformation
         , decodeReadSelectedCharacterVillageDetailsResponse |> Json.Decode.map ReadSelectedCharacterVillageDetailsResponse
+        , decodeReadVillageByCoordinatesResponse |> Json.Decode.map ReadVillageByCoordinatesResponse
         ]
 
 
@@ -240,6 +340,79 @@ decodeReadSelectedCharacterVillageDetailsResponse =
         decodeSelectedCharacterVillageDetails
 
 
+{-| Example result:
+{"coordinates":{"x":498,"y":502},"villageByCoordinates":{"id":24,"name":"Pueblo de e.é45","x":498,"y":502,"character\_id":null,"province\_name":"Daufahlsur","character\_name":null,"character\_points":null,"points":96,"fortress":0,"tribe\_id":null,"tribe\_name":null,"tribe\_tag":null,"tribe\_points":null,"attack\_protection":0,"barbarian\_boost":null,"flags":{},"affiliation":"barbarian"}}
+
+When there is no village:
+{"coordinates":{"x":499,"y":502},"villageByCoordinates":{"villages":[]}}
+
+-}
+startReadVillageByCoordinatesScript : { x : Int, y : Int } -> String
+startReadVillageByCoordinatesScript { x, y } =
+    """
+(function inspectCoordinates(item) {
+        autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
+        autoCompleteService.villageByCoordinates(item, function(data) {
+            //  console.log(JSON.stringify({ coordinates : item, villageByCoordinates: data}));
+            ____callback____(JSON.stringify(data));
+        });
+
+        return JSON.stringify({ startedVillageByCoordinates : item });
+})({x:""" ++ (x |> String.fromInt) ++ ", y:" ++ (y |> String.fromInt) ++ "})"
+
+
+decodeReadVillageByCoordinatesResponseTag : Json.Decode.Decoder VillageCoordinates
+decodeReadVillageByCoordinatesResponseTag =
+    Json.Decode.field "startedVillageByCoordinates"
+        (Json.Decode.map2 VillageCoordinates
+            (Json.Decode.field "x" Json.Decode.int)
+            (Json.Decode.field "y" Json.Decode.int)
+        )
+
+
+decodeReadVillageByCoordinatesResponse : Json.Decode.Decoder ReadVillageByCoordinatesResponseStructure
+decodeReadVillageByCoordinatesResponse =
+    Json.Decode.map ReadVillageByCoordinatesResponseStructure
+        decodeReadVillageByCoordinatesResponseTag
+
+
+decodeVillageByCoordinatesResult : Json.Decode.Decoder VillageByCoordinatesResult
+decodeVillageByCoordinatesResult =
+    Json.Decode.oneOf
+        [ Json.Decode.keyValuePairs (Json.Decode.list Json.Decode.value)
+            |> Json.Decode.andThen
+                (\keyValuePairs ->
+                    case keyValuePairs of
+                        [ ( singlePropertyName, singlePropertyValue ) ] ->
+                            if singlePropertyName == "villages" then
+                                Json.Decode.succeed NoVillageThere
+
+                            else
+                                Json.Decode.fail "Other property name."
+
+                        _ ->
+                            Json.Decode.fail "Other number of properties."
+                )
+        , decodeVillageByCoordinatesDetails |> Json.Decode.map VillageThere
+        ]
+
+
+decodeVillageByCoordinatesDetails : Json.Decode.Decoder VillageByCoordinatesDetails
+decodeVillageByCoordinatesDetails =
+    Json.Decode.map VillageByCoordinatesDetails
+        (Json.Decode.field "affiliation" Json.Decode.string
+            |> Json.Decode.map
+                (\affiliation ->
+                    case affiliation |> String.toLower of
+                        "barbarian" ->
+                            AffiliationBarbarian
+
+                        _ ->
+                            AffiliationOther
+                )
+        )
+
+
 statusMessageFromState : SimpleState -> String
 statusMessageFromState state =
     let
@@ -258,8 +431,39 @@ statusMessageFromState state =
                         ++ " villages. Currently selected is "
                         ++ (gameRootInformation.selectedVillageId |> String.fromInt)
                         ++ "."
+
+        villagesByCoordinates =
+            state.searchVillageByCoordinatesResults
+                |> Dict.toList
+                |> List.filterMap
+                    (\( coordinates, scanResult ) ->
+                        case scanResult of
+                            NoVillageThere ->
+                                Nothing
+
+                            VillageThere village ->
+                                Just ( coordinates, village )
+                    )
+                |> Dict.fromList
+
+        villagesByCoordinatesReport =
+            "Searched "
+                ++ (state.searchVillageByCoordinatesResults |> Dict.size |> String.fromInt)
+                ++ " coordindates and found "
+                ++ (villagesByCoordinates |> Dict.size |> String.fromInt)
+                ++ " villages, "
+                ++ (villagesByCoordinates |> Dict.filter (\_ village -> village.affiliation == AffiliationBarbarian) |> Dict.size |> String.fromInt)
+                ++ " of wich are barbarian villages."
+
+        parseResponseErrorReport =
+            case state.parseResponseError of
+                Nothing ->
+                    ""
+
+                Just parseResponseError ->
+                    Json.Decode.errorToString parseResponseError
     in
-    [ jsRunResult, aboutGame ] |> String.join "\n"
+    [ jsRunResult, aboutGame, villagesByCoordinatesReport, parseResponseErrorReport ] |> String.join "\n"
 
 
 describeRunJavascriptInCurrentPageResponseStructure : SimpleLimbara.RunJavascriptInCurrentPageResponseStructure -> String

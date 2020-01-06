@@ -425,7 +425,7 @@ statusReportFromState state =
     let
         lastScriptRunResult =
             "Last Limbara script run result is: "
-                ++ (state.setup.lastRunScriptResult |> Maybe.map (runScriptResultDisplayString >> stringEllipsis 340 "....") |> Maybe.withDefault "Nothing")
+                ++ (state.setup.lastRunScriptResult |> Maybe.map (runScriptResultDisplayString >> stringEllipsis 540 "....") |> Maybe.withDefault "Nothing")
     in
     [ lastScriptRunResult ]
         |> List.intersperse "\n"

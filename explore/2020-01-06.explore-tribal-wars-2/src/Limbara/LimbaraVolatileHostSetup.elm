@@ -118,6 +118,7 @@ static string UserDataDirPath() =>
 PuppeteerSharp.Browser browser;
 PuppeteerSharp.Page browserPage;
 
+Action<string> callbackFromBrowserDelegate;
 
 async System.Threading.Tasks.Task StartBrowser()
 {
@@ -129,16 +130,39 @@ async System.Threading.Tasks.Task StartBrowser()
         DefaultViewport = null,
     });
     browserPage = await browser.NewPageAsync();
+
+    //  TODO: Better name for ____callback____?
+
+    await browserPage.ExposeFunctionAsync("____callback____", (string returnValue) =>
+    {
+        callbackFromBrowserDelegate?.Invoke(returnValue);
+        return 0;
+    });
 }
 
 async System.Threading.Tasks.Task<Response.RunJavascriptInCurrentPageResponseStructure> RunJavascriptInCurrentPage(
     Request.RunJavascriptInCurrentPageRequestStructure request)
 {
+    bool callbackCalled = false;
+    string callbackReturnValue = null;
+
+    callbackFromBrowserDelegate = new Action<string>(returnValue =>
+    {
+        callbackReturnValue = returnValue;
+        callbackCalled = true;
+    });
+
     var directReturnValueAsString = (await browserPage.EvaluateExpressionAsync(request.javascript))?.ToString();
+
+    var waitStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+    while (!callbackCalled && waitStopwatch.Elapsed.TotalMilliseconds < request.timeToWaitForCallbackMilliseconds)
+        System.Threading.Thread.Sleep(11);
 
     return new Response.RunJavascriptInCurrentPageResponseStructure
     {
         directReturnValueAsString = directReturnValueAsString,
+        callbackReturnValueAsString = callbackReturnValue,
     };
 }
 

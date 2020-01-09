@@ -17,7 +17,7 @@ module Sanderling.SimpleSanderling exposing
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
 import Sanderling.Sanderling as Sanderling
-import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
+import Sanderling.SanderlingMemoryReading as SanderlingMemoryReading
 import Sanderling.SanderlingVolatileHostSetup as SanderlingVolatileHostSetup
 
 
@@ -28,7 +28,7 @@ type alias BotEventAtTime =
 
 
 type BotEvent
-    = MemoryMeasurementCompleted SanderlingMemoryMeasurement.MemoryMeasurementReducedWithNamedNodes
+    = MemoryMeasurementCompleted SanderlingMemoryReading.MemoryReadingWithNamedNodes
     | SetBotConfiguration String
 
 
@@ -387,7 +387,7 @@ integrateSanderlingResponseFromVolatileHost ( time, response ) stateBefore =
                             let
                                 maybeParsedMemoryMeasurement =
                                     completedMemoryMeasurement.reducedWithNamedNodesJson
-                                        |> Maybe.andThen (SanderlingMemoryMeasurement.parseMemoryMeasurementReducedWithNamedNodesFromJson >> Result.toMaybe)
+                                        |> Maybe.andThen (SanderlingMemoryReading.parseMemoryReadingWithNamedNodesFromJson >> Result.toMaybe)
                             in
                             maybeParsedMemoryMeasurement
                                 |> Maybe.map MemoryMeasurementCompleted

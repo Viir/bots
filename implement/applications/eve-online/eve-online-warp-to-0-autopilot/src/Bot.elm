@@ -16,18 +16,18 @@ module Bot exposing
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
 import Sanderling.Sanderling as Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
-import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
+import Sanderling.SanderlingMemoryReading as SanderlingMemoryReading
     exposing
         ( InfoPanelRouteRouteElementMarker
         , MaybeVisible(..)
-        , ShipUi
+        , ShipUI
         , maybeNothingFromCanNotSeeIt
         )
 import Sanderling.SimpleSanderling as SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
 
 
-type alias MemoryMeasurement =
-    SanderlingMemoryMeasurement.MemoryMeasurementReducedWithNamedNodes
+type alias MemoryReading =
+    SanderlingMemoryReading.MemoryReadingWithNamedNodes
 
 
 {-| The autopilot bot does not need to remember anything from the past; the information on the game client screen is sufficient to decide what to do next.
@@ -76,7 +76,7 @@ simpleProcessEvent eventAtTime stateBefore =
             }
 
 
-botRequestsFromGameClientState : MemoryMeasurement -> ( List BotRequest, String )
+botRequestsFromGameClientState : MemoryReading -> ( List BotRequest, String )
 botRequestsFromGameClientState memoryMeasurement =
     case memoryMeasurement |> infoPanelRouteFirstMarkerFromMemoryMeasurement of
         Nothing ->
@@ -85,7 +85,7 @@ botRequestsFromGameClientState memoryMeasurement =
             )
 
         Just infoPanelRouteFirstMarker ->
-            case memoryMeasurement.shipUi of
+            case memoryMeasurement.shipUI of
                 CanNotSeeIt ->
                     ( [ TakeMemoryMeasurementAfterDelayInMilliseconds 4000 ]
                     , "I cannot see if the ship is warping or jumping. I wait for the ship UI to appear on the screen."
@@ -108,7 +108,7 @@ botRequestsFromGameClientState memoryMeasurement =
 
 
 botRequestsWhenNotWaitingForShipManeuver :
-    MemoryMeasurement
+    MemoryReading
     -> InfoPanelRouteRouteElementMarker
     -> ( List BotRequest, String )
 botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMarker =
@@ -117,7 +117,7 @@ botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMa
             ( [ EffectOnGameClientWindow
                     (effectMouseClickAtLocation
                         Sanderling.MouseButtonRight
-                        (infoPanelRouteFirstMarker.uiElement.region |> centerFromRegion)
+                        (infoPanelRouteFirstMarker.uiElement.totalDisplayRegion |> centerFromRegion)
                     )
               ]
             , "I click on the route marker in the info panel to open the menu."
@@ -147,28 +147,28 @@ botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMa
                     openMenuAnnouncementAndEffect
 
                 Just menuEntryToClick ->
-                    ( [ EffectOnGameClientWindow (effectMouseClickAtLocation MouseButtonLeft (menuEntryToClick.uiElement.region |> centerFromRegion)) ]
+                    ( [ EffectOnGameClientWindow (effectMouseClickAtLocation MouseButtonLeft (menuEntryToClick.uiElement.totalDisplayRegion |> centerFromRegion)) ]
                     , "I click on the menu entry '" ++ menuEntryToClick.text ++ "' to start the next ship maneuver."
                     )
 
 
-infoPanelRouteFirstMarkerFromMemoryMeasurement : MemoryMeasurement -> Maybe InfoPanelRouteRouteElementMarker
+infoPanelRouteFirstMarkerFromMemoryMeasurement : MemoryReading -> Maybe InfoPanelRouteRouteElementMarker
 infoPanelRouteFirstMarkerFromMemoryMeasurement =
     .infoPanelRoute
         >> maybeNothingFromCanNotSeeIt
         >> Maybe.map .routeElementMarker
-        >> Maybe.map (List.sortBy (\routeMarker -> routeMarker.uiElement.region.left + routeMarker.uiElement.region.top))
+        >> Maybe.map (List.sortBy (\routeMarker -> routeMarker.uiElement.totalDisplayRegion.x + routeMarker.uiElement.totalDisplayRegion.y))
         >> Maybe.andThen List.head
 
 
-isShipWarpingOrJumping : ShipUi -> Bool
+isShipWarpingOrJumping : ShipUI -> Bool
 isShipWarpingOrJumping =
     .indication
         >> maybeNothingFromCanNotSeeIt
         >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
         >> Maybe.map
             (\maneuverType ->
-                [ SanderlingMemoryMeasurement.Warp, SanderlingMemoryMeasurement.Jump ]
+                [ SanderlingMemoryReading.ManeuverWarp, SanderlingMemoryReading.ManeuverJump ]
                     |> List.member maneuverType
             )
         -- If the ship is just floating in space, there might be no indication displayed.

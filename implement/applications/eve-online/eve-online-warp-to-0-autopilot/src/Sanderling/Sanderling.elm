@@ -15,7 +15,7 @@ module Sanderling.Sanderling exposing
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
-import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
+import Sanderling.SanderlingMemoryReading as SanderlingMemoryReading
 
 
 type RequestToVolatileHost
@@ -256,9 +256,9 @@ buildScriptToGetResponseFromVolatileHost request =
         ++ ")"
 
 
-centerFromRegion : SanderlingMemoryMeasurement.UIElementRegion -> Location2d
+centerFromRegion : SanderlingMemoryReading.DisplayRegion -> Location2d
 centerFromRegion region =
-    { x = (region.left + region.right) // 2, y = (region.top + region.bottom) // 2 }
+    { x = region.x + region.width // 2, y = region.y + region.height // 2 }
 
 
 effectMouseClickAtLocation : MouseButton -> Location2d -> EffectOnWindowStructure

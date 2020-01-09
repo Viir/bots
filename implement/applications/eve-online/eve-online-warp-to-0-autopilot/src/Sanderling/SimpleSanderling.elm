@@ -386,7 +386,7 @@ integrateSanderlingResponseFromVolatileHost ( time, response ) stateBefore =
                         Sanderling.Completed completedMemoryMeasurement ->
                             let
                                 maybeParsedMemoryMeasurement =
-                                    completedMemoryMeasurement.reducedWithNamedNodesJson
+                                    completedMemoryMeasurement.serialRepresentationJson
                                         |> Maybe.andThen (SanderlingMemoryReading.parseMemoryReadingWithNamedNodesFromJson >> Result.toMaybe)
                             in
                             maybeParsedMemoryMeasurement

@@ -23,8 +23,10 @@ module Sanderling.SanderlingMemoryReading exposing
     , maybeNothingFromCanNotSeeIt
     , memoryReadingUITreeNodeDecoder
     , parseContextMenusFromUITreeRoot
+    , parseMemoryReadingWithNamedNodes
     , parseMemoryReadingWithNamedNodesFromJson
     , parseShipUIFromUITreeRoot
+    , parseUITreeWithDisplayRegionFromUITree
     , unwrapMemoryReadingUITreeNodeChild
     )
 
@@ -121,17 +123,17 @@ type MaybeVisible feature
 parseMemoryReadingWithNamedNodesFromJson : String -> Result String MemoryReadingWithNamedNodes
 parseMemoryReadingWithNamedNodesFromJson =
     decodeMemoryReadingFromString
-        >> Result.map
-            (\rawUINode ->
-                rawUINode
-                    |> asUITreeNodeWithTotalDisplayRegion (rawUINode |> getDisplayRegionFromDictEntries |> Maybe.withDefault { x = 0, y = 0, width = 0, height = 0 })
-                    |> parseMemoryReadingWithNamedNodesUITree
-            )
+        >> Result.map (parseUITreeWithDisplayRegionFromUITree >> parseMemoryReadingWithNamedNodes)
         >> Result.mapError Json.Decode.errorToString
 
 
-parseMemoryReadingWithNamedNodesUITree : MemoryReadingUITreeNodeWithDisplayRegion -> MemoryReadingWithNamedNodes
-parseMemoryReadingWithNamedNodesUITree uiTree =
+parseUITreeWithDisplayRegionFromUITree : MemoryReadingUITreeNode -> MemoryReadingUITreeNodeWithDisplayRegion
+parseUITreeWithDisplayRegionFromUITree uiTree =
+    uiTree |> asUITreeNodeWithTotalDisplayRegion (uiTree |> getDisplayRegionFromDictEntries |> Maybe.withDefault { x = 0, y = 0, width = 0, height = 0 })
+
+
+parseMemoryReadingWithNamedNodes : MemoryReadingUITreeNodeWithDisplayRegion -> MemoryReadingWithNamedNodes
+parseMemoryReadingWithNamedNodes uiTree =
     { uiTree = uiTree
     , shipUI = parseShipUIFromUITreeRoot uiTree
     , contextMenus = parseContextMenusFromUITreeRoot uiTree

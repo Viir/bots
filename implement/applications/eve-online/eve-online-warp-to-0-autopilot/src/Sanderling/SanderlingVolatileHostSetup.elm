@@ -131,7 +131,7 @@ class Response
         {
             public string mainWindowId;
 
-            public string reducedWithNamedNodesJson;
+            public string serialRepresentationJson;
         }
     }
 }
@@ -196,7 +196,7 @@ Response request(Request request)
             uiTreeRootAddress = FindUIRootAddressFromProcessId(processId);
         }
 
-        string reducedWithNamedNodesJson = null;
+        string serialRepresentationJson = null;
 
         if(uiTreeRootAddress.HasValue)
         {
@@ -205,7 +205,7 @@ Response request(Request request)
                 var uiTree = read_memory_64_bit.EveOnline64.ReadUITreeFromAddress(uiTreeRootAddress.Value, memoryReader, 99);
 
                 if(uiTree != null)
-                    reducedWithNamedNodesJson = SerializeToJsonForBot(uiTree.WithOtherDictEntriesRemoved());
+                    serialRepresentationJson = SerializeToJsonForBot(uiTree.WithOtherDictEntriesRemoved());
             }
 
             uiTreeRootSearchResultCache = new UiTreeRootSearchResultCache { processId = processId, uiTreeRootAddress = uiTreeRootAddress.Value };
@@ -218,7 +218,7 @@ Response request(Request request)
                 completed = new Response.GetMemoryMeasurementResult.Completed
                 {
                     mainWindowId = process.MainWindowHandle.ToInt64().ToString(),
-                    reducedWithNamedNodesJson = reducedWithNamedNodesJson,
+                    serialRepresentationJson = serialRepresentationJson,
                 },
             },
         };

@@ -40,7 +40,7 @@ type GetMemoryMeasurementResultStructure
 
 type alias MemoryMeasurementCompleted =
     { mainWindowId : WindowId
-    , reducedWithNamedNodesJson : Maybe String
+    , serialRepresentationJson : Maybe String
     }
 
 
@@ -241,7 +241,7 @@ decodeMemoryMeasurementCompleted : Json.Decode.Decoder MemoryMeasurementComplete
 decodeMemoryMeasurementCompleted =
     Json.Decode.map2 MemoryMeasurementCompleted
         (Json.Decode.field "mainWindowId" Json.Decode.string)
-        (Json.Decode.Extra.optionalField "reducedWithNamedNodesJson" Json.Decode.string)
+        (Json.Decode.Extra.optionalField "serialRepresentationJson" Json.Decode.string)
 
 
 buildScriptToGetResponseFromVolatileHost : RequestToVolatileHost -> String

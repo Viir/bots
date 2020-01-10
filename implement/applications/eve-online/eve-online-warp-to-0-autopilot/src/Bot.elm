@@ -15,19 +15,16 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
-import Sanderling.Sanderling as Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
-import Sanderling.SanderlingMemoryReading as SanderlingMemoryReading
+import Sanderling.MemoryReading
     exposing
         ( InfoPanelRouteRouteElementMarker
         , MaybeVisible(..)
+        , ParsedUserInterface
         , ShipUI
         , maybeNothingFromCanNotSeeIt
         )
+import Sanderling.Sanderling as Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
 import Sanderling.SimpleSanderling as SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
-
-
-type alias MemoryReading =
-    SanderlingMemoryReading.MemoryReadingWithNamedNodes
 
 
 {-| The autopilot bot does not need to remember anything from the past; the information on the game client screen is sufficient to decide what to do next.
@@ -76,16 +73,16 @@ simpleProcessEvent eventAtTime stateBefore =
             }
 
 
-botRequestsFromGameClientState : MemoryReading -> ( List BotRequest, String )
-botRequestsFromGameClientState memoryMeasurement =
-    case memoryMeasurement |> infoPanelRouteFirstMarkerFromMemoryMeasurement of
+botRequestsFromGameClientState : ParsedUserInterface -> ( List BotRequest, String )
+botRequestsFromGameClientState parsedUserInterface =
+    case parsedUserInterface |> infoPanelRouteFirstMarkerFromParsedUserInterface of
         Nothing ->
             ( [ TakeMemoryMeasurementAfterDelayInMilliseconds 4000 ]
             , "I see no route in the info panel. I will start when a route is set."
             )
 
         Just infoPanelRouteFirstMarker ->
-            case memoryMeasurement.shipUI of
+            case parsedUserInterface.shipUI of
                 CanNotSeeIt ->
                     ( [ TakeMemoryMeasurementAfterDelayInMilliseconds 4000 ]
                     , "I cannot see if the ship is warping or jumping. I wait for the ship UI to appear on the screen."
@@ -101,29 +98,29 @@ botRequestsFromGameClientState memoryMeasurement =
                         let
                             ( requests, statusMessage ) =
                                 botRequestsWhenNotWaitingForShipManeuver
-                                    memoryMeasurement
+                                    parsedUserInterface
                                     infoPanelRouteFirstMarker
                         in
                         ( requests ++ [ TakeMemoryMeasurementAfterDelayInMilliseconds 2000 ], statusMessage )
 
 
 botRequestsWhenNotWaitingForShipManeuver :
-    MemoryReading
+    ParsedUserInterface
     -> InfoPanelRouteRouteElementMarker
     -> ( List BotRequest, String )
-botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMarker =
+botRequestsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstMarker =
     let
         openMenuAnnouncementAndEffect =
             ( [ EffectOnGameClientWindow
                     (effectMouseClickAtLocation
                         Sanderling.MouseButtonRight
-                        (infoPanelRouteFirstMarker.uiElement.totalDisplayRegion |> centerFromRegion)
+                        (infoPanelRouteFirstMarker.uiNode.totalDisplayRegion |> centerFromRegion)
                     )
               ]
             , "I click on the route marker in the info panel to open the menu."
             )
     in
-    case memoryMeasurement.contextMenus |> List.head of
+    case parsedUserInterface.contextMenus |> List.head of
         Nothing ->
             openMenuAnnouncementAndEffect
 
@@ -147,17 +144,17 @@ botRequestsWhenNotWaitingForShipManeuver memoryMeasurement infoPanelRouteFirstMa
                     openMenuAnnouncementAndEffect
 
                 Just menuEntryToClick ->
-                    ( [ EffectOnGameClientWindow (effectMouseClickAtLocation MouseButtonLeft (menuEntryToClick.uiElement.totalDisplayRegion |> centerFromRegion)) ]
+                    ( [ EffectOnGameClientWindow (effectMouseClickAtLocation MouseButtonLeft (menuEntryToClick.uiNode.totalDisplayRegion |> centerFromRegion)) ]
                     , "I click on the menu entry '" ++ menuEntryToClick.text ++ "' to start the next ship maneuver."
                     )
 
 
-infoPanelRouteFirstMarkerFromMemoryMeasurement : MemoryReading -> Maybe InfoPanelRouteRouteElementMarker
-infoPanelRouteFirstMarkerFromMemoryMeasurement =
+infoPanelRouteFirstMarkerFromParsedUserInterface : ParsedUserInterface -> Maybe InfoPanelRouteRouteElementMarker
+infoPanelRouteFirstMarkerFromParsedUserInterface =
     .infoPanelRoute
         >> maybeNothingFromCanNotSeeIt
         >> Maybe.map .routeElementMarker
-        >> Maybe.map (List.sortBy (\routeMarker -> routeMarker.uiElement.totalDisplayRegion.x + routeMarker.uiElement.totalDisplayRegion.y))
+        >> Maybe.map (List.sortBy (\routeMarker -> routeMarker.uiNode.totalDisplayRegion.x + routeMarker.uiNode.totalDisplayRegion.y))
         >> Maybe.andThen List.head
 
 
@@ -168,7 +165,7 @@ isShipWarpingOrJumping =
         >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
         >> Maybe.map
             (\maneuverType ->
-                [ SanderlingMemoryReading.ManeuverWarp, SanderlingMemoryReading.ManeuverJump ]
+                [ Sanderling.MemoryReading.ManeuverWarp, Sanderling.MemoryReading.ManeuverJump ]
                     |> List.member maneuverType
             )
         -- If the ship is just floating in space, there might be no indication displayed.

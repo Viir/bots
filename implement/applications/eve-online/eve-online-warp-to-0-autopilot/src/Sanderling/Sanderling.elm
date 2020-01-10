@@ -15,7 +15,7 @@ module Sanderling.Sanderling exposing
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
-import Sanderling.SanderlingMemoryReading as SanderlingMemoryReading
+import Sanderling.MemoryReading
 
 
 type RequestToVolatileHost
@@ -256,7 +256,7 @@ buildScriptToGetResponseFromVolatileHost request =
         ++ ")"
 
 
-centerFromRegion : SanderlingMemoryReading.DisplayRegion -> Location2d
+centerFromRegion : Sanderling.MemoryReading.DisplayRegion -> Location2d
 centerFromRegion region =
     { x = region.x + region.width // 2, y = region.y + region.height // 2 }
 

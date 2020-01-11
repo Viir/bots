@@ -15,6 +15,7 @@ sanderlingSetupScript =
 #r "sha256:B9B4E633EA6C728BAD5F7CBBEF7F8B842F7E10181731DBE5EC3CD995A6F60287"
 #r "sha256:81110D44256397F0F3C572A20CA94BB4C669E5DE89F9348ABAD263FBD81C54B9"
 #r "sha256:2A89B0F057A26E1273DECC0FC7FE9C2BB12683479E37076D23A1F73CCC324D13"
+#r "sha256:7A0E2FE8194A453AC9A16836CE67E5B55E2433E08951320401F9896B41666D81"
 
 #r "mscorlib"
 #r "netstandard"
@@ -37,7 +38,6 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 
-var trigger_assembly_load = new BotEngine.Interface.ColorHSV().ToString();
 
 byte[] SHA256FromByteArray(byte[] array)
 {
@@ -131,7 +131,7 @@ class Response
         {
             public string mainWindowId;
 
-            public string reducedWithNamedNodesJson;
+            public string serialRepresentationJson;
         }
     }
 }
@@ -145,11 +145,12 @@ string serialRequest(string serializedRequest)
     return SerializeToJsonForBot(response);
 }
 
+//  TODO: Simplify: Remove cache.
 struct UiTreeRootSearchResultCache
 {
     public int processId;
 
-    public Optimat.EveOnline.MemoryAuswertWurzelSuuce uiTreeRoot;
+    public ulong uiTreeRootAddress;
 }
 
 UiTreeRootSearchResultCache? uiTreeRootSearchResultCache = null;
@@ -182,20 +183,37 @@ Response request(Request request)
 
         var process = System.Diagnostics.Process.GetProcessById(processId);
 
-        var memoryReader = MemoryReaderFromLiveProcessId(processId);
-
+        //  TODO: Simplify: Remove cache.
         if (uiTreeRootSearchResultCache?.processId != processId)
             uiTreeRootSearchResultCache = null;
 
 
-        var uiTreeRoot =
-            uiTreeRootSearchResultCache?.uiTreeRoot ?? UITreeRootFromMemoryReader(memoryReader);
+        var uiTreeRootAddress =
+            uiTreeRootSearchResultCache?.uiTreeRootAddress;
+        
+        if(!uiTreeRootAddress.HasValue)
+        {
+            uiTreeRootAddress = FindUIRootAddressFromProcessId(processId);
+        }
 
-        //  TODO: Improve symbols: https://github.com/Arcitectus/Sanderling/commit/ada11c9f8df2367976a6bcc53efbe9917107bfa7
-        var memoryMeasurement = SanderlingMemoryMeasurementFromPartialPythonModel(
-            PartialPythonModelFromUITreeRoot(memoryReader, uiTreeRoot));
+        string serialRepresentationJson = null;
 
-        uiTreeRootSearchResultCache = new UiTreeRootSearchResultCache { processId = processId, uiTreeRoot = uiTreeRoot };
+        if(uiTreeRootAddress.HasValue)
+        {
+            using (var memoryReader = new read_memory_64_bit.MemoryReaderFromLiveProcess(processId))
+            {
+                var uiTree = read_memory_64_bit.EveOnline64.ReadUITreeFromAddress(uiTreeRootAddress.Value, memoryReader, 99);
+
+                if(uiTree != null)
+                    serialRepresentationJson = Newtonsoft.Json.JsonConvert.SerializeObject(
+                        uiTree.WithOtherDictEntriesRemoved(),
+                        //  Support popular JSON parsers: Wrap large integers in a string to work around limitations there. (https://discourse.elm-lang.org/t/how-to-parse-a-json-object/4977)
+                        new read_memory_64_bit.IntegersToStringJsonConverter()
+                        );
+            }
+
+            uiTreeRootSearchResultCache = new UiTreeRootSearchResultCache { processId = processId, uiTreeRootAddress = uiTreeRootAddress.Value };
+        }
 
         return new Response
         {
@@ -204,7 +222,7 @@ Response request(Request request)
                 completed = new Response.GetMemoryMeasurementResult.Completed
                 {
                     mainWindowId = process.MainWindowHandle.ToInt64().ToString(),
-                    reducedWithNamedNodesJson = SerializeToJsonForBot(memoryMeasurement),
+                    serialRepresentationJson = serialRepresentationJson,
                 },
             },
         };
@@ -223,6 +241,26 @@ Response request(Request request)
     }
 
     return null;
+}
+
+ulong? FindUIRootAddressFromProcessId(int processId)
+{
+    var candidatesAddresses =
+        read_memory_64_bit.EveOnline64.EnumeratePossibleAddressesForUIRootObjectsFromProcessId(processId);
+
+    using (var memoryReader = new read_memory_64_bit.MemoryReaderFromLiveProcess(processId))
+    {
+        var uiTrees =
+            candidatesAddresses
+            .Select(candidateAddress => read_memory_64_bit.EveOnline64.ReadUITreeFromAddress(candidateAddress, memoryReader, 99))
+            .ToList();
+
+        return
+            uiTrees
+            .OrderByDescending(uiTree => uiTree?.EnumerateSelfAndDescendants().Count() ?? -1)
+            .FirstOrDefault()
+            ?.pythonObjectAddress;
+    }
 }
 
 void ExecuteEffectOnWindow(
@@ -349,36 +387,6 @@ string SerializeToJsonForBot<T>(T value) =>
             ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore,
         });
 
-BotEngine.Interface.IMemoryReader MemoryReaderFromLiveProcessId(int processId) =>
-    new BotEngine.Interface.ProcessMemoryReader(processId);
-
-Optimat.EveOnline.MemoryAuswertWurzelSuuce UITreeRootFromMemoryReader(
-    BotEngine.Interface.IMemoryReader memoryReader) =>
-    Sanderling.ExploreProcessMeasurement.Extension.SearchForUITreeRoot(memoryReader);
-
-
-Optimat.EveOnline.AuswertGbs.UINodeInfoInTree PartialPythonModelFromUITreeRoot(
-    BotEngine.Interface.IMemoryReader memoryReader,
-    Optimat.EveOnline.MemoryAuswertWurzelSuuce uiTreeRoot) =>
-    Optimat.EveOnline.AuswertGbs.Extension.SictAuswert(
-        Sanderling.ExploreProcessMeasurement.Extension.ReadUITreeFromRoot(memoryReader, uiTreeRoot));
-
-Sanderling.Interface.MemoryStruct.IMemoryMeasurement SanderlingMemoryMeasurementFromPartialPythonModel(
-    Optimat.EveOnline.GbsAstInfo partialPython) =>
-    Optimat.EveOnline.AuswertGbs.Extension.SensorikScnapscusKonstrukt(partialPython, null);
-
-IEnumerable<T> EnumerateNodeFromTreeDFirst<T>(
-    T root,
-    Func<T, IEnumerable<T>> callbackEnumerateChildInNode,
-    int? depthMax = null,
-    int? depthMin = null) =>
-    Bib3.Extension.EnumerateNodeFromTreeDFirst(root, callbackEnumerateChildInNode, depthMax, depthMin);
-
-IEnumerable<Sanderling.Interface.MemoryStruct.IUIElement> EnumerateReferencedSanderlingUIElementsTransitive(
-    object parent) =>
-    parent == null ? null :
-    Sanderling.Interface.MemoryStruct.Extension.EnumerateReferencedUIElementTransitive(parent)
-    .Distinct();
 
 void SetProcessDPIAware()
 {
@@ -410,72 +418,10 @@ struct Rectangle
         Newtonsoft.Json.JsonConvert.SerializeObject(this);
 }
 
-struct UINodeMostPopularProperties
-{
-    public readonly Int64? pythonObjectAddress;
-
-    public readonly string pythonTypeName;
-
-    public readonly Rectangle? region;
-
-    public UINodeMostPopularProperties(Optimat.EveOnline.AuswertGbs.UINodeInfoInTree uiNode)
-    {
-        pythonObjectAddress = uiNode.PyObjAddress;
-        pythonTypeName = uiNode.PyObjTypName;
-
-        var uiNodeRegion = RawRectFromUITreeNode(uiNode);
-
-        region =
-            uiNodeRegion.HasValue ? (Rectangle?)NamesFromRawRectInt(uiNodeRegion.Value) : null;
-    }
-}
-
-static Rectangle NamesFromRawRectInt(Bib3.Geometrik.RectInt raw) =>
-    new Rectangle(left: raw.Min0, top: raw.Min1, right: raw.Max0, bottom: raw.Max1);
-
-Func<Optimat.EveOnline.AuswertGbs.UINodeInfoInTree, bool> UITreeNodeRegionIntersectsRectangle(Rectangle rectangle) =>
-    uiNode =>
-    {
-        var uiNodeRegion = RawRectFromUITreeNode(uiNode);
-
-        if (!uiNodeRegion.HasValue)
-            return false;
-
-        return
-            !Bib3.Geometrik.RectExtension.IsEmpty(Bib3.Geometrik.Geometrik.Intersection(
-                uiNodeRegion.Value,
-                Bib3.Geometrik.RectInt.FromMinPointAndMaxPoint(
-                    new Bib3.Geometrik.Vektor2DInt(rectangle.left, rectangle.top),
-                    new Bib3.Geometrik.Vektor2DInt(rectangle.right, rectangle.bottom))));
-    };
-
-static Bib3.Geometrik.RectInt? RawRectFromUITreeNode(Optimat.EveOnline.AuswertGbs.UINodeInfoInTree node) =>
-    Optimat.EveOnline.AuswertGbs.Glob.FläceAusGbsAstInfoMitVonParentErbe(node);
-
-Func<Sanderling.Interface.MemoryStruct.IUIElement, bool> UIElementRegionIntersectsRectangle(Rectangle rectangle) =>
-    uiElement =>
-    !Bib3.Geometrik.RectExtension.IsEmpty(Bib3.Geometrik.Geometrik.Intersection(
-        uiElement.Region,
-        Bib3.Geometrik.RectInt.FromMinPointAndMaxPoint(
-            new Bib3.Geometrik.Vektor2DInt(rectangle.left, rectangle.top),
-            new Bib3.Geometrik.Vektor2DInt(rectangle.right, rectangle.bottom))));
 
 System.Diagnostics.Process[] GetWindowsProcessesLookingLikeEVEOnlineClient() =>
     System.Diagnostics.Process.GetProcessesByName("exefile");
 
-IReadOnlyList<T> FindNodesOnPathFromTreeNodeToDescendant<T>(T pathRoot, Func<T, IEnumerable<T>> getChildrenFromNode, T descendant)
-    =>
-    FindNodesOnPathFromTreeNodeToDescendantMatchingPredicate(
-        pathRoot,
-        getChildrenFromNode,
-        candidate => ((object)candidate == null && (object)descendant == null) || (candidate?.Equals(descendant) ?? false));
-
-IReadOnlyList<T> FindNodesOnPathFromTreeNodeToDescendantMatchingPredicate<T>(
-    T pathRoot,
-    Func<T, IEnumerable<T>> getChildrenFromNode,
-    Func<T, bool> descendantPredicate) =>
-    Bib3.Extension.EnumeratePathToNodeFromTreeBFirst(pathRoot, getChildrenFromNode)
-    .FirstOrDefault(path => descendantPredicate(path.Last()));
 
 "Sanderling Setup Completed"
 """

@@ -1,10 +1,10 @@
-{- This is an asteroid mining bot for EVE Online
+{- Michaels EVE Online mining bot v2020-01-11
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
 
    Setup instructions for the EVE Online client:
-   + Disable `Run clients with 64 bit` in the settings, because this bot only works with the 32-bit version of the EVE Online client.
+   + Enable `Run clients with 64 bit` in the settings, because this bot only works with the 64-bit version of the EVE Online client.
    + Set the UI language to English.
    + In Overview window, make asteroids visible.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
@@ -25,26 +25,26 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
-import Sanderling.Sanderling as Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
-import Sanderling.SanderlingMemoryMeasurement as SanderlingMemoryMeasurement
+import Sanderling.MemoryReading
     exposing
         ( MaybeVisible(..)
         , OverviewWindowEntry
-        , ShipUiModule
-        , UIElement
+        , ParsedUserInterface
+        , ShipUIModule
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
+import Sanderling.Sanderling as Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
 import Sanderling.SimpleSanderling as SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
 
 
-type alias MemoryReading =
-    SanderlingMemoryMeasurement.MemoryMeasurementReducedWithNamedNodes
+type alias UIElement =
+    Sanderling.MemoryReading.UITreeNodeWithDisplayRegion
 
 
 type alias TreeLeafAct =
     { firstAction : Sanderling.EffectOnWindowStructure
-    , followingSteps : List ( String, MemoryReading -> Maybe Sanderling.EffectOnWindowStructure )
+    , followingSteps : List ( String, ParsedUserInterface -> Maybe Sanderling.EffectOnWindowStructure )
     }
 
 
@@ -84,7 +84,7 @@ generalStepDelayMilliseconds =
 
 {-| A first outline of the decision tree for a mining bot is coming from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
 -}
-decideNextAction : BotMemory -> MemoryReading -> DecisionPathNode
+decideNextAction : BotMemory -> ParsedUserInterface -> DecisionPathNode
 decideNextAction botMemory memoryReading =
     if memoryReading |> isShipWarpingOrJumping then
         -- TODO: Look also on the previous memory reading.
@@ -98,7 +98,7 @@ decideNextAction botMemory memoryReading =
         DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory memoryReading)
 
 
-decideNextActionWhenDocked : MemoryReading -> DecisionPathNode
+decideNextActionWhenDocked : ParsedUserInterface -> DecisionPathNode
 decideNextActionWhenDocked memoryReading =
     case memoryReading |> inventoryWindowItemHangar of
         Nothing ->
@@ -123,7 +123,7 @@ decideNextActionWhenDocked memoryReading =
                                             [ ( "Click menu entry 'undock'."
                                               , lastContextMenuOrSubmenu
                                                     >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Undock")
-                                                    >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
                                               )
                                             ]
                                         }
@@ -136,8 +136,8 @@ decideNextActionWhenDocked memoryReading =
                             (Act
                                 { firstAction =
                                     Sanderling.SimpleDragAndDrop
-                                        { startLocation = itemInInventory.region |> centerFromRegion
-                                        , endLocation = itemHangar.region |> centerFromRegion
+                                        { startLocation = itemInInventory.totalDisplayRegion |> centerFromRegion
+                                        , endLocation = itemHangar.totalDisplayRegion |> centerFromRegion
                                         , mouseButton = MouseButtonLeft
                                         }
                                 , followingSteps = []
@@ -146,7 +146,7 @@ decideNextActionWhenDocked memoryReading =
                         )
 
 
-decideNextActionWhenInSpace : BotMemory -> MemoryReading -> DecisionPathNode
+decideNextActionWhenInSpace : BotMemory -> ParsedUserInterface -> DecisionPathNode
 decideNextActionWhenInSpace botMemory memoryReading =
     case memoryReading |> oreHoldFillPercent of
         Nothing ->
@@ -171,7 +171,7 @@ decideNextActionWhenInSpace botMemory memoryReading =
 
                         Just _ ->
                             DescribeBranch "I see a locked target."
-                                (case memoryReading |> shipUiMiningModules |> List.filter (.isActive >> Maybe.withDefault True >> not) |> List.head of
+                                (case memoryReading |> shipUiMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                     -- TODO: Check previous memory reading too for module activity.
                                     Nothing ->
                                         DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
@@ -180,7 +180,7 @@ decideNextActionWhenInSpace botMemory memoryReading =
                                         DescribeBranch "I see an inactive mining module. Click on it to activate."
                                             (EndDecisionPath
                                                 (Act
-                                                    { firstAction = inactiveModule.uiElement |> clickOnUIElement MouseButtonLeft
+                                                    { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
                                                     , followingSteps = []
                                                     }
                                                 )
@@ -189,9 +189,9 @@ decideNextActionWhenInSpace botMemory memoryReading =
                     )
 
 
-decideNextActionAcquireLockedTarget : MemoryReading -> DecisionPathNode
+decideNextActionAcquireLockedTarget : ParsedUserInterface -> DecisionPathNode
 decideNextActionAcquireLockedTarget memoryReading =
-    case memoryReading |> firstAsteroidFromOverviewWindow of
+    case memoryReading |> topmostAsteroidFromOverviewWindow of
         Nothing ->
             DescribeBranch "I see no asteroid in the overview. Warp to mining site."
                 (warpToMiningSite memoryReading)
@@ -201,12 +201,12 @@ decideNextActionAcquireLockedTarget memoryReading =
                 DescribeBranch "Asteroid is in range. Lock target."
                     (EndDecisionPath
                         (Act
-                            { firstAction = asteroidInOverview.uiElement |> clickOnUIElement MouseButtonRight
+                            { firstAction = asteroidInOverview.uiNode |> clickOnUIElement MouseButtonRight
                             , followingSteps =
                                 [ ( "Click menu entry 'lock'."
                                   , lastContextMenuOrSubmenu
                                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
-                                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
                                   )
                                 ]
                             }
@@ -217,12 +217,12 @@ decideNextActionAcquireLockedTarget memoryReading =
                 DescribeBranch "Asteroid is not in range. Approach."
                     (EndDecisionPath
                         (Act
-                            { firstAction = asteroidInOverview.uiElement |> clickOnUIElement MouseButtonRight
+                            { firstAction = asteroidInOverview.uiNode |> clickOnUIElement MouseButtonRight
                             , followingSteps =
                                 [ ( "Click menu entry 'approach'."
                                   , lastContextMenuOrSubmenu
                                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
-                                        >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
                                   )
                                 ]
                             }
@@ -230,73 +230,73 @@ decideNextActionAcquireLockedTarget memoryReading =
                     )
 
 
-dockToStation : { stationNameFromInfoPanel : String } -> MemoryReading -> DecisionPathNode
+dockToStation : { stationNameFromInfoPanel : String } -> ParsedUserInterface -> DecisionPathNode
 dockToStation { stationNameFromInfoPanel } memoryReading =
-    case memoryReading.infoPanelCurrentSystem of
+    case memoryReading.infoPanelLocationInfo of
         CanNotSeeIt ->
-            DescribeBranch "I cannot see the current system info panel." (EndDecisionPath Wait)
+            DescribeBranch "I cannot see the location info panel." (EndDecisionPath Wait)
 
-        CanSee infoPanelCurrentSystem ->
+        CanSee infoPanelLocationInfo ->
             EndDecisionPath
                 (Act
-                    { firstAction = infoPanelCurrentSystem.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
+                    { firstAction = infoPanelLocationInfo.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
                     , followingSteps =
                         [ ( "Click on menu entry 'stations'."
                           , lastContextMenuOrSubmenu
                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase "stations")
-                                >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
                           )
                         , ( "Click on menu entry representing the station '" ++ stationNameFromInfoPanel ++ "'."
                           , lastContextMenuOrSubmenu
                                 >> Maybe.andThen
                                     (.entries
                                         >> List.filter
-                                            (menuEntryMatchesStationNameFromCurrentSystemInfoPanel stationNameFromInfoPanel)
+                                            (menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel)
                                         >> List.head
                                     )
-                                >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
                           )
                         , ( "Click on menu entry 'dock'"
                           , lastContextMenuOrSubmenu
                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase "dock")
-                                >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
                           )
                         ]
                     }
                 )
 
 
-warpToMiningSite : MemoryReading -> DecisionPathNode
+warpToMiningSite : ParsedUserInterface -> DecisionPathNode
 warpToMiningSite memoryReading =
-    case memoryReading.infoPanelCurrentSystem of
+    case memoryReading.infoPanelLocationInfo of
         CanNotSeeIt ->
             DescribeBranch "I cannot see the current system info panel." (EndDecisionPath Wait)
 
-        CanSee infoPanelCurrentSystem ->
+        CanSee infoPanelLocationInfo ->
             EndDecisionPath
                 (Act
-                    { firstAction = infoPanelCurrentSystem.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
+                    { firstAction = infoPanelLocationInfo.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
                     , followingSteps =
                         [ ( "Click on menu entry 'asteroid belts'."
                           , lastContextMenuOrSubmenu
                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase "asteroid belts")
-                                >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
                           )
                         , ( "Click on one of the menu entries."
                           , lastContextMenuOrSubmenu
                                 >> Maybe.andThen
                                     (.entries >> listElementAtWrappedIndex (getEntropyIntFromMemoryReading memoryReading))
-                                >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
                           )
                         , ( "Click menu entry 'Warp to Within'"
                           , lastContextMenuOrSubmenu
                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Within")
-                                >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
                           )
                         , ( "Click menu entry 'Within 0 m'"
                           , lastContextMenuOrSubmenu
                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Within 0 m")
-                                >> Maybe.map (.uiElement >> clickOnUIElement MouseButtonLeft)
+                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
                           )
                         ]
                     }
@@ -391,16 +391,16 @@ simpleProcessEvent eventAtTime stateBefore =
             }
 
 
-describeMemoryReadingForMonitoring : MemoryReading -> String
+describeMemoryReadingForMonitoring : ParsedUserInterface -> String
 describeMemoryReadingForMonitoring memoryReading =
     let
         describeShip =
-            case memoryReading.shipUi of
-                CanSee shipUi ->
-                    "I am in space, shield HP at " ++ ((shipUi.hitpointsAndEnergyMilli.shield // 10) |> String.fromInt) ++ "%."
+            case memoryReading.shipUI of
+                CanSee shipUI ->
+                    "I am in space, shield HP at " ++ ((shipUI.hitpointsMilli.shield // 10) |> String.fromInt) ++ "%."
 
                 CanNotSeeIt ->
-                    case memoryReading.infoPanelCurrentSystem |> maybeVisibleAndThen .expandedContent |> maybeNothingFromCanNotSeeIt |> Maybe.andThen .currentStationName of
+                    case memoryReading.infoPanelLocationInfo |> maybeVisibleAndThen .expandedContent |> maybeNothingFromCanNotSeeIt |> Maybe.andThen .currentStationName of
                         Just stationName ->
                             "I am docked at '" ++ stationName ++ "'."
 
@@ -413,11 +413,11 @@ describeMemoryReadingForMonitoring memoryReading =
     [ describeShip, describeOreHold ] |> String.join " "
 
 
-integrateCurrentReadingsIntoBotMemory : MemoryReading -> BotMemory -> BotMemory
+integrateCurrentReadingsIntoBotMemory : ParsedUserInterface -> BotMemory -> BotMemory
 integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
     let
         currentStationNameFromInfoPanel =
-            currentReading.infoPanelCurrentSystem
+            currentReading.infoPanelLocationInfo
                 |> maybeVisibleAndThen .expandedContent
                 |> maybeNothingFromCanNotSeeIt
                 |> Maybe.andThen .currentStationName
@@ -443,43 +443,43 @@ unpackToDecisionStagesDescriptionsAndLeaf node =
             ( branchDescription :: childDecisionsDescriptions, leaf )
 
 
-activeShipUiElementFromInventoryWindow : MemoryReading -> Maybe UIElement
+activeShipUiElementFromInventoryWindow : ParsedUserInterface -> Maybe UIElement
 activeShipUiElementFromInventoryWindow =
-    .inventoryWindow
-        >> maybeNothingFromCanNotSeeIt
+    .inventoryWindows
+        >> List.head
         >> Maybe.map .leftTreeEntries
         -- Assume upmost entry is active ship.
-        >> Maybe.andThen (List.sortBy (.uiElement >> .region >> .top) >> List.head)
-        >> Maybe.map .uiElement
+        >> Maybe.andThen (List.sortBy (.uiNode >> .totalDisplayRegion >> .y) >> List.head)
+        >> Maybe.map .uiNode
 
 
 {-| Assume upper row of modules only contains mining modules.
 -}
-shipUiMiningModules : MemoryReading -> List ShipUiModule
+shipUiMiningModules : ParsedUserInterface -> List ShipUIModule
 shipUiMiningModules =
     shipUiModulesRows >> List.head >> Maybe.withDefault []
 
 
-shipUiModules : MemoryReading -> List ShipUiModule
+shipUiModules : ParsedUserInterface -> List ShipUIModule
 shipUiModules =
-    .shipUi >> maybeNothingFromCanNotSeeIt >> Maybe.map .modules >> Maybe.withDefault []
+    .shipUI >> maybeNothingFromCanNotSeeIt >> Maybe.map .modules >> Maybe.withDefault []
 
 
 {-| Groups the modules into rows.
 -}
-shipUiModulesRows : MemoryReading -> List (List ShipUiModule)
+shipUiModulesRows : ParsedUserInterface -> List (List ShipUIModule)
 shipUiModulesRows =
     let
         putModulesInSameGroup moduleA moduleB =
             let
                 distanceY =
-                    (moduleA.uiElement.region |> centerFromRegion).y
-                        - (moduleB.uiElement.region |> centerFromRegion).y
+                    (moduleA.uiNode.totalDisplayRegion |> centerFromRegion).y
+                        - (moduleB.uiNode.totalDisplayRegion |> centerFromRegion).y
             in
             abs distanceY < 10
     in
     shipUiModules
-        >> List.sortBy (.uiElement >> .region >> .top)
+        >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
         >> List.foldl
             (\shipModule groups ->
                 case groups |> List.filter (List.any (putModulesInSameGroup shipModule)) |> List.head of
@@ -496,7 +496,7 @@ shipUiModulesRows =
 If there are multiple such entries, these are sorted by the length of their text, minus whitespaces in the beginning and the end.
 The one with the shortest text is returned.
 -}
-menuEntryContainingTextIgnoringCase : String -> SanderlingMemoryMeasurement.ContextMenu -> Maybe SanderlingMemoryMeasurement.ContextMenuEntry
+menuEntryContainingTextIgnoringCase : String -> Sanderling.MemoryReading.ContextMenu -> Maybe Sanderling.MemoryReading.ContextMenuEntry
 menuEntryContainingTextIgnoringCase textToSearch =
     .entries
         >> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
@@ -506,20 +506,22 @@ menuEntryContainingTextIgnoringCase textToSearch =
 
 {-| The names are at least sometimes displayed different: 'Moon 7' can become 'M7'
 -}
-menuEntryMatchesStationNameFromCurrentSystemInfoPanel : String -> SanderlingMemoryMeasurement.ContextMenuEntry -> Bool
-menuEntryMatchesStationNameFromCurrentSystemInfoPanel stationNameFromInfoPanel menuEntry =
+menuEntryMatchesStationNameFromLocationInfoPanel : String -> Sanderling.MemoryReading.ContextMenuEntry -> Bool
+menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel menuEntry =
     (stationNameFromInfoPanel |> String.toLower |> String.replace "moon " "m")
         == (menuEntry.text |> String.trim |> String.toLower)
 
 
-lastContextMenuOrSubmenu : MemoryReading -> Maybe SanderlingMemoryMeasurement.ContextMenu
+lastContextMenuOrSubmenu : ParsedUserInterface -> Maybe Sanderling.MemoryReading.ContextMenu
 lastContextMenuOrSubmenu =
-    .contextMenus >> List.reverse >> List.head
+    .contextMenus >> List.head
 
 
-firstAsteroidFromOverviewWindow : MemoryReading -> Maybe OverviewWindowEntry
-firstAsteroidFromOverviewWindow =
-    overviewWindowEntriesRepresentingAsteroids >> List.head
+topmostAsteroidFromOverviewWindow : ParsedUserInterface -> Maybe OverviewWindowEntry
+topmostAsteroidFromOverviewWindow =
+    overviewWindowEntriesRepresentingAsteroids
+        >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
+        >> List.head
 
 
 overviewWindowEntryIsInRange : OverviewWindowEntry -> Maybe Bool
@@ -527,7 +529,7 @@ overviewWindowEntryIsInRange =
     .distanceInMeters >> Result.map (\distanceInMeters -> distanceInMeters < 1000) >> Result.toMaybe
 
 
-overviewWindowEntriesRepresentingAsteroids : MemoryReading -> List OverviewWindowEntry
+overviewWindowEntriesRepresentingAsteroids : ParsedUserInterface -> List OverviewWindowEntry
 overviewWindowEntriesRepresentingAsteroids =
     .overviewWindow
         >> maybeNothingFromCanNotSeeIt
@@ -541,34 +543,34 @@ overviewWindowEntryRepresentsAnAsteroid entry =
         && (entry.textsLeftToRight |> List.any (String.toLower >> String.contains "belt") |> not)
 
 
-oreHoldFillPercent : MemoryReading -> Maybe Int
+oreHoldFillPercent : ParsedUserInterface -> Maybe Int
 oreHoldFillPercent =
-    .inventoryWindow
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen .selectedContainedCapacityGauge
+    .inventoryWindows
+        >> List.head
+        >> Maybe.andThen .selectedContainerCapacityGauge
         >> Maybe.map (\capacity -> capacity.used * 100 // capacity.maximum)
 
 
-inventoryWindowSelectedContainerFirstItem : MemoryReading -> Maybe UIElement
+inventoryWindowSelectedContainerFirstItem : ParsedUserInterface -> Maybe UIElement
 inventoryWindowSelectedContainerFirstItem =
-    .inventoryWindow
-        >> maybeNothingFromCanNotSeeIt
+    .inventoryWindows
+        >> List.head
         >> Maybe.andThen .selectedContainerInventory
         >> Maybe.andThen (.listViewItems >> List.head)
 
 
-inventoryWindowItemHangar : MemoryReading -> Maybe UIElement
+inventoryWindowItemHangar : ParsedUserInterface -> Maybe UIElement
 inventoryWindowItemHangar =
-    .inventoryWindow
-        >> maybeNothingFromCanNotSeeIt
+    .inventoryWindows
+        >> List.head
         >> Maybe.map .leftTreeEntries
         >> Maybe.andThen (List.filter (.text >> String.toLower >> String.contains "item hangar") >> List.head)
-        >> Maybe.map .uiElement
+        >> Maybe.map .uiNode
 
 
 clickOnUIElement : MouseButton -> UIElement -> Sanderling.EffectOnWindowStructure
 clickOnUIElement mouseButton uiElement =
-    effectMouseClickAtLocation mouseButton (uiElement.region |> centerFromRegion)
+    effectMouseClickAtLocation mouseButton (uiElement.totalDisplayRegion |> centerFromRegion)
 
 
 {-| The region of a ship entry in the inventory window can contain child nodes (e.g. 'Ore Hold').
@@ -576,40 +578,45 @@ For this reason, we don't click on the center but stay close to the top.
 -}
 clickLocationOnInventoryShipEntry : UIElement -> Sanderling.Location2d
 clickLocationOnInventoryShipEntry uiElement =
-    { x = (uiElement.region.left + uiElement.region.right) // 2
-    , y = uiElement.region.top + 7
+    { x = uiElement.totalDisplayRegion.x + uiElement.totalDisplayRegion.width // 2
+    , y = uiElement.totalDisplayRegion.y + 7
     }
 
 
-isShipWarpingOrJumping : MemoryReading -> Bool
+isShipWarpingOrJumping : ParsedUserInterface -> Bool
 isShipWarpingOrJumping =
-    .shipUi
+    .shipUI
         >> maybeNothingFromCanNotSeeIt
         >> Maybe.andThen (.indication >> maybeNothingFromCanNotSeeIt)
         >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
         >> Maybe.map
             (\maneuverType ->
-                [ SanderlingMemoryMeasurement.Warp, SanderlingMemoryMeasurement.Jump ]
+                [ Sanderling.MemoryReading.ManeuverWarp, Sanderling.MemoryReading.ManeuverJump ]
                     |> List.member maneuverType
             )
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
 
 
-getEntropyIntFromMemoryReading : MemoryReading -> Int
+getEntropyIntFromMemoryReading : ParsedUserInterface -> Int
 getEntropyIntFromMemoryReading memoryReading =
     let
         entropyFromUiElement uiElement =
-            [ uiElement.id, uiElement.region.left, uiElement.region.right, uiElement.region.top, uiElement.region.bottom ]
+            [ uiElement.uiNode.pythonObjectAddress |> String.toInt |> Maybe.withDefault 0
+            , uiElement.totalDisplayRegion.x
+            , uiElement.totalDisplayRegion.y
+            , uiElement.totalDisplayRegion.width
+            , uiElement.totalDisplayRegion.height
+            ]
                 |> List.sum
 
         entropyFromOverviewEntry overviewEntry =
-            [ overviewEntry.uiElement |> entropyFromUiElement, overviewEntry.distanceInMeters |> Result.withDefault 0 ]
+            [ overviewEntry.uiNode |> entropyFromUiElement, overviewEntry.distanceInMeters |> Result.withDefault 0 ]
                 |> List.sum
 
         fromMenus =
             memoryReading.contextMenus
-                |> List.concatMap (.entries >> List.map .uiElement)
+                |> List.concatMap (.entries >> List.map .uiNode)
                 |> List.map entropyFromUiElement
 
         fromOverview =

@@ -97,7 +97,7 @@ To achieve this, we combine the following tools:
 
 The following subsections explain in detail how to set up these tools.
 
-To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/cba8167a7b02120315b1adb2d7c697f29b95c09b/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
+To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/594e01b5a1be5dd8f03b0a4a3e3360e383b2543a/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
 
 ### Elm command line program
 

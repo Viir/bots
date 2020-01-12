@@ -6,14 +6,12 @@ Fortunately, this process can be automated using a bot. The bot we are using her
 
 + Download the BotEngine console from the following address:
 [https://botengine.blob.core.windows.net/blob-library/by-name/2019-12-11.BotEngine.Console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2019-12-11.BotEngine.Console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
-+ The bot we will use in this guide only works when the EVE Online client is configured to not run in 64-bit mode. Make sure that the setting `Run clients with 64 bit` is *disabled* for the EVE Online client. You can check this in the settings dialog shown in the screenshot below:
-
-![Settings Dialog in EVE Online](./image/2019-10-08.eve-online-launcher-settings-dialog.png)
++ The bot we will use in this guide only works when the EVE Online client is configured to run in 64-bit mode. Make sure that the setting `Run clients with 64 bit` is *enabled* for the EVE Online client.
 + Start the EVE Online client and log in to the game.
 + To start the autopilot bot, run the `BotEngine.exe` program with the following command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  run-bot  --bot-source="https://github.com/Viir/bots/tree/cba8167a7b02120315b1adb2d7c697f29b95c09b/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+C:\path\to\the\BotEngine.exe  run-bot  --bot-source="https://github.com/Viir/bots/tree/594e01b5a1be5dd8f03b0a4a3e3360e383b2543a/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
 

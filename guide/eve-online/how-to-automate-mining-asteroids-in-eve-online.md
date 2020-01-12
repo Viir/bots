@@ -18,7 +18,7 @@ When you have successfully used the warp-to-0 autopilot bot, you can continue he
 
 Despite being quite robust, this mining bot is far from being as smart as a human. For example, its perception is more limited than ours, so we need to set up the game to make sure that the bot can see everything it needs to. Following is the list of setup instructions for the EVE Online client:
 
-+ Disable `Run clients with 64 bit` in the EVE Online client settings, as explained in the travel bot guide.
++ Enable `Run clients with 64 bit` in the EVE Online client settings.
 + Set the UI language to English.
 + In the Overview window, make asteroids visible and hide everything else.
 + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
@@ -32,12 +32,12 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 To start the mining bot, you use almost the same command as shown in the guide on the warp-to-0 autopilot bot. The only difference is that to start the mining bot, you supply this value for the `bot-source` parameter:
 
-[https://github.com/Viir/bots/tree/f90c6d77ccfdbf1982076e83dc2169012f4aeafd/implement/applications/eve-online/eve-online-mining-bot](https://github.com/Viir/bots/tree/f90c6d77ccfdbf1982076e83dc2169012f4aeafd/implement/applications/eve-online/eve-online-mining-bot)
+[https://github.com/Viir/bots/tree/594e01b5a1be5dd8f03b0a4a3e3360e383b2543a/implement/applications/eve-online/eve-online-mining-bot](https://github.com/Viir/bots/tree/594e01b5a1be5dd8f03b0a4a3e3360e383b2543a/implement/applications/eve-online/eve-online-mining-bot)
 
 In case the bot does not work as expected, the first place to look is in the status message of the bot. Depending on what the bot is seeing and doing at the moment, it can display many different status messages.
-For example, if you disable the solar system info panel in the EVE Online client, the bot displays the following message:
+For example, if you disable the location ('System info') info panel in the EVE Online client, the bot displays the following message:
 
-> I cannot see the current system info panel.
+> I cannot see the location info panel.
 
 As soon as you enable this info panel again, the bot will also continue working.
 

@@ -1,4 +1,4 @@
-{- Warp to 0km auto-pilot, making your travels faster and thus safer by directly warping to gates/stations.
+{- EVE Online Warp-to-0 auto-pilot, making your travels faster and thus safer by directly warping to gates/stations.
    The bot follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
    Before starting the bot, set the in-game autopilot route and make sure the autopilot is expanded, so that the route is visible.
    Make sure you are undocked before starting the bot because the bot does not undock.
@@ -51,10 +51,10 @@ processEvent =
 simpleProcessEvent : BotEventAtTime -> SimpleState -> { newState : SimpleState, requests : List BotRequest, statusMessage : String }
 simpleProcessEvent eventAtTime stateBefore =
     case eventAtTime.event of
-        SimpleSanderling.MemoryMeasurementCompleted memoryMeasurement ->
+        SimpleSanderling.MemoryReadingCompleted memoryReading ->
             let
                 ( requests, statusMessage ) =
-                    botRequestsFromGameClientState memoryMeasurement
+                    botRequestsFromGameClientState memoryReading
             in
             { newState = stateBefore
             , requests = requests
@@ -77,20 +77,20 @@ botRequestsFromGameClientState : ParsedUserInterface -> ( List BotRequest, Strin
 botRequestsFromGameClientState parsedUserInterface =
     case parsedUserInterface |> infoPanelRouteFirstMarkerFromParsedUserInterface of
         Nothing ->
-            ( [ TakeMemoryMeasurementAfterDelayInMilliseconds 4000 ]
+            ( [ TakeMemoryReadingAfterDelayInMilliseconds 4000 ]
             , "I see no route in the info panel. I will start when a route is set."
             )
 
         Just infoPanelRouteFirstMarker ->
             case parsedUserInterface.shipUI of
                 CanNotSeeIt ->
-                    ( [ TakeMemoryMeasurementAfterDelayInMilliseconds 4000 ]
+                    ( [ TakeMemoryReadingAfterDelayInMilliseconds 4000 ]
                     , "I cannot see if the ship is warping or jumping. I wait for the ship UI to appear on the screen."
                     )
 
                 CanSee shipUi ->
                     if shipUi |> isShipWarpingOrJumping then
-                        ( [ TakeMemoryMeasurementAfterDelayInMilliseconds 4000 ]
+                        ( [ TakeMemoryReadingAfterDelayInMilliseconds 4000 ]
                         , "I see the ship is warping or jumping. I wait until that maneuver ends."
                         )
 
@@ -101,7 +101,7 @@ botRequestsFromGameClientState parsedUserInterface =
                                     parsedUserInterface
                                     infoPanelRouteFirstMarker
                         in
-                        ( requests ++ [ TakeMemoryMeasurementAfterDelayInMilliseconds 2000 ], statusMessage )
+                        ( requests ++ [ TakeMemoryReadingAfterDelayInMilliseconds 2000 ], statusMessage )
 
 
 botRequestsWhenNotWaitingForShipManeuver :

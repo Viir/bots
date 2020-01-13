@@ -30,7 +30,6 @@ sanderlingSetupScript =
 #r "System.Security.Cryptography.Algorithms"
 #r "System.Security.Cryptography.Primitives"
 
-using Sanderling.ExploreProcessMeasurement;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -52,11 +51,11 @@ class Request
 {
     public object getEveOnlineProcessesIds;
 
-    public GetMemoryMeasurement getMemoryMeasurement;
+    public GetMemoryReadingStructure GetMemoryReading;
 
     public TaskOnWindow<EffectOnWindow> effectOnWindow;
 
-    public class GetMemoryMeasurement
+    public class GetMemoryReadingStructure
     {
         public int processId;
     }
@@ -117,17 +116,17 @@ class Response
 {
     public int[] eveOnlineProcessesIds;
 
-    public GetMemoryMeasurementResult getMemoryMeasurementResult;
+    public GetMemoryReadingResultStructure GetMemoryReadingResult;
 
     public object effectExecuted;
 
-    public class GetMemoryMeasurementResult
+    public class GetMemoryReadingResultStructure
     {
-        public object processNotFound;
+        public object ProcessNotFound;
 
-        public Completed completed;
+        public CompletedStructure Completed;
 
-        public class Completed
+        public class CompletedStructure
         {
             public string mainWindowId;
 
@@ -168,16 +167,16 @@ Response request(Request request)
         };
     }
 
-    if (request.getMemoryMeasurement != null)
+    if (request.GetMemoryReading != null)
     {
-        var processId = request.getMemoryMeasurement.processId;
+        var processId = request.GetMemoryReading.processId;
 
         if (!GetWindowsProcessesLookingLikeEVEOnlineClient().Select(proc => proc.Id).Contains(processId))
             return new Response
             {
-                getMemoryMeasurementResult = new Response.GetMemoryMeasurementResult
+                GetMemoryReadingResult = new Response.GetMemoryReadingResultStructure
                 {
-                    processNotFound = new object(),
+                    ProcessNotFound = new object(),
                 }
             };
 
@@ -217,9 +216,9 @@ Response request(Request request)
 
         return new Response
         {
-            getMemoryMeasurementResult = new Response.GetMemoryMeasurementResult
+            GetMemoryReadingResult = new Response.GetMemoryReadingResultStructure
             {
-                completed = new Response.GetMemoryMeasurementResult.Completed
+                Completed = new Response.GetMemoryReadingResultStructure.CompletedStructure
                 {
                     mainWindowId = process.MainWindowHandle.ToInt64().ToString(),
                     serialRepresentationJson = serialRepresentationJson,

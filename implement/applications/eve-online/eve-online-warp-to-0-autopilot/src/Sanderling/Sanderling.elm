@@ -1,6 +1,6 @@
 module Sanderling.Sanderling exposing
     ( EffectOnWindowStructure(..)
-    , GetMemoryMeasurementResultStructure(..)
+    , GetMemoryReadingResultStructure(..)
     , Location2d
     , MouseButton(..)
     , RequestToVolatileHost(..)
@@ -20,25 +20,25 @@ import Sanderling.MemoryReading
 
 type RequestToVolatileHost
     = GetEveOnlineProcessesIds
-    | GetMemoryMeasurement GetMemoryMeasurementStructure
+    | GetMemoryReading GetMemoryReadingStructure
     | EffectOnWindow (TaskOnWindowStructure EffectOnWindowStructure)
 
 
 type ResponseFromVolatileHost
     = EveOnlineProcessesIds (List Int)
-    | GetMemoryMeasurementResult GetMemoryMeasurementResultStructure
+    | GetMemoryReadingResult GetMemoryReadingResultStructure
 
 
-type alias GetMemoryMeasurementStructure =
+type alias GetMemoryReadingStructure =
     { processId : Int }
 
 
-type GetMemoryMeasurementResultStructure
+type GetMemoryReadingResultStructure
     = ProcessNotFound
-    | Completed MemoryMeasurementCompleted
+    | Completed MemoryReadingCompletedStructure
 
 
-type alias MemoryMeasurementCompleted =
+type alias MemoryReadingCompletedStructure =
     { mainWindowId : WindowId
     , serialRepresentationJson : Maybe String
     }
@@ -130,8 +130,8 @@ decodeResponseFromVolatileHost =
     Json.Decode.oneOf
         [ Json.Decode.field "eveOnlineProcessesIds" (Json.Decode.list Json.Decode.int)
             |> Json.Decode.map EveOnlineProcessesIds
-        , Json.Decode.field "getMemoryMeasurementResult" decodeGetMemoryMeasurementResult
-            |> Json.Decode.map GetMemoryMeasurementResult
+        , Json.Decode.field "GetMemoryReadingResult" decodeGetMemoryReadingResult
+            |> Json.Decode.map GetMemoryReadingResult
         ]
 
 
@@ -141,8 +141,8 @@ encodeRequestToVolatileHost request =
         GetEveOnlineProcessesIds ->
             Json.Encode.object [ ( "getEveOnlineProcessesIds", Json.Encode.object [] ) ]
 
-        GetMemoryMeasurement getMemoryMeasurement ->
-            Json.Encode.object [ ( "getMemoryMeasurement", getMemoryMeasurement |> encodeGetMemoryMeasurement ) ]
+        GetMemoryReading getMemoryReading ->
+            Json.Encode.object [ ( "GetMemoryReading", getMemoryReading |> encodeGetMemoryReading ) ]
 
         EffectOnWindow taskOnWindow ->
             Json.Encode.object [ ( "effectOnWindow", taskOnWindow |> encodeTaskOnWindow encodeEffectOnWindowStructure ) ]
@@ -223,23 +223,22 @@ encodeMouseButton mouseButton =
         |> Json.Encode.string
 
 
-encodeGetMemoryMeasurement : GetMemoryMeasurementStructure -> Json.Encode.Value
-encodeGetMemoryMeasurement getMemoryMeasurement =
-    Json.Encode.object [ ( "processId", getMemoryMeasurement.processId |> Json.Encode.int ) ]
+encodeGetMemoryReading : GetMemoryReadingStructure -> Json.Encode.Value
+encodeGetMemoryReading getMemoryReading =
+    Json.Encode.object [ ( "processId", getMemoryReading.processId |> Json.Encode.int ) ]
 
 
-decodeGetMemoryMeasurementResult : Json.Decode.Decoder GetMemoryMeasurementResultStructure
-decodeGetMemoryMeasurementResult =
+decodeGetMemoryReadingResult : Json.Decode.Decoder GetMemoryReadingResultStructure
+decodeGetMemoryReadingResult =
     Json.Decode.oneOf
-        [ Json.Decode.field "processNotFound" (Json.Decode.succeed ProcessNotFound)
-        , Json.Decode.field "completed" decodeMemoryMeasurementCompleted
-            |> Json.Decode.map Completed
+        [ Json.Decode.field "ProcessNotFound" (Json.Decode.succeed ProcessNotFound)
+        , Json.Decode.field "Completed" decodeMemoryReadingCompleted |> Json.Decode.map Completed
         ]
 
 
-decodeMemoryMeasurementCompleted : Json.Decode.Decoder MemoryMeasurementCompleted
-decodeMemoryMeasurementCompleted =
-    Json.Decode.map2 MemoryMeasurementCompleted
+decodeMemoryReadingCompleted : Json.Decode.Decoder MemoryReadingCompletedStructure
+decodeMemoryReadingCompleted =
+    Json.Decode.map2 MemoryReadingCompletedStructure
         (Json.Decode.field "mainWindowId" Json.Decode.string)
         (Json.Decode.Extra.optionalField "serialRepresentationJson" Json.Decode.string)
 

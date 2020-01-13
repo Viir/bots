@@ -28,12 +28,12 @@ type alias BotEventAtTime =
 
 
 type BotEvent
-    = MemoryMeasurementCompleted Sanderling.MemoryReading.ParsedUserInterface
+    = MemoryReadingCompleted Sanderling.MemoryReading.ParsedUserInterface
     | SetBotConfiguration String
 
 
 type BotRequest
-    = TakeMemoryMeasurementAfterDelayInMilliseconds Int
+    = TakeMemoryReadingAfterDelayInMilliseconds Int
     | EffectOnGameClientWindow Sanderling.EffectOnWindowStructure
 
 
@@ -68,7 +68,7 @@ type alias SetupState =
     { volatileHost : Maybe ( InterfaceToHost.VolatileHostId, VolatileHostState )
     , lastRunScriptResult : Maybe (Result String (Maybe String))
     , eveOnlineProcessesIds : Maybe (List Int)
-    , lastMemoryMeasurement : Maybe ( Int, Sanderling.GetMemoryMeasurementResultStructure )
+    , lastMemoryReading : Maybe ( Int, Sanderling.GetMemoryReadingResultStructure )
     }
 
 
@@ -88,7 +88,7 @@ initSetup =
     { volatileHost = Nothing
     , lastRunScriptResult = Nothing
     , eveOnlineProcessesIds = Nothing
-    , lastMemoryMeasurement = Nothing
+    , lastMemoryReading = Nothing
     }
 
 
@@ -225,22 +225,22 @@ processEventNotWaitingForTask simpleBotProcessEvent maybeBotEvent stateBefore =
                     of
                         NoRequest ->
                             let
-                                timeForNewMemoryMeasurement =
-                                    case stateBefore.setup.lastMemoryMeasurement of
+                                timeForNewMemoryReading =
+                                    case stateBefore.setup.lastMemoryReading of
                                         Nothing ->
                                             True
 
-                                        Just ( lastMemoryMeasurementTime, _ ) ->
-                                            lastMemoryMeasurementTime + 10000 < stateBefore.timeInMilliseconds
+                                        Just ( lastMemoryReadingTime, _ ) ->
+                                            lastMemoryReadingTime + 10000 < stateBefore.timeInMilliseconds
 
-                                memoryMeasurementTask =
-                                    if timeForNewMemoryMeasurement then
-                                        Just (operateBot.taskFromBotRequest (TakeMemoryMeasurementAfterDelayInMilliseconds 0))
+                                memoryReadingTask =
+                                    if timeForNewMemoryReading then
+                                        Just (operateBot.taskFromBotRequest (TakeMemoryReadingAfterDelayInMilliseconds 0))
 
                                     else
                                         Nothing
                             in
-                            ( botStateBeforeRequest.requestQueue, memoryMeasurementTask )
+                            ( botStateBeforeRequest.requestQueue, memoryReadingTask )
 
                         WaitForNextRequest { durationInMilliseconds } ->
                             ( botStateBeforeRequest.requestQueue
@@ -373,25 +373,25 @@ integrateSanderlingResponseFromVolatileHost ( time, response ) stateBefore =
         Sanderling.EveOnlineProcessesIds eveOnlineProcessesIds ->
             ( { stateBefore | eveOnlineProcessesIds = Just eveOnlineProcessesIds }, Nothing )
 
-        Sanderling.GetMemoryMeasurementResult getMemoryMeasurementResult ->
+        Sanderling.GetMemoryReadingResult getMemoryReadingResult ->
             let
                 state =
-                    { stateBefore | lastMemoryMeasurement = Just ( time, getMemoryMeasurementResult ) }
+                    { stateBefore | lastMemoryReading = Just ( time, getMemoryReadingResult ) }
 
                 maybeBotEvent =
-                    case getMemoryMeasurementResult of
+                    case getMemoryReadingResult of
                         Sanderling.ProcessNotFound ->
                             Nothing
 
-                        Sanderling.Completed completedMemoryMeasurement ->
+                        Sanderling.Completed completedMemoryReading ->
                             let
-                                maybeParsedMemoryMeasurement =
-                                    completedMemoryMeasurement.serialRepresentationJson
+                                maybeParsedMemoryReading =
+                                    completedMemoryReading.serialRepresentationJson
                                         |> Maybe.andThen (Sanderling.MemoryReading.decodeMemoryReadingFromString >> Result.toMaybe)
                                         |> Maybe.map (Sanderling.MemoryReading.parseUITreeWithDisplayRegionFromUITree >> Sanderling.MemoryReading.parseUserInterfaceFromUITree)
                             in
-                            maybeParsedMemoryMeasurement
-                                |> Maybe.map MemoryMeasurementCompleted
+                            maybeParsedMemoryReading
+                                |> Maybe.map MemoryReadingCompleted
             in
             ( state, maybeBotEvent )
 
@@ -412,7 +412,7 @@ dequeueNextRequestFromBotState { currentTimeInMs } stateBefore =
             let
                 timeToWaitToNextRequest =
                     case nextRequest of
-                        TakeMemoryMeasurementAfterDelayInMilliseconds delayInMs ->
+                        TakeMemoryReadingAfterDelayInMilliseconds delayInMs ->
                             queueTime + delayInMs - currentTimeInMs
 
                         EffectOnGameClientWindow _ ->
@@ -468,24 +468,24 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                     FinishSession "I did not find an EVE Online client process."
 
                 Just eveOnlineProcessId ->
-                    case stateBefore.lastMemoryMeasurement of
+                    case stateBefore.lastMemoryReading of
                         Nothing ->
                             ContinueSetup stateBefore
                                 (InterfaceToHost.RunInVolatileHost
                                     { hostId = volatileHostId
                                     , script =
                                         Sanderling.buildScriptToGetResponseFromVolatileHost
-                                            (Sanderling.GetMemoryMeasurement { processId = eveOnlineProcessId })
+                                            (Sanderling.GetMemoryReading { processId = eveOnlineProcessId })
                                     }
                                 )
                                 "Get the first memory reading from the EVE Online client process. This can take several seconds."
 
-                        Just ( lastMemoryMeasurementTime, lastMemoryMeasurement ) ->
-                            case lastMemoryMeasurement of
+                        Just ( lastMemoryReadingTime, lastMemoryReading ) ->
+                            case lastMemoryReading of
                                 Sanderling.ProcessNotFound ->
                                     FinishSession "The EVE Online client process disappeared."
 
-                                Sanderling.Completed lastCompletedMemoryMeasurement ->
+                                Sanderling.Completed lastCompletedMemoryReading ->
                                     -- TODO: FinishSession when memory reading failed.
                                     OperateBot
                                         { taskFromBotRequest =
@@ -493,12 +493,12 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                                 let
                                                     requestToVolatileHost =
                                                         case request of
-                                                            TakeMemoryMeasurementAfterDelayInMilliseconds _ ->
-                                                                Sanderling.GetMemoryMeasurement { processId = eveOnlineProcessId }
+                                                            TakeMemoryReadingAfterDelayInMilliseconds _ ->
+                                                                Sanderling.GetMemoryReading { processId = eveOnlineProcessId }
 
                                                             EffectOnGameClientWindow effect ->
                                                                 Sanderling.EffectOnWindow
-                                                                    { windowId = lastCompletedMemoryMeasurement.mainWindowId
+                                                                    { windowId = lastCompletedMemoryReading.mainWindowId
                                                                     , task = effect
                                                                     , bringWindowToForeground = True
                                                                     }

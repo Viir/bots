@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot v2020-01-11
+{- Michaels EVE Online mining bot v2020-01-13
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -319,7 +319,7 @@ processEvent =
 simpleProcessEvent : BotEventAtTime -> SimpleState -> { newState : SimpleState, requests : List BotRequest, statusMessage : String }
 simpleProcessEvent eventAtTime stateBefore =
     case eventAtTime.event of
-        SimpleSanderling.MemoryMeasurementCompleted memoryReading ->
+        SimpleSanderling.MemoryReadingCompleted memoryReading ->
             let
                 botMemory =
                     stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory memoryReading
@@ -362,7 +362,7 @@ simpleProcessEvent eventAtTime stateBefore =
                     effects |> List.map EffectOnGameClientWindow
 
                 requests =
-                    effectsRequests ++ [ TakeMemoryMeasurementAfterDelayInMilliseconds generalStepDelayMilliseconds ]
+                    effectsRequests ++ [ TakeMemoryReadingAfterDelayInMilliseconds generalStepDelayMilliseconds ]
 
                 describeActivity =
                     (decisionStagesDescriptions ++ [ currentStepDescription ])

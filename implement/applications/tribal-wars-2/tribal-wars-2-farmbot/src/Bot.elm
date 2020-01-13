@@ -1,6 +1,6 @@
-{- Explore farming barbarian villages in Tribal Wars 2
+{- Explore farming barbarian villages in Tribal Wars 2 version 2020-01-13
 
-   This version only reads your villages.
+   This version scans the map for barbarian villages.
 
    The bot automatically opens a new web browser window. The first time you run it, it might take more time because it needs to download the web browser software.
    When the web browser has opened, navigate to Tribal Wars 2 and log in to your account, so you see your villages.
@@ -21,7 +21,7 @@ module Bot exposing
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
 import Dict
 import Json.Decode
-import Limbara.SimpleLimbara as SimpleLimbara exposing (BotEventAtTime, BotRequest(..))
+import Limbara.SimpleLimbara as SimpleLimbara exposing (BotEvent, BotRequest(..))
 import Set
 
 
@@ -114,12 +114,15 @@ processEvent =
     SimpleLimbara.processEvent simpleProcessEvent
 
 
-simpleProcessEvent : BotEventAtTime -> SimpleState -> { newState : SimpleState, request : BotRequest, statusMessage : String }
-simpleProcessEvent eventAtTime stateBefore =
+simpleProcessEvent : BotEvent -> SimpleState -> { newState : SimpleState, request : BotRequest, statusMessage : String }
+simpleProcessEvent event stateBefore =
     let
         state =
-            case eventAtTime.event of
+            case event of
                 SimpleLimbara.SetBotConfiguration _ ->
+                    stateBefore
+
+                SimpleLimbara.ArrivedAtTime _ ->
                     stateBefore
 
                 SimpleLimbara.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
@@ -463,7 +466,7 @@ statusMessageFromState state =
                 Just parseResponseError ->
                     Json.Decode.errorToString parseResponseError
     in
-    [ jsRunResult, aboutGame, villagesByCoordinatesReport, parseResponseErrorReport ] |> String.join "\n"
+    [ aboutGame, villagesByCoordinatesReport, parseResponseErrorReport, jsRunResult ] |> String.join "\n"
 
 
 describeRunJavascriptInCurrentPageResponseStructure : SimpleLimbara.RunJavascriptInCurrentPageResponseStructure -> String

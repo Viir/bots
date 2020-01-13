@@ -6,7 +6,6 @@
 
 module Limbara.SimpleLimbara exposing
     ( BotEvent(..)
-    , BotEventAtTime
     , BotRequest(..)
     , RunJavascriptInCurrentPageResponseStructure
     , SetupState
@@ -21,14 +20,9 @@ import Limbara.Limbara as Limbara
 import Limbara.LimbaraVolatileHostSetup as LimbaraVolatileHostSetup
 
 
-type alias BotEventAtTime =
-    { timeInMilliseconds : Int
-    , event : BotEvent
-    }
-
-
 type BotEvent
     = SetBotConfiguration String
+    | ArrivedAtTime { timeInMilliseconds : Int }
     | RunJavascriptInCurrentPageResponse RunJavascriptInCurrentPageResponseStructure
 
 
@@ -61,6 +55,13 @@ type alias StateIncludingSetup simpleBotState =
 type alias BotState simpleBotState =
     { simpleBotState : simpleBotState
     , statusMessage : Maybe String
+    }
+
+
+type alias SimpleBotProcessEventResult simpleBotState =
+    { newState : simpleBotState
+    , request : BotRequest
+    , statusMessage : String
     }
 
 
@@ -104,19 +105,19 @@ initState simpleBotState =
 
 
 processEvent :
-    (BotEventAtTime -> simpleBotState -> { newState : simpleBotState, request : BotRequest, statusMessage : String })
+    (BotEvent -> simpleBotState -> SimpleBotProcessEventResult simpleBotState)
     -> InterfaceToHost.BotEvent
     -> StateIncludingSetup simpleBotState
     -> ( StateIncludingSetup simpleBotState, InterfaceToHost.BotResponse )
 processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
     let
-        ( stateBefore, maybeBotEvent ) =
-            stateBeforeIntegratingEvent |> integrateFromHostEvent fromHostEvent
+        ( stateBefore, maybeBotRequest ) =
+            stateBeforeIntegratingEvent |> integrateFromHostEvent simpleBotProcessEvent fromHostEvent
 
         ( state, responseBeforeAddingStatusMessage ) =
             case stateBefore.taskInProgress of
                 Nothing ->
-                    processEventNotWaitingForTask simpleBotProcessEvent maybeBotEvent stateBefore
+                    processEventNotWaitingForTask maybeBotRequest stateBefore
 
                 Just taskInProgress ->
                     ( stateBefore
@@ -128,7 +129,10 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                     )
 
         statusMessagePrefix =
-            (state |> statusReportFromState) ++ "\n\nCurrent activity: "
+            (state.botState.statusMessage |> Maybe.withDefault "")
+                ++ "\n--------\nLimbara framework status:\n"
+                ++ (state |> statusReportFromState)
+                ++ "\n"
 
         response =
             case responseBeforeAddingStatusMessage of
@@ -147,12 +151,8 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
     ( state, response )
 
 
-processEventNotWaitingForTask :
-    (BotEventAtTime -> simpleBotState -> { newState : simpleBotState, request : BotRequest, statusMessage : String })
-    -> Maybe BotEventAtTime
-    -> StateIncludingSetup simpleBotState
-    -> ( StateIncludingSetup simpleBotState, InterfaceToHost.BotResponse )
-processEventNotWaitingForTask simpleBotProcessEvent maybeBotEvent stateBefore =
+processEventNotWaitingForTask : Maybe BotRequest -> StateIncludingSetup simpleBotState -> ( StateIncludingSetup simpleBotState, InterfaceToHost.BotResponse )
+processEventNotWaitingForTask maybeBotRequest stateBefore =
     case stateBefore.setup |> getNextSetupTask of
         ContinueSetup setupState setupTask setupTaskDescription ->
             let
@@ -181,48 +181,33 @@ processEventNotWaitingForTask simpleBotProcessEvent maybeBotEvent stateBefore =
 
         OperateBot operateBot ->
             let
-                botStateBefore =
-                    stateBefore.botState
-
-                maybeSimpleBotEventResult =
-                    maybeBotEvent
-                        |> Maybe.map
-                            (\botEvent -> botStateBefore.simpleBotState |> simpleBotProcessEvent botEvent)
-
-                ( botState, maybeRequestFromBot ) =
-                    case maybeSimpleBotEventResult of
-                        Nothing ->
-                            ( stateBefore.botState, Nothing )
-
-                        Just simpleBotEventResult ->
-                            ( { botStateBefore
-                                | simpleBotState = simpleBotEventResult.newState
-                                , statusMessage = Just simpleBotEventResult.statusMessage
-
-                                --, request = simpleBotEventResult.request
-                              }
-                            , Just simpleBotEventResult.request
-                            )
-
                 taskId =
                     "operate-bot"
 
-                operateBotTask =
-                    maybeRequestFromBot
-                        |> Maybe.withDefault (RunJavascriptInCurrentPageRequest { requestId = "idle-task", javascript = "''", timeToWaitForCallbackMilliseconds = 0 })
-                        |> operateBot.taskFromBotRequest
+                ( state, startTasks ) =
+                    maybeBotRequest
+                        |> Maybe.map
+                            (\botRequest ->
+                                let
+                                    taskFromBotRequest =
+                                        botRequest |> operateBot.taskFromBotRequest
+                                in
+                                ( { stateBefore
+                                    | taskInProgress =
+                                        Just
+                                            { startTimeInMilliseconds = stateBefore.timeInMilliseconds
+                                            , taskIdString = taskId
+                                            , taskDescription = "Task from bot request."
+                                            }
+                                  }
+                                , [ { taskId = InterfaceToHost.taskIdFromString taskId, task = taskFromBotRequest } ]
+                                )
+                            )
+                        |> Maybe.withDefault ( stateBefore, [] )
             in
-            ( { stateBefore
-                | botState = botState
-                , taskInProgress =
-                    Just
-                        { startTimeInMilliseconds = stateBefore.timeInMilliseconds
-                        , taskIdString = taskId
-                        , taskDescription = "Operate bot task: "
-                        }
-              }
-            , { startTasks = [ { taskId = InterfaceToHost.taskIdFromString taskId, task = operateBotTask } ]
-              , statusDescriptionText = "Operate bot:\n" ++ (botState.statusMessage |> Maybe.withDefault "")
+            ( state
+            , { startTasks = startTasks
+              , statusDescriptionText = "Operate bot."
               , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
               }
                 |> InterfaceToHost.ContinueSession
@@ -234,33 +219,55 @@ processEventNotWaitingForTask simpleBotProcessEvent maybeBotEvent stateBefore =
             )
 
 
-integrateFromHostEvent : InterfaceToHost.BotEvent -> StateIncludingSetup a -> ( StateIncludingSetup a, Maybe BotEventAtTime )
-integrateFromHostEvent fromHostEvent stateBefore =
-    case fromHostEvent of
-        InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
-            ( { stateBefore | timeInMilliseconds = timeInMilliseconds }, Nothing )
+integrateFromHostEvent :
+    (BotEvent -> simpleBotState -> SimpleBotProcessEventResult simpleBotState)
+    -> InterfaceToHost.BotEvent
+    -> StateIncludingSetup simpleBotState
+    -> ( StateIncludingSetup simpleBotState, Maybe BotRequest )
+integrateFromHostEvent simpleBotProcessEvent fromHostEvent stateBefore =
+    let
+        ( stateBeforeIntegrateBotEvent, maybeBotEvent ) =
+            case fromHostEvent of
+                InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
+                    ( { stateBefore | timeInMilliseconds = timeInMilliseconds }
+                    , Just (ArrivedAtTime { timeInMilliseconds = timeInMilliseconds })
+                    )
 
-        InterfaceToHost.CompletedTask taskComplete ->
-            let
-                ( setupState, maybeBotEvent ) =
-                    stateBefore.setup
-                        |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
-                        |> Tuple.mapSecond
-                            (Maybe.map
-                                (\botEvent ->
-                                    { timeInMilliseconds = stateBefore.timeInMilliseconds, event = botEvent }
-                                )
-                            )
-            in
-            ( { stateBefore | setup = setupState, taskInProgress = Nothing }, maybeBotEvent )
+                InterfaceToHost.CompletedTask taskComplete ->
+                    let
+                        ( setupState, maybeBotEventFromTaskComplete ) =
+                            stateBefore.setup
+                                |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
+                    in
+                    ( { stateBefore | setup = setupState, taskInProgress = Nothing }, maybeBotEventFromTaskComplete )
 
-        InterfaceToHost.SetBotConfiguration newBotConfiguration ->
-            ( stateBefore
-            , Just { timeInMilliseconds = stateBefore.timeInMilliseconds, event = SetBotConfiguration newBotConfiguration }
+                InterfaceToHost.SetBotConfiguration newBotConfiguration ->
+                    ( stateBefore
+                    , Just (SetBotConfiguration newBotConfiguration)
+                    )
+
+                InterfaceToHost.SetSessionTimeLimit _ ->
+                    ( stateBefore, Nothing )
+    in
+    maybeBotEvent
+        |> Maybe.map
+            (\botEvent ->
+                let
+                    botStateBefore =
+                        stateBeforeIntegrateBotEvent.botState
+
+                    simpleBotEventResult =
+                        botStateBefore.simpleBotState |> simpleBotProcessEvent botEvent
+
+                    botState =
+                        { botStateBefore
+                            | simpleBotState = simpleBotEventResult.newState
+                            , statusMessage = Just simpleBotEventResult.statusMessage
+                        }
+                in
+                ( { stateBeforeIntegrateBotEvent | botState = botState }, Just simpleBotEventResult.request )
             )
-
-        InterfaceToHost.SetSessionTimeLimit _ ->
-            ( stateBefore, Nothing )
+        |> Maybe.withDefault ( stateBeforeIntegrateBotEvent, Nothing )
 
 
 integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe BotEvent )

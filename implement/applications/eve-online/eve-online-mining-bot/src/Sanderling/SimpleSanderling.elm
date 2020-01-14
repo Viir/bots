@@ -1,6 +1,6 @@
-{- This module contains a framework to build simple EVE Online bots.
-   This framework automatically selects an EVE Online client process and finishes the bot session when that process disappears.
-   To use this framework, import this module and use the `initState` and `processEvent` functions.
+{- This module contains a framework to build EVE Online bots.
+   The framework automatically selects an EVE Online client process and finishes the bot session when that process disappears.
+   To use the framework, import this module and use the `initState` and `processEvent` functions.
 -}
 
 
@@ -33,8 +33,7 @@ type BotEvent
 
 
 type BotRequest
-    = TakeMemoryReadingAfterDelayInMilliseconds Int
-    | EffectOnGameClientWindow Sanderling.EffectOnWindowStructure
+    = EffectOnGameClientWindow Sanderling.EffectOnWindowStructure
 
 
 type alias StateIncludingSetup simpleBotState =
@@ -48,27 +47,20 @@ type alias StateIncludingSetup simpleBotState =
 
 type alias BotState simpleBotState =
     { simpleBotState : simpleBotState
-    , statusMessage : Maybe String
+    , lastEvent : Maybe { timeInMilliseconds : Int, eventResult : BotProcessEventResult simpleBotState }
     , requestQueue : BotRequestQueue
     }
 
 
 type alias BotRequestQueue =
-    { queuedRequests : List ( Int, BotRequest )
-    , lastForwardedRequestTask : Maybe BotRequestTaskState
-    }
-
-
-type BotRequestTaskState
-    = Started { taskId : Int }
-    | Completed { taskId : Int }
+    List { timeInMilliseconds : Int, request : BotRequest }
 
 
 type alias SetupState =
     { volatileHost : Maybe ( InterfaceToHost.VolatileHostId, VolatileHostState )
     , lastRunScriptResult : Maybe (Result String (Maybe String))
     , eveOnlineProcessesIds : Maybe (List Int)
-    , lastMemoryReading : Maybe ( Int, Sanderling.GetMemoryReadingResultStructure )
+    , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : Sanderling.GetMemoryReadingResultStructure }
     }
 
 
@@ -79,8 +71,16 @@ type VolatileHostState
 
 type SetupTask
     = ContinueSetup SetupState InterfaceToHost.Task String
-    | OperateBot { taskFromBotRequest : BotRequest -> InterfaceToHost.Task }
+    | OperateBot { buildTaskFromBotRequest : BotRequest -> InterfaceToHost.Task, getMemoryReadingTask : InterfaceToHost.Task }
     | FinishSession String
+
+
+type alias BotProcessEventResult simpleBotState =
+    { newState : simpleBotState
+    , requests : List BotRequest
+    , millisecondsToNextMemoryReading : Int
+    , statusDescriptionText : String
+    }
 
 
 initSetup : SetupState
@@ -97,11 +97,8 @@ initState simpleBotState =
     { setup = initSetup
     , botState =
         { simpleBotState = simpleBotState
-        , statusMessage = Nothing
-        , requestQueue =
-            { queuedRequests = []
-            , lastForwardedRequestTask = Nothing
-            }
+        , lastEvent = Nothing
+        , requestQueue = []
         }
     , timeInMilliseconds = 0
     , lastTaskIndex = 0
@@ -110,7 +107,7 @@ initState simpleBotState =
 
 
 processEvent :
-    (BotEventAtTime -> simpleBotState -> { newState : simpleBotState, requests : List BotRequest, statusMessage : String })
+    (BotEventAtTime -> simpleBotState -> BotProcessEventResult simpleBotState)
     -> InterfaceToHost.BotEvent
     -> StateIncludingSetup simpleBotState
     -> ( StateIncludingSetup simpleBotState, InterfaceToHost.BotResponse )
@@ -122,7 +119,7 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
         ( state, responseBeforeAddingStatusMessage ) =
             case stateBefore.taskInProgress of
                 Nothing ->
-                    processEventNotWaitingForTask simpleBotProcessEvent maybeBotEvent stateBefore
+                    processEventNotWaitingForTaskCompletion simpleBotProcessEvent maybeBotEvent stateBefore
 
                 Just taskInProgress ->
                     ( stateBefore
@@ -134,7 +131,7 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                     )
 
         statusMessagePrefix =
-            (state |> statusReportFromState) ++ "\n\nCurrent activity: "
+            (state |> statusReportFromState) ++ "\nCurrent activity: "
 
         response =
             case responseBeforeAddingStatusMessage of
@@ -153,12 +150,12 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
     ( state, response )
 
 
-processEventNotWaitingForTask :
-    (BotEventAtTime -> simpleBotState -> { newState : simpleBotState, requests : List BotRequest, statusMessage : String })
+processEventNotWaitingForTaskCompletion :
+    (BotEventAtTime -> simpleBotState -> BotProcessEventResult simpleBotState)
     -> Maybe BotEventAtTime
     -> StateIncludingSetup simpleBotState
     -> ( StateIncludingSetup simpleBotState, InterfaceToHost.BotResponse )
-processEventNotWaitingForTask simpleBotProcessEvent maybeBotEvent stateBefore =
+processEventNotWaitingForTaskCompletion simpleBotProcessEvent maybeBotEvent stateBefore =
     case stateBefore.setup |> getNextSetupTask of
         ContinueSetup setupState setupTask setupTaskDescription ->
             let
@@ -202,66 +199,74 @@ processEventNotWaitingForTask simpleBotProcessEvent maybeBotEvent stateBefore =
 
                         Just simpleBotEventResult ->
                             let
-                                requestQueueBefore =
-                                    botStateBefore.requestQueue
-
                                 requestQueue =
-                                    { requestQueueBefore
-                                        | queuedRequests =
-                                            simpleBotEventResult.requests
-                                                |> List.map (\botRequest -> ( stateBefore.timeInMilliseconds, botRequest ))
-                                    }
+                                    simpleBotEventResult.requests
+                                        |> List.map
+                                            (\botRequest ->
+                                                { timeInMilliseconds = stateBefore.timeInMilliseconds, request = botRequest }
+                                            )
                             in
                             { botStateBefore
                                 | simpleBotState = simpleBotEventResult.newState
-                                , statusMessage = Just simpleBotEventResult.statusMessage
+                                , lastEvent = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, eventResult = simpleBotEventResult }
                                 , requestQueue = requestQueue
                             }
 
-                ( botRequestQueue, operateBotRequestTask ) =
+                ( botRequestQueue, botRequestTask ) =
                     case
                         botStateBeforeRequest.requestQueue
                             |> dequeueNextRequestFromBotState { currentTimeInMs = stateBefore.timeInMilliseconds }
                     of
                         NoRequest ->
-                            let
-                                timeForNewMemoryReading =
-                                    case stateBefore.setup.lastMemoryReading of
-                                        Nothing ->
-                                            True
-
-                                        Just ( lastMemoryReadingTime, _ ) ->
-                                            lastMemoryReadingTime + 10000 < stateBefore.timeInMilliseconds
-
-                                memoryReadingTask =
-                                    if timeForNewMemoryReading then
-                                        Just (operateBot.taskFromBotRequest (TakeMemoryReadingAfterDelayInMilliseconds 0))
-
-                                    else
-                                        Nothing
-                            in
-                            ( botStateBeforeRequest.requestQueue, memoryReadingTask )
-
-                        WaitForNextRequest { durationInMilliseconds } ->
-                            ( botStateBeforeRequest.requestQueue
-                            , Nothing
-                            )
+                            ( botStateBeforeRequest.requestQueue, Nothing )
 
                         ForwardRequest forward ->
-                            ( forward.newQueueState, forward.request |> operateBot.taskFromBotRequest |> Just )
+                            ( forward.newQueueState, forward.request |> operateBot.buildTaskFromBotRequest |> Just )
 
-                operateBotRequestStartTasks =
-                    operateBotRequestTask
-                        |> Maybe.map (\task -> { taskId = InterfaceToHost.taskIdFromString "operate-bot", task = task })
-                        |> Maybe.map List.singleton
-                        |> Maybe.withDefault []
+                timeForNextMemoryReadingGeneral =
+                    (stateBefore.setup.lastMemoryReading |> Maybe.map .timeInMilliseconds |> Maybe.withDefault 0) + 10000
+
+                timeForNextMemoryReadingFromBot =
+                    stateBefore.botState.lastEvent
+                        |> Maybe.map (\botLastEvent -> botLastEvent.timeInMilliseconds + botLastEvent.eventResult.millisecondsToNextMemoryReading)
+                        |> Maybe.withDefault 0
+
+                timeForNextMemoryReading =
+                    min timeForNextMemoryReadingGeneral timeForNextMemoryReadingFromBot
+
+                memoryReadingTasks =
+                    if timeForNextMemoryReading < stateBefore.timeInMilliseconds then
+                        [ operateBot.getMemoryReadingTask ]
+
+                    else
+                        []
+
+                ( taskInProgress, startTasks ) =
+                    (botRequestTask |> Maybe.map List.singleton |> Maybe.withDefault [])
+                        ++ memoryReadingTasks
+                        |> List.head
+                        |> Maybe.map
+                            (\task ->
+                                let
+                                    taskIdString =
+                                        "operate-bot"
+                                in
+                                ( Just
+                                    { startTimeInMilliseconds = stateBefore.timeInMilliseconds
+                                    , taskIdString = taskIdString
+                                    , taskDescription = "From bot request or memory reading."
+                                    }
+                                , [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task } ]
+                                )
+                            )
+                        |> Maybe.withDefault ( stateBefore.taskInProgress, [] )
 
                 botState =
                     { botStateBeforeRequest | requestQueue = botRequestQueue }
             in
-            ( { stateBefore | botState = botState }
-            , { startTasks = operateBotRequestStartTasks
-              , statusDescriptionText = "Operate bot:\n" ++ (botState.statusMessage |> Maybe.withDefault "")
+            ( { stateBefore | botState = botState, taskInProgress = taskInProgress }
+            , { startTasks = startTasks
+              , statusDescriptionText = "Operate bot."
               , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
               }
                 |> InterfaceToHost.ContinueSession
@@ -368,7 +373,7 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
 
 
 integrateSanderlingResponseFromVolatileHost : ( Int, Sanderling.ResponseFromVolatileHost ) -> SetupState -> ( SetupState, Maybe BotEvent )
-integrateSanderlingResponseFromVolatileHost ( time, response ) stateBefore =
+integrateSanderlingResponseFromVolatileHost ( timeInMilliseconds, response ) stateBefore =
     case response of
         Sanderling.EveOnlineProcessesIds eveOnlineProcessesIds ->
             ( { stateBefore | eveOnlineProcessesIds = Just eveOnlineProcessesIds }, Nothing )
@@ -376,7 +381,9 @@ integrateSanderlingResponseFromVolatileHost ( time, response ) stateBefore =
         Sanderling.GetMemoryReadingResult getMemoryReadingResult ->
             let
                 state =
-                    { stateBefore | lastMemoryReading = Just ( time, getMemoryReadingResult ) }
+                    { stateBefore
+                        | lastMemoryReading = Just { timeInMilliseconds = timeInMilliseconds, memoryReadingResult = getMemoryReadingResult }
+                    }
 
                 maybeBotEvent =
                     case getMemoryReadingResult of
@@ -398,35 +405,20 @@ integrateSanderlingResponseFromVolatileHost ( time, response ) stateBefore =
 
 type NextBotRequestFromQueue
     = NoRequest
-    | WaitForNextRequest { durationInMilliseconds : Int }
     | ForwardRequest { newQueueState : BotRequestQueue, request : BotRequest }
 
 
 dequeueNextRequestFromBotState : { currentTimeInMs : Int } -> BotRequestQueue -> NextBotRequestFromQueue
-dequeueNextRequestFromBotState { currentTimeInMs } stateBefore =
-    case stateBefore.queuedRequests |> List.head of
-        Nothing ->
+dequeueNextRequestFromBotState { currentTimeInMs } requestQueueBefore =
+    case requestQueueBefore of
+        [] ->
             NoRequest
 
-        Just ( queueTime, nextRequest ) ->
-            let
-                timeToWaitToNextRequest =
-                    case nextRequest of
-                        TakeMemoryReadingAfterDelayInMilliseconds delayInMs ->
-                            queueTime + delayInMs - currentTimeInMs
-
-                        EffectOnGameClientWindow _ ->
-                            0
-            in
-            if timeToWaitToNextRequest <= 0 then
-                ForwardRequest
-                    { newQueueState =
-                        { stateBefore | queuedRequests = stateBefore.queuedRequests |> List.tail |> Maybe.withDefault [] }
-                    , request = nextRequest
-                    }
-
-            else
-                WaitForNextRequest { durationInMilliseconds = timeToWaitToNextRequest }
+        nextEntry :: remainingEntries ->
+            ForwardRequest
+                { newQueueState = remainingEntries
+                , request = nextEntry.request
+                }
 
 
 getNextSetupTask : SetupState -> SetupTask
@@ -480,33 +472,32 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                 )
                                 "Get the first memory reading from the EVE Online client process. This can take several seconds."
 
-                        Just ( lastMemoryReadingTime, lastMemoryReading ) ->
-                            case lastMemoryReading of
+                        Just lastMemoryReadingTime ->
+                            case lastMemoryReadingTime.memoryReadingResult of
                                 Sanderling.ProcessNotFound ->
                                     FinishSession "The EVE Online client process disappeared."
 
                                 Sanderling.Completed lastCompletedMemoryReading ->
-                                    -- TODO: FinishSession when memory reading failed.
+                                    let
+                                        buildTaskFromRequestToVolatileHost requestToVolatileHost =
+                                            InterfaceToHost.RunInVolatileHost
+                                                { hostId = volatileHostId
+                                                , script = Sanderling.buildScriptToGetResponseFromVolatileHost requestToVolatileHost
+                                                }
+                                    in
                                     OperateBot
-                                        { taskFromBotRequest =
+                                        { buildTaskFromBotRequest =
                                             \request ->
-                                                let
-                                                    requestToVolatileHost =
-                                                        case request of
-                                                            TakeMemoryReadingAfterDelayInMilliseconds _ ->
-                                                                Sanderling.GetMemoryReading { processId = eveOnlineProcessId }
-
-                                                            EffectOnGameClientWindow effect ->
-                                                                Sanderling.EffectOnWindow
-                                                                    { windowId = lastCompletedMemoryReading.mainWindowId
-                                                                    , task = effect
-                                                                    , bringWindowToForeground = True
-                                                                    }
-                                                in
-                                                InterfaceToHost.RunInVolatileHost
-                                                    { hostId = volatileHostId
-                                                    , script = Sanderling.buildScriptToGetResponseFromVolatileHost requestToVolatileHost
-                                                    }
+                                                case request of
+                                                    EffectOnGameClientWindow effect ->
+                                                        { windowId = lastCompletedMemoryReading.mainWindowId
+                                                        , task = effect
+                                                        , bringWindowToForeground = True
+                                                        }
+                                                            |> Sanderling.EffectOnWindow
+                                                            |> buildTaskFromRequestToVolatileHost
+                                        , getMemoryReadingTask =
+                                            Sanderling.GetMemoryReading { processId = eveOnlineProcessId } |> buildTaskFromRequestToVolatileHost
                                         }
 
 
@@ -542,12 +533,15 @@ runScriptResultDisplayString result =
 statusReportFromState : StateIncludingSetup s -> String
 statusReportFromState state =
     let
+        fromBot =
+            state.botState.lastEvent |> Maybe.map (.eventResult >> .statusDescriptionText) |> Maybe.withDefault ""
+
         lastScriptRunResult =
-            "Last Sanderling script run result is: "
+            "Last script run result is: "
                 ++ (state.setup.lastRunScriptResult |> Maybe.map (runScriptResultDisplayString >> stringEllipsis 140 "....") |> Maybe.withDefault "Nothing")
 
         botRequestQueueLength =
-            state.botState.requestQueue.queuedRequests |> List.length
+            state.botState.requestQueue |> List.length
 
         botRequestQueueLengthWarning =
             if botRequestQueueLength < 4 then
@@ -556,10 +550,9 @@ statusReportFromState state =
             else
                 [ "Bot request queue length is " ++ (botRequestQueueLength |> String.fromInt) ]
     in
-    [ lastScriptRunResult ]
+    [ fromBot, "----", "EVE Online framework status:", lastScriptRunResult ]
         ++ botRequestQueueLengthWarning
-        |> List.intersperse "\n"
-        |> List.foldl (++) ""
+        |> String.join "\n"
 
 
 stringEllipsis : Int -> String -> String -> String

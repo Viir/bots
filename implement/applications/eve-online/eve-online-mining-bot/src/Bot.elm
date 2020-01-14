@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot v2020-01-13
+{- Michaels EVE Online mining bot version 2020-01-14
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -313,11 +313,14 @@ initState =
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
-    SimpleSanderling.processEvent simpleProcessEvent
+    SimpleSanderling.processEvent processEveOnlineBotEvent
 
 
-simpleProcessEvent : BotEventAtTime -> SimpleState -> { newState : SimpleState, requests : List BotRequest, statusMessage : String }
-simpleProcessEvent eventAtTime stateBefore =
+processEveOnlineBotEvent :
+    BotEventAtTime
+    -> SimpleState
+    -> { newState : SimpleState, requests : List BotRequest, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
+processEveOnlineBotEvent eventAtTime stateBefore =
     case eventAtTime.event of
         SimpleSanderling.MemoryReadingCompleted memoryReading ->
             let
@@ -361,9 +364,6 @@ simpleProcessEvent eventAtTime stateBefore =
                 effectsRequests =
                     effects |> List.map EffectOnGameClientWindow
 
-                requests =
-                    effectsRequests ++ [ TakeMemoryReadingAfterDelayInMilliseconds generalStepDelayMilliseconds ]
-
                 describeActivity =
                     (decisionStagesDescriptions ++ [ currentStepDescription ])
                         |> List.indexedMap
@@ -375,14 +375,16 @@ simpleProcessEvent eventAtTime stateBefore =
                         |> String.join "\n"
             in
             { newState = { stateBefore | botMemory = botMemory, programState = programState }
-            , requests = requests
-            , statusMessage = statusMessage
+            , requests = effectsRequests
+            , millisecondsToNextMemoryReading = generalStepDelayMilliseconds
+            , statusDescriptionText = statusMessage
             }
 
         SimpleSanderling.SetBotConfiguration botConfiguration ->
             { newState = stateBefore
             , requests = []
-            , statusMessage =
+            , millisecondsToNextMemoryReading = generalStepDelayMilliseconds
+            , statusDescriptionText =
                 if botConfiguration |> String.isEmpty then
                     ""
 

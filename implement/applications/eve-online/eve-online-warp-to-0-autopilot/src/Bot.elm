@@ -1,5 +1,5 @@
-{- EVE Online Warp-to-0 auto-pilot, making your travels faster and thus safer by directly warping to gates/stations.
-   The bot follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
+{- EVE Online Warp-to-0 auto-pilot version 2020-01-14
+   This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
    Before starting the bot, set the in-game autopilot route and make sure the autopilot is expanded, so that the route is visible.
    Make sure you are undocked before starting the bot because the bot does not undock.
 
@@ -45,26 +45,38 @@ initState =
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
-    SimpleSanderling.processEvent simpleProcessEvent
+    SimpleSanderling.processEvent processEveOnlineBotEvent
 
 
-simpleProcessEvent : BotEventAtTime -> SimpleState -> { newState : SimpleState, requests : List BotRequest, statusMessage : String }
-simpleProcessEvent eventAtTime stateBefore =
+processEveOnlineBotEvent :
+    BotEventAtTime
+    -> SimpleState
+    -> { newState : SimpleState, requests : List BotRequest, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
+processEveOnlineBotEvent eventAtTime stateBefore =
     case eventAtTime.event of
         SimpleSanderling.MemoryReadingCompleted memoryReading ->
             let
                 ( requests, statusMessage ) =
                     botRequestsFromGameClientState memoryReading
+
+                millisecondsToNextMemoryReading =
+                    if requests |> List.isEmpty then
+                        4000
+
+                    else
+                        2000
             in
             { newState = stateBefore
             , requests = requests
-            , statusMessage = statusMessage
+            , millisecondsToNextMemoryReading = millisecondsToNextMemoryReading
+            , statusDescriptionText = statusMessage
             }
 
         SimpleSanderling.SetBotConfiguration botConfiguration ->
             { newState = stateBefore
             , requests = []
-            , statusMessage =
+            , millisecondsToNextMemoryReading = 2000
+            , statusDescriptionText =
                 if botConfiguration |> String.isEmpty then
                     ""
 
@@ -77,31 +89,27 @@ botRequestsFromGameClientState : ParsedUserInterface -> ( List BotRequest, Strin
 botRequestsFromGameClientState parsedUserInterface =
     case parsedUserInterface |> infoPanelRouteFirstMarkerFromParsedUserInterface of
         Nothing ->
-            ( [ TakeMemoryReadingAfterDelayInMilliseconds 4000 ]
+            ( []
             , "I see no route in the info panel. I will start when a route is set."
             )
 
         Just infoPanelRouteFirstMarker ->
             case parsedUserInterface.shipUI of
                 CanNotSeeIt ->
-                    ( [ TakeMemoryReadingAfterDelayInMilliseconds 4000 ]
+                    ( []
                     , "I cannot see if the ship is warping or jumping. I wait for the ship UI to appear on the screen."
                     )
 
                 CanSee shipUi ->
                     if shipUi |> isShipWarpingOrJumping then
-                        ( [ TakeMemoryReadingAfterDelayInMilliseconds 4000 ]
+                        ( []
                         , "I see the ship is warping or jumping. I wait until that maneuver ends."
                         )
 
                     else
-                        let
-                            ( requests, statusMessage ) =
-                                botRequestsWhenNotWaitingForShipManeuver
-                                    parsedUserInterface
-                                    infoPanelRouteFirstMarker
-                        in
-                        ( requests ++ [ TakeMemoryReadingAfterDelayInMilliseconds 2000 ], statusMessage )
+                        botRequestsWhenNotWaitingForShipManeuver
+                            parsedUserInterface
+                            infoPanelRouteFirstMarker
 
 
 botRequestsWhenNotWaitingForShipManeuver :

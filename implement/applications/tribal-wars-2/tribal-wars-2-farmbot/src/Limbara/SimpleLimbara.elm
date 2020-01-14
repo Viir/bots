@@ -122,7 +122,7 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                 Just taskInProgress ->
                     ( stateBefore
                     , { statusDescriptionText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
-                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
+                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
                       , startTasks = []
                       }
                         |> InterfaceToHost.ContinueSession

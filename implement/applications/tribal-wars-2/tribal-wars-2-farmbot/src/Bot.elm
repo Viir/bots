@@ -1,13 +1,15 @@
-{- Explore farming barbarian villages in Tribal Wars 2 version 2020-01-13
+{- Tribal Wars 2 farmbot version 2020-01-14
 
-   This version scans the map for barbarian villages.
+   This version scans the map for barbarian villages and sends attacks.
 
    The bot automatically opens a new web browser window. The first time you run it, it might take more time because it needs to download the web browser software.
    When the web browser has opened, navigate to Tribal Wars 2 and log in to your account, so you see your villages.
    You then will probably at an URL like https://es.tribalwars2.com/game.php?world=es77&character_id=123456#
    The bot then outputs the number of villages and the ID of the currently selected village. When you change the village in-game, you can see the output from the bot changing as well to indicate the new selected village.
 
-   bot-catalog-tags:exploration,tribal-wars-2
+   This bot uses an army preset to send attacks to the barbarian villages. If there is no preset, the attacking does not work.
+
+   bot-catalog-tags:tribal-wars-2,farmbot
    authors-forum-usernames:viir
 -}
 
@@ -34,6 +36,7 @@ type alias SimpleState =
     , gameRootInformation : Maybe TribalWars2RootInformation
     , ownVillagesDetails : Dict.Dict Int VillageDetails
     , searchVillageByCoordinatesResults : Dict.Dict ( Int, Int ) VillageByCoordinatesResult
+    , sentAttackByCoordinates : Dict.Dict ( Int, Int ) ()
     , parseResponseError : Maybe Json.Decode.Error
     }
 
@@ -46,6 +49,7 @@ type ResponseFromBrowser
     = RootInformation RootInformationStructure
     | ReadSelectedCharacterVillageDetailsResponse ReadSelectedCharacterVillageDetailsResponseStructure
     | ReadVillageByCoordinatesResponse ReadVillageByCoordinatesResponseStructure
+    | SendFirstPresetAsAttackToCoordinatesResponse ReadVillageByCoordinatesResponseStructure
 
 
 type alias RootInformationStructure =
@@ -83,7 +87,8 @@ type VillageByCoordinatesResult
 
 
 type alias VillageByCoordinatesDetails =
-    { affiliation : VillageByCoordinatesAffiliation
+    { villageId : Int
+    , affiliation : VillageByCoordinatesAffiliation
     }
 
 
@@ -105,6 +110,7 @@ initState =
         , gameRootInformation = Nothing
         , ownVillagesDetails = Dict.empty
         , searchVillageByCoordinatesResults = Dict.empty
+        , sentAttackByCoordinates = Dict.empty
         , parseResponseError = Nothing
         }
 
@@ -188,6 +194,18 @@ simpleProcessEvent event stateBefore =
                                                                     ( readVillageByCoordinatesResponse.villageCoordinates.x, readVillageByCoordinatesResponse.villageCoordinates.y )
                                                                     villageByCoordinates
                                                     }
+
+                                SendFirstPresetAsAttackToCoordinatesResponse sendFirstPresetAsAttackToCoordinatesResponse ->
+                                    let
+                                        sentAttackByCoordinates =
+                                            stateAfterParseSuccess.sentAttackByCoordinates
+                                                |> Dict.insert
+                                                    ( sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.x
+                                                    , sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.y
+                                                    )
+                                                    ()
+                                    in
+                                    { stateAfterParseSuccess | sentAttackByCoordinates = sentAttackByCoordinates }
     in
     { newState = state
     , request = requestToFramework state
@@ -208,29 +226,42 @@ requestToFramework state =
                         villagesWithoutDetails =
                             gameRootInformation.readyVillages
                                 |> List.filter (\villageId -> state.ownVillagesDetails |> Dict.member villageId |> not)
+
+                        barbarianVillagesWithoutAttacks =
+                            state
+                                |> locatedBarbarianVillages
+                                |> Dict.filter
+                                    (\coordinates _ ->
+                                        (state.sentAttackByCoordinates |> Dict.get coordinates) == Nothing
+                                    )
                     in
                     case villagesWithoutDetails of
                         villageWithoutDetailsId :: _ ->
                             readSelectedCharacterVillageDetailsScript villageWithoutDetailsId
 
                         [] ->
-                            let
-                                allCoordinatesToInspect =
-                                    state.ownVillagesDetails
-                                        |> Dict.values
-                                        |> List.map (\village -> { x = village.locationX, y = village.locationY })
-                                        |> coordinatesToSearchFromOwnVillagesCoordinates
+                            case barbarianVillagesWithoutAttacks |> Dict.toList |> List.head of
+                                Just ( ( x, y ), barbarianVillage ) ->
+                                    startSendFirstPresetAsAttackToCoordinatesScript { x = x, y = y }
 
-                                remainingCoordinatesToInspect =
-                                    allCoordinatesToInspect
-                                        |> List.filter (\coordinates -> state.searchVillageByCoordinatesResults |> Dict.member ( coordinates.x, coordinates.y ) |> not)
-                            in
-                            case remainingCoordinatesToInspect |> List.head of
                                 Nothing ->
-                                    readRootInformationScript
+                                    let
+                                        allCoordinatesToInspect =
+                                            state.ownVillagesDetails
+                                                |> Dict.values
+                                                |> List.map (\village -> { x = village.locationX, y = village.locationY })
+                                                |> coordinatesToSearchFromOwnVillagesCoordinates 10
 
-                                Just coordinates ->
-                                    startReadVillageByCoordinatesScript coordinates
+                                        remainingCoordinatesToInspect =
+                                            allCoordinatesToInspect
+                                                |> List.filter (\coordinates -> state.searchVillageByCoordinatesResults |> Dict.member ( coordinates.x, coordinates.y ) |> not)
+                                    in
+                                    case remainingCoordinatesToInspect |> List.head of
+                                        Nothing ->
+                                            readRootInformationScript
+
+                                        Just coordinates ->
+                                            startReadVillageByCoordinatesScript coordinates
     in
     SimpleLimbara.RunJavascriptInCurrentPageRequest
         { javascript = javascript
@@ -239,12 +270,29 @@ requestToFramework state =
         }
 
 
-coordinatesToSearchFromOwnVillagesCoordinates : List VillageCoordinates -> List VillageCoordinates
-coordinatesToSearchFromOwnVillagesCoordinates ownVillagesCoordinates =
-    let
-        radius =
-            4
+locatedBarbarianVillages : SimpleState -> Dict.Dict ( Int, Int ) VillageByCoordinatesDetails
+locatedBarbarianVillages =
+    .searchVillageByCoordinatesResults
+        >> Dict.toList
+        >> List.filterMap
+            (\( coordinates, byCoordinatesResult ) ->
+                case byCoordinatesResult of
+                    NoVillageThere ->
+                        Nothing
 
+                    VillageThere village ->
+                        if village.affiliation == AffiliationBarbarian then
+                            Just ( coordinates, village )
+
+                        else
+                            Nothing
+            )
+        >> Dict.fromList
+
+
+coordinatesToSearchFromOwnVillagesCoordinates : Int -> List VillageCoordinates -> List VillageCoordinates
+coordinatesToSearchFromOwnVillagesCoordinates radius ownVillagesCoordinates =
+    let
         coordinatesFromSingleOwnVillageCoordinates ownVillageCoordinates =
             List.range -radius radius
                 |> List.concatMap
@@ -252,6 +300,22 @@ coordinatesToSearchFromOwnVillagesCoordinates ownVillagesCoordinates =
                         List.range -radius radius
                             |> List.map (\offsetY -> ( ownVillageCoordinates.x + offsetX, ownVillageCoordinates.y + offsetY ))
                     )
+
+        squareDistanceBetweenCoordinates coordsA coordsB =
+            let
+                distX =
+                    coordsA.x - coordsB.x
+
+                distY =
+                    coordsA.y - coordsB.y
+            in
+            distX * distX + distY * distY
+
+        squareDistanceToClosestOwnVillage coordinates =
+            ownVillagesCoordinates
+                |> List.map (squareDistanceBetweenCoordinates coordinates)
+                |> List.minimum
+                |> Maybe.withDefault 0
 
         allCoordinates : Set.Set ( Int, Int )
         allCoordinates =
@@ -262,6 +326,7 @@ coordinatesToSearchFromOwnVillagesCoordinates ownVillagesCoordinates =
     allCoordinates
         |> Set.toList
         |> List.map (\( x, y ) -> { x = x, y = y })
+        |> List.sortBy squareDistanceToClosestOwnVillage
 
 
 readRootInformationScript : String
@@ -293,6 +358,7 @@ decodeResponseFromBrowser =
         [ decodeRootInformation |> Json.Decode.map RootInformation
         , decodeReadSelectedCharacterVillageDetailsResponse |> Json.Decode.map ReadSelectedCharacterVillageDetailsResponse
         , decodeReadVillageByCoordinatesResponse |> Json.Decode.map ReadVillageByCoordinatesResponse
+        , decodeSendFirstPresetAsAttackToCoordinatesResponse |> Json.Decode.map SendFirstPresetAsAttackToCoordinatesResponse
         ]
 
 
@@ -353,14 +419,14 @@ When there is no village:
 startReadVillageByCoordinatesScript : { x : Int, y : Int } -> String
 startReadVillageByCoordinatesScript { x, y } =
     """
-(function inspectCoordinates(item) {
+(function inspectCoordinates(coordinates) {
         autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
-        autoCompleteService.villageByCoordinates(item, function(data) {
-            //  console.log(JSON.stringify({ coordinates : item, villageByCoordinates: data}));
+        autoCompleteService.villageByCoordinates(coordinates, function(data) {
+            //  console.log(JSON.stringify({ coordinates : coordinates, villageByCoordinates: data}));
             ____callback____(JSON.stringify(data));
         });
 
-        return JSON.stringify({ startedVillageByCoordinates : item });
+        return JSON.stringify({ startedVillageByCoordinates : coordinates });
 })({x:""" ++ (x |> String.fromInt) ++ ", y:" ++ (y |> String.fromInt) ++ "})"
 
 
@@ -402,7 +468,8 @@ decodeVillageByCoordinatesResult =
 
 decodeVillageByCoordinatesDetails : Json.Decode.Decoder VillageByCoordinatesDetails
 decodeVillageByCoordinatesDetails =
-    Json.Decode.map VillageByCoordinatesDetails
+    Json.Decode.map2 VillageByCoordinatesDetails
+        (Json.Decode.field "id" Json.Decode.int)
         (Json.Decode.field "affiliation" Json.Decode.string
             |> Json.Decode.map
                 (\affiliation ->
@@ -414,6 +481,81 @@ decodeVillageByCoordinatesDetails =
                             AffiliationOther
                 )
         )
+
+
+startSendFirstPresetAsAttackToCoordinatesScript : { x : Int, y : Int } -> String
+startSendFirstPresetAsAttackToCoordinatesScript { x, y } =
+    """
+(function sendFirstPresetAsAttackToCoordinates(coordinates) {
+    autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
+    presetListService = angular.element(document.body).injector().get('presetListService');
+    socketService = angular.element(document.body).injector().get('socketService');
+    routeProvider = angular.element(document.body).injector().get('routeProvider');
+    mapService = angular.element(document.body).injector().get('mapService');
+    presetService = angular.element(document.body).injector().get('presetService');
+
+    sendPresetAttack = function sendPresetAttack(preset, targetVillageId) {
+        //  TODO: Get 'type' from 'conf/commandTypes'.TYPES.ATTACK
+        type = 'attack';
+
+        socketService.emit(routeProvider.GET_ATTACKING_FACTOR, {
+            'target_id'		: targetVillageId
+        }, function(data) {
+            var targetData = {
+                'id'				: targetVillageId,
+                'attackProtection'	: data.attack_protection,
+                'barbarianVillage'	: data.owner_id === null
+            };
+
+            mapService.updateVillageOwner(targetData.id, data.owner_id);
+
+            presetService.sendPreset(preset.id, type, targetData.id, targetData.attackProtection, targetData.barbarianVillage, false, function() {
+                //  $scope.closeWindow();
+            });
+        });
+    };
+
+    preset = null;
+
+    var presets = presetListService.getPresets();
+
+    for (var key of Object.keys(presets)) {
+        preset = presets[key];
+        break;
+    }
+
+    if(preset == null)
+    {
+        //  console.log("Did not find preset");
+        return;
+    }
+
+    autoCompleteService.villageByCoordinates(coordinates, function(villageData) {
+        //  console.log(JSON.stringify({ coordinates : coordinates, villageByCoordinates: villageData}));
+
+        if(villageData.id == null)
+        {
+            //  console.log("Did not find village at " + JSON.stringify(coordinates));
+            return; // No village here.
+        }
+
+        mapService.jumpToVillage(coordinates.x, coordinates.y, villageData.id);
+
+        sendPresetAttack(preset, villageData.id);
+    });
+
+    return JSON.stringify({ startedSendPresetAttackByCoordinates : coordinates });
+})({x:""" ++ (x |> String.fromInt) ++ ", y:" ++ (y |> String.fromInt) ++ "})"
+
+
+decodeSendFirstPresetAsAttackToCoordinatesResponse : Json.Decode.Decoder ReadVillageByCoordinatesResponseStructure
+decodeSendFirstPresetAsAttackToCoordinatesResponse =
+    Json.Decode.field "startedSendPresetAttackByCoordinates"
+        (Json.Decode.map2 VillageCoordinates
+            (Json.Decode.field "x" Json.Decode.int)
+            (Json.Decode.field "y" Json.Decode.int)
+        )
+        |> Json.Decode.map ReadVillageByCoordinatesResponseStructure
 
 
 statusMessageFromState : SimpleState -> String
@@ -458,6 +600,9 @@ statusMessageFromState state =
                 ++ (villagesByCoordinates |> Dict.filter (\_ village -> village.affiliation == AffiliationBarbarian) |> Dict.size |> String.fromInt)
                 ++ " of wich are barbarian villages."
 
+        sentAttacks =
+            "Sent " ++ (state.sentAttackByCoordinates |> Dict.size |> String.fromInt) ++ " attacks."
+
         parseResponseErrorReport =
             case state.parseResponseError of
                 Nothing ->
@@ -466,7 +611,7 @@ statusMessageFromState state =
                 Just parseResponseError ->
                     Json.Decode.errorToString parseResponseError
     in
-    [ aboutGame, villagesByCoordinatesReport, parseResponseErrorReport, jsRunResult ] |> String.join "\n"
+    [ aboutGame, villagesByCoordinatesReport, sentAttacks, parseResponseErrorReport, jsRunResult ] |> String.join "\n"
 
 
 describeRunJavascriptInCurrentPageResponseStructure : SimpleLimbara.RunJavascriptInCurrentPageResponseStructure -> String

@@ -129,10 +129,7 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                     )
 
         statusMessagePrefix =
-            (state.botState.statusMessage |> Maybe.withDefault "")
-                ++ "\n--------\nLimbara framework status:\n"
-                ++ (state |> statusReportFromState)
-                ++ "\n"
+            (state |> statusReportFromState) ++ "\nCurrent activity: "
 
         response =
             case responseBeforeAddingStatusMessage of
@@ -431,12 +428,15 @@ statusReportFromState : StateIncludingSetup s -> String
 statusReportFromState state =
     let
         lastScriptRunResult =
-            "Last Limbara script run result is: "
+            "Last script run result is: "
                 ++ (state.setup.lastRunScriptResult |> Maybe.map (runScriptResultDisplayString >> stringEllipsis 540 "....") |> Maybe.withDefault "Nothing")
     in
-    [ lastScriptRunResult ]
-        |> List.intersperse "\n"
-        |> List.foldl (++) ""
+    [ state.botState.statusMessage |> Maybe.withDefault ""
+    , "--------"
+    , "Web browser framework status:"
+    , lastScriptRunResult
+    ]
+        |> String.join "\n"
 
 
 stringEllipsis : Int -> String -> String -> String

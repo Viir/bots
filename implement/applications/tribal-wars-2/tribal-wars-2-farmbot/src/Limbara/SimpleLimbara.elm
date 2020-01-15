@@ -60,7 +60,7 @@ type alias BotState simpleBotState =
 
 type alias SimpleBotProcessEventResult simpleBotState =
     { newState : simpleBotState
-    , request : BotRequest
+    , request : Maybe BotRequest
     , statusMessage : String
     }
 
@@ -262,7 +262,7 @@ integrateFromHostEvent simpleBotProcessEvent fromHostEvent stateBefore =
                             , statusMessage = Just simpleBotEventResult.statusMessage
                         }
                 in
-                ( { stateBeforeIntegrateBotEvent | botState = botState }, Just simpleBotEventResult.request )
+                ( { stateBeforeIntegrateBotEvent | botState = botState }, simpleBotEventResult.request )
             )
         |> Maybe.withDefault ( stateBeforeIntegrateBotEvent, Nothing )
 

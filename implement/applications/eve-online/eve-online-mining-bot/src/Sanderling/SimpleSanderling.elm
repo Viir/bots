@@ -58,9 +58,10 @@ type alias BotRequestQueue =
 
 type alias SetupState =
     { volatileHost : Maybe ( InterfaceToHost.VolatileHostId, VolatileHostState )
-    , lastRunScriptResult : Maybe (Result String (Maybe String))
+    , lastRunScriptResult : Maybe (Result String InterfaceToHost.RunInVolatileHostComplete)
     , eveOnlineProcessesIds : Maybe (List Int)
     , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : Sanderling.GetMemoryReadingResultStructure }
+    , memoryReadingDurations : List Int
     }
 
 
@@ -89,6 +90,7 @@ initSetup =
     , lastRunScriptResult = Nothing
     , eveOnlineProcessesIds = Nothing
     , lastMemoryReading = Nothing
+    , memoryReadingDurations = []
     }
 
 
@@ -308,7 +310,7 @@ integrateFromHostEvent fromHostEvent stateBefore =
 
 
 integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe BotEvent )
-integrateTaskResult ( time, taskResult ) setupStateBefore =
+integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
     case taskResult of
         InterfaceToHost.CreateVolatileHostResponse createVolatileHostResult ->
             case createVolatileHostResult of
@@ -332,7 +334,7 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                             (\fromHostResult ->
                                 case fromHostResult.exceptionToString of
                                     Nothing ->
-                                        Ok fromHostResult.returnValueToString
+                                        Ok fromHostResult
 
                                     Just exception ->
                                         Err ("Exception from host: " ++ exception)
@@ -350,9 +352,14 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                 maybeResponseFromVolatileHost =
                     runScriptResult
                         |> Result.toMaybe
-                        |> Maybe.andThen identity
-                        |> Maybe.map Sanderling.deserializeResponseFromVolatileHost
-                        |> Maybe.andThen Result.toMaybe
+                        |> Maybe.andThen
+                            (\fromHostResult ->
+                                fromHostResult.returnValueToString
+                                    |> Maybe.withDefault ""
+                                    |> Sanderling.deserializeResponseFromVolatileHost
+                                    |> Result.toMaybe
+                                    |> Maybe.map (\responseFromVolatileHost -> { fromHostResult = fromHostResult, responseFromVolatileHost = responseFromVolatileHost })
+                            )
 
                 setupStateWithScriptRunResult =
                     { setupStateBefore
@@ -364,25 +371,38 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                 Nothing ->
                     ( setupStateWithScriptRunResult, Nothing )
 
-                Just responseFromVolatileHost ->
+                Just { fromHostResult, responseFromVolatileHost } ->
                     setupStateWithScriptRunResult
-                        |> integrateSanderlingResponseFromVolatileHost ( time, responseFromVolatileHost )
+                        |> integrateSanderlingResponseFromVolatileHost
+                            { timeInMilliseconds = timeInMilliseconds
+                            , responseFromVolatileHost = responseFromVolatileHost
+                            , runInVolatileHostDurationInMs = fromHostResult.durationInMilliseconds
+                            }
 
         InterfaceToHost.CompleteWithoutResult ->
             ( setupStateBefore, Nothing )
 
 
-integrateSanderlingResponseFromVolatileHost : ( Int, Sanderling.ResponseFromVolatileHost ) -> SetupState -> ( SetupState, Maybe BotEvent )
-integrateSanderlingResponseFromVolatileHost ( timeInMilliseconds, response ) stateBefore =
-    case response of
+integrateSanderlingResponseFromVolatileHost :
+    { timeInMilliseconds : Int, responseFromVolatileHost : Sanderling.ResponseFromVolatileHost, runInVolatileHostDurationInMs : Int }
+    -> SetupState
+    -> ( SetupState, Maybe BotEvent )
+integrateSanderlingResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost, runInVolatileHostDurationInMs } stateBefore =
+    case responseFromVolatileHost of
         Sanderling.EveOnlineProcessesIds eveOnlineProcessesIds ->
             ( { stateBefore | eveOnlineProcessesIds = Just eveOnlineProcessesIds }, Nothing )
 
         Sanderling.GetMemoryReadingResult getMemoryReadingResult ->
             let
+                memoryReadingDurations =
+                    runInVolatileHostDurationInMs
+                        :: stateBefore.memoryReadingDurations
+                        |> List.take 10
+
                 state =
                     { stateBefore
                         | lastMemoryReading = Just { timeInMilliseconds = timeInMilliseconds, memoryReadingResult = getMemoryReadingResult }
+                        , memoryReadingDurations = memoryReadingDurations
                     }
 
                 maybeBotEvent =
@@ -520,14 +540,14 @@ updateVolatileHostState runInVolatileHostComplete stateBefore =
                     stateBefore
 
 
-runScriptResultDisplayString : Result String (Maybe String) -> String
+runScriptResultDisplayString : Result String InterfaceToHost.RunInVolatileHostComplete -> String
 runScriptResultDisplayString result =
     case result of
         Err error ->
             "Error: " ++ error
 
-        Ok successResult ->
-            "Success: " ++ (successResult |> Maybe.withDefault "null")
+        Ok runInVolatileHostComplete ->
+            "Success: " ++ (runInVolatileHostComplete.returnValueToString |> Maybe.withDefault "null")
 
 
 statusReportFromState : StateIncludingSetup s -> String
@@ -543,6 +563,19 @@ statusReportFromState state =
         botRequestQueueLength =
             state.botState.requestQueue |> List.length
 
+        memoryReadingDurations =
+            state.setup.memoryReadingDurations
+                -- Don't consider the first memory reading because it takes much longer.
+                |> List.reverse
+                |> List.drop 1
+
+        averageMemoryReadingDuration =
+            (memoryReadingDurations |> List.sum)
+                // (memoryReadingDurations |> List.length)
+
+        runtimeExpensesReport =
+            "amrd=" ++ (averageMemoryReadingDuration |> String.fromInt) ++ "ms"
+
         botRequestQueueLengthWarning =
             if botRequestQueueLength < 4 then
                 []
@@ -550,7 +583,12 @@ statusReportFromState state =
             else
                 [ "Bot request queue length is " ++ (botRequestQueueLength |> String.fromInt) ]
     in
-    [ fromBot, "----", "EVE Online framework status:", lastScriptRunResult ]
+    [ fromBot
+    , "----"
+    , "EVE Online framework status:"
+    -- , runtimeExpensesReport
+    , lastScriptRunResult
+    ]
         ++ botRequestQueueLengthWarning
         |> String.join "\n"
 

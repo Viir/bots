@@ -1,11 +1,9 @@
-{- Tribal Wars 2 farmbot version 2020-01-15
-
-   This version scans the map for barbarian villages and sends attacks.
+{- Tribal Wars 2 farmbot version 2020-01-16
+   This farmbot searches for barbarian villages around your villages and then attacks them.
 
    The bot automatically opens a new web browser window. The first time you run it, it might take more time because it needs to download the web browser software.
    When the web browser has opened, navigate to Tribal Wars 2 and log in to your account, so you see your villages.
-   You then will probably at an URL like https://es.tribalwars2.com/game.php?world=es77&character_id=123456#
-   The bot then outputs the number of villages and the ID of the currently selected village. When you change the village in-game, you can see the output from the bot changing as well to indicate the new selected village.
+   Then the browsers address bar will probably show an URL like https://es.tribalwars2.com/game.php?world=es77&character_id=123456#
 
    This bot uses an army preset to attack the barbarian villages.
    It picks an army preset that matches the following two criteria:
@@ -41,11 +39,12 @@ type alias SimpleState =
             , parseResult : Result Json.Decode.Error RootInformationStructure
             }
     , gameRootInformation : Maybe TribalWars2RootInformation
-    , ownVillagesDetails : Dict.Dict Int VillageDetails
+    , ownVillagesDetails : Dict.Dict Int { timeInMilliseconds : Int, villageDetails : VillageDetails }
     , getArmyPresetsResult : Maybe (List ArmyPreset)
     , lastJumpToCoordinates : Maybe { timeInMilliseconds : Int, coordinates : VillageCoordinates }
     , searchVillageByCoordinatesResults : Dict.Dict ( Int, Int ) VillageByCoordinatesResult
     , sentAttackByCoordinates : Dict.Dict ( Int, Int ) ()
+    , lastAttackTimeInMilliseconds : Maybe Int
     , parseResponseError : Maybe Json.Decode.Error
     }
 
@@ -92,9 +91,13 @@ type alias SendFirstPresetAsAttackToCoordinatesResponseStructure =
 
 
 type alias VillageDetails =
-    { locationX : Int
-    , locationY : Int
+    { coordinates : VillageCoordinates
+    , units : Dict.Dict String VillageUnitCount
     }
+
+
+type alias VillageUnitCount =
+    { available : Int }
 
 
 type VillageByCoordinatesResult
@@ -143,6 +146,7 @@ initState =
         , lastJumpToCoordinates = Nothing
         , searchVillageByCoordinatesResults = Dict.empty
         , sentAttackByCoordinates = Dict.empty
+        , lastAttackTimeInMilliseconds = Nothing
         , parseResponseError = Nothing
         }
 
@@ -204,7 +208,8 @@ processWebBrowserBotEvent event stateBefore =
                                     { stateAfterParseSuccess
                                         | ownVillagesDetails =
                                             stateAfterParseSuccess.ownVillagesDetails
-                                                |> Dict.insert readVillageDetailsResponse.villageId readVillageDetailsResponse.villageDetails
+                                                |> Dict.insert readVillageDetailsResponse.villageId
+                                                    { timeInMilliseconds = stateBefore.timeInMilliseconds, villageDetails = readVillageDetailsResponse.villageDetails }
                                     }
 
                                 VillageByCoordinatesResponse readVillageByCoordinatesResponse ->
@@ -251,7 +256,10 @@ processWebBrowserBotEvent event stateBefore =
                                                     )
                                                     ()
                                     in
-                                    { stateAfterParseSuccess | sentAttackByCoordinates = sentAttackByCoordinates }
+                                    { stateAfterParseSuccess
+                                        | sentAttackByCoordinates = sentAttackByCoordinates
+                                        , lastAttackTimeInMilliseconds = Just stateBefore.timeInMilliseconds
+                                    }
 
                                 GetPresetsResponse armyPresets ->
                                     { stateBefore | getArmyPresetsResult = Just armyPresets }
@@ -287,6 +295,27 @@ requestToFramework state =
                                 gameRootInformation.readyVillages
                                     |> List.filter (\villageId -> state.ownVillagesDetails |> Dict.member villageId |> not)
 
+                            selectedVillageUpdateTimeMinimumMilli =
+                                (state.lastAttackTimeInMilliseconds |> Maybe.withDefault 0)
+                                    |> max (state.timeInMilliseconds - 15000)
+
+                            selectedVillageNeedsDetailsUpdate =
+                                case state.ownVillagesDetails |> Dict.get gameRootInformation.selectedVillageId of
+                                    Nothing ->
+                                        True
+
+                                    Just selectedVillageDetailsResponse ->
+                                        selectedVillageDetailsResponse.timeInMilliseconds <= selectedVillageUpdateTimeMinimumMilli
+
+                            villagesNeedingDetailsUpdate =
+                                (if selectedVillageNeedsDetailsUpdate then
+                                    [ gameRootInformation.selectedVillageId ]
+
+                                 else
+                                    []
+                                )
+                                    ++ villagesWithoutDetails
+
                             barbarianVillagesWithoutAttacks =
                                 state
                                     |> locatedBarbarianVillages
@@ -295,9 +324,9 @@ requestToFramework state =
                                             (state.sentAttackByCoordinates |> Dict.get coordinates) == Nothing
                                         )
                         in
-                        case villagesWithoutDetails of
-                            villageWithoutDetailsId :: _ ->
-                                readSelectedCharacterVillageDetailsScript villageWithoutDetailsId
+                        case villagesNeedingDetailsUpdate of
+                            villageNeedingDetailsUpdate :: _ ->
+                                readSelectedCharacterVillageDetailsScript villageNeedingDetailsUpdate
 
                             [] ->
                                 case state |> getFarmPresetForCurrentVillage of
@@ -336,7 +365,7 @@ requestToFramework state =
                                                     allCoordinatesToInspect =
                                                         state.ownVillagesDetails
                                                             |> Dict.values
-                                                            |> List.map (\village -> { x = village.locationX, y = village.locationY })
+                                                            |> List.map (.villageDetails >> .coordinates)
                                                             |> coordinatesToSearchFromOwnVillagesCoordinates 10
 
                                                     remainingCoordinatesToInspect =
@@ -504,25 +533,51 @@ readSelectedCharacterVillageDetailsScript villageId =
 (function () {
     modelDataService = angular.element(document.body).injector().get('modelDataService');
 
-    return JSON.stringify(modelDataService.getSelectedCharacter().data.villages[""" ++ "\"" ++ (villageId |> String.fromInt) ++ "\"" ++ """]);
+    return JSON.stringify({ selectedCharacterVillage : modelDataService.getSelectedCharacter().data.villages[""" ++ "\"" ++ (villageId |> String.fromInt) ++ "\"" ++ """] });
 })()
 """
 
 
+decodeReadSelectedCharacterVillageDetailsResponse : Json.Decode.Decoder ReadSelectedCharacterVillageDetailsResponseStructure
+decodeReadSelectedCharacterVillageDetailsResponse =
+    Json.Decode.field "selectedCharacterVillage"
+        (Json.Decode.map2 ReadSelectedCharacterVillageDetailsResponseStructure
+            (Json.Decode.field "data" (Json.Decode.field "villageId" Json.Decode.int))
+            decodeSelectedCharacterVillageDetails
+        )
+
+
 decodeSelectedCharacterVillageDetails : Json.Decode.Decoder VillageDetails
 decodeSelectedCharacterVillageDetails =
+    Json.Decode.map2 VillageDetails
+        decodeVillageDetailsCoordinates
+        decodeVillageDetailsUnits
+
+
+decodeVillageDetailsCoordinates : Json.Decode.Decoder VillageCoordinates
+decodeVillageDetailsCoordinates =
     Json.Decode.field "data"
-        (Json.Decode.map2 VillageDetails
+        (Json.Decode.map2 VillageCoordinates
             (Json.Decode.field "x" Json.Decode.int)
             (Json.Decode.field "y" Json.Decode.int)
         )
 
 
-decodeReadSelectedCharacterVillageDetailsResponse : Json.Decode.Decoder ReadSelectedCharacterVillageDetailsResponseStructure
-decodeReadSelectedCharacterVillageDetailsResponse =
-    Json.Decode.map2 ReadSelectedCharacterVillageDetailsResponseStructure
-        (Json.Decode.field "data" (Json.Decode.field "villageId" Json.Decode.int))
-        decodeSelectedCharacterVillageDetails
+decodeVillageDetailsUnits : Json.Decode.Decoder (Dict.Dict String VillageUnitCount)
+decodeVillageDetailsUnits =
+    Json.Decode.field "unitInfo"
+        (Json.Decode.field "units"
+            (Json.Decode.keyValuePairs decodeVillageDetailsUnitCount)
+        )
+        |> Json.Decode.map Dict.fromList
+
+
+{-| 2020-01-16 Observed names: 'in\_town', 'support', 'total', 'available', 'own', 'inside', 'recruiting'
+-}
+decodeVillageDetailsUnitCount : Json.Decode.Decoder VillageUnitCount
+decodeVillageDetailsUnitCount =
+    Json.Decode.map VillageUnitCount
+        (Json.Decode.field "available" Json.Decode.int)
 
 
 {-| Example result:
@@ -738,11 +793,38 @@ statusMessageFromState state =
                     "Did not yet read game root information."
 
                 Just gameRootInformation ->
+                    let
+                        selectedVillageDetails =
+                            state.ownVillagesDetails
+                                |> Dict.get gameRootInformation.selectedVillageId
+                                |> Maybe.map
+                                    (\villageDetailsResponse ->
+                                        let
+                                            sumOfAvailableUnits =
+                                                villageDetailsResponse.villageDetails.units
+                                                    |> Dict.values
+                                                    |> List.map .available
+                                                    |> List.sum
+
+                                            lastUpdateAge =
+                                                (state.timeInMilliseconds - villageDetailsResponse.timeInMilliseconds)
+                                                    // 1000
+                                        in
+                                        [ "(" ++ (villageDetailsResponse.villageDetails.coordinates |> villageCoordinatesDisplayText) ++ ")"
+                                        , "last update " ++ (lastUpdateAge |> String.fromInt) ++ " s ago"
+                                        , (sumOfAvailableUnits |> String.fromInt) ++ " available units"
+                                        ]
+                                            |> String.join ", "
+                                    )
+                                |> Maybe.withDefault "No details this village."
+                    in
                     "Found "
                         ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt)
                         ++ " villages. Currently selected is "
                         ++ (gameRootInformation.selectedVillageId |> String.fromInt)
-                        ++ "."
+                        ++ " ("
+                        ++ selectedVillageDetails
+                        ++ ")"
 
         armyPresetReport =
             state.getArmyPresetsResult
@@ -798,6 +880,11 @@ statusMessageFromState state =
     , jsRunResult
     ]
         |> String.join "\n"
+
+
+villageCoordinatesDisplayText : VillageCoordinates -> String
+villageCoordinatesDisplayText { x, y } =
+    (x |> String.fromInt) ++ "|" ++ (y |> String.fromInt)
 
 
 describeRunJavascriptInCurrentPageResponseStructure : SimpleLimbara.RunJavascriptInCurrentPageResponseStructure -> String

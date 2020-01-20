@@ -93,56 +93,41 @@ To achieve this, we combine the following tools:
 
 + Elm command line program
 + Visual Studio Code
-+ vscode-elm
++ elmtooling.elm-ls-vscode
 
 The following subsections explain in detail how to set up these tools.
 
-To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/1dd1b09b40f47c63dda38f71297872e0c708b612/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
+To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/8a81fc6190e6053abaa2b9941e5c1b8365dba644/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
 
 ### Elm command line program
 
 The Elm command line program understands the [programming language](https://elm-lang.org/blog/the-perfect-bug-report) we use and [helps us](https://elm-lang.org/blog/compilers-as-assistants) find problems in the code we write.
 
-Download the file from https://github.com/elm/compiler/releases/download/0.19.0/binaries-for-windows.tar.gz
+Download the file from https://github.com/elm/compiler/releases/download/0.19.1/binary-for-windows-64-bit.gz
 
-Extract the `binaries-for-windows.tar.gz` file to get the `elm.exe` file out of this archive. If you don't know how to extract `.tar.gz` files, [7zip](https://www.7-zip.org) can do that.
+Extract the `binary-for-windows-64-bit.gz` file; this will get you a file named `binary-for-windows-64-bit`. Rename this to `elm.exe`, so the system will recognize it as an executable file. If you don't know how to extract `.gz` files, [7zip](https://www.7-zip.org) can do that.
 
 Next, we perform a small test to verify the elm.exe program works on the bot code as intended. Since `elm.exe` is a command line program, we start it from the Windows Command Prompt (cmd.exe).
 Before starting the elm.exe, you need to navigate to the bot code directory containing the `elm.json` file. You can use the `cd` command in the Command Prompt to switch to this directory, with a command like this:
 ```cmd
-cd "C:\Users\John\Downloads\bots\implement\bot\eve-online\eve-online-warp-to-0-autopilot"
+cd "C:\Users\John\Downloads\bots\implement\applications\bot\eve-online\eve-online-warp-to-0-autopilot"
 ```
 
 Now you can use elm.exe on the bot code files with a command like the following:
 ```
-C:\path-to-elm\binaries-for-windows\elm.exe make src/Main.elm
+"C:\Users\John\Downloads\binary-for-windows-64-bit\elm.exe" make src/Main.elm
 ```
-If everything works so far, the elm.exe will write an output which ends with a line like the following:
+If everything works so far, the elm.exe will write an output which ends like the following:
 ```
-Success! Compiled 3 modules.
-```
-That number of modules it mentions can vary; it should be at least one.
+Success! Compiled 1 module.
 
-To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on line 88, replace `shipUi` with `shipui`.
+    Main ---> index.html
+```
+That number of modules it mentions can vary;
+
+To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on [line 97](https://github.com/Viir/bots/blob/8a81fc6190e6053abaa2b9941e5c1b8365dba644/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L97), replace `shipUI` with `shipUi`.
 If after this change we invoke Elm with the same command again, we now get a different output, informing us about a problem in the code:
-```
-Detected errors in 1 module.
--- NAMING ERROR --------------------------------------------------- src/Bot.elm
-
-I cannot find a `shipui` variable:
-
-88|                     if shipui |> isShipWarpingOrJumping then
-                           ^^^^^^
-These names seem close though:
-
-    shipUi
-    pi
-    sin
-    asin
-
-Hint: Read <https://elm-lang.org/0.19.0/imports> to see how `import`
-declarations work in Elm.
-```
+![Elm compilation detected a problem in the bot code](./image/2020-01-20.elm-detected-problem.png)
 
 For development, we don't need to use the Elm program directly, but other tools depend on it. The tools we set up next automate the process of starting the Elm program and presenting the results inside a code editor.
 
@@ -150,20 +135,20 @@ For development, we don't need to use the Elm program directly, but other tools 
 
 Visual Studio Code is a software development tool from Microsoft, which also contains a code editor. This is not the same as 'Visual Studio', a commercial product from Microsoft. Visual Studio Code is abbreviated as 'VSCode' throughout this guide. To set it up, use the installer from https://code.visualstudio.com/download
 
-### vscode-elm
+### elmtooling.elm-ls-vscode
 
-[vscode-elm](https://marketplace.visualstudio.com/items?itemName=sbrink.elm) is an extension for VSCode. It has multiple features to help with development in Elm programs such as our bots. An important one is the display of error messages inside the code editor. Another useful feature is completion suggestions to help us figure out what to type where. A more obvious feature is the syntax coloring in Elm files, as you will soon see.
+[elmtooling.elm-ls-vscode](https://marketplace.visualstudio.com/items?itemName=Elmtooling.elm-ls-vscode) is an extension for VSCode. It has multiple features to help with development in Elm programs such as our bots. An important one is the display of error messages inside the code editor. A more obvious feature is the syntax coloring in Elm files, as you will soon see.
 
 To install this extension, open VSCode and open the 'Extensions' section (`Ctrl + Shift + X`).
-Type 'elm' in the search box, and you will see the `elm` extension as shown in the screenshot below:
-![Elm extension installation in Visual Studio Code](./image/2019-05-16.vscode-elm-install-extension.png)
+Type 'elm' in the search box, and you will see the `Elm` extension as shown in the screenshot below:
+![Elm extension installation in Visual Studio Code](./image/2020-01-20.vscode-elm-extension-install.png)
 
 Use the `Install` button to install this extension in VSCode.
 
 Before this extension can work correctly, we need to tell it where to find the Elm program. Open the Visual Studio Code settings, using the menu entries `File` > `Preferences` > `Settings`.
-In the settings interface, select the `Elm configuration` entry under `Extensions` in the tree on the left. Then you will see diverse settings for the elm extension on the right, as shown in the screenshot below. Scroll down to the `Compiler` section and enter the file path to the elm.exe we downloaded earlier into the textbox. The screenshot below shows how this looks like:
+In the settings interface, select the `Elm configuration` entry under `Extensions` in the tree on the left. Then you will see diverse settings for the elm extension on the right, as shown in the screenshot below. Scroll down to the `Elm Path` section and enter the file path to the elm.exe we downloaded earlier into the textbox. The screenshot below shows how this looks like:
 
-![Elm extension settings in Visual Studio Code](./image/2019-05-16.vscode-elm-settings.png)
+![Elm extension settings in Visual Studio Code](./image/2020-01-20.vscode-elm-extension-settings.png)
 
 VSCode automatically saves this setting and remembers it the next time you open the program.
 
@@ -179,11 +164,11 @@ When you save the file (`Ctrl + S`), the VSCode extension starts Elm in the back
 + On the scroll bar in an open file. You can see this as a red dot in the screenshot. This indicator helps to scroll to interesting locations in large files quickly.
 + When the offending portion of the code is visible in an editor viewport, the error is pointed out with a red squiggly underline.
 
-![Visual Studio Code displays diagnostics from Elm](./image/2019-05-16.vscode-elm-diagnostics-display.png)
+![Visual Studio Code displays diagnostics from Elm](./image/2020-01-20.vscode-elm-display-error.png)
 
 When you hover the mouse cursor over the highlighted text, a popup window shows more details. Here you find the message we get from Elm:
 
-![Visual Studio Code displays diagnostics from Elm - details on hover](./image/2019-05-16.vscode-elm-diagnostics-display-hover.png)
+![Visual Studio Code displays diagnostics from Elm - details on hover](./image/2020-01-20.vscode-elm-display-error-hover.png)
 
 ## Programming Language
 
@@ -194,16 +179,20 @@ Custom types are also called tagged union types or algebraic data types. In the 
 Let's look at how a custom type with a type parameter can be used to compose more specific types. I will take a popular example of such a type. This one is often used to describe what can be seen on the screen.
 
 ```Elm
-type PossiblyInvisible feature
+type MaybeVisible feature
     = CanNotSeeIt
     | CanSee feature
 ```
-In this type definition, we have a type parameter called `feature`. We can instantiate the `PossiblyInvisible` type by specifying what to use as `feature`. For example, we can use the type `Bool` as the `feature`:
+
+In this type definition, we have a type parameter called `feature`. We can instantiate the `MaybeVisible` type by specifying what to use as `feature`. For example, we can use the type `Bool` as the `feature`:
+
 ```Elm
-type alias PossiblyInvisibleBool =
-    PossiblyInvisible Bool
+type alias MaybeVisibleBool =
+    MaybeVisible Bool
 ```
-The type `PossiblyInvisible Bool` can have three different values:
+
+The type `MaybeVisible Bool` can have three different values:
+
 + `CanNotSeeIt`
 + `CanSee True`
 + `CanSee False`
@@ -211,7 +200,7 @@ The type `PossiblyInvisible Bool` can have three different values:
 In the larger context, this combination could be used as follows:
 ```Elm
 type alias EveOnlineVision =
-    { shipOreHoldIsFull : PossiblyInvisible Bool
+    { shipOreHoldIsFull : MaybeVisible Bool
     }
 
 

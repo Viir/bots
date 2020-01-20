@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-01-16
+{- Michaels EVE Online mining bot version 2020-01-20
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.

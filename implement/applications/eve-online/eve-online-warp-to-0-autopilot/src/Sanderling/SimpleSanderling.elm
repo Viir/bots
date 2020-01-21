@@ -225,11 +225,14 @@ processEventNotWaitingForTaskCompletion simpleBotProcessEvent maybeBotEvent stat
                         ForwardRequest forward ->
                             ( forward.newQueueState, forward.request |> operateBot.buildTaskFromBotRequest |> Just )
 
+                botState =
+                    { botStateBeforeRequest | requestQueue = botRequestQueue }
+
                 timeForNextMemoryReadingGeneral =
                     (stateBefore.setup.lastMemoryReading |> Maybe.map .timeInMilliseconds |> Maybe.withDefault 0) + 10000
 
                 timeForNextMemoryReadingFromBot =
-                    stateBefore.botState.lastEvent
+                    botState.lastEvent
                         |> Maybe.map (\botLastEvent -> botLastEvent.timeInMilliseconds + botLastEvent.eventResult.millisecondsToNextMemoryReading)
                         |> Maybe.withDefault 0
 
@@ -262,9 +265,6 @@ processEventNotWaitingForTaskCompletion simpleBotProcessEvent maybeBotEvent stat
                                 )
                             )
                         |> Maybe.withDefault ( stateBefore.taskInProgress, [] )
-
-                botState =
-                    { botStateBeforeRequest | requestQueue = botRequestQueue }
             in
             ( { stateBefore | botState = botState, taskInProgress = taskInProgress }
             , { startTasks = startTasks

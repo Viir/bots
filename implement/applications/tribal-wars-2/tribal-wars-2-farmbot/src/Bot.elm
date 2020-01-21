@@ -1,19 +1,21 @@
-{- Tribal Wars 2 farmbot version 2020-01-17
-   This farmbot searches for barbarian villages around your villages and then attacks them.
+{- Tribal Wars 2 farmbot version 2020-01-21
+   I search for barbarian villages around your villages and then attack them.
 
-   The bot automatically opens a new web browser window. The first time you run it, it might take more time because it needs to download the web browser software.
+   When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
    When the web browser has opened, navigate to Tribal Wars 2 and log in to your account, so you see your villages.
    Then the browsers address bar will probably show an URL like https://es.tribalwars2.com/game.php?world=es77&character_id=123456#
 
-   This bot uses the army presets configured in the game to attack barbarian villages.
-   It picks an army preset that matches the following three criteria:
+   When I see the game is loaded, I start searching for barbarian villages.
+   As soon I have found one, I begin attacking it, using the army presets that you configured in the game.
+   To attack, I pick an army preset that matches the following three criteria:
 
    + The preset name contains the string 'farm'.
    + The preset is enabled for the currently selected village.
    + The village has enough units available for the preset.
 
-   If no army preset matches this filter, the bot does not attack.
-   If multiple army presets match these criteria, priority is determined by alphabetical ordering of the presets.
+   If multiple army presets match these criteria, I use the first one by alphabetical order.
+   If no army preset matches this filter, I activate another village which has a matching preset and enough available units.
+   If there is no village with a matching preset and enough units, I stop attacking.
 
    bot-catalog-tags:tribal-wars-2,farmbot
    authors-forum-usernames:viir
@@ -41,13 +43,14 @@ type alias SimpleState =
             { response : SimpleLimbara.RunJavascriptInCurrentPageResponseStructure
             , parseResult : Result Json.Decode.Error RootInformationStructure
             }
-    , gameRootInformation : Maybe TribalWars2RootInformation
+    , gameRootInformationResult : Maybe { timeInMilliseconds : Int, gameRootInformation : TribalWars2RootInformation }
     , ownVillagesDetails : Dict.Dict Int { timeInMilliseconds : Int, villageDetails : VillageDetails }
     , getArmyPresetsResult : Maybe (List ArmyPreset)
     , lastJumpToCoordinates : Maybe { timeInMilliseconds : Int, coordinates : VillageCoordinates }
     , searchVillageByCoordinatesResults : Dict.Dict ( Int, Int ) VillageByCoordinatesResult
     , sentAttackByCoordinates : Dict.Dict ( Int, Int ) ()
     , lastAttackTimeInMilliseconds : Maybe Int
+    , lastActivatedVillageTimeInMilliseconds : Maybe Int
     , parseResponseError : Maybe Json.Decode.Error
     }
 
@@ -61,6 +64,7 @@ type ResponseFromBrowser
     | ReadSelectedCharacterVillageDetailsResponse ReadSelectedCharacterVillageDetailsResponseStructure
     | VillageByCoordinatesResponse VillageByCoordinatesResponseStructure
     | GetPresetsResponse (List ArmyPreset)
+    | ActivatedVillageResponse
     | SendFirstPresetAsAttackToCoordinatesResponse SendFirstPresetAsAttackToCoordinatesResponseStructure
 
 
@@ -143,13 +147,14 @@ initState =
     SimpleLimbara.initState
         { timeInMilliseconds = 0
         , lastRunJavascriptResult = Nothing
-        , gameRootInformation = Nothing
+        , gameRootInformationResult = Nothing
         , ownVillagesDetails = Dict.empty
         , getArmyPresetsResult = Nothing
         , lastJumpToCoordinates = Nothing
         , searchVillageByCoordinatesResults = Dict.empty
         , sentAttackByCoordinates = Dict.empty
         , lastAttackTimeInMilliseconds = Nothing
+        , lastActivatedVillageTimeInMilliseconds = Nothing
         , parseResponseError = Nothing
         }
 
@@ -205,7 +210,13 @@ processWebBrowserBotEvent event stateBefore =
                                             stateAfterIntegrateResponse
 
                                         Just gameRootInformation ->
-                                            { stateAfterParseSuccess | gameRootInformation = Just gameRootInformation }
+                                            { stateAfterParseSuccess
+                                                | gameRootInformationResult =
+                                                    Just
+                                                        { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                                        , gameRootInformation = gameRootInformation
+                                                        }
+                                            }
 
                                 ReadSelectedCharacterVillageDetailsResponse readVillageDetailsResponse ->
                                     { stateAfterParseSuccess
@@ -266,6 +277,9 @@ processWebBrowserBotEvent event stateBefore =
 
                                 GetPresetsResponse armyPresets ->
                                     { stateBefore | getArmyPresetsResult = Just armyPresets }
+
+                                ActivatedVillageResponse ->
+                                    { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
     in
     { newState = state
     , request = requestToFramework state
@@ -287,8 +301,24 @@ requestToFramework state =
 
     else
         let
+            sufficientlyNewGameRootInformation =
+                state.gameRootInformationResult
+                    |> Maybe.andThen
+                        (\gameRootInformationResult ->
+                            let
+                                updateTimeMinimumMilli =
+                                    (state.lastActivatedVillageTimeInMilliseconds |> Maybe.withDefault 0)
+                                        |> max (state.timeInMilliseconds - 15000)
+                            in
+                            if gameRootInformationResult.timeInMilliseconds <= updateTimeMinimumMilli then
+                                Nothing
+
+                            else
+                                Just gameRootInformationResult.gameRootInformation
+                        )
+
             javascript =
-                case state.gameRootInformation of
+                case sufficientlyNewGameRootInformation of
                     Nothing ->
                         readRootInformationScript
 
@@ -313,14 +343,6 @@ requestToFramework state =
                                             else
                                                 Just selectedVillageDetailsResponse.villageDetails
                                         )
-
-                            barbarianVillagesWithoutAttacks =
-                                state
-                                    |> locatedBarbarianVillages
-                                    |> Dict.filter
-                                        (\coordinates _ ->
-                                            (state.sentAttackByCoordinates |> Dict.get coordinates) == Nothing
-                                        )
                         in
                         case villagesWithoutDetails of
                             villageWithoutDetails :: _ ->
@@ -333,60 +355,49 @@ requestToFramework state =
 
                                     Just selectedVillageDetails ->
                                         let
-                                            selectedVillageAttackOptions =
-                                                computeVillageAttackOptions
-                                                    (state.getArmyPresetsResult |> Maybe.withDefault [])
+                                            selectedVillageActionOptions =
+                                                computeVillageActionOptions
+                                                    state
                                                     ( gameRootInformation.selectedVillageId, selectedVillageDetails )
                                         in
-                                        case selectedVillageAttackOptions.farmPresetsMatchingAvailableUnits |> List.head of
+                                        case selectedVillageActionOptions.nextAction of
+                                            Just (GetVillageInfoAtCoordinates coordinates) ->
+                                                startVillageByCoordinatesScript coordinates { jumpToVillage = False }
+
+                                            Just (AttackAtCoordinates armyPreset coordinates) ->
+                                                scriptToJumpToVillageIfNotYetDone state coordinates
+                                                    |> Maybe.withDefault
+                                                        (startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId = armyPreset.id })
+
                                             Nothing ->
-                                                getPresetsScript
+                                                let
+                                                    otherVillagesWithDetails =
+                                                        gameRootInformation.readyVillages
+                                                            |> Set.fromList
+                                                            |> Set.remove gameRootInformation.selectedVillageId
+                                                            |> Set.toList
+                                                            |> List.filterMap
+                                                                (\otherVillageId ->
+                                                                    state.ownVillagesDetails
+                                                                        |> Dict.get otherVillageId
+                                                                        |> Maybe.map
+                                                                            (\otherVillageDetailsResponse ->
+                                                                                ( otherVillageId, otherVillageDetailsResponse.villageDetails )
+                                                                            )
+                                                                )
 
-                                            Just bestPreset ->
-                                                case barbarianVillagesWithoutAttacks |> Dict.toList |> List.head of
-                                                    Just ( ( x, y ), barbarianVillage ) ->
-                                                        let
-                                                            coordinates =
-                                                                { x = x, y = y }
-
-                                                            needToJumpThere =
-                                                                case state.lastJumpToCoordinates of
-                                                                    Nothing ->
-                                                                        True
-
-                                                                    Just lastJumpToCoordinates ->
-                                                                        lastJumpToCoordinates.coordinates
-                                                                            /= coordinates
-                                                                            || lastJumpToCoordinates.timeInMilliseconds
-                                                                            < state.timeInMilliseconds
-                                                                            - 7000
-                                                        in
-                                                        if needToJumpThere then
-                                                            startVillageByCoordinatesScript coordinates { jumpToVillage = True }
-
-                                                        else
-                                                            startSendFirstPresetAsAttackToCoordinatesScript
-                                                                coordinates
-                                                                { presetId = bestPreset.id }
-
+                                                    otherVillagesWithAvailableAction =
+                                                        otherVillagesWithDetails
+                                                            |> List.filter
+                                                                (computeVillageActionOptions state >> .nextAction >> (/=) Nothing)
+                                                in
+                                                case otherVillagesWithAvailableAction |> List.head of
                                                     Nothing ->
-                                                        let
-                                                            allCoordinatesToInspect =
-                                                                state.ownVillagesDetails
-                                                                    |> Dict.values
-                                                                    |> List.map (.villageDetails >> .coordinates)
-                                                                    |> coordinatesToSearchFromOwnVillagesCoordinates 10
+                                                        getPresetsScript
 
-                                                            remainingCoordinatesToInspect =
-                                                                allCoordinatesToInspect
-                                                                    |> List.filter (\coordinates -> state.searchVillageByCoordinatesResults |> Dict.member ( coordinates.x, coordinates.y ) |> not)
-                                                        in
-                                                        case remainingCoordinatesToInspect |> List.head of
-                                                            Nothing ->
-                                                                readRootInformationScript
-
-                                                            Just coordinates ->
-                                                                startVillageByCoordinatesScript coordinates { jumpToVillage = False }
+                                                    Just ( villageToActivateId, villageToActivateDetails ) ->
+                                                        scriptToJumpToVillageIfNotYetDone state villageToActivateDetails.coordinates
+                                                            |> Maybe.withDefault villageMenuActivateVillageScript
         in
         SimpleLimbara.RunJavascriptInCurrentPageRequest
             { javascript = javascript
@@ -396,7 +407,29 @@ requestToFramework state =
             |> Just
 
 
-type alias VillageAttackOptions =
+scriptToJumpToVillageIfNotYetDone : SimpleState -> VillageCoordinates -> Maybe String
+scriptToJumpToVillageIfNotYetDone state coordinates =
+    let
+        needToJumpThere =
+            case state.lastJumpToCoordinates of
+                Nothing ->
+                    True
+
+                Just lastJumpToCoordinates ->
+                    lastJumpToCoordinates.coordinates
+                        /= coordinates
+                        || lastJumpToCoordinates.timeInMilliseconds
+                        < state.timeInMilliseconds
+                        - 7000
+    in
+    if needToJumpThere then
+        Just (startVillageByCoordinatesScript coordinates { jumpToVillage = True })
+
+    else
+        Nothing
+
+
+type alias VillagePresetOptions =
     { farmPresetFilter : String
     , farmPresets : List ArmyPreset
     , farmPresetsEnabledForThisVillage : List ArmyPreset
@@ -404,7 +437,73 @@ type alias VillageAttackOptions =
     }
 
 
-computeVillageAttackOptions : List ArmyPreset -> ( Int, VillageDetails ) -> VillageAttackOptions
+type alias VillageActionOptions =
+    { preset : VillagePresetOptions
+    , nextAction : Maybe VillageDependentAction
+    }
+
+
+type VillageDependentAction
+    = GetVillageInfoAtCoordinates VillageCoordinates
+    | AttackAtCoordinates ArmyPreset VillageCoordinates
+
+
+computeVillageActionOptions : SimpleState -> ( Int, VillageDetails ) -> VillageActionOptions
+computeVillageActionOptions state ( villageId, villageDetails ) =
+    let
+        preset =
+            computeVillageAttackOptions (state.getArmyPresetsResult |> Maybe.withDefault []) ( villageId, villageDetails )
+
+        coordinatesFromTupleXY ( x, y ) =
+            { x = x, y = y }
+
+        nextAction =
+            preset.farmPresetsMatchingAvailableUnits
+                |> List.head
+                |> Maybe.andThen
+                    (\armyPreset ->
+                        let
+                            allCoordinatesToInspect =
+                                [ villageDetails.coordinates ]
+                                    |> coordinatesToSearchFromOwnVillagesCoordinates 10
+
+                            remainingCoordinatesToInspect =
+                                allCoordinatesToInspect
+                                    |> List.filter (\coordinates -> state.searchVillageByCoordinatesResults |> Dict.member ( coordinates.x, coordinates.y ) |> not)
+
+                            barbarianVillagesWithoutAttacks =
+                                state
+                                    |> locatedBarbarianVillages
+                                    |> Dict.filter
+                                        (\coordinates _ ->
+                                            (state.sentAttackByCoordinates |> Dict.get coordinates) == Nothing
+                                        )
+
+                            allActions =
+                                (remainingCoordinatesToInspect |> List.map GetVillageInfoAtCoordinates)
+                                    ++ (barbarianVillagesWithoutAttacks |> Dict.keys |> List.map (coordinatesFromTupleXY >> AttackAtCoordinates armyPreset))
+                        in
+                        allActions
+                            |> List.sortBy
+                                (\action ->
+                                    (case action of
+                                        GetVillageInfoAtCoordinates coords ->
+                                            coords
+
+                                        AttackAtCoordinates _ coords ->
+                                            coords
+                                    )
+                                        |> squareDistanceBetweenCoordinates villageDetails.coordinates
+                                )
+                            |> List.head
+                    )
+    in
+    { preset = computeVillageAttackOptions (state.getArmyPresetsResult |> Maybe.withDefault []) ( villageId, villageDetails )
+    , nextAction = nextAction
+    }
+
+
+computeVillageAttackOptions : List ArmyPreset -> ( Int, VillageDetails ) -> VillagePresetOptions
 computeVillageAttackOptions presets ( villageId, villageDetails ) =
     let
         farmPresetFilter =
@@ -470,16 +569,6 @@ coordinatesToSearchFromOwnVillagesCoordinates radius ownVillagesCoordinates =
                             |> List.map (\offsetY -> ( ownVillageCoordinates.x + offsetX, ownVillageCoordinates.y + offsetY ))
                     )
 
-        squareDistanceBetweenCoordinates coordsA coordsB =
-            let
-                distX =
-                    coordsA.x - coordsB.x
-
-                distY =
-                    coordsA.y - coordsB.y
-            in
-            distX * distX + distY * distY
-
         squareDistanceToClosestOwnVillage coordinates =
             ownVillagesCoordinates
                 |> List.map (squareDistanceBetweenCoordinates coordinates)
@@ -496,6 +585,18 @@ coordinatesToSearchFromOwnVillagesCoordinates radius ownVillagesCoordinates =
         |> Set.toList
         |> List.map (\( x, y ) -> { x = x, y = y })
         |> List.sortBy squareDistanceToClosestOwnVillage
+
+
+squareDistanceBetweenCoordinates : VillageCoordinates -> VillageCoordinates -> Int
+squareDistanceBetweenCoordinates coordsA coordsB =
+    let
+        distX =
+            coordsA.x - coordsB.x
+
+        distY =
+            coordsA.y - coordsB.y
+    in
+    distX * distX + distY * distY
 
 
 readRootInformationScript : String
@@ -528,6 +629,7 @@ decodeResponseFromBrowser =
         , decodeReadSelectedCharacterVillageDetailsResponse |> Json.Decode.map ReadSelectedCharacterVillageDetailsResponse
         , decodeVillageByCoordinatesResponse |> Json.Decode.map VillageByCoordinatesResponse
         , decodeGetPresetsResponse |> Json.Decode.map GetPresetsResponse
+        , decodeActivatedVillageResponse |> Json.Decode.map (always ActivatedVillageResponse)
         , decodeSendFirstPresetAsAttackToCoordinatesResponse |> Json.Decode.map SendFirstPresetAsAttackToCoordinatesResponse
         ]
 
@@ -805,6 +907,28 @@ decodeSendFirstPresetAsAttackToCoordinatesResponse =
         |> Json.Decode.map SendFirstPresetAsAttackToCoordinatesResponseStructure
 
 
+villageMenuActivateVillageScript : String
+villageMenuActivateVillageScript =
+    """
+(function () {
+    getXPathResultFirstNode = function getXPathResultFirstNode(xpath) {        
+        return document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+    };
+
+    var contextMenuEntry = getXPathResultFirstNode("//*[contains(@class, 'context-menu-item') and contains(@class, 'activate')]//*[contains(@ng-click, 'openSubMenu')]");
+    
+    contextMenuEntry.click();
+
+    return JSON.stringify({ activatedVillage : true });
+})();
+"""
+
+
+decodeActivatedVillageResponse : Json.Decode.Decoder ()
+decodeActivatedVillageResponse =
+    Json.Decode.field "activatedVillage" (Json.Decode.succeed ())
+
+
 statusMessageFromState : SimpleState -> String
 statusMessageFromState state =
     let
@@ -813,12 +937,15 @@ statusMessageFromState state =
                 ++ (state.lastRunJavascriptResult |> Maybe.map .response |> describeMaybe describeRunJavascriptInCurrentPageResponseStructure)
 
         aboutGame =
-            case state.gameRootInformation of
+            case state.gameRootInformationResult of
                 Nothing ->
                     "Did not yet read game root information."
 
-                Just gameRootInformation ->
+                Just gameRootInformationResult ->
                     let
+                        gameRootInformation =
+                            gameRootInformationResult.gameRootInformation
+
                         selectedVillageDetails =
                             state.ownVillagesDetails
                                 |> Dict.get gameRootInformation.selectedVillageId
@@ -835,18 +962,18 @@ statusMessageFromState state =
                                                 (state.timeInMilliseconds - villageDetailsResponse.timeInMilliseconds)
                                                     // 1000
 
-                                            attackOptions =
-                                                computeVillageAttackOptions
-                                                    (state.getArmyPresetsResult |> Maybe.withDefault [])
+                                            villageOptions =
+                                                computeVillageActionOptions
+                                                    state
                                                     ( gameRootInformation.selectedVillageId, villageDetailsResponse.villageDetails )
 
-                                            attackOptionsReport =
-                                                villageAttackOptionsDisplayText attackOptions
+                                            villageOptionsReport =
+                                                villageOptionsDisplayText villageOptions
                                         in
                                         [ "(" ++ (villageDetailsResponse.villageDetails.coordinates |> villageCoordinatesDisplayText) ++ ")"
                                         , "last update " ++ (lastUpdateAge |> String.fromInt) ++ " s ago"
                                         , (sumOfAvailableUnits |> String.fromInt) ++ " available units"
-                                        , attackOptionsReport
+                                        , villageOptionsReport
                                         ]
                                             |> String.join ", "
                                     )
@@ -903,19 +1030,22 @@ statusMessageFromState state =
         |> String.join "\n"
 
 
-villageAttackOptionsDisplayText : VillageAttackOptions -> String
-villageAttackOptionsDisplayText villageAttackOptions =
-    case villageAttackOptions.farmPresetsMatchingAvailableUnits |> List.head of
+villageOptionsDisplayText : VillageActionOptions -> String
+villageOptionsDisplayText villageActionOptions =
+    {- TODO: Probably unify with the branching in the function to compute the next request to the framework.
+       Because the paths should be the same.
+    -}
+    case villageActionOptions.preset.farmPresetsMatchingAvailableUnits |> List.head of
         Nothing ->
-            if (villageAttackOptions.farmPresetsEnabledForThisVillage |> List.length) == 0 then
-                if (villageAttackOptions.farmPresets |> List.length) == 0 then
-                    "Found no army presets matching the filter '" ++ villageAttackOptions.farmPresetFilter ++ "'."
+            if (villageActionOptions.preset.farmPresetsEnabledForThisVillage |> List.length) == 0 then
+                if (villageActionOptions.preset.farmPresets |> List.length) == 0 then
+                    "Found no army presets matching the filter '" ++ villageActionOptions.preset.farmPresetFilter ++ "'."
 
                 else
-                    "Found " ++ (villageAttackOptions.farmPresets |> List.length |> String.fromInt) ++ " army presets for farming, but none enabled for this village."
+                    "Found " ++ (villageActionOptions.preset.farmPresets |> List.length |> String.fromInt) ++ " army presets for farming, but none enabled for this village."
 
             else
-                "Found " ++ (villageAttackOptions.farmPresetsEnabledForThisVillage |> List.length |> String.fromInt) ++ " farming army presets enabled for this village, but not sufficient units available for any of them."
+                "Found " ++ (villageActionOptions.preset.farmPresetsEnabledForThisVillage |> List.length |> String.fromInt) ++ " farming army presets enabled for this village, but not sufficient units available for any of them."
 
         Just bestPreset ->
             "Best matching army preset for this village is '" ++ bestPreset.name ++ "'."

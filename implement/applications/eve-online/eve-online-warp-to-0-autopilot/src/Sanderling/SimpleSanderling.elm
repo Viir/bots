@@ -540,14 +540,14 @@ updateVolatileHostState runInVolatileHostComplete stateBefore =
                     stateBefore
 
 
-runScriptResultDisplayString : Result String InterfaceToHost.RunInVolatileHostComplete -> String
+runScriptResultDisplayString : Result String InterfaceToHost.RunInVolatileHostComplete -> { string : String, isErr : Bool }
 runScriptResultDisplayString result =
     case result of
         Err error ->
-            "Error: " ++ error
+            { string = "Error: " ++ error, isErr = True }
 
         Ok runInVolatileHostComplete ->
-            "Success: " ++ (runInVolatileHostComplete.returnValueToString |> Maybe.withDefault "null")
+            { string = "Success: " ++ (runInVolatileHostComplete.returnValueToString |> Maybe.withDefault "null"), isErr = False }
 
 
 statusReportFromState : StateIncludingSetup s -> String
@@ -558,7 +558,22 @@ statusReportFromState state =
 
         lastScriptRunResult =
             "Last script run result is: "
-                ++ (state.setup.lastRunScriptResult |> Maybe.map (runScriptResultDisplayString >> stringEllipsis 140 "....") |> Maybe.withDefault "Nothing")
+                ++ (state.setup.lastRunScriptResult
+                        |> Maybe.map runScriptResultDisplayString
+                        |> Maybe.map
+                            (\runScriptResult ->
+                                runScriptResult.string
+                                    |> stringEllipsis
+                                        (if runScriptResult.isErr then
+                                            640
+
+                                         else
+                                            140
+                                        )
+                                        "...."
+                            )
+                        |> Maybe.withDefault "Nothing"
+                   )
 
         botRequestQueueLength =
             state.botState.requestQueue |> List.length
@@ -586,6 +601,7 @@ statusReportFromState state =
     [ fromBot
     , "----"
     , "EVE Online framework status:"
+
     -- , runtimeExpensesReport
     , lastScriptRunResult
     ]

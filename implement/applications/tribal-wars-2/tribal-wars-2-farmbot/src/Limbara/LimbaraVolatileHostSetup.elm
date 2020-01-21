@@ -129,7 +129,7 @@ async System.Threading.Tasks.Task StartBrowser()
         UserDataDir = UserDataDirPath(),
         DefaultViewport = null,
     });
-    browserPage = await browser.NewPageAsync();
+    browserPage = (await browser.PagesAsync()).FirstOrDefault() ?? await browser.NewPageAsync();
 
     //  TODO: Better name for ____callback____?
 

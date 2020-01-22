@@ -975,10 +975,36 @@ statusMessageFromState state =
             "lastRunJavascriptResult:\n"
                 ++ (state.lastRunJavascriptResult |> Maybe.map .response |> describeMaybe describeRunJavascriptInCurrentPageResponseStructure)
 
-        aboutGame =
+        villagesByCoordinates =
+            state.coordinatesLastCheck
+                |> Dict.toList
+                |> List.filterMap
+                    (\( coordinates, scanResult ) ->
+                        case scanResult.result of
+                            NoVillageThere ->
+                                Nothing
+
+                            VillageThere village ->
+                                Just ( coordinates, village )
+                    )
+                |> Dict.fromList
+
+        coordinatesChecksReport =
+            "Checked "
+                ++ (state.coordinatesLastCheck |> Dict.size |> String.fromInt)
+                ++ " coordinates and found "
+                ++ (villagesByCoordinates |> Dict.size |> String.fromInt)
+                ++ " villages, "
+                ++ (villagesByCoordinates |> Dict.filter (\_ village -> village.affiliation == AffiliationBarbarian) |> Dict.size |> String.fromInt)
+                ++ " of wich are barbarian villages."
+
+        sentAttacksReport =
+            "Sent " ++ (state.sentAttackByCoordinates |> Dict.size |> String.fromInt) ++ " attacks."
+
+        inGameReport =
             case state.gameRootInformationResult of
                 Nothing ->
-                    "Did not yet read game root information."
+                    "I did not yet read game root information. Please log in to the game so that you see your villages."
 
                 Just gameRootInformationResult ->
                     let
@@ -1012,50 +1038,31 @@ statusMessageFromState state =
                                             outgoingCommandsCount =
                                                 villageDetailsResponse.villageDetails.commands.outgoing |> List.length
                                         in
-                                        [ villageDetailsResponse.villageDetails.coordinates |> villageCoordinatesDisplayText
-                                        , "'" ++ villageDetailsResponse.villageDetails.name ++ "'"
-                                        , "last update " ++ (lastUpdateAge |> String.fromInt) ++ " s ago"
-                                        , (sumOfAvailableUnits |> String.fromInt) ++ " available units"
-                                        , (outgoingCommandsCount |> String.fromInt) ++ " outgoing commands"
+                                        [ (villageDetailsResponse.villageDetails.coordinates |> villageCoordinatesDisplayText)
+                                        ++ " '" ++ villageDetailsResponse.villageDetails.name ++ "'."
+                                        , "Last update " ++ (lastUpdateAge |> String.fromInt) ++ " s ago."
+                                        , (sumOfAvailableUnits |> String.fromInt) ++ " available units."
                                         , villageOptionsReport
+                                        , (outgoingCommandsCount |> String.fromInt) ++ " outgoing commands."
                                         ]
-                                            |> String.join ", "
+                                            |> String.join " "
                                     )
-                                |> Maybe.withDefault "No details this village."
+                                |> Maybe.withDefault "No details yet for this village."
+
+                        ownVillagesReport =
+                            "Found "
+                                ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt)
+                                ++ " own villages. Currently selected is "
+                                ++ (gameRootInformation.selectedVillageId |> String.fromInt)
+                                ++ " ("
+                                ++ selectedVillageDetails
+                                ++ ")"
                     in
-                    "Found "
-                        ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt)
-                        ++ " villages. Currently selected is "
-                        ++ (gameRootInformation.selectedVillageId |> String.fromInt)
-                        ++ " ("
-                        ++ selectedVillageDetails
-                        ++ ")"
-
-        villagesByCoordinates =
-            state.coordinatesLastCheck
-                |> Dict.toList
-                |> List.filterMap
-                    (\( coordinates, scanResult ) ->
-                        case scanResult.result of
-                            NoVillageThere ->
-                                Nothing
-
-                            VillageThere village ->
-                                Just ( coordinates, village )
-                    )
-                |> Dict.fromList
-
-        coordinatesChecksReport =
-            "Searched "
-                ++ (state.coordinatesLastCheck |> Dict.size |> String.fromInt)
-                ++ " coordinates and found "
-                ++ (villagesByCoordinates |> Dict.size |> String.fromInt)
-                ++ " villages, "
-                ++ (villagesByCoordinates |> Dict.filter (\_ village -> village.affiliation == AffiliationBarbarian) |> Dict.size |> String.fromInt)
-                ++ " of wich are barbarian villages."
-
-        sentAttacks =
-            "Sent " ++ (state.sentAttackByCoordinates |> Dict.size |> String.fromInt) ++ " attacks."
+                    [ ownVillagesReport
+                    , sentAttacksReport
+                    , coordinatesChecksReport
+                    ]
+                        |> String.join "\n"
 
         parseResponseErrorReport =
             case state.parseResponseError of
@@ -1065,9 +1072,7 @@ statusMessageFromState state =
                 Just parseResponseError ->
                     Json.Decode.errorToString parseResponseError
     in
-    [ aboutGame
-    , coordinatesChecksReport
-    , sentAttacks
+    [ inGameReport
     , parseResponseErrorReport
     , jsRunResult
     ]
@@ -1089,7 +1094,7 @@ villageOptionsDisplayText villageActionOptions =
                     "Found " ++ (villageActionOptions.preset.farmPresets |> List.length |> String.fromInt) ++ " army presets for farming, but none enabled for this village."
 
             else
-                "Found " ++ (villageActionOptions.preset.farmPresetsEnabledForThisVillage |> List.length |> String.fromInt) ++ " farming army presets enabled for this village, but not sufficient units available for any of them."
+                "Found " ++ (villageActionOptions.preset.farmPresetsEnabledForThisVillage |> List.length |> String.fromInt) ++ " farming army presets enabled for this village, but not sufficient units available for any of these."
 
         Just bestPreset ->
             "Best matching army preset for this village is '" ++ bestPreset.name ++ "'."

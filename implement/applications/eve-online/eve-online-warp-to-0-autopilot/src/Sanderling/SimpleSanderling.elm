@@ -34,6 +34,7 @@ type BotEvent
 
 type BotRequest
     = EffectOnGameClientWindow Sanderling.EffectOnWindowStructure
+    | ConsoleBeepSequenceRequest (List ConsoleBeepStructure)
 
 
 type alias StateIncludingSetup simpleBotState =
@@ -81,6 +82,12 @@ type alias BotProcessEventResult simpleBotState =
     , requests : List BotRequest
     , millisecondsToNextMemoryReading : Int
     , statusDescriptionText : String
+    }
+
+
+type alias ConsoleBeepStructure =
+    { frequency : Int
+    , durationInMs : Int
     }
 
 
@@ -515,6 +522,11 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                                         , bringWindowToForeground = True
                                                         }
                                                             |> Sanderling.EffectOnWindow
+                                                            |> buildTaskFromRequestToVolatileHost
+
+                                                    ConsoleBeepSequenceRequest consoleBeepSequence ->
+                                                        consoleBeepSequence
+                                                            |> Sanderling.ConsoleBeepSequenceRequest
                                                             |> buildTaskFromRequestToVolatileHost
                                         , getMemoryReadingTask =
                                             Sanderling.GetMemoryReading { processId = eveOnlineProcessId } |> buildTaskFromRequestToVolatileHost

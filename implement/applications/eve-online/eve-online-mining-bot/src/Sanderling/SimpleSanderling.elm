@@ -34,6 +34,7 @@ type BotEvent
 
 type BotRequest
     = EffectOnGameClientWindow Sanderling.EffectOnWindowStructure
+    | ConsoleBeepSequenceRequest (List ConsoleBeepStructure)
 
 
 type alias StateIncludingSetup simpleBotState =
@@ -81,6 +82,12 @@ type alias BotProcessEventResult simpleBotState =
     , requests : List BotRequest
     , millisecondsToNextMemoryReading : Int
     , statusDescriptionText : String
+    }
+
+
+type alias ConsoleBeepStructure =
+    { frequency : Int
+    , durationInMs : Int
     }
 
 
@@ -225,11 +232,14 @@ processEventNotWaitingForTaskCompletion simpleBotProcessEvent maybeBotEvent stat
                         ForwardRequest forward ->
                             ( forward.newQueueState, forward.request |> operateBot.buildTaskFromBotRequest |> Just )
 
+                botState =
+                    { botStateBeforeRequest | requestQueue = botRequestQueue }
+
                 timeForNextMemoryReadingGeneral =
                     (stateBefore.setup.lastMemoryReading |> Maybe.map .timeInMilliseconds |> Maybe.withDefault 0) + 10000
 
                 timeForNextMemoryReadingFromBot =
-                    stateBefore.botState.lastEvent
+                    botState.lastEvent
                         |> Maybe.map (\botLastEvent -> botLastEvent.timeInMilliseconds + botLastEvent.eventResult.millisecondsToNextMemoryReading)
                         |> Maybe.withDefault 0
 
@@ -262,9 +272,6 @@ processEventNotWaitingForTaskCompletion simpleBotProcessEvent maybeBotEvent stat
                                 )
                             )
                         |> Maybe.withDefault ( stateBefore.taskInProgress, [] )
-
-                botState =
-                    { botStateBeforeRequest | requestQueue = botRequestQueue }
             in
             ( { stateBefore | botState = botState, taskInProgress = taskInProgress }
             , { startTasks = startTasks
@@ -516,6 +523,11 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                                         }
                                                             |> Sanderling.EffectOnWindow
                                                             |> buildTaskFromRequestToVolatileHost
+
+                                                    ConsoleBeepSequenceRequest consoleBeepSequence ->
+                                                        consoleBeepSequence
+                                                            |> Sanderling.ConsoleBeepSequenceRequest
+                                                            |> buildTaskFromRequestToVolatileHost
                                         , getMemoryReadingTask =
                                             Sanderling.GetMemoryReading { processId = eveOnlineProcessId } |> buildTaskFromRequestToVolatileHost
                                         }
@@ -540,14 +552,14 @@ updateVolatileHostState runInVolatileHostComplete stateBefore =
                     stateBefore
 
 
-runScriptResultDisplayString : Result String InterfaceToHost.RunInVolatileHostComplete -> String
+runScriptResultDisplayString : Result String InterfaceToHost.RunInVolatileHostComplete -> { string : String, isErr : Bool }
 runScriptResultDisplayString result =
     case result of
         Err error ->
-            "Error: " ++ error
+            { string = "Error: " ++ error, isErr = True }
 
         Ok runInVolatileHostComplete ->
-            "Success: " ++ (runInVolatileHostComplete.returnValueToString |> Maybe.withDefault "null")
+            { string = "Success: " ++ (runInVolatileHostComplete.returnValueToString |> Maybe.withDefault "null"), isErr = False }
 
 
 statusReportFromState : StateIncludingSetup s -> String
@@ -558,7 +570,22 @@ statusReportFromState state =
 
         lastScriptRunResult =
             "Last script run result is: "
-                ++ (state.setup.lastRunScriptResult |> Maybe.map (runScriptResultDisplayString >> stringEllipsis 140 "....") |> Maybe.withDefault "Nothing")
+                ++ (state.setup.lastRunScriptResult
+                        |> Maybe.map runScriptResultDisplayString
+                        |> Maybe.map
+                            (\runScriptResult ->
+                                runScriptResult.string
+                                    |> stringEllipsis
+                                        (if runScriptResult.isErr then
+                                            640
+
+                                         else
+                                            140
+                                        )
+                                        "...."
+                            )
+                        |> Maybe.withDefault "Nothing"
+                   )
 
         botRequestQueueLength =
             state.botState.requestQueue |> List.length
@@ -586,6 +613,7 @@ statusReportFromState state =
     [ fromBot
     , "----"
     , "EVE Online framework status:"
+
     -- , runtimeExpensesReport
     , lastScriptRunResult
     ]

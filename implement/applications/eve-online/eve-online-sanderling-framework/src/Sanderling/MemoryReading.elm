@@ -1,5 +1,8 @@
 module Sanderling.MemoryReading exposing
-    ( ChildOfNodeWithDisplayRegion(..)
+    ( ChatUserEntry
+    , ChatWindow
+    , ChatWindowStack
+    , ChildOfNodeWithDisplayRegion(..)
     , ContextMenu
     , ContextMenuEntry
     , DisplayRegion
@@ -11,6 +14,9 @@ module Sanderling.MemoryReading exposing
     , InventoryWindow
     , InventoryWindowCapacityGauge
     , MaybeVisible(..)
+    , ModuleButtonTooltip
+    , Neocom
+    , NeocomClock
     , OverviewWindowEntry
     , ParsedUserInterface
     , ShipManeuverType(..)
@@ -42,7 +48,6 @@ module Sanderling.MemoryReading exposing
     , unwrapUITreeNodeChild
     )
 
-import BigInt
 import Dict
 import Json.Decode
 import Json.Encode
@@ -59,6 +64,9 @@ type alias ParsedUserInterface =
     , infoPanelRoute : MaybeVisible InfoPanelRoute
     , overviewWindow : MaybeVisible OverviewWindow
     , inventoryWindows : List InventoryWindow
+    , chatWindowStacks : List ChatWindowStack
+    , moduleButtonTooltip : MaybeVisible ModuleButtonTooltip
+    , neocom : MaybeVisible Neocom
     }
 
 
@@ -206,6 +214,44 @@ type alias InventoryWindowCapacityGauge =
     }
 
 
+type alias ChatWindowStack =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , chatWindow : Maybe ChatWindow
+    }
+
+
+type alias ChatWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , name : Maybe String
+    , visibleUsers : List ChatUserEntry
+    }
+
+
+type alias ChatUserEntry =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , name : Maybe String
+    , standingIconHint : Maybe String
+    }
+
+
+type alias ModuleButtonTooltip =
+    { uiNode : UITreeNodeWithDisplayRegion
+    }
+
+
+type alias Neocom =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , clock : MaybeVisible NeocomClock
+    }
+
+
+type alias NeocomClock =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , text : String
+    , parsedText : Result String { hour : Int, minute : Int }
+    }
+
+
 type MaybeVisible feature
     = CanNotSeeIt
     | CanSee feature
@@ -226,6 +272,9 @@ parseUserInterfaceFromUITree uiTree =
     , infoPanelRoute = parseInfoPanelRouteFromUITreeRoot uiTree
     , overviewWindow = parseOverviewWindowFromUITreeRoot uiTree
     , inventoryWindows = parseInventoryWindowsFromUITreeRoot uiTree
+    , moduleButtonTooltip = parseModuleButtonTooltipFromUITreeRoot uiTree
+    , chatWindowStacks = parseChatWindowStacksFromUITreeRoot uiTree
+    , neocom = parseNeocomFromUITreeRoot uiTree
     }
 
 
@@ -255,10 +304,13 @@ getDisplayRegionFromDictEntries : UITreeNode -> Maybe DisplayRegion
 getDisplayRegionFromDictEntries uiNode =
     let
         fixedNumberFromJsonValue =
-            Json.Decode.decodeValue Json.Decode.string
-                >> Result.mapError Json.Decode.errorToString
-                >> Result.andThen parse64BitIntAndGetLower32BitInt
-                >> Result.map .lower32Bit
+            Json.Decode.decodeValue
+                (Json.Decode.oneOf
+                    [ Json.Decode.string
+                    , Json.Decode.field "int_low32" Json.Decode.string
+                    ]
+                    |> Json.Decode.andThen (String.toInt >> Maybe.map Json.Decode.succeed >> Maybe.withDefault (Json.Decode.fail "Failed to parse integer from string."))
+                )
 
         fixedNumberFromPropertyName propertyName =
             uiNode.dictEntriesOfInterest
@@ -738,6 +790,155 @@ parseInventoryCapacityGaugeText capacityText =
                     Err ("Unexpected number of components in capacityText '" ++ capacityText ++ "'")
 
 
+parseModuleButtonTooltipFromUITreeRoot : UITreeNodeWithDisplayRegion -> MaybeVisible ModuleButtonTooltip
+parseModuleButtonTooltipFromUITreeRoot uiTreeRoot =
+    case
+        uiTreeRoot
+            |> listDescendantsWithDisplayRegion
+            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "ModuleButtonTooltip")
+            |> List.head
+    of
+        Nothing ->
+            CanNotSeeIt
+
+        Just uiNode ->
+            CanSee { uiNode = uiNode }
+
+
+parseChatWindowStacksFromUITreeRoot : UITreeNodeWithDisplayRegion -> List ChatWindowStack
+parseChatWindowStacksFromUITreeRoot uiTreeRoot =
+    uiTreeRoot
+        |> listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "ChatWindowStack")
+        |> List.map parseChatWindowStack
+
+
+parseChatWindowStack : UITreeNodeWithDisplayRegion -> ChatWindowStack
+parseChatWindowStack chatWindowStackUiNode =
+    let
+        chatWindowNode =
+            chatWindowStackUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "XmppChatWindow")
+                |> List.head
+    in
+    { uiNode = chatWindowStackUiNode
+    , chatWindow = chatWindowNode |> Maybe.map parseChatWindow
+    }
+
+
+parseChatWindow : UITreeNodeWithDisplayRegion -> ChatWindow
+parseChatWindow chatWindowUiNode =
+    let
+        visibleUsers =
+            chatWindowUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (\uiNode -> [ "XmppChatSimpleUserEntry", "XmppChatUserEntry" ] |> List.member uiNode.uiNode.pythonObjectTypeName)
+                |> List.map parseChatUserEntry
+    in
+    { uiNode = chatWindowUiNode
+    , name = getNameFromDictEntries chatWindowUiNode.uiNode
+    , visibleUsers = visibleUsers
+    }
+
+
+parseChatUserEntry : UITreeNodeWithDisplayRegion -> ChatUserEntry
+parseChatUserEntry chatUserUiNode =
+    let
+        standingIconNode =
+            chatUserUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "FlagIconWithState")
+                |> List.head
+
+        name =
+            chatUserUiNode.uiNode
+                |> getAllContainedDisplayTexts
+                |> List.sortBy String.length
+                |> List.reverse
+                |> List.head
+
+        standingIconHint =
+            standingIconNode
+                |> Maybe.andThen (.uiNode >> getHintTextFromDictEntries)
+    in
+    { uiNode = chatUserUiNode
+    , name = name
+    , standingIconHint = standingIconHint
+    }
+
+
+parseNeocomFromUITreeRoot : UITreeNodeWithDisplayRegion -> MaybeVisible Neocom
+parseNeocomFromUITreeRoot uiTreeRoot =
+    case
+        uiTreeRoot
+            |> listDescendantsWithDisplayRegion
+            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Neocom")
+            |> List.head
+    of
+        Nothing ->
+            CanNotSeeIt
+
+        Just uiNode ->
+            CanSee (parseNeocom uiNode)
+
+
+parseNeocom : UITreeNodeWithDisplayRegion -> Neocom
+parseNeocom neocomUiNode =
+    let
+        maybeClockTextAndNode =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "InGameClock")
+                |> List.concatMap getAllContainedDisplayTextsWithRegion
+                |> List.head
+
+        clock =
+            maybeClockTextAndNode
+                |> Maybe.map
+                    (\( clockText, clockNode ) ->
+                        { uiNode = clockNode
+                        , text = clockText
+                        , parsedText = parseNeocomClockText clockText
+                        }
+                    )
+                |> canNotSeeItFromMaybeNothing
+    in
+    { uiNode = neocomUiNode
+    , clock = clock
+    }
+
+
+parseNeocomClockText : String -> Result String { hour : Int, minute : Int }
+parseNeocomClockText clockText =
+    case "(\\d+)\\:(\\d+)" |> Regex.fromString of
+        Nothing ->
+            Err "Regex code error"
+
+        Just regex ->
+            case clockText |> Regex.find regex |> List.head of
+                Nothing ->
+                    Err ("Text did not match expected format: '" ++ clockText ++ "'")
+
+                Just match ->
+                    case match.submatches of
+                        [ Just hourText, Just minuteText ] ->
+                            case hourText |> String.toInt of
+                                Nothing ->
+                                    Err ("Failed to parse hour: '" ++ hourText ++ "'")
+
+                                Just hour ->
+                                    case minuteText |> String.toInt of
+                                        Nothing ->
+                                            Err ("Failed to parse minute: '" ++ minuteText ++ "'")
+
+                                        Just minute ->
+                                            Ok { hour = hour, minute = minute }
+
+                        _ ->
+                            Err "Unexpected numer of text elements."
+
+
 parseNumberTruncatingAfterOptionalDecimalSeparator : String -> Result String Int
 parseNumberTruncatingAfterOptionalDecimalSeparator numberDisplayText =
     case "^([\\d\\,\\s]+?)(?=(|[,\\.]\\d)$)" |> Regex.fromString of
@@ -799,6 +1000,13 @@ getNameFromDictEntries : UITreeNode -> Maybe String
 getNameFromDictEntries uiNode =
     uiNode.dictEntriesOfInterest
         |> Dict.get "_name"
+        |> Maybe.andThen (Json.Decode.decodeValue Json.Decode.string >> Result.toMaybe)
+
+
+getHintTextFromDictEntries : UITreeNode -> Maybe String
+getHintTextFromDictEntries uiNode =
+    uiNode.dictEntriesOfInterest
+        |> Dict.get "_hint"
         |> Maybe.andThen (Json.Decode.decodeValue Json.Decode.string >> Result.toMaybe)
 
 
@@ -956,135 +1164,3 @@ maybeVisibleAndThen map maybeVisible =
 
         CanSee visible ->
             map visible
-
-
-{-| Tests at <https://ellie-app.com/7JJQTtHTJSwa1>
--}
-parse64BitIntAndGetLower32BitInt :
-    String
-    -> Result String { valueAsBase16 : String, base16WithSignIntegrated : String, lower32Bit : Int }
-parse64BitIntAndGetLower32BitInt asString =
-    let
-        ( wasNegative, valueAsString ) =
-            if asString |> String.startsWith "-" then
-                ( True, asString |> String.dropLeft 1 )
-
-            else
-                ( False, asString )
-    in
-    case valueAsString |> BigInt.fromIntString of
-        Nothing ->
-            Err "Failed to parse original as integer."
-
-        Just valueAsBigInt ->
-            let
-                valueAsBase16 =
-                    valueAsBigInt
-                        |> BigInt.toHexString
-                        |> String.padLeft 16 '0'
-                        |> String.toLower
-
-                withSignIntegratedResult =
-                    if wasNegative then
-                        valueAsBase16
-                            |> String.map flipAllBitsInBase16Char
-                            |> BigInt.fromHexString
-                            |> Maybe.map (BigInt.add (BigInt.fromInt 1))
-
-                    else
-                        BigInt.fromHexString valueAsBase16
-            in
-            case withSignIntegratedResult of
-                Nothing ->
-                    Err "Failed fromHexString"
-
-                Just withSignIntegrated ->
-                    let
-                        base16WithSignIntegrated =
-                            withSignIntegrated
-                                |> BigInt.toHexString
-                                |> String.padLeft 16 '0'
-                                |> String.toLower
-
-                        lower32BitAsBase16 =
-                            base16WithSignIntegrated |> String.right 8
-
-                        lower32BitAsBigIntResult =
-                            if lower32BitAsBase16 |> String.startsWith "f" then
-                                lower32BitAsBase16
-                                    |> String.map flipAllBitsInBase16Char
-                                    |> BigInt.fromHexString
-                                    |> Maybe.map (BigInt.add (BigInt.fromInt 1) >> BigInt.negate)
-
-                            else
-                                BigInt.fromHexString lower32BitAsBase16
-
-                        lower32BitResult =
-                            lower32BitAsBigIntResult
-                                |> Maybe.andThen (BigInt.toString >> String.toInt)
-                    in
-                    case lower32BitResult of
-                        Nothing ->
-                            Err "Failed fromHexString"
-
-                        Just lower32Bit ->
-                            Ok
-                                { valueAsBase16 = valueAsBase16
-                                , base16WithSignIntegrated = base16WithSignIntegrated
-                                , lower32Bit = lower32Bit
-                                }
-
-
-flipAllBitsInBase16Char : Char -> Char
-flipAllBitsInBase16Char originalChar =
-    case originalChar |> Char.toLower of
-        '0' ->
-            'f'
-
-        '1' ->
-            'e'
-
-        '2' ->
-            'd'
-
-        '3' ->
-            'c'
-
-        '4' ->
-            'b'
-
-        '5' ->
-            'a'
-
-        '6' ->
-            '9'
-
-        '7' ->
-            '8'
-
-        '8' ->
-            '7'
-
-        '9' ->
-            '6'
-
-        'a' ->
-            '5'
-
-        'b' ->
-            '4'
-
-        'c' ->
-            '3'
-
-        'd' ->
-            '2'
-
-        'e' ->
-            '1'
-
-        'f' ->
-            '0'
-
-        _ ->
-            '_'

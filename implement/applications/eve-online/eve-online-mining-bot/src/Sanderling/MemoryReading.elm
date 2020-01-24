@@ -1,5 +1,8 @@
 module Sanderling.MemoryReading exposing
-    ( ChildOfNodeWithDisplayRegion(..)
+    ( ChatUserEntry
+    , ChatWindow
+    , ChatWindowStack
+    , ChildOfNodeWithDisplayRegion(..)
     , ContextMenu
     , ContextMenuEntry
     , DisplayRegion
@@ -11,6 +14,9 @@ module Sanderling.MemoryReading exposing
     , InventoryWindow
     , InventoryWindowCapacityGauge
     , MaybeVisible(..)
+    , ModuleButtonTooltip
+    , Neocom
+    , NeocomClock
     , OverviewWindowEntry
     , ParsedUserInterface
     , ShipManeuverType(..)
@@ -58,6 +64,9 @@ type alias ParsedUserInterface =
     , infoPanelRoute : MaybeVisible InfoPanelRoute
     , overviewWindow : MaybeVisible OverviewWindow
     , inventoryWindows : List InventoryWindow
+    , chatWindowStacks : List ChatWindowStack
+    , moduleButtonTooltip : MaybeVisible ModuleButtonTooltip
+    , neocom : MaybeVisible Neocom
     }
 
 
@@ -205,6 +214,44 @@ type alias InventoryWindowCapacityGauge =
     }
 
 
+type alias ChatWindowStack =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , chatWindow : Maybe ChatWindow
+    }
+
+
+type alias ChatWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , name : Maybe String
+    , visibleUsers : List ChatUserEntry
+    }
+
+
+type alias ChatUserEntry =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , name : Maybe String
+    , standingIconHint : Maybe String
+    }
+
+
+type alias ModuleButtonTooltip =
+    { uiNode : UITreeNodeWithDisplayRegion
+    }
+
+
+type alias Neocom =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , clock : MaybeVisible NeocomClock
+    }
+
+
+type alias NeocomClock =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , text : String
+    , parsedText : Result String { hour : Int, minute : Int }
+    }
+
+
 type MaybeVisible feature
     = CanNotSeeIt
     | CanSee feature
@@ -225,6 +272,9 @@ parseUserInterfaceFromUITree uiTree =
     , infoPanelRoute = parseInfoPanelRouteFromUITreeRoot uiTree
     , overviewWindow = parseOverviewWindowFromUITreeRoot uiTree
     , inventoryWindows = parseInventoryWindowsFromUITreeRoot uiTree
+    , moduleButtonTooltip = parseModuleButtonTooltipFromUITreeRoot uiTree
+    , chatWindowStacks = parseChatWindowStacksFromUITreeRoot uiTree
+    , neocom = parseNeocomFromUITreeRoot uiTree
     }
 
 
@@ -740,6 +790,155 @@ parseInventoryCapacityGaugeText capacityText =
                     Err ("Unexpected number of components in capacityText '" ++ capacityText ++ "'")
 
 
+parseModuleButtonTooltipFromUITreeRoot : UITreeNodeWithDisplayRegion -> MaybeVisible ModuleButtonTooltip
+parseModuleButtonTooltipFromUITreeRoot uiTreeRoot =
+    case
+        uiTreeRoot
+            |> listDescendantsWithDisplayRegion
+            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "ModuleButtonTooltip")
+            |> List.head
+    of
+        Nothing ->
+            CanNotSeeIt
+
+        Just uiNode ->
+            CanSee { uiNode = uiNode }
+
+
+parseChatWindowStacksFromUITreeRoot : UITreeNodeWithDisplayRegion -> List ChatWindowStack
+parseChatWindowStacksFromUITreeRoot uiTreeRoot =
+    uiTreeRoot
+        |> listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "ChatWindowStack")
+        |> List.map parseChatWindowStack
+
+
+parseChatWindowStack : UITreeNodeWithDisplayRegion -> ChatWindowStack
+parseChatWindowStack chatWindowStackUiNode =
+    let
+        chatWindowNode =
+            chatWindowStackUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "XmppChatWindow")
+                |> List.head
+    in
+    { uiNode = chatWindowStackUiNode
+    , chatWindow = chatWindowNode |> Maybe.map parseChatWindow
+    }
+
+
+parseChatWindow : UITreeNodeWithDisplayRegion -> ChatWindow
+parseChatWindow chatWindowUiNode =
+    let
+        visibleUsers =
+            chatWindowUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (\uiNode -> [ "XmppChatSimpleUserEntry", "XmppChatUserEntry" ] |> List.member uiNode.uiNode.pythonObjectTypeName)
+                |> List.map parseChatUserEntry
+    in
+    { uiNode = chatWindowUiNode
+    , name = getNameFromDictEntries chatWindowUiNode.uiNode
+    , visibleUsers = visibleUsers
+    }
+
+
+parseChatUserEntry : UITreeNodeWithDisplayRegion -> ChatUserEntry
+parseChatUserEntry chatUserUiNode =
+    let
+        standingIconNode =
+            chatUserUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "FlagIconWithState")
+                |> List.head
+
+        name =
+            chatUserUiNode.uiNode
+                |> getAllContainedDisplayTexts
+                |> List.sortBy String.length
+                |> List.reverse
+                |> List.head
+
+        standingIconHint =
+            standingIconNode
+                |> Maybe.andThen (.uiNode >> getHintTextFromDictEntries)
+    in
+    { uiNode = chatUserUiNode
+    , name = name
+    , standingIconHint = standingIconHint
+    }
+
+
+parseNeocomFromUITreeRoot : UITreeNodeWithDisplayRegion -> MaybeVisible Neocom
+parseNeocomFromUITreeRoot uiTreeRoot =
+    case
+        uiTreeRoot
+            |> listDescendantsWithDisplayRegion
+            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Neocom")
+            |> List.head
+    of
+        Nothing ->
+            CanNotSeeIt
+
+        Just uiNode ->
+            CanSee (parseNeocom uiNode)
+
+
+parseNeocom : UITreeNodeWithDisplayRegion -> Neocom
+parseNeocom neocomUiNode =
+    let
+        maybeClockTextAndNode =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "InGameClock")
+                |> List.concatMap getAllContainedDisplayTextsWithRegion
+                |> List.head
+
+        clock =
+            maybeClockTextAndNode
+                |> Maybe.map
+                    (\( clockText, clockNode ) ->
+                        { uiNode = clockNode
+                        , text = clockText
+                        , parsedText = parseNeocomClockText clockText
+                        }
+                    )
+                |> canNotSeeItFromMaybeNothing
+    in
+    { uiNode = neocomUiNode
+    , clock = clock
+    }
+
+
+parseNeocomClockText : String -> Result String { hour : Int, minute : Int }
+parseNeocomClockText clockText =
+    case "(\\d+)\\:(\\d+)" |> Regex.fromString of
+        Nothing ->
+            Err "Regex code error"
+
+        Just regex ->
+            case clockText |> Regex.find regex |> List.head of
+                Nothing ->
+                    Err ("Text did not match expected format: '" ++ clockText ++ "'")
+
+                Just match ->
+                    case match.submatches of
+                        [ Just hourText, Just minuteText ] ->
+                            case hourText |> String.toInt of
+                                Nothing ->
+                                    Err ("Failed to parse hour: '" ++ hourText ++ "'")
+
+                                Just hour ->
+                                    case minuteText |> String.toInt of
+                                        Nothing ->
+                                            Err ("Failed to parse minute: '" ++ minuteText ++ "'")
+
+                                        Just minute ->
+                                            Ok { hour = hour, minute = minute }
+
+                        _ ->
+                            Err "Unexpected numer of text elements."
+
+
 parseNumberTruncatingAfterOptionalDecimalSeparator : String -> Result String Int
 parseNumberTruncatingAfterOptionalDecimalSeparator numberDisplayText =
     case "^([\\d\\,\\s]+?)(?=(|[,\\.]\\d)$)" |> Regex.fromString of
@@ -801,6 +1000,13 @@ getNameFromDictEntries : UITreeNode -> Maybe String
 getNameFromDictEntries uiNode =
     uiNode.dictEntriesOfInterest
         |> Dict.get "_name"
+        |> Maybe.andThen (Json.Decode.decodeValue Json.Decode.string >> Result.toMaybe)
+
+
+getHintTextFromDictEntries : UITreeNode -> Maybe String
+getHintTextFromDictEntries uiNode =
+    uiNode.dictEntriesOfInterest
+        |> Dict.get "_hint"
         |> Maybe.andThen (Json.Decode.decodeValue Json.Decode.string >> Result.toMaybe)
 
 

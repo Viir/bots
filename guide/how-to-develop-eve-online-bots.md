@@ -97,7 +97,7 @@ To achieve this, we combine the following tools:
 
 The following subsections explain in detail how to set up these tools.
 
-To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/8a81fc6190e6053abaa2b9941e5c1b8365dba644/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
+To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/6feec6b36f08c61add35a8b67978045a5bfae8a7/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
 
 ### Elm command line program
 
@@ -125,7 +125,7 @@ Success! Compiled 1 module.
 ```
 That number of modules it mentions can vary;
 
-To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on [line 97](https://github.com/Viir/bots/blob/8a81fc6190e6053abaa2b9941e5c1b8365dba644/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L97), replace `shipUI` with `shipUi`.
+To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on [line 97](https://github.com/Viir/bots/blob/6feec6b36f08c61add35a8b67978045a5bfae8a7/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L97), replace `shipUI` with `shipUi`.
 If after this change we invoke Elm with the same command again, we now get a different output, informing us about a problem in the code:
 ![Elm compilation detected a problem in the bot code](./image/2020-01-20.elm-detected-problem.png)
 

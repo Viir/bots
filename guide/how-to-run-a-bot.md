@@ -14,21 +14,21 @@ There also exists monitoring software which does not send any input to the game,
 ## Starting a Bot
 
 Download the BotEngine console app from the following address:
-[https://botengine.blob.core.windows.net/blob-library/by-name/2020-01-17.botengine.console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-01-17.botengine.console.zip).
+[https://botengine.blob.core.windows.net/blob-library/by-name/2020-01-24.botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-01-24.botengine-console.zip).
 
 Extract this Zip-Archive. This will give you a file named `BotEngine.exe`. To start a bot, call this program with a command like the following:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  run-bot  --bot-source="https://github.com/Viir/bots/tree/6feec6b36f08c61add35a8b67978045a5bfae8a7/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/6feec6b36f08c61add35a8b67978045a5bfae8a7/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
 
 The engine then loads the bot from the specified location and runs it until you stop it or the bot stops itself.
 
-### `--bot-source` Parameter
+### The `bot-source` Parameter
 
-The `--bot-source` parameter tells the engine where to load the bot code from. The `--bot-source` can point to following different kinds of sources:
+The `bot-source` parameter at the end of the command tells the engine where to load the bot code from. It can point to following different kinds of sources:
 
 + A directory on the local file system. Example: `C:\directory-containing-bot-code`.
 + A directory in a repository on [Github](https://github.com). Example: `https://github.com/Viir/bots/tree/6feec6b36f08c61add35a8b67978045a5bfae8a7/implement/applications/eve-online/eve-online-warp-to-0-autopilot`
@@ -56,10 +56,10 @@ You can pause bot operation by pressing the `CTRL` + `ALT` keys. To let the bot 
 
 Some bots support configuration. When starting a bot from the command line, you can use the `--bot-configuration` parameter to set the bot configuration. The complete command line can then look as follows:
 ```cmd
-C:\path\to\the\botengine.exe  run-bot  --bot-source="https://github.com/Viir/bots/tree/cba8167a7b02120315b1adb2d7c697f29b95c09b/implement/templates/remember-bot-configuration" --bot-configuration="My bot configuration"
+C:\path\to\the\botengine.exe  run-bot  --bot-configuration="My bot configuration"  "https://github.com/Viir/bots/tree/cba8167a7b02120315b1adb2d7c697f29b95c09b/implement/templates/remember-bot-configuration"
 ```
 
-The supported bot configuration values depend entirely on the bot that you chose with the `--bot-source`. To learn which bot configuration values are supported in your case, look up the description for the bot or contact the developer of the bot. A good place to look for guidance on a specific bot is the `src/Bot.elm` file contained in the directory specified as `--bot-source`. Bot authors often write a guide at the beginning of that file, for example in [this EVE Online mining bot](https://github.com/Viir/bots/blob/6feec6b36f08c61add35a8b67978045a5bfae8a7/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
+The supported bot configuration values depend entirely on the bot that you chose. To learn which bot configuration values are supported in your case, look up the description for the bot or contact the developer of the bot. A good place to look for guidance on a specific bot is the `src/Bot.elm` file contained in the directory specified as `bot-source`. Bot authors often write a guide at the beginning of that file, for example in [this EVE Online mining bot](https://github.com/Viir/bots/blob/6feec6b36f08c61add35a8b67978045a5bfae8a7/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
 
 ## Online Bot Sessions
 
@@ -78,7 +78,7 @@ Below is a screenshot of the website you can use to view your online bot session
 
 To start an online bot session, use the `--key-to-start-online-session` parameter with the `run-bot` command. Below is an example of a full command to run a bot in an online session:
 ```cmd
-botengine run-bot --bot-source=https://github.com/Viir/bots/tree/cba8167a7b02120315b1adb2d7c697f29b95c09b/implement/templates/remember-bot-configuration --key-to-start-online-session=your-personal-key-here
+botengine  run-bot  --key-to-start-online-session=your-personal-key-here  "https://github.com/Viir/bots/tree/cba8167a7b02120315b1adb2d7c697f29b95c09b/implement/templates/remember-bot-configuration"
 ```
 
 To get your key, go to https://reactor.botengine.org and log in to your account. After logging in, you see the key under `Bot session keys`.

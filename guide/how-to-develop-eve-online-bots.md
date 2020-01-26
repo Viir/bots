@@ -6,13 +6,15 @@ In part, this guide is a summary of what I learned during bot development projec
 
 ## Scope and Overall Direction
 
-My way of working is just one out of many, reflecting the kinds of projects I work on. This overview should help you decide if it fits your objective:
+My way of working is just one out of many, reflecting the kinds of projects I work on and my preferences. Important to me are simplicity, sustainability, and robustness. That is why I select methods that are easy to explain and have a low maintenance effort.
 
-+ Some developers use injection or other modify the game client in some form. I don't do that, so I don't give CCP a way to detect the presence of my program.
+For those who already have some experience in software development, I compiled the following overview of my technical decisions:
 
-+ Optimized for advanced bots: If I would make only a simple bot or even just a macro, I could as well use C# or Python to program it. I am using the Elm programming language because it works better for larger projects and AI programming. Especially the time-travel debugging is useful when working on bots.
++ I do not write into the game client's memory or use injection. These techniques can allow for more direct control of the game. A downside of these methods is they enable CCP to detect the presence of the foreign program. Another reason I don't use injection is the more complex concept makes it harder to learn and maintain implementations. For my projects, I stay close to the user interface and control the game by sending mouse and keyboard input.
 
-+ To get the information from the game client, I use memory reading. Memory reading means reading directly from the memory of the game client process. So this guide does not cover the approach using image processing (sometimes called 'OCR') on screenshots. The implementation of memory reading comes from the Sanderling project; check out the [Sanderling repository](https://github.com/Arcitectus/Sanderling) to learn more about this part.
++ To get information about the game state and user interface, I use memory reading. Memory reading means reading directly from the memory of the game client process. So this guide does not cover the approach using image processing (sometimes called 'OCR') on screenshots. The implementation of memory reading comes from the Sanderling project; check out the [Sanderling repository](https://github.com/Arcitectus/Sanderling) to learn more about this part.
+
++ If I would make only a simple bot or even just a macro, I could as well use a programming language like C# or Python. I am using the Elm programming language because it is simpler to learn and works better for larger projects and AI programming. Especially the time-travel debugging is useful when working on bots.
 
 + One thing I learned from answering bot developer's questions is this: You want to make it easy for people to communicate what they did and how they used the bot. If a bot does not work as expected, understanding the cause requires not only having the bot code but also knowing the scenario the bot was used in. The data a bot reads from its environment is the basis for its decisions, so I favor methods that make it easy to collect, organize, and share this data.
 

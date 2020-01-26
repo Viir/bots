@@ -16,95 +16,73 @@ For those who already have some experience in software development, I compiled t
 
 + If I would make only a simple bot or even just a macro, I could as well use a programming language like C# or Python. I am using the Elm programming language because it is simpler to learn and works better for larger projects and AI programming. Especially the time-travel debugging is useful when working on bots.
 
-+ One thing I learned from answering bot developer's questions is this: You want to make it easy for people to communicate what they did and how they used the bot. If a bot does not work as expected, understanding the cause requires not only having the bot code but also knowing the scenario the bot was used in. The data a bot reads from its environment is the basis for its decisions, so I favor methods that make it easy to collect, organize, and share this data.
++ One thing I learned from answering bot developer's questions is this: You want to make it easy for people to communicate what bot code they used and in which environment. If a bot does not work as expected, understanding the cause requires not only having the bot code but also knowing the scenario the bot was used in. The data a bot reads from its environment is the basis for its decisions, so I favor methods that make it easy to collect, organize, and share this data.
 
+## The Simplest Custom Bot
 
-There is a separate guide on how to run EVE Online bots, read that first, as this guide assumes you already know how to load, start, configure, and operate a bot. You can find that guide at [./how-to-run-a-bot.md](./how-to-run-a-bot.md).
+In this section, we will follow the fastest way to your custom bot.
+First, let's look at an EVE Online bot from the examples. Run this autopilot bot:
 
-## Development Process
-
-Bot development begins by identifying a situation in which the bot should act. The same applies if we want to add new functionality to or fix a problem in a bot: In both cases, we observe a situation in which the bot acted differently than it should.
-
-Because the bot perceives the game world trough screenshots, we use screenshots to describe this situation.
-
-In simple cases, the most recent screenshot is sufficient to decide what to do in the game. In other cases, the bot needs to account for information which is not visible in the last screenshot but was visible in an earlier screenshot. In this case, we use a sequence of screenshots to describe the situation.
-
-After describing a situation the bot could encounter, the next development step is to explain how it should act in this situation. A bot can act by sending mouse movements, mouse clicks, and keyboard key presses to the game client.
-
-## Bot Architecture
-
-Before we look at any code, let me give you a high-level overview of how a bot works and how it is structured.
-
-A bot is a program which reacts to events. Every time an event happens, the engine tells the bot. Given this information, the bot then computes its new state and a response to this event.
-
-This event response is given to the engine and contains the following two components:
-
-+ A status message to inform about the current state in a human-readable form. When you run a bot, you can see the engine displaying this message.
-+ A list of tasks for the engine to execute.
-
-This event/response cycle repeats for every event happening during the operation of the bot.
-
-Some examples of events:
-
-+ The user sets the bot configuration (as explained in the [guide on how to run a bot](./how-to-run-a-bot.md#configuring-a-bot)).
-+ The engine completes executing one of the tasks it received from the bot in an earlier cycle. The event contains the result of the execution of this task.
-
-Examples of tasks the bot can give to the engine:
-
-+ Take a screenshot of a window of another app on the system.
-+ Read the contents of another process' memory.
-+ Send a mouse click to a specific position in a window in another process.
-+ Simulate pressing a keyboard key.
-+ Start a new Windows process, specifying the path to an executable file.
-+ Stop another process on the system.
-
-As we can see from the examples above, these events and tasks can be quite fine-grained, so you might see the event/response cycle happen several times per second.
-
-## Bot Code
-
-### File Structure
-
-The bot code is a set of files. Some of these files are located in subdirectories. The bot code contains the following files:
-
-+ `src/Bot.elm`: When you code a bot from scratch, this file is where you start to edit.
-+ `src/Interface_To_Host_20190808.elm`: You don't need to edit anything in here.
-+ `elm.json`. This file is only edited to include Elm packages (That is a way to include functionality from external sources).
-
-You can distribute code into more `.elm` files. But this is not required, you can add everything to the `src/Bot.elm` file.
-
-Each file with a name ending in `.elm` contains one [Elm module](https://guide.elm-lang.org/webapps/modules.html). Each module contains [functions](https://guide.elm-lang.org/core_language.html), which are composed to describe the behavior of the bot.
-
-### Entry Point - `processEvent`
-
-Each time an event happens, the framework calls the function `interfaceToHost_processEvent` from the `Main.elm` file. Because of this unique role, this function is sometimes also referred to as 'entry point'.
-
-Let's look at how this function is implemented. Usually it will look like this:
-```Elm
-interfaceToHost_processEvent : String -> InterfaceBotState -> ( InterfaceBotState, String )
-interfaceToHost_processEvent =
-    InterfaceToHost.wrapForSerialInterface_processEvent processEvent
+```cmd
+botengine  run-bot  "https://github.com/Viir/bots/tree/183be242cd434e8282d7b4fb36ec6bbbf0f58c8a/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
-This function takes care of serializing and deserializing on the interface to the engine, and delegates everything else to the `processEvent` function in the same file. It translates between the serial representations used on the interface and typed values, so that we can enjoy the benefits of the type system when working on the bot code. In theory, this function could look different, because you could rename the function `processEvent` to something else. But we will leave this function alone, forget about it and turn to the `processEvent` function.
 
-Let's look at the type signature of `processEvent`, the first line of the functions source code:
-```Elm
-processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
+If you are not yet familiar with this method of running a bot, read that guide first: [./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md](./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md)
+
+The `botengine run-bot` command loads the bot code from the given address to run it on your system. Before running this bot, you need to start an EVE Online client, no need to go beyond character selection.
+
+When the bot has started, it will display this message:
+
+> I see no route in the info panel. I will start when a route is set.
+
+That is unless you have set a route in the autopilot.
+
+To customize this bot, we change the bot code. The bot code is made up of the files behind the address we gave to the botengine program.
+To edit the bot code files, we download them first. Use this link to download all the files packaged in a zip-archive: https://github.com/Viir/bots/archive/183be242cd434e8282d7b4fb36ec6bbbf0f58c8a.zip
+
+Extract the downloaded zip-archive, and you will find the same subdirectory we used in the command to run the bot: `implement\applications\eve-online\eve-online-warp-to-0-autopilot`.
+
+Now you can use the `botengine run-bot` command on this directory as well:
+
+```cmd
+botengine  run-bot  "C:\Users\John\Downloads\bots-183be242cd434e8282d7b4fb36ec6bbbf0f58c8a\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
 ```
-Thanks to the translation in the wrapping function discussed above, the types here are already more specific. So this type signature better tells what kinds of values this function takes and returns.
 
-> The actual names for the types used here are only conventions. You might find a bot code which uses different names. For example, the bot author might choose to abbreviate `InterfaceToHost.BotEvent` to `BotEvent`, by using a type alias.
+Running this command gives you the same bot with the same behavior because the bot code files are still the same. You can also see that the bot ID displayed in the console window is `16BA890853...` for both commands since the bot ID only depends on the bot code files.
 
-I will quickly break down the Elm syntax here: The part after the last arrow (`->`) is the return type. It is a tuple with two components. The part between the colon (`:`) and the return type is the list of parameters. So we have two parameters, one of type `InterfaceToHost.BotEvent` and one of type `State`.
+To change the bot code, open the file `Bot.elm` in this directory in a text editor. For now, the Windows Notepad app is sufficient as an editor.
 
-Let's have a closer look at the three different types here:
+On line 93, you will find the text that we saw in the bots status message earlier:
 
-+ `InterfaceToHost.BotEvent`: This describes an event that happens during the operation of the bot. All information the bot ever receives is coming through the values given with this first parameter.
-+ `InterfaceToHost.BotResponse`: This type describes what the engine should do.
-+ `State`: The `State` type is specific to the bot. With this type, we describe what the bot remembers between events. When the engine informs the bot about a new event, it also passes the `State` value which the bot returned after processing the previous event (The first component of the tuple in the return type). But what if this is the first event? Then there is no previous event? In this case, the engine takes the value from the function `interfaceToHost_initState` to give to the bot.
+![EVE Online autopilot bot code in Notepad](./image/2020-01-26.eve-online-autopilot-bot-code-in-notepad.png)
+
+Replace that text between the double-quotes with another text:
+
+```Elm
+botRequestsFromGameClientState : ParsedUserInterface -> ( List BotRequest, String )
+botRequestsFromGameClientState parsedUserInterface =
+    case parsedUserInterface |> infoPanelRouteFirstMarkerFromParsedUserInterface of
+        Nothing ->
+            ( []
+            , "Hello World!"
+            )
+```
+
+When running the bot again from the local directory, you will see your change reflected in the status message in the console window.
+
+### Getting Faster
+
+Now you could generate random sequences of program text and test which ones are more useful. If you do this long enough, you will discover one that is more useful than anything anyone has ever found before.
+But the number of possible combinations is too large to proceed in such a simple way. We need a way to discard the useless combinations faster.
+In the remainder of this guide, I show how to speed up this process of discovering and identifying useful combinations.
 
 ## Setting up the Programming Tools
 
-The goal of this section is to enable you to edit a bot and quickly find possible problems in the code.
+This section introduces a setup to help us:
+
++ Understand a program: Syntax highlighting helps with reading. Navigation becomes easier with the ability to jump to definitions and find references.
++ Check our bot code for problems: Static analysis detects errors after typing and before running a bot.
+
 To achieve this, we combine the following tools:
 
 + Elm command line program
@@ -113,7 +91,7 @@ To achieve this, we combine the following tools:
 
 The following subsections explain in detail how to set up these tools.
 
-To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/6feec6b36f08c61add35a8b67978045a5bfae8a7/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
+To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/183be242cd434e8282d7b4fb36ec6bbbf0f58c8a/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
 
 ### Elm command line program
 
@@ -141,9 +119,9 @@ Success! Compiled 1 module.
 ```
 That number of modules it mentions can vary;
 
-To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on [line 97](https://github.com/Viir/bots/blob/6feec6b36f08c61add35a8b67978045a5bfae8a7/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L97), replace `shipUI` with `shipUi`.
-If after this change we invoke Elm with the same command again, we now get a different output, informing us about a problem in the code:
-![Elm compilation detected a problem in the bot code](./image/2020-01-20.elm-detected-problem.png)
+To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on [line 97](https://github.com/Viir/bots/blob/183be242cd434e8282d7b4fb36ec6bbbf0f58c8a/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L97), replace `shipUI` with `shipUi`.
+After saving the changed file, invoke Elm with the same command again. Now we get a different output, informing us about a problem in the code:
+![Elm compilation detected a problem in the bot code](./../image/2020-01-20.elm-detected-problem.png)
 
 For development, we don't need to use the Elm program directly, but other tools depend on it. The tools we set up next automate the process of starting the Elm program and presenting the results inside a code editor.
 
@@ -157,21 +135,21 @@ Visual Studio Code is a software development tool from Microsoft, which also con
 
 To install this extension, open VSCode and open the 'Extensions' section (`Ctrl + Shift + X`).
 Type 'elm' in the search box, and you will see the `Elm` extension as shown in the screenshot below:
-![Elm extension installation in Visual Studio Code](./image/2020-01-20.vscode-elm-extension-install.png)
+![Elm extension installation in Visual Studio Code](./../image/2020-01-20.vscode-elm-extension-install.png)
 
 Use the `Install` button to install this extension in VSCode.
 
 Before this extension can work correctly, we need to tell it where to find the Elm program. Open the Visual Studio Code settings, using the menu entries `File` > `Preferences` > `Settings`.
 In the settings interface, select the `Elm configuration` entry under `Extensions` in the tree on the left. Then you will see diverse settings for the elm extension on the right, as shown in the screenshot below. Scroll down to the `Elm Path` section and enter the file path to the elm.exe we downloaded earlier into the textbox. The screenshot below shows how this looks like:
 
-![Elm extension settings in Visual Studio Code](./image/2020-01-20.vscode-elm-extension-settings.png)
+![Elm extension settings in Visual Studio Code](./../image/2020-01-20.vscode-elm-extension-settings.png)
 
 VSCode automatically saves this setting and remembers it the next time you open the program.
 
 To use VSCode with Elm, open it with the directory containing the `elm.json` file as the working directory. Otherwise, the Elm functionality will not work.
 A convenient way to do this is using the Windows Explorer context menu entry `Open with Code` on the bot directory, as shown in the screenshot below:
 
-![Open a directory in Visual Studio Code from the Windows Explorer](./image/vscode-open-directory-from-explorer.png)
+![Open a directory in Visual Studio Code from the Windows Explorer](./../image/vscode-open-directory-from-explorer.png)
 
 Now we can test if our setup works correctly. In VSCode, open the `Bot.elm` file and make the same code change as done earlier to provoke an error message from Elm.
 When you save the file (`Ctrl + S`), the VSCode extension starts Elm in the background to check the code. On the first time, it can take longer as required packages are downloaded. But usually, Elm should complete the check in a second. If the code is ok, you will not see any change. If there is a problem, this is displayed in multiple places, as you can see in the screenshot below:
@@ -180,11 +158,43 @@ When you save the file (`Ctrl + S`), the VSCode extension starts Elm in the back
 + On the scroll bar in an open file. You can see this as a red dot in the screenshot. This indicator helps to scroll to interesting locations in large files quickly.
 + When the offending portion of the code is visible in an editor viewport, the error is pointed out with a red squiggly underline.
 
-![Visual Studio Code displays diagnostics from Elm](./image/2020-01-20.vscode-elm-display-error.png)
+![Visual Studio Code displays diagnostics from Elm](./../image/2020-01-20.vscode-elm-display-error.png)
 
 When you hover the mouse cursor over the highlighted text, a popup window shows more details. Here you find the message we get from Elm:
 
-![Visual Studio Code displays diagnostics from Elm - details on hover](./image/2020-01-20.vscode-elm-display-error-hover.png)
+![Visual Studio Code displays diagnostics from Elm - details on hover](./../image/2020-01-20.vscode-elm-display-error-hover.png)
+
+## Bot Code
+
+In the previous section, we already changed the code in the `Bot.elm` file. This section explains how this file is structured, so we better understand what we are doing in there.
+
+### Entry Point - `processEvent`
+
+Each time an event happens, the framework calls the function [`processEvent`](https://github.com/Viir/bots/blob/183be242cd434e8282d7b4fb36ec6bbbf0f58c8a/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L46-L48). Because of this unique role, this function is sometimes also referred to as 'entry point'.
+
+Let's look at how this function is implemented:
+```Elm
+processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
+processEvent =
+    EveOnline.BotFramework.processEvent processEveOnlineBotEvent
+```
+
+This function delegates the interesting part to the function `processEveOnlineBotEvent`.
+
+Let's look at the type signature of `processEveOnlineBotEvent`, the first lines of the function's source code:
+```Elm
+processEveOnlineBotEvent :
+    BotEventAtTime
+    -> BotState
+    -> { newState : BotState, requests : List BotRequest, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
+```
+
+I will quickly break down the Elm syntax here: The part after the last arrow (`->`) is the return type. It describes the shape of values returned by the bot to the framework. The part between the colon (`:`) and the return type is the list of parameters. So we have two parameters, one of type `BotEventAtTime` and one of type `BotState`.
+
+Let's have a closer look at the three different types here:
+
++ `BotEventAtTime`: This describes an event that happens during the operation of the bot. All information the bot ever receives is coming through the values given with this first parameter.
++ `BotState`: The `BotState` type is specific to the bot. With this type, we describe what the bot remembers between events. When the framework informs the bot about a new event, it also passes the `BotState` value which the bot returned after processing the previous event (The `newState` field in the return type). But what if this is the first event? Then there is no previous event? In this case, the framework takes the value from the function `initState`.
 
 ## Programming Language
 

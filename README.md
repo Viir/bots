@@ -18,7 +18,7 @@ In this repository, I share what I learn about making bots and automating activi
 
 ### Developing Bots
 
-+ How to develop EVE Online bots: [./guide/how-to-develop-eve-online-bots.md](./guide/how-to-develop-eve-online-bots.md)
++ How to develop EVE Online bots: [./guide/eve-online/how-to-develop-eve-online-bots.md](./guide/eve-online/how-to-develop-eve-online-bots.md)
 
 + How to collect samples for 64-bit memory reading development: [./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md](./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md)
 

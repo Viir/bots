@@ -1,9 +1,23 @@
 # How to Develop EVE Online Bots
 
-This is a guide for beginners on how to develop EVE Online bots. You don't need prior experience in programming or software development, as I explain the process and tools from the ground up.
-There is a separate guide on how to run EVE Online bots, read that first, as this guide assumes you already know how to load, start, configure, and operate a bot. You can find that guide at [./how-to-run-a-bot.md](./how-to-run-a-bot.md).
+In this guide, I describe how I develop bots and monitoring tools for EVE Online.
 
-This guide goes beyond just running and configuring bots. The tools I show here give you the power to automate anything in EVE Online. I will also summarize what I learned during bot development projects like the EVE Online mission running and anomaly ratting bots, or the Tribal Wars 2 farmbot. The goal is to present the methods and approaches which make the development process efficient and a pleasant experience.
+In part, this guide is a summary of what I learned during bot development projects like the EVE Online mission running and anomaly ratting bots, or the Tribal Wars 2 farmbot. But most importantly, this guide lives from and evolves with your questions, so thank you for the feedback!
+
+## Scope and Overall Direction
+
+My way of working is just one out of many, reflecting the kinds of projects I work on. This overview should help you decide if it fits your objective:
+
++ Some developers use injection or other modify the game client in some form. I don't do that, so I don't give CCP a way to detect the presence of my program.
+
++ Optimized for advanced bots: If I would make only a simple bot or even just a macro, I could as well use C# or Python to program it. I am using the Elm programming language because it works better for larger projects and AI programming. Especially the time-travel debugging is useful when working on bots.
+
++ To get the information from the game client, I use memory reading. Memory reading means reading directly from the memory of the game client process. So this guide does not cover the approach using image processing (sometimes called 'OCR') on screenshots. The implementation of memory reading comes from the Sanderling project; check out the [Sanderling repository](https://github.com/Arcitectus/Sanderling) to learn more about this part.
+
++ One thing I learned from answering bot developer's questions is this: You want to make it easy for people to communicate what they did and how they used the bot. If a bot does not work as expected, understanding the cause requires not only having the bot code but also knowing the scenario the bot was used in. The data a bot reads from its environment is the basis for its decisions, so I favor methods that make it easy to collect, organize, and share this data.
+
+
+There is a separate guide on how to run EVE Online bots, read that first, as this guide assumes you already know how to load, start, configure, and operate a bot. You can find that guide at [./how-to-run-a-bot.md](./how-to-run-a-bot.md).
 
 ## Development Process
 
@@ -208,13 +222,13 @@ describeWhatWeSee : EveOnlineVision -> String
 describeWhatWeSee vision =
     case vision.shipOreHoldIsFull of
         CanNotSeeIt ->
-            "I can not see if the ships ore hold is full. Do we need to change the setup?"
+            "I can not see if the ship's ore hold is full. Do we need to change the setup?"
 
         CanSee True ->
-            "The ships ore hold is full."
+            "The ship's ore hold is full."
 
         CanSee False ->
-            "The ships ore hold is not full."
+            "The ship's ore hold is not full."
 ```
 
 ----

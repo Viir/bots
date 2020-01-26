@@ -1,4 +1,4 @@
-module Sanderling.Sanderling exposing
+module EveOnline.VolatileHostInterface exposing
     ( ConsoleBeepStructure
     , EffectOnWindowStructure(..)
     , GetMemoryReadingResultStructure(..)
@@ -13,10 +13,10 @@ module Sanderling.Sanderling exposing
     , effectMouseClickAtLocation
     )
 
+import EveOnline.MemoryReading
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
-import Sanderling.MemoryReading
 
 
 type RequestToVolatileHost
@@ -274,7 +274,7 @@ encodeConsoleBeep consoleBeep =
         ]
 
 
-centerFromRegion : Sanderling.MemoryReading.DisplayRegion -> Location2d
+centerFromRegion : EveOnline.MemoryReading.DisplayRegion -> Location2d
 centerFromRegion region =
     { x = region.x + region.width // 2, y = region.y + region.height // 2 }
 

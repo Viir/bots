@@ -1,10 +1,16 @@
-{- This module contains a framework to build EVE Online bots.
-   The framework automatically selects an EVE Online client process and finishes the bot session when that process disappears.
+{- This module contains a framework to build EVE Online bots and intel tools.
+   Features:
+   + Read from the game client using Sanderling memory reading (https://github.com/Arcitectus/Sanderling).
+   + Play sounds.
+   + Send mouse and keyboard input to the game client.
+   + Transmit the bot configuration from the host.
+
+   The framework automatically selects an EVE Online client process and finishes the session when that process disappears.
    To use the framework, import this module and use the `initState` and `processEvent` functions.
 -}
 
 
-module Sanderling.SimpleSanderling exposing
+module EveOnline.BotFramework exposing
     ( BotEvent(..)
     , BotEventAtTime
     , BotRequest(..)
@@ -16,9 +22,9 @@ module Sanderling.SimpleSanderling exposing
     )
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
-import Sanderling.MemoryReading
-import Sanderling.Sanderling as Sanderling
-import Sanderling.SanderlingVolatileHostSetup as SanderlingVolatileHostSetup
+import EveOnline.MemoryReading
+import EveOnline.VolatileHostInterface as VolatileHostInterface
+import EveOnline.VolatileHostScript as VolatileHostScript
 
 
 type alias BotEventAtTime =
@@ -28,12 +34,12 @@ type alias BotEventAtTime =
 
 
 type BotEvent
-    = MemoryReadingCompleted Sanderling.MemoryReading.ParsedUserInterface
+    = MemoryReadingCompleted EveOnline.MemoryReading.ParsedUserInterface
     | SetBotConfiguration String
 
 
 type BotRequest
-    = EffectOnGameClientWindow Sanderling.EffectOnWindowStructure
+    = EffectOnGameClientWindow VolatileHostInterface.EffectOnWindowStructure
     | ConsoleBeepSequenceRequest (List ConsoleBeepStructure)
 
 
@@ -61,14 +67,14 @@ type alias SetupState =
     { volatileHost : Maybe ( InterfaceToHost.VolatileHostId, VolatileHostState )
     , lastRunScriptResult : Maybe (Result String InterfaceToHost.RunInVolatileHostComplete)
     , eveOnlineProcessesIds : Maybe (List Int)
-    , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : Sanderling.GetMemoryReadingResultStructure }
+    , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : VolatileHostInterface.GetMemoryReadingResultStructure }
     , memoryReadingDurations : List Int
     }
 
 
 type VolatileHostState
     = Initial
-    | SanderlingSetupCompleted
+    | SetupCompleted
 
 
 type SetupTask
@@ -363,7 +369,7 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
                             (\fromHostResult ->
                                 fromHostResult.returnValueToString
                                     |> Maybe.withDefault ""
-                                    |> Sanderling.deserializeResponseFromVolatileHost
+                                    |> VolatileHostInterface.deserializeResponseFromVolatileHost
                                     |> Result.toMaybe
                                     |> Maybe.map (\responseFromVolatileHost -> { fromHostResult = fromHostResult, responseFromVolatileHost = responseFromVolatileHost })
                             )
@@ -380,7 +386,7 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
 
                 Just { fromHostResult, responseFromVolatileHost } ->
                     setupStateWithScriptRunResult
-                        |> integrateSanderlingResponseFromVolatileHost
+                        |> integrateResponseFromVolatileHost
                             { timeInMilliseconds = timeInMilliseconds
                             , responseFromVolatileHost = responseFromVolatileHost
                             , runInVolatileHostDurationInMs = fromHostResult.durationInMilliseconds
@@ -390,16 +396,16 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
             ( setupStateBefore, Nothing )
 
 
-integrateSanderlingResponseFromVolatileHost :
-    { timeInMilliseconds : Int, responseFromVolatileHost : Sanderling.ResponseFromVolatileHost, runInVolatileHostDurationInMs : Int }
+integrateResponseFromVolatileHost :
+    { timeInMilliseconds : Int, responseFromVolatileHost : VolatileHostInterface.ResponseFromVolatileHost, runInVolatileHostDurationInMs : Int }
     -> SetupState
     -> ( SetupState, Maybe BotEvent )
-integrateSanderlingResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost, runInVolatileHostDurationInMs } stateBefore =
+integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost, runInVolatileHostDurationInMs } stateBefore =
     case responseFromVolatileHost of
-        Sanderling.EveOnlineProcessesIds eveOnlineProcessesIds ->
+        VolatileHostInterface.EveOnlineProcessesIds eveOnlineProcessesIds ->
             ( { stateBefore | eveOnlineProcessesIds = Just eveOnlineProcessesIds }, Nothing )
 
-        Sanderling.GetMemoryReadingResult getMemoryReadingResult ->
+        VolatileHostInterface.GetMemoryReadingResult getMemoryReadingResult ->
             let
                 memoryReadingDurations =
                     runInVolatileHostDurationInMs
@@ -414,15 +420,15 @@ integrateSanderlingResponseFromVolatileHost { timeInMilliseconds, responseFromVo
 
                 maybeBotEvent =
                     case getMemoryReadingResult of
-                        Sanderling.ProcessNotFound ->
+                        VolatileHostInterface.ProcessNotFound ->
                             Nothing
 
-                        Sanderling.Completed completedMemoryReading ->
+                        VolatileHostInterface.Completed completedMemoryReading ->
                             let
                                 maybeParsedMemoryReading =
                                     completedMemoryReading.serialRepresentationJson
-                                        |> Maybe.andThen (Sanderling.MemoryReading.decodeMemoryReadingFromString >> Result.toMaybe)
-                                        |> Maybe.map (Sanderling.MemoryReading.parseUITreeWithDisplayRegionFromUITree >> Sanderling.MemoryReading.parseUserInterfaceFromUITree)
+                                        |> Maybe.andThen (EveOnline.MemoryReading.decodeMemoryReadingFromString >> Result.toMaybe)
+                                        |> Maybe.map (EveOnline.MemoryReading.parseUITreeWithDisplayRegionFromUITree >> EveOnline.MemoryReading.parseUserInterfaceFromUITree)
                             in
                             maybeParsedMemoryReading
                                 |> Maybe.map MemoryReadingCompleted
@@ -460,12 +466,12 @@ getNextSetupTask stateBefore =
                     ContinueSetup stateBefore
                         (InterfaceToHost.RunInVolatileHost
                             { hostId = volatileHostId
-                            , script = SanderlingVolatileHostSetup.sanderlingSetupScript
+                            , script = VolatileHostScript.setupScript
                             }
                         )
                         "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
 
-                SanderlingSetupCompleted ->
+                SetupCompleted ->
                     getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId
 
 
@@ -476,7 +482,7 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
             ContinueSetup stateBefore
                 (InterfaceToHost.RunInVolatileHost
                     { hostId = volatileHostId
-                    , script = Sanderling.buildScriptToGetResponseFromVolatileHost Sanderling.GetEveOnlineProcessesIds
+                    , script = VolatileHostInterface.buildScriptToGetResponseFromVolatileHost VolatileHostInterface.GetEveOnlineProcessesIds
                     }
                 )
                 "Get ids of EVE Online client processes."
@@ -493,23 +499,23 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                 (InterfaceToHost.RunInVolatileHost
                                     { hostId = volatileHostId
                                     , script =
-                                        Sanderling.buildScriptToGetResponseFromVolatileHost
-                                            (Sanderling.GetMemoryReading { processId = eveOnlineProcessId })
+                                        VolatileHostInterface.buildScriptToGetResponseFromVolatileHost
+                                            (VolatileHostInterface.GetMemoryReading { processId = eveOnlineProcessId })
                                     }
                                 )
                                 "Get the first memory reading from the EVE Online client process. This can take several seconds."
 
                         Just lastMemoryReadingTime ->
                             case lastMemoryReadingTime.memoryReadingResult of
-                                Sanderling.ProcessNotFound ->
+                                VolatileHostInterface.ProcessNotFound ->
                                     FinishSession "The EVE Online client process disappeared."
 
-                                Sanderling.Completed lastCompletedMemoryReading ->
+                                VolatileHostInterface.Completed lastCompletedMemoryReading ->
                                     let
                                         buildTaskFromRequestToVolatileHost requestToVolatileHost =
                                             InterfaceToHost.RunInVolatileHost
                                                 { hostId = volatileHostId
-                                                , script = Sanderling.buildScriptToGetResponseFromVolatileHost requestToVolatileHost
+                                                , script = VolatileHostInterface.buildScriptToGetResponseFromVolatileHost requestToVolatileHost
                                                 }
                                     in
                                     OperateBot
@@ -521,15 +527,15 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                                         , task = effect
                                                         , bringWindowToForeground = True
                                                         }
-                                                            |> Sanderling.EffectOnWindow
+                                                            |> VolatileHostInterface.EffectOnWindow
                                                             |> buildTaskFromRequestToVolatileHost
 
                                                     ConsoleBeepSequenceRequest consoleBeepSequence ->
                                                         consoleBeepSequence
-                                                            |> Sanderling.ConsoleBeepSequenceRequest
+                                                            |> VolatileHostInterface.ConsoleBeepSequenceRequest
                                                             |> buildTaskFromRequestToVolatileHost
                                         , getMemoryReadingTask =
-                                            Sanderling.GetMemoryReading { processId = eveOnlineProcessId } |> buildTaskFromRequestToVolatileHost
+                                            VolatileHostInterface.GetMemoryReading { processId = eveOnlineProcessId } |> buildTaskFromRequestToVolatileHost
                                         }
 
 
@@ -542,13 +548,13 @@ updateVolatileHostState runInVolatileHostComplete stateBefore =
         Just returnValueString ->
             case stateBefore of
                 Initial ->
-                    if returnValueString |> String.contains "Sanderling Setup Completed" then
-                        SanderlingSetupCompleted
+                    if returnValueString |> String.contains "Setup Completed" then
+                        SetupCompleted
 
                     else
                         stateBefore
 
-                SanderlingSetupCompleted ->
+                SetupCompleted ->
                     stateBefore
 
 

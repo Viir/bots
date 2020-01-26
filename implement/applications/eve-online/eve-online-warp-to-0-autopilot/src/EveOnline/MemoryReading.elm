@@ -1,4 +1,4 @@
-module Sanderling.MemoryReading exposing
+module EveOnline.MemoryReading exposing
     ( ChatUserEntry
     , ChatWindow
     , ChatWindowStack

@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-01-24
+{- Michaels EVE Online mining bot version 2020-01-26
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -25,7 +25,8 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
-import Sanderling.MemoryReading
+import EveOnline.BotFramework exposing (BotEventAtTime, BotRequest(..))
+import EveOnline.MemoryReading
     exposing
         ( MaybeVisible(..)
         , OverviewWindowEntry
@@ -34,17 +35,16 @@ import Sanderling.MemoryReading
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
-import Sanderling.Sanderling as Sanderling exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
-import Sanderling.SimpleSanderling as SimpleSanderling exposing (BotEventAtTime, BotRequest(..))
+import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
 
 
 type alias UIElement =
-    Sanderling.MemoryReading.UITreeNodeWithDisplayRegion
+    EveOnline.MemoryReading.UITreeNodeWithDisplayRegion
 
 
 type alias TreeLeafAct =
-    { firstAction : Sanderling.EffectOnWindowStructure
-    , followingSteps : List ( String, ParsedUserInterface -> Maybe Sanderling.EffectOnWindowStructure )
+    { firstAction : VolatileHostInterface.EffectOnWindowStructure
+    , followingSteps : List ( String, ParsedUserInterface -> Maybe VolatileHostInterface.EffectOnWindowStructure )
     }
 
 
@@ -58,7 +58,7 @@ type DecisionPathNode
     | EndDecisionPath EndDecisionPathStructure
 
 
-type alias SimpleState =
+type alias BotState =
     { programState :
         Maybe
             { decision : DecisionPathNode
@@ -74,7 +74,7 @@ type alias BotMemory =
 
 
 type alias State =
-    SimpleSanderling.StateIncludingSetup SimpleState
+    EveOnline.BotFramework.StateIncludingSetup BotState
 
 
 generalStepDelayMilliseconds : Int
@@ -135,7 +135,7 @@ decideNextActionWhenDocked memoryReading =
                         (EndDecisionPath
                             (Act
                                 { firstAction =
-                                    Sanderling.SimpleDragAndDrop
+                                    VolatileHostInterface.SimpleDragAndDrop
                                         { startLocation = itemInInventory.totalDisplayRegion |> centerFromRegion
                                         , endLocation = itemHangar.totalDisplayRegion |> centerFromRegion
                                         , mouseButton = MouseButtonLeft
@@ -305,7 +305,7 @@ warpToMiningSite memoryReading =
 
 initState : State
 initState =
-    SimpleSanderling.initState
+    EveOnline.BotFramework.initState
         { programState = Nothing
         , botMemory = { lastDockedStationNameFromInfoPanel = Nothing }
         }
@@ -313,16 +313,16 @@ initState =
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
-    SimpleSanderling.processEvent processEveOnlineBotEvent
+    EveOnline.BotFramework.processEvent processEveOnlineBotEvent
 
 
 processEveOnlineBotEvent :
     BotEventAtTime
-    -> SimpleState
-    -> { newState : SimpleState, requests : List BotRequest, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
+    -> BotState
+    -> { newState : BotState, requests : List BotRequest, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
 processEveOnlineBotEvent eventAtTime stateBefore =
     case eventAtTime.event of
-        SimpleSanderling.MemoryReadingCompleted memoryReading ->
+        EveOnline.BotFramework.MemoryReadingCompleted memoryReading ->
             let
                 botMemory =
                     stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory memoryReading
@@ -380,7 +380,7 @@ processEveOnlineBotEvent eventAtTime stateBefore =
             , statusDescriptionText = statusMessage
             }
 
-        SimpleSanderling.SetBotConfiguration botConfiguration ->
+        EveOnline.BotFramework.SetBotConfiguration botConfiguration ->
             { newState = stateBefore
             , requests = []
             , millisecondsToNextMemoryReading = generalStepDelayMilliseconds
@@ -498,7 +498,7 @@ shipUiModulesRows =
 If there are multiple such entries, these are sorted by the length of their text, minus whitespaces in the beginning and the end.
 The one with the shortest text is returned.
 -}
-menuEntryContainingTextIgnoringCase : String -> Sanderling.MemoryReading.ContextMenu -> Maybe Sanderling.MemoryReading.ContextMenuEntry
+menuEntryContainingTextIgnoringCase : String -> EveOnline.MemoryReading.ContextMenu -> Maybe EveOnline.MemoryReading.ContextMenuEntry
 menuEntryContainingTextIgnoringCase textToSearch =
     .entries
         >> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
@@ -508,13 +508,13 @@ menuEntryContainingTextIgnoringCase textToSearch =
 
 {-| The names are at least sometimes displayed different: 'Moon 7' can become 'M7'
 -}
-menuEntryMatchesStationNameFromLocationInfoPanel : String -> Sanderling.MemoryReading.ContextMenuEntry -> Bool
+menuEntryMatchesStationNameFromLocationInfoPanel : String -> EveOnline.MemoryReading.ContextMenuEntry -> Bool
 menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel menuEntry =
     (stationNameFromInfoPanel |> String.toLower |> String.replace "moon " "m")
         == (menuEntry.text |> String.trim |> String.toLower)
 
 
-lastContextMenuOrSubmenu : ParsedUserInterface -> Maybe Sanderling.MemoryReading.ContextMenu
+lastContextMenuOrSubmenu : ParsedUserInterface -> Maybe EveOnline.MemoryReading.ContextMenu
 lastContextMenuOrSubmenu =
     .contextMenus >> List.head
 
@@ -570,7 +570,7 @@ inventoryWindowItemHangar =
         >> Maybe.map .uiNode
 
 
-clickOnUIElement : MouseButton -> UIElement -> Sanderling.EffectOnWindowStructure
+clickOnUIElement : MouseButton -> UIElement -> VolatileHostInterface.EffectOnWindowStructure
 clickOnUIElement mouseButton uiElement =
     effectMouseClickAtLocation mouseButton (uiElement.totalDisplayRegion |> centerFromRegion)
 
@@ -578,7 +578,7 @@ clickOnUIElement mouseButton uiElement =
 {-| The region of a ship entry in the inventory window can contain child nodes (e.g. 'Ore Hold').
 For this reason, we don't click on the center but stay close to the top.
 -}
-clickLocationOnInventoryShipEntry : UIElement -> Sanderling.Location2d
+clickLocationOnInventoryShipEntry : UIElement -> VolatileHostInterface.Location2d
 clickLocationOnInventoryShipEntry uiElement =
     { x = uiElement.totalDisplayRegion.x + uiElement.totalDisplayRegion.width // 2
     , y = uiElement.totalDisplayRegion.y + 7
@@ -593,7 +593,7 @@ isShipWarpingOrJumping =
         >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
         >> Maybe.map
             (\maneuverType ->
-                [ Sanderling.MemoryReading.ManeuverWarp, Sanderling.MemoryReading.ManeuverJump ]
+                [ EveOnline.MemoryReading.ManeuverWarp, EveOnline.MemoryReading.ManeuverJump ]
                     |> List.member maneuverType
             )
         -- If the ship is just floating in space, there might be no indication displayed.

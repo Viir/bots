@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-01-26
+{- Michaels EVE Online mining bot version 2020-01-27
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -32,10 +32,11 @@ import EveOnline.MemoryReading
         , OverviewWindowEntry
         , ParsedUserInterface
         , ShipUIModule
+        , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
-import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), centerFromRegion, effectMouseClickAtLocation)
+import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
 
 
 type alias UIElement =
@@ -136,8 +137,8 @@ decideNextActionWhenDocked memoryReading =
                             (Act
                                 { firstAction =
                                     VolatileHostInterface.SimpleDragAndDrop
-                                        { startLocation = itemInInventory.totalDisplayRegion |> centerFromRegion
-                                        , endLocation = itemHangar.totalDisplayRegion |> centerFromRegion
+                                        { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
+                                        , endLocation = itemHangar.totalDisplayRegion |> centerFromDisplayRegion
                                         , mouseButton = MouseButtonLeft
                                         }
                                 , followingSteps = []
@@ -475,8 +476,8 @@ shipUiModulesRows =
         putModulesInSameGroup moduleA moduleB =
             let
                 distanceY =
-                    (moduleA.uiNode.totalDisplayRegion |> centerFromRegion).y
-                        - (moduleB.uiNode.totalDisplayRegion |> centerFromRegion).y
+                    (moduleA.uiNode.totalDisplayRegion |> centerFromDisplayRegion).y
+                        - (moduleB.uiNode.totalDisplayRegion |> centerFromDisplayRegion).y
             in
             abs distanceY < 10
     in
@@ -572,7 +573,7 @@ inventoryWindowItemHangar =
 
 clickOnUIElement : MouseButton -> UIElement -> VolatileHostInterface.EffectOnWindowStructure
 clickOnUIElement mouseButton uiElement =
-    effectMouseClickAtLocation mouseButton (uiElement.totalDisplayRegion |> centerFromRegion)
+    effectMouseClickAtLocation mouseButton (uiElement.totalDisplayRegion |> centerFromDisplayRegion)
 
 
 {-| The region of a ship entry in the inventory window can contain child nodes (e.g. 'Ore Hold').

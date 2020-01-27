@@ -6,6 +6,11 @@ module EveOnline.MemoryReading exposing
     , ContextMenu
     , ContextMenuEntry
     , DisplayRegion
+    , DronesWindow
+    , DronesWindowDroneGroup
+    , DronesWindowDroneGroupHeader
+    , DronesWindowEntry
+    , Expander
     , Hitpoints
     , InfoPanelLocationInfo
     , InfoPanelLocationInfoExpandedContent
@@ -20,15 +25,19 @@ module EveOnline.MemoryReading exposing
     , OverviewWindow
     , OverviewWindowEntry
     , ParsedUserInterface
+    , ProbeScanResult
+    , ProbeScannerWindow
     , ShipManeuverType(..)
     , ShipUI
     , ShipUIIndication
     , ShipUIModule
+    , StationWindow
     , Target
     , UITreeNode
     , UITreeNodeWithDisplayRegion
     , asUITreeNodeWithTotalDisplayRegion
     , canNotSeeItFromMaybeNothing
+    , centerFromDisplayRegion
     , countDescendantsInUITreeNode
     , decodeMemoryReadingFromString
     , getDisplayText
@@ -65,6 +74,9 @@ type alias ParsedUserInterface =
     , infoPanelLocationInfo : MaybeVisible InfoPanelLocationInfo
     , infoPanelRoute : MaybeVisible InfoPanelRoute
     , overviewWindow : MaybeVisible OverviewWindow
+    , dronesWindow : MaybeVisible DronesWindow
+    , probeScannerWindow : MaybeVisible ProbeScannerWindow
+    , stationWindow : MaybeVisible StationWindow
     , inventoryWindows : List InventoryWindow
     , chatWindowStacks : List ChatWindowStack
     , moduleButtonTooltip : MaybeVisible ModuleButtonTooltip
@@ -84,6 +96,12 @@ type alias DisplayRegion =
     , y : Int
     , width : Int
     , height : Int
+    }
+
+
+type alias Location2d =
+    { x : Int
+    , y : Int
     }
 
 
@@ -192,6 +210,50 @@ type alias OverviewWindowEntry =
     }
 
 
+type alias DronesWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , droneGroups : List DronesWindowDroneGroup
+    }
+
+
+type alias DronesWindowDroneGroup =
+    { header : DronesWindowDroneGroupHeader
+    , drones : List DronesWindowEntry
+    }
+
+
+type alias DronesWindowDroneGroupHeader =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , mainText : Maybe String
+    , expander : MaybeVisible Expander
+    }
+
+
+type alias DronesWindowEntry =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , mainText : Maybe String
+    }
+
+
+type alias ProbeScannerWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , scanResults : List ProbeScanResult
+    }
+
+
+type alias ProbeScanResult =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , textsLeftToRight : List String
+    , warpButton : Maybe UITreeNodeWithDisplayRegion
+    }
+
+
+type alias StationWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , undockButton : Maybe { uiNode : UITreeNodeWithDisplayRegion, mainText : String }
+    }
+
+
 type alias InventoryWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , leftTreeEntries : List InventoryWindowLeftTreeEntry
@@ -256,6 +318,13 @@ type alias NeocomClock =
     }
 
 
+type alias Expander =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , texturePath : Maybe String
+    , isExpanded : Maybe Bool
+    }
+
+
 type MaybeVisible feature
     = CanNotSeeIt
     | CanSee feature
@@ -275,6 +344,9 @@ parseUserInterfaceFromUITree uiTree =
     , infoPanelLocationInfo = parseInfoPanelLocationInfoFromUITreeRoot uiTree
     , infoPanelRoute = parseInfoPanelRouteFromUITreeRoot uiTree
     , overviewWindow = parseOverviewWindowFromUITreeRoot uiTree
+    , dronesWindow = parseDronesWindowFromUITreeRoot uiTree
+    , probeScannerWindow = parseProbeScannerWindowFromUITreeRoot uiTree
+    , stationWindow = parseStationWindowFromUITreeRoot uiTree
     , inventoryWindows = parseInventoryWindowsFromUITreeRoot uiTree
     , moduleButtonTooltip = parseModuleButtonTooltipFromUITreeRoot uiTree
     , chatWindowStacks = parseChatWindowStacksFromUITreeRoot uiTree
@@ -724,6 +796,179 @@ parseOverviewEntryDistanceInMetersFromText distanceDisplayTextBeforeTrim =
                                     Err ("Text did not match expected number format: '" ++ distanceDisplayText ++ "'")
 
 
+parseDronesWindowFromUITreeRoot : UITreeNodeWithDisplayRegion -> MaybeVisible DronesWindow
+parseDronesWindowFromUITreeRoot uiTreeRoot =
+    case
+        uiTreeRoot
+            |> listDescendantsWithDisplayRegion
+            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "DroneView")
+            |> List.head
+    of
+        Nothing ->
+            CanNotSeeIt
+
+        Just windowNode ->
+            let
+                scrollNode =
+                    windowNode
+                        |> listDescendantsWithDisplayRegion
+                        |> List.filter (.uiNode >> .pythonObjectTypeName >> String.toLower >> String.contains "scroll")
+                        |> List.head
+
+                droneGroupHeaders =
+                    windowNode
+                        |> listDescendantsWithDisplayRegion
+                        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "DroneMainGroup")
+                        |> List.map parseDronesWindowDroneGroupHeader
+
+                droneEntries =
+                    windowNode
+                        |> listDescendantsWithDisplayRegion
+                        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "DroneEntry")
+                        |> List.map parseDronesWindowEntry
+
+                headerFromDroneEntry droneEntry =
+                    droneGroupHeaders
+                        |> List.filter (\header -> header.uiNode.totalDisplayRegion.y < droneEntry.uiNode.totalDisplayRegion.y)
+                        |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
+                        |> List.reverse
+                        |> List.head
+
+                droneGroups =
+                    droneGroupHeaders
+                        |> List.map
+                            (\header ->
+                                { header = header
+                                , drones = droneEntries |> List.filter (headerFromDroneEntry >> (==) (Just header))
+                                }
+                            )
+            in
+            CanSee { uiNode = windowNode, droneGroups = droneGroups }
+
+
+parseDronesWindowDroneGroupHeader : UITreeNodeWithDisplayRegion -> DronesWindowDroneGroupHeader
+parseDronesWindowDroneGroupHeader groupHeaderUiNode =
+    let
+        mainText =
+            groupHeaderUiNode
+                |> getAllContainedDisplayTextsWithRegion
+                |> List.sortBy (Tuple.second >> .totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
+                |> List.map Tuple.first
+                |> List.head
+
+        expanderNode =
+            groupHeaderUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter
+                    (.uiNode
+                        >> getNameFromDictEntries
+                        >> (Maybe.map (String.toLower >> String.contains "expander") >> Maybe.withDefault False)
+                    )
+                |> List.head
+    in
+    { uiNode = groupHeaderUiNode
+    , mainText = mainText
+    , expander = expanderNode |> Maybe.map parseExpander |> canNotSeeItFromMaybeNothing
+    }
+
+
+parseDronesWindowEntry : UITreeNodeWithDisplayRegion -> DronesWindowEntry
+parseDronesWindowEntry droneEntryNode =
+    let
+        mainText =
+            droneEntryNode
+                |> getAllContainedDisplayTextsWithRegion
+                |> List.sortBy (Tuple.second >> .totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
+                |> List.map Tuple.first
+                |> List.head
+    in
+    { uiNode = droneEntryNode
+    , mainText = mainText
+    }
+
+
+parseProbeScannerWindowFromUITreeRoot : UITreeNodeWithDisplayRegion -> MaybeVisible ProbeScannerWindow
+parseProbeScannerWindowFromUITreeRoot uiTreeRoot =
+    case
+        uiTreeRoot
+            |> listDescendantsWithDisplayRegion
+            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "ProbeScannerWindow")
+            |> List.head
+    of
+        Nothing ->
+            CanNotSeeIt
+
+        Just windowNode ->
+            let
+                scanResultsNodes =
+                    windowNode
+                        |> listDescendantsWithDisplayRegion
+                        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "ScanResultNew")
+
+                scanResults =
+                    scanResultsNodes
+                        |> List.map parseProbeScanResult
+            in
+            CanSee { uiNode = windowNode, scanResults = scanResults }
+
+
+parseProbeScanResult : UITreeNodeWithDisplayRegion -> ProbeScanResult
+parseProbeScanResult scanResultUiNode =
+    let
+        textsLeftToRight =
+            scanResultUiNode
+                |> getAllContainedDisplayTextsWithRegion
+                |> List.sortBy (Tuple.second >> .totalDisplayRegion >> .x)
+                |> List.map Tuple.first
+
+        warpButton =
+            scanResultUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getTexturePathFromDictEntries >> Maybe.map (String.endsWith "44_32_18.png") >> Maybe.withDefault False)
+                |> List.head
+    in
+    { uiNode = scanResultUiNode
+    , textsLeftToRight = textsLeftToRight
+    , warpButton = warpButton
+    }
+
+
+parseStationWindowFromUITreeRoot : UITreeNodeWithDisplayRegion -> MaybeVisible StationWindow
+parseStationWindowFromUITreeRoot uiTreeRoot =
+    case
+        uiTreeRoot
+            |> listDescendantsWithDisplayRegion
+            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "LobbyWnd")
+            |> List.head
+    of
+        Nothing ->
+            CanNotSeeIt
+
+        Just windowNode ->
+            let
+                maybeUndockButton =
+                    windowNode
+                        |> listDescendantsWithDisplayRegion
+                        |> List.filter (.uiNode >> getNameFromDictEntries >> Maybe.map (String.contains "undock") >> Maybe.withDefault False)
+                        |> List.filterMap
+                            (\undockNodeCandidate ->
+                                let
+                                    maybeMainText =
+                                        undockNodeCandidate
+                                            |> getAllContainedDisplayTextsWithRegion
+                                            |> List.sortBy (Tuple.second >> .totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
+                                            |> List.reverse
+                                            |> List.head
+                                            |> Maybe.map Tuple.first
+                                in
+                                maybeMainText
+                                    |> Maybe.map (\mainText -> { uiNode = undockNodeCandidate, mainText = mainText })
+                            )
+                        |> List.head
+            in
+            CanSee { uiNode = windowNode, undockButton = maybeUndockButton }
+
+
 parseInventoryWindowsFromUITreeRoot : UITreeNodeWithDisplayRegion -> List InventoryWindow
 parseInventoryWindowsFromUITreeRoot uiTreeRoot =
     uiTreeRoot
@@ -979,6 +1224,28 @@ parseNeocomClockText clockText =
                             Err "Unexpected numer of text elements."
 
 
+parseExpander : UITreeNodeWithDisplayRegion -> Expander
+parseExpander uiNode =
+    let
+        maybeTexturePath =
+            getTexturePathFromDictEntries uiNode.uiNode
+
+        isExpanded =
+            maybeTexturePath
+                |> Maybe.andThen
+                    (\texturePath ->
+                        [ ( "38_16_228.png", False ), ( "38_16_229.png", True ) ]
+                            |> List.filter (\( pathEnd, _ ) -> texturePath |> String.endsWith pathEnd)
+                            |> List.map Tuple.second
+                            |> List.head
+                    )
+    in
+    { uiNode = uiNode
+    , texturePath = maybeTexturePath
+    , isExpanded = isExpanded
+    }
+
+
 parseNumberTruncatingAfterOptionalDecimalSeparator : String -> Result String Int
 parseNumberTruncatingAfterOptionalDecimalSeparator numberDisplayText =
     case "^([\\d\\,\\s]+?)(?=(|[,\\.]\\d)$)" |> Regex.fromString of
@@ -996,6 +1263,11 @@ parseNumberTruncatingAfterOptionalDecimalSeparator numberDisplayText =
                         |> String.replace " " ""
                         |> String.toInt
                         |> Result.fromMaybe ("Failed to parse to integer: " ++ match.match)
+
+
+centerFromDisplayRegion : DisplayRegion -> Location2d
+centerFromDisplayRegion region =
+    { x = region.x + region.width // 2, y = region.y + region.height // 2 }
 
 
 getDisplayText : UITreeNode -> Maybe String
@@ -1037,16 +1309,24 @@ getAllContainedDisplayTextsWithRegion uiNode =
 
 
 getNameFromDictEntries : UITreeNode -> Maybe String
-getNameFromDictEntries uiNode =
-    uiNode.dictEntriesOfInterest
-        |> Dict.get "_name"
-        |> Maybe.andThen (Json.Decode.decodeValue Json.Decode.string >> Result.toMaybe)
+getNameFromDictEntries =
+    getStringPropertyFromDictEntries "_name"
 
 
 getHintTextFromDictEntries : UITreeNode -> Maybe String
-getHintTextFromDictEntries uiNode =
+getHintTextFromDictEntries =
+    getStringPropertyFromDictEntries "_hint"
+
+
+getTexturePathFromDictEntries : UITreeNode -> Maybe String
+getTexturePathFromDictEntries =
+    getStringPropertyFromDictEntries "texturePath"
+
+
+getStringPropertyFromDictEntries : String -> UITreeNode -> Maybe String
+getStringPropertyFromDictEntries dictEntryKey uiNode =
     uiNode.dictEntriesOfInterest
-        |> Dict.get "_hint"
+        |> Dict.get dictEntryKey
         |> Maybe.andThen (Json.Decode.decodeValue Json.Decode.string >> Result.toMaybe)
 
 
@@ -1065,6 +1345,15 @@ getHorizontalOffsetFromParentAndWidth uiNode =
 
         _ ->
             Nothing
+
+
+areaFromDisplayRegion : DisplayRegion -> Maybe Int
+areaFromDisplayRegion region =
+    if region.width < 0 || region.height < 0 then
+        Nothing
+
+    else
+        Just (region.width * region.height)
 
 
 getVerticalOffsetFromParent : UITreeNode -> Maybe Int

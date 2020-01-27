@@ -8,12 +8,12 @@ module EveOnline.VolatileHostInterface exposing
     , ResponseFromVolatileHost(..)
     , VirtualKeyCode(..)
     , buildScriptToGetResponseFromVolatileHost
-    , centerFromRegion
+    , decodeRequestToVolatileHost
     , deserializeResponseFromVolatileHost
     , effectMouseClickAtLocation
+    , encodeRequestToVolatileHost
     )
 
-import EveOnline.MemoryReading
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
@@ -159,6 +159,15 @@ encodeRequestToVolatileHost request =
             Json.Encode.object [ ( "ConsoleBeepSequenceRequest", consoleBeepSequenceRequest |> Json.Encode.list encodeConsoleBeep ) ]
 
 
+decodeRequestToVolatileHost : Json.Decode.Decoder RequestToVolatileHost
+decodeRequestToVolatileHost =
+    Json.Decode.oneOf
+        [ Json.Decode.field "getEveOnlineProcessesIds" (Json.Decode.succeed GetEveOnlineProcessesIds)
+        , Json.Decode.field "GetMemoryReading" (decodeGetMemoryReading |> Json.Decode.map GetMemoryReading)
+        , Json.Decode.field "effectOnWindow" (decodeTaskOnWindow decodeEffectOnWindowStructure |> Json.Decode.map EffectOnWindow)
+        ]
+
+
 encodeTaskOnWindow : (task -> Json.Encode.Value) -> TaskOnWindowStructure task -> Json.Encode.Value
 encodeTaskOnWindow taskEncoder taskOnWindow =
     Json.Encode.object
@@ -166,6 +175,14 @@ encodeTaskOnWindow taskEncoder taskOnWindow =
         , ( "bringWindowToForeground", taskOnWindow.bringWindowToForeground |> Json.Encode.bool )
         , ( "task", taskOnWindow.task |> taskEncoder )
         ]
+
+
+decodeTaskOnWindow : Json.Decode.Decoder task -> Json.Decode.Decoder (TaskOnWindowStructure task)
+decodeTaskOnWindow taskDecoder =
+    Json.Decode.map3 (\windowId bringWindowToForeground task -> { windowId = windowId, bringWindowToForeground = bringWindowToForeground, task = task })
+        (Json.Decode.field "windowId" Json.Decode.string)
+        (Json.Decode.field "bringWindowToForeground" Json.Decode.bool)
+        (Json.Decode.field "task" taskDecoder)
 
 
 encodeEffectOnWindowStructure : EffectOnWindowStructure -> Json.Encode.Value
@@ -192,6 +209,13 @@ encodeEffectOnWindowStructure effectOnWindow =
                 ]
 
 
+decodeEffectOnWindowStructure : Json.Decode.Decoder EffectOnWindowStructure
+decodeEffectOnWindowStructure =
+    Json.Decode.oneOf
+        [ Json.Decode.field "simpleMouseClickAtLocation" (decodeMouseClickAtLocation |> Json.Decode.map SimpleMouseClickAtLocation)
+        ]
+
+
 encodeKey : VirtualKeyCode -> Json.Encode.Value
 encodeKey virtualKeyCode =
     Json.Encode.object [ ( "virtualKeyCode", virtualKeyCode |> virtualKeyCodeAsInteger |> Json.Encode.int ) ]
@@ -203,6 +227,13 @@ encodeMouseClickAtLocation mouseClickAtLocation_ =
         [ ( "location", mouseClickAtLocation_.location |> encodeLocation2d )
         , ( "mouseButton", mouseClickAtLocation_.mouseButton |> encodeMouseButton )
         ]
+
+
+decodeMouseClickAtLocation : Json.Decode.Decoder MouseClickAtLocation
+decodeMouseClickAtLocation =
+    Json.Decode.map2 MouseClickAtLocation
+        (Json.Decode.field "location" jsonDecodeLocation2d)
+        (Json.Decode.field "mouseButton" jsonDecodeMouseButton)
 
 
 encodeSimpleDragAndDrop : SimpleDragAndDropStructure -> Json.Encode.Value
@@ -222,6 +253,13 @@ encodeLocation2d location =
         ]
 
 
+jsonDecodeLocation2d : Json.Decode.Decoder Location2d
+jsonDecodeLocation2d =
+    Json.Decode.map2 Location2d
+        (Json.Decode.field "x" Json.Decode.int)
+        (Json.Decode.field "y" Json.Decode.int)
+
+
 encodeMouseButton : MouseButton -> Json.Encode.Value
 encodeMouseButton mouseButton =
     (case mouseButton of
@@ -234,9 +272,32 @@ encodeMouseButton mouseButton =
         |> Json.Encode.string
 
 
+jsonDecodeMouseButton : Json.Decode.Decoder MouseButton
+jsonDecodeMouseButton =
+    Json.Decode.string
+        |> Json.Decode.andThen
+            (\asString ->
+                case asString of
+                    "left" ->
+                        Json.Decode.succeed MouseButtonLeft
+
+                    "right" ->
+                        Json.Decode.succeed MouseButtonRight
+
+                    _ ->
+                        Json.Decode.fail ("Unrecognized mouse button type: " ++ asString)
+            )
+
+
 encodeGetMemoryReading : GetMemoryReadingStructure -> Json.Encode.Value
 encodeGetMemoryReading getMemoryReading =
     Json.Encode.object [ ( "processId", getMemoryReading.processId |> Json.Encode.int ) ]
+
+
+decodeGetMemoryReading : Json.Decode.Decoder GetMemoryReadingStructure
+decodeGetMemoryReading =
+    Json.Decode.map GetMemoryReadingStructure
+        (Json.Decode.field "processId" Json.Decode.int)
 
 
 decodeGetMemoryReadingResult : Json.Decode.Decoder GetMemoryReadingResultStructure
@@ -272,11 +333,6 @@ encodeConsoleBeep consoleBeep =
         [ ( "frequency", consoleBeep.frequency |> Json.Encode.int )
         , ( "durationInMs", consoleBeep.durationInMs |> Json.Encode.int )
         ]
-
-
-centerFromRegion : EveOnline.MemoryReading.DisplayRegion -> Location2d
-centerFromRegion region =
-    { x = region.x + region.width // 2, y = region.y + region.height // 2 }
 
 
 effectMouseClickAtLocation : MouseButton -> Location2d -> EffectOnWindowStructure

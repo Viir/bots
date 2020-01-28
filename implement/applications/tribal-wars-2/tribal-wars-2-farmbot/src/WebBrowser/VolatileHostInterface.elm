@@ -1,4 +1,4 @@
-module Limbara.Limbara exposing
+module WebBrowser.VolatileHostInterface exposing
     ( RequestToVolatileHost(..)
     , ResponseFromVolatileHost(..)
     , buildScriptToGetResponseFromVolatileHost

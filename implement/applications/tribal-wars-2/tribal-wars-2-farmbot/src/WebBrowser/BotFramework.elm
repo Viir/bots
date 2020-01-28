@@ -1,10 +1,10 @@
-{- This module contains a framework to build simple bots to work in web browsers.
+{- This module contains a framework to build bots to work in web browsers.
    This framework automatically starts a new web browser window.
    To use this framework, import this module and use the `initState` and `processEvent` functions.
 -}
 
 
-module Limbara.SimpleLimbara exposing
+module WebBrowser.BotFramework exposing
     ( BotEvent(..)
     , BotRequest(..)
     , RunJavascriptInCurrentPageResponseStructure
@@ -16,14 +16,21 @@ module Limbara.SimpleLimbara exposing
     )
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
-import Limbara.Limbara as Limbara
-import Limbara.LimbaraVolatileHostSetup as LimbaraVolatileHostSetup
+import WebBrowser.VolatileHostInterface as VolatileHostInterface
+import WebBrowser.VolatileHostScript as VolatileHostScript
 
 
 type BotEvent
     = SetBotConfiguration String
     | ArrivedAtTime { timeInMilliseconds : Int }
     | RunJavascriptInCurrentPageResponse RunJavascriptInCurrentPageResponseStructure
+
+
+type alias BotProcessEventResult botState =
+    { newState : botState
+    , request : Maybe BotRequest
+    , statusMessage : String
+    }
 
 
 type BotRequest
@@ -43,25 +50,18 @@ type alias RunJavascriptInCurrentPageResponseStructure =
     }
 
 
-type alias StateIncludingSetup simpleBotState =
+type alias StateIncludingSetup botState =
     { setup : SetupState
-    , botState : BotState simpleBotState
+    , botState : BotState botState
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
     , taskInProgress : Maybe { startTimeInMilliseconds : Int, taskIdString : String, taskDescription : String }
     }
 
 
-type alias BotState simpleBotState =
-    { simpleBotState : simpleBotState
+type alias BotState botState =
+    { botState : botState
     , statusMessage : Maybe String
-    }
-
-
-type alias SimpleBotProcessEventResult simpleBotState =
-    { newState : simpleBotState
-    , request : Maybe BotRequest
-    , statusMessage : String
     }
 
 
@@ -74,7 +74,7 @@ type alias SetupState =
 
 type VolatileHostState
     = Initial
-    | LimbaraSetupCompleted
+    | SetupCompleted
 
 
 type SetupTask
@@ -91,11 +91,11 @@ initSetup =
     }
 
 
-initState : simpleBotState -> StateIncludingSetup simpleBotState
-initState simpleBotState =
+initState : botState -> StateIncludingSetup botState
+initState botState =
     { setup = initSetup
     , botState =
-        { simpleBotState = simpleBotState
+        { botState = botState
         , statusMessage = Nothing
         }
     , timeInMilliseconds = 0
@@ -105,14 +105,14 @@ initState simpleBotState =
 
 
 processEvent :
-    (BotEvent -> simpleBotState -> SimpleBotProcessEventResult simpleBotState)
+    (BotEvent -> botState -> BotProcessEventResult botState)
     -> InterfaceToHost.BotEvent
-    -> StateIncludingSetup simpleBotState
-    -> ( StateIncludingSetup simpleBotState, InterfaceToHost.BotResponse )
-processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
+    -> StateIncludingSetup botState
+    -> ( StateIncludingSetup botState, InterfaceToHost.BotResponse )
+processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
     let
         ( stateBefore, maybeBotRequest ) =
-            stateBeforeIntegratingEvent |> integrateFromHostEvent simpleBotProcessEvent fromHostEvent
+            stateBeforeIntegratingEvent |> integrateFromHostEvent botProcessEvent fromHostEvent
 
         ( state, responseBeforeAddingStatusMessage ) =
             case stateBefore.taskInProgress of
@@ -148,7 +148,7 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
     ( state, response )
 
 
-processEventNotWaitingForTask : Maybe BotRequest -> StateIncludingSetup simpleBotState -> ( StateIncludingSetup simpleBotState, InterfaceToHost.BotResponse )
+processEventNotWaitingForTask : Maybe BotRequest -> StateIncludingSetup botState -> ( StateIncludingSetup botState, InterfaceToHost.BotResponse )
 processEventNotWaitingForTask maybeBotRequest stateBefore =
     case stateBefore.setup |> getNextSetupTask of
         ContinueSetup setupState setupTask setupTaskDescription ->
@@ -217,11 +217,11 @@ processEventNotWaitingForTask maybeBotRequest stateBefore =
 
 
 integrateFromHostEvent :
-    (BotEvent -> simpleBotState -> SimpleBotProcessEventResult simpleBotState)
+    (BotEvent -> botState -> BotProcessEventResult botState)
     -> InterfaceToHost.BotEvent
-    -> StateIncludingSetup simpleBotState
-    -> ( StateIncludingSetup simpleBotState, Maybe BotRequest )
-integrateFromHostEvent simpleBotProcessEvent fromHostEvent stateBefore =
+    -> StateIncludingSetup botState
+    -> ( StateIncludingSetup botState, Maybe BotRequest )
+integrateFromHostEvent botProcessEvent fromHostEvent stateBefore =
     let
         ( stateBeforeIntegrateBotEvent, maybeBotEvent ) =
             case fromHostEvent of
@@ -253,16 +253,16 @@ integrateFromHostEvent simpleBotProcessEvent fromHostEvent stateBefore =
                     botStateBefore =
                         stateBeforeIntegrateBotEvent.botState
 
-                    simpleBotEventResult =
-                        botStateBefore.simpleBotState |> simpleBotProcessEvent botEvent
+                    botEventResult =
+                        botStateBefore.botState |> botProcessEvent botEvent
 
                     botState =
                         { botStateBefore
-                            | simpleBotState = simpleBotEventResult.newState
-                            , statusMessage = Just simpleBotEventResult.statusMessage
+                            | botState = botEventResult.newState
+                            , statusMessage = Just botEventResult.statusMessage
                         }
                 in
-                ( { stateBeforeIntegrateBotEvent | botState = botState }, simpleBotEventResult.request )
+                ( { stateBeforeIntegrateBotEvent | botState = botState }, botEventResult.request )
             )
         |> Maybe.withDefault ( stateBeforeIntegrateBotEvent, Nothing )
 
@@ -311,7 +311,7 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                     runScriptResult
                         |> Result.toMaybe
                         |> Maybe.andThen identity
-                        |> Maybe.map Limbara.deserializeResponseFromVolatileHost
+                        |> Maybe.map VolatileHostInterface.deserializeResponseFromVolatileHost
                         |> Maybe.andThen Result.toMaybe
 
                 setupStateWithScriptRunResult =
@@ -326,19 +326,19 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
 
                 Just responseFromVolatileHost ->
                     setupStateWithScriptRunResult
-                        |> integrateLimbaraResponseFromVolatileHost ( time, responseFromVolatileHost )
+                        |> integrateResponseFromVolatileHost ( time, responseFromVolatileHost )
 
         InterfaceToHost.CompleteWithoutResult ->
             ( setupStateBefore, Nothing )
 
 
-integrateLimbaraResponseFromVolatileHost : ( Int, Limbara.ResponseFromVolatileHost ) -> SetupState -> ( SetupState, Maybe BotEvent )
-integrateLimbaraResponseFromVolatileHost ( time, response ) stateBefore =
+integrateResponseFromVolatileHost : ( Int, VolatileHostInterface.ResponseFromVolatileHost ) -> SetupState -> ( SetupState, Maybe BotEvent )
+integrateResponseFromVolatileHost ( time, response ) stateBefore =
     case response of
-        Limbara.WebBrowserStarted ->
+        VolatileHostInterface.WebBrowserStarted ->
             ( { stateBefore | webBrowserStarted = True }, Nothing )
 
-        Limbara.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
+        VolatileHostInterface.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
             let
                 botEvent =
                     RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse
@@ -358,12 +358,12 @@ getNextSetupTask stateBefore =
                     ContinueSetup stateBefore
                         (InterfaceToHost.RunInVolatileHost
                             { hostId = volatileHostId
-                            , script = LimbaraVolatileHostSetup.limbaraSetupScript
+                            , script = VolatileHostScript.setupScript
                             }
                         )
                         "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
 
-                LimbaraSetupCompleted ->
+                SetupCompleted ->
                     getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId
 
 
@@ -373,7 +373,7 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
         ContinueSetup stateBefore
             (InterfaceToHost.RunInVolatileHost
                 { hostId = volatileHostId
-                , script = Limbara.buildScriptToGetResponseFromVolatileHost Limbara.StartWebBrowserRequest
+                , script = VolatileHostInterface.buildScriptToGetResponseFromVolatileHost VolatileHostInterface.StartWebBrowserRequest
                 }
             )
             "Start web browser. This can take a while since it might need to download the web browser software first."
@@ -386,11 +386,11 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                         requestToVolatileHost =
                             case request of
                                 RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest ->
-                                    Limbara.RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest
+                                    VolatileHostInterface.RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest
                     in
                     InterfaceToHost.RunInVolatileHost
                         { hostId = volatileHostId
-                        , script = Limbara.buildScriptToGetResponseFromVolatileHost requestToVolatileHost
+                        , script = VolatileHostInterface.buildScriptToGetResponseFromVolatileHost requestToVolatileHost
                         }
             }
 
@@ -404,13 +404,13 @@ updateVolatileHostState runInVolatileHostComplete stateBefore =
         Just returnValueString ->
             case stateBefore of
                 Initial ->
-                    if returnValueString |> String.contains "Limbara Setup Completed" then
-                        LimbaraSetupCompleted
+                    if returnValueString |> String.contains "Setup Completed" then
+                        SetupCompleted
 
                     else
                         stateBefore
 
-                LimbaraSetupCompleted ->
+                SetupCompleted ->
                     stateBefore
 
 

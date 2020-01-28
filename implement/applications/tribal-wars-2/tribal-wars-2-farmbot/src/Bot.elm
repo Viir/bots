@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-01-22
+{- Tribal Wars 2 farmbot version 2020-01-28
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -32,7 +32,7 @@ import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
 import Dict
 import Json.Decode
 import Json.Encode
-import Limbara.SimpleLimbara as SimpleLimbara exposing (BotEvent, BotRequest(..))
+import WebBrowser.BotFramework as BotFramework exposing (BotEvent, BotRequest(..))
 import Set
 
 
@@ -40,7 +40,7 @@ type alias BotState =
     { timeInMilliseconds : Int
     , lastRunJavascriptResult :
         Maybe
-            { response : SimpleLimbara.RunJavascriptInCurrentPageResponseStructure
+            { response : BotFramework.RunJavascriptInCurrentPageResponseStructure
             , parseResult : Result Json.Decode.Error RootInformationStructure
             }
     , gameRootInformationResult : Maybe { timeInMilliseconds : Int, gameRootInformation : TribalWars2RootInformation }
@@ -56,7 +56,7 @@ type alias BotState =
 
 
 type alias State =
-    SimpleLimbara.StateIncludingSetup BotState
+    BotFramework.StateIncludingSetup BotState
 
 
 type ResponseFromBrowser
@@ -161,7 +161,7 @@ numberOfAttacksLimitPerVillage =
 
 initState : State
 initState =
-    SimpleLimbara.initState
+    BotFramework.initState
         { timeInMilliseconds = 0
         , lastRunJavascriptResult = Nothing
         , gameRootInformationResult = Nothing
@@ -178,7 +178,7 @@ initState =
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
-    SimpleLimbara.processEvent processWebBrowserBotEvent
+    BotFramework.processEvent processWebBrowserBotEvent
 
 
 processWebBrowserBotEvent : BotEvent -> BotState -> { newState : BotState, request : Maybe BotRequest, statusMessage : String }
@@ -186,13 +186,13 @@ processWebBrowserBotEvent event stateBefore =
     let
         state =
             case event of
-                SimpleLimbara.SetBotConfiguration _ ->
+                BotFramework.SetBotConfiguration _ ->
                     stateBefore
 
-                SimpleLimbara.ArrivedAtTime { timeInMilliseconds } ->
+                BotFramework.ArrivedAtTime { timeInMilliseconds } ->
                     { stateBefore | timeInMilliseconds = timeInMilliseconds }
 
-                SimpleLimbara.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
+                BotFramework.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
                     let
                         parseAsRootInfoResult =
                             runJavascriptInCurrentPageResponse.directReturnValueAsString
@@ -423,7 +423,7 @@ requestToFrameworkWhenNotWaitingGlobally state =
                                                     scriptToJumpToVillageIfNotYetDone state villageToActivateDetails.coordinates
                                                         |> Maybe.withDefault villageMenuActivateVillageScript
     in
-    SimpleLimbara.RunJavascriptInCurrentPageRequest
+    BotFramework.RunJavascriptInCurrentPageRequest
         { javascript = javascript
         , requestId = "request-id"
         , timeToWaitForCallbackMilliseconds = 1000
@@ -1105,7 +1105,7 @@ villageCoordinatesDisplayText { x, y } =
     (x |> String.fromInt) ++ "|" ++ (y |> String.fromInt)
 
 
-describeRunJavascriptInCurrentPageResponseStructure : SimpleLimbara.RunJavascriptInCurrentPageResponseStructure -> String
+describeRunJavascriptInCurrentPageResponseStructure : BotFramework.RunJavascriptInCurrentPageResponseStructure -> String
 describeRunJavascriptInCurrentPageResponseStructure response =
     "{ directReturnValueAsString = "
         ++ describeString 300 response.directReturnValueAsString

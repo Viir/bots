@@ -1,8 +1,8 @@
-module Limbara.LimbaraVolatileHostSetup exposing ( limbaraSetupScript )
+module WebBrowser.VolatileHostScript exposing ( setupScript )
 
 
-limbaraSetupScript : String
-limbaraSetupScript =
+setupScript : String
+setupScript =
     """
 // "Newtonsoft.Json"
 #r "sha256:B9B4E633EA6C728BAD5F7CBBEF7F8B842F7E10181731DBE5EC3CD995A6F60287"
@@ -191,5 +191,5 @@ static async System.Threading.Tasks.Task startBrowserAndSaveScreenshotToFile(str
     await page.ScreenshotAsync(outputFilePath);
 }
 
-"Limbara Setup Completed"
+"Setup Completed"
 """

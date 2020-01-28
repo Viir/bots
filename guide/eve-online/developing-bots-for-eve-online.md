@@ -1,8 +1,8 @@
-# How to Develop EVE Online Bots
+# Developing Bots for EVE Online
 
 In this guide, I describe how I develop bots and monitoring tools for EVE Online.
 
-In part, this guide is a summary of what I learned during bot development projects like the EVE Online mission running and anomaly ratting bots, or the Tribal Wars 2 farmbot. But most importantly, this guide lives from and evolves with your questions, so thank you for the feedback!
+In part, this guide is a summary of what I learned in development projects like the EVE Online mission running and anomaly ratting bots, or the Tribal Wars 2 farmbot. But most importantly, this guide lives from and evolves with your questions, so thank you for the feedback!
 
 ## Scope and Overall Direction
 

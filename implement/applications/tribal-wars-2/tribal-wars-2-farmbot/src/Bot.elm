@@ -32,8 +32,8 @@ import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
 import Dict
 import Json.Decode
 import Json.Encode
-import WebBrowser.BotFramework as BotFramework exposing (BotEvent, BotRequest(..))
 import Set
+import WebBrowser.BotFramework as BotFramework exposing (BotEvent, BotResponse)
 
 
 type alias BotState =
@@ -181,7 +181,7 @@ processEvent =
     BotFramework.processEvent processWebBrowserBotEvent
 
 
-processWebBrowserBotEvent : BotEvent -> BotState -> { newState : BotState, request : Maybe BotRequest, statusMessage : String }
+processWebBrowserBotEvent : BotEvent -> BotState -> { newState : BotState, response : BotResponse, statusMessage : String }
 processWebBrowserBotEvent event stateBefore =
     let
         state =
@@ -299,15 +299,18 @@ processWebBrowserBotEvent event stateBefore =
 
                                 ActivatedVillageResponse ->
                                     { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
+
+        ( responseToFramework, responseDescription ) =
+            responseWithDescriptionToFramework state
     in
     { newState = state
-    , request = requestToFramework state
-    , statusMessage = statusMessageFromState state
+    , response = responseToFramework
+    , statusMessage = statusMessageFromState state ++ "\n" ++ responseDescription
     }
 
 
-requestToFramework : BotState -> Maybe BotRequest
-requestToFramework state =
+responseWithDescriptionToFramework : BotState -> ( BotResponse, String )
+responseWithDescriptionToFramework state =
     let
         waitAfterJumpedToCoordinates =
             state.lastJumpToCoordinates
@@ -316,14 +319,14 @@ requestToFramework state =
                 |> Maybe.withDefault False
     in
     if waitAfterJumpedToCoordinates then
-        Nothing
+        ( BotFramework.ContinueSession Nothing, "Waiting after jumping to village." )
 
     else
-        requestToFrameworkWhenNotWaitingGlobally state
+        responseToFrameworkWhenNotWaitingGlobally state
 
 
-requestToFrameworkWhenNotWaitingGlobally : BotState -> Maybe BotRequest
-requestToFrameworkWhenNotWaitingGlobally state =
+responseToFrameworkWhenNotWaitingGlobally : BotState -> ( BotResponse, String )
+responseToFrameworkWhenNotWaitingGlobally state =
     let
         sufficientlyNewGameRootInformation =
             state.gameRootInformationResult
@@ -341,10 +344,10 @@ requestToFrameworkWhenNotWaitingGlobally state =
                             Just gameRootInformationResult.gameRootInformation
                     )
 
-        javascript =
+        maybeJavascriptToContinue =
             case sufficientlyNewGameRootInformation of
                 Nothing ->
-                    readRootInformationScript
+                    Just readRootInformationScript
 
                 Just gameRootInformation ->
                     let
@@ -370,65 +373,89 @@ requestToFrameworkWhenNotWaitingGlobally state =
                     in
                     case villagesWithoutDetails of
                         villageWithoutDetails :: _ ->
-                            readSelectedCharacterVillageDetailsScript villageWithoutDetails
+                            Just (readSelectedCharacterVillageDetailsScript villageWithoutDetails)
 
                         [] ->
                             case selectedVillageUpdatedDetails of
                                 Nothing ->
-                                    readSelectedCharacterVillageDetailsScript gameRootInformation.selectedVillageId
+                                    Just (readSelectedCharacterVillageDetailsScript gameRootInformation.selectedVillageId)
 
                                 Just selectedVillageDetails ->
-                                    let
-                                        selectedVillageActionOptions =
-                                            computeVillageActionOptions
-                                                state
-                                                ( gameRootInformation.selectedVillageId, selectedVillageDetails )
-                                    in
-                                    case selectedVillageActionOptions.nextAction of
-                                        Just (GetVillageInfoAtCoordinates coordinates) ->
-                                            startVillageByCoordinatesScript coordinates { jumpToVillage = False }
+                                    case state.getArmyPresetsResult |> Maybe.withDefault [] of
+                                        [] ->
+                                            {- 2020-01-28 Observation: We get an empty list here at least sometimes at the beginning of a session.
+                                               The number of presets we get can increase with the next query.
 
-                                        Just (AttackAtCoordinates armyPreset coordinates) ->
-                                            scriptToJumpToVillageIfNotYetDone state coordinates
-                                                |> Maybe.withDefault
-                                                    (startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId = armyPreset.id })
+                                               -- TODO: Add timeout for getting presets.
+                                            -}
+                                            Just getPresetsScript
 
-                                        Nothing ->
+                                        atLeastOnePreset :: _ ->
                                             let
-                                                otherVillagesWithDetails =
-                                                    gameRootInformation.readyVillages
-                                                        |> Set.fromList
-                                                        |> Set.remove gameRootInformation.selectedVillageId
-                                                        |> Set.toList
-                                                        |> List.filterMap
-                                                            (\otherVillageId ->
-                                                                state.ownVillagesDetails
-                                                                    |> Dict.get otherVillageId
-                                                                    |> Maybe.map
-                                                                        (\otherVillageDetailsResponse ->
-                                                                            ( otherVillageId, otherVillageDetailsResponse.villageDetails )
-                                                                        )
-                                                            )
-
-                                                otherVillagesWithAvailableAction =
-                                                    otherVillagesWithDetails
-                                                        |> List.filter
-                                                            (computeVillageActionOptions state >> .nextAction >> (/=) Nothing)
+                                                selectedVillageActionOptions =
+                                                    computeVillageActionOptions
+                                                        state
+                                                        ( gameRootInformation.selectedVillageId, selectedVillageDetails )
                                             in
-                                            case otherVillagesWithAvailableAction |> List.head of
-                                                Nothing ->
-                                                    getPresetsScript
+                                            case selectedVillageActionOptions.nextAction of
+                                                Just (GetVillageInfoAtCoordinates coordinates) ->
+                                                    Just (startVillageByCoordinatesScript coordinates { jumpToVillage = False })
 
-                                                Just ( villageToActivateId, villageToActivateDetails ) ->
-                                                    scriptToJumpToVillageIfNotYetDone state villageToActivateDetails.coordinates
-                                                        |> Maybe.withDefault villageMenuActivateVillageScript
+                                                Just (AttackAtCoordinates armyPreset coordinates) ->
+                                                    (scriptToJumpToVillageIfNotYetDone state coordinates
+                                                        |> Maybe.withDefault
+                                                            (startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId = armyPreset.id })
+                                                    )
+                                                        |> Just
+
+                                                Nothing ->
+                                                    let
+                                                        otherVillagesWithDetails =
+                                                            gameRootInformation.readyVillages
+                                                                |> Set.fromList
+                                                                |> Set.remove gameRootInformation.selectedVillageId
+                                                                |> Set.toList
+                                                                |> List.filterMap
+                                                                    (\otherVillageId ->
+                                                                        state.ownVillagesDetails
+                                                                            |> Dict.get otherVillageId
+                                                                            |> Maybe.map
+                                                                                (\otherVillageDetailsResponse ->
+                                                                                    ( otherVillageId, otherVillageDetailsResponse.villageDetails )
+                                                                                )
+                                                                    )
+
+                                                        otherVillagesWithAvailableAction =
+                                                            otherVillagesWithDetails
+                                                                |> List.filter
+                                                                    (computeVillageActionOptions state >> .nextAction >> (/=) Nothing)
+                                                    in
+                                                    case otherVillagesWithAvailableAction |> List.head of
+                                                        Nothing ->
+                                                            Nothing
+
+                                                        Just ( villageToActivateId, villageToActivateDetails ) ->
+                                                            (scriptToJumpToVillageIfNotYetDone state villageToActivateDetails.coordinates
+                                                                |> Maybe.withDefault villageMenuActivateVillageScript
+                                                            )
+                                                                |> Just
     in
-    BotFramework.RunJavascriptInCurrentPageRequest
-        { javascript = javascript
-        , requestId = "request-id"
-        , timeToWaitForCallbackMilliseconds = 1000
-        }
-        |> Just
+    case maybeJavascriptToContinue of
+        Nothing ->
+            ( BotFramework.FinishSession
+            , "There is nothing left to do."
+            )
+
+        Just javascript ->
+            ( BotFramework.RunJavascriptInCurrentPageRequest
+                { javascript = javascript
+                , requestId = "request-id"
+                , timeToWaitForCallbackMilliseconds = 1000
+                }
+                |> Just
+                |> BotFramework.ContinueSession
+            , ""
+            )
 
 
 scriptToJumpToVillageIfNotYetDone : BotState -> VillageCoordinates -> Maybe String
@@ -454,7 +481,8 @@ scriptToJumpToVillageIfNotYetDone state coordinates =
 
 
 type alias VillagePresetOptions =
-    { farmPresetFilter : String
+    { allPresets : List ArmyPreset
+    , farmPresetFilter : String
     , farmPresets : List ArmyPreset
     , farmPresetsEnabledForThisVillage : List ArmyPreset
     , farmPresetsMatchingAvailableUnits : List ArmyPreset
@@ -503,26 +531,27 @@ computeVillageNextAction state ( villageId, villageDetails ) presetOptions =
                                 |> coordinatesToSearchFromOwnVillagesCoordinates 20
 
                         sentAttackToCoordinates coordinates =
-                            (state.sentAttackByCoordinates |> Dict.get (coordinates.x, coordinates.y)) /= Nothing
+                            (state.sentAttackByCoordinates |> Dict.get ( coordinates.x, coordinates.y )) /= Nothing
 
                         remainingCoordinates =
                             coordinatesAroundVillage
                                 |> List.filter
                                     (\coordinates ->
-                                        if sentAttackToCoordinates coordinates
-                                        then False
+                                        if sentAttackToCoordinates coordinates then
+                                            False
+
                                         else
-                                        case villageInfoCheckFromCoordinates coordinates of
-                                            Nothing ->
-                                                True
+                                            case villageInfoCheckFromCoordinates coordinates of
+                                                Nothing ->
+                                                    True
 
-                                            Just coordinatesCheck ->
-                                                case coordinatesCheck.result of
-                                                    NoVillageThere ->
-                                                        False
+                                                Just coordinatesCheck ->
+                                                    case coordinatesCheck.result of
+                                                        NoVillageThere ->
+                                                            False
 
-                                                    VillageThere village ->
-                                                        village.affiliation == AffiliationBarbarian
+                                                        VillageThere village ->
+                                                            village.affiliation == AffiliationBarbarian
                                     )
                     in
                     remainingCoordinates
@@ -576,7 +605,8 @@ computeVillagePresetOptions presets ( villageId, villageDetails ) =
                                 )
                     )
     in
-    { farmPresetFilter = farmPresetFilter
+    { allPresets = presets
+    , farmPresetFilter = farmPresetFilter
     , farmPresets = farmPresets
     , farmPresetsEnabledForThisVillage = farmPresetsEnabledForThisVillage
     , farmPresetsMatchingAvailableUnits = farmPresetsMatchingAvailableUnits
@@ -1039,7 +1069,9 @@ statusMessageFromState state =
                                                 villageDetailsResponse.villageDetails.commands.outgoing |> List.length
                                         in
                                         [ (villageDetailsResponse.villageDetails.coordinates |> villageCoordinatesDisplayText)
-                                        ++ " '" ++ villageDetailsResponse.villageDetails.name ++ "'."
+                                            ++ " '"
+                                            ++ villageDetailsResponse.villageDetails.name
+                                            ++ "'."
                                         , "Last update " ++ (lastUpdateAge |> String.fromInt) ++ " s ago."
                                         , (sumOfAvailableUnits |> String.fromInt) ++ " available units."
                                         , villageOptionsReport
@@ -1071,11 +1103,25 @@ statusMessageFromState state =
 
                 Just parseResponseError ->
                     Json.Decode.errorToString parseResponseError
+
+        debugInspectionLines =
+            [ jsRunResult ]
+
+        enableDebugInspection =
+            False
+
+        allReportLines =
+            [ inGameReport
+            , parseResponseErrorReport
+            ]
+                ++ (if enableDebugInspection then
+                        debugInspectionLines
+
+                    else
+                        []
+                   )
     in
-    [ inGameReport
-    , parseResponseErrorReport
-    , jsRunResult
-    ]
+    allReportLines
         |> String.join "\n"
 
 
@@ -1088,7 +1134,11 @@ villageOptionsDisplayText villageActionOptions =
         Nothing ->
             if (villageActionOptions.preset.farmPresetsEnabledForThisVillage |> List.length) == 0 then
                 if (villageActionOptions.preset.farmPresets |> List.length) == 0 then
-                    "Found no army presets matching the filter '" ++ villageActionOptions.preset.farmPresetFilter ++ "'."
+                    if (villageActionOptions.preset.allPresets |> List.length) == 0 then
+                        "Did not find any army presets. Maybe loading is not completed yet."
+
+                    else
+                        "Found no army presets matching the filter '" ++ villageActionOptions.preset.farmPresetFilter ++ "'."
 
                 else
                     "Found " ++ (villageActionOptions.preset.farmPresets |> List.length |> String.fromInt) ++ " army presets for farming, but none enabled for this village."

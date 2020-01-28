@@ -7,6 +7,7 @@
 module WebBrowser.BotFramework exposing
     ( BotEvent(..)
     , BotRequest(..)
+    , BotResponse(..)
     , RunJavascriptInCurrentPageResponseStructure
     , SetupState
     , StateIncludingSetup
@@ -28,9 +29,14 @@ type BotEvent
 
 type alias BotProcessEventResult botState =
     { newState : botState
-    , request : Maybe BotRequest
+    , response : BotResponse
     , statusMessage : String
     }
+
+
+type BotResponse
+    = ContinueSession (Maybe BotRequest)
+    | FinishSession
 
 
 type BotRequest
@@ -80,7 +86,7 @@ type VolatileHostState
 type SetupTask
     = ContinueSetup SetupState InterfaceToHost.Task String
     | OperateBot { taskFromBotRequest : BotRequest -> InterfaceToHost.Task }
-    | FinishSession String
+    | FailSetup String
 
 
 initSetup : SetupState
@@ -114,19 +120,39 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
         ( stateBefore, maybeBotRequest ) =
             stateBeforeIntegratingEvent |> integrateFromHostEvent botProcessEvent fromHostEvent
 
-        ( state, responseBeforeAddingStatusMessage ) =
-            case stateBefore.taskInProgress of
+        botRequestIfContinueSession =
+            case maybeBotRequest of
                 Nothing ->
-                    processEventNotWaitingForTask maybeBotRequest stateBefore
+                    Just Nothing
 
-                Just taskInProgress ->
+                Just FinishSession ->
+                    Nothing
+
+                Just (ContinueSession continueSessionRequest) ->
+                    Just continueSessionRequest
+
+        ( state, responseBeforeAddingStatusMessage ) =
+            case botRequestIfContinueSession of
+                Nothing ->
                     ( stateBefore
-                    , { statusDescriptionText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
-                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
-                      , startTasks = []
+                    , { statusDescriptionText = "The bot finished the session."
                       }
-                        |> InterfaceToHost.ContinueSession
+                        |> InterfaceToHost.FinishSession
                     )
+
+                Just maybeBotRequestContinueSession ->
+                    case stateBefore.taskInProgress of
+                        Nothing ->
+                            processEventNotWaitingForTask maybeBotRequestContinueSession stateBefore
+
+                        Just taskInProgress ->
+                            ( stateBefore
+                            , { statusDescriptionText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
+                              , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
+                              , startTasks = []
+                              }
+                                |> InterfaceToHost.ContinueSession
+                            )
 
         statusMessagePrefix =
             (state |> statusReportFromState) ++ "\nCurrent activity: "
@@ -210,9 +236,9 @@ processEventNotWaitingForTask maybeBotRequest stateBefore =
                 |> InterfaceToHost.ContinueSession
             )
 
-        FinishSession reason ->
+        FailSetup reason ->
             ( stateBefore
-            , InterfaceToHost.FinishSession { statusDescriptionText = "Finish session (" ++ reason ++ ")" }
+            , InterfaceToHost.FinishSession { statusDescriptionText = "Setup failed: " ++ reason }
             )
 
 
@@ -220,7 +246,7 @@ integrateFromHostEvent :
     (BotEvent -> botState -> BotProcessEventResult botState)
     -> InterfaceToHost.BotEvent
     -> StateIncludingSetup botState
-    -> ( StateIncludingSetup botState, Maybe BotRequest )
+    -> ( StateIncludingSetup botState, Maybe BotResponse )
 integrateFromHostEvent botProcessEvent fromHostEvent stateBefore =
     let
         ( stateBeforeIntegrateBotEvent, maybeBotEvent ) =
@@ -262,7 +288,7 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBefore =
                             , statusMessage = Just botEventResult.statusMessage
                         }
                 in
-                ( { stateBeforeIntegrateBotEvent | botState = botState }, botEventResult.request )
+                ( { stateBeforeIntegrateBotEvent | botState = botState }, Just botEventResult.response )
             )
         |> Maybe.withDefault ( stateBeforeIntegrateBotEvent, Nothing )
 
@@ -376,7 +402,7 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                 , script = VolatileHostInterface.buildScriptToGetResponseFromVolatileHost VolatileHostInterface.StartWebBrowserRequest
                 }
             )
-            "Start web browser. This can take a while since it might need to download the web browser software first."
+            "Starting the web browser. This can take a while because I might need to download the web browser software first."
 
     else
         OperateBot

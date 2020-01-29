@@ -1,38 +1,29 @@
-# Grinding Is Not Necessary Anymore
-
-Improve your gaming experience using bots.
-
-In this repository, I share what I learn about making bots and automating activities in video games.
+What is more exciting than playing video games? - Building an AI that plays video games!
 
 ## Guides
 
-### Using Bots
-
-+ How to run a bot: [./guide/how-to-run-a-bot.md](./guide/how-to-run-a-bot.md)
-
-+ How to use the Tribal Wars 2 Farmbot: [./guide/tribal-wars-2/farm-manager-tribal-wars-2-farmbot.md](./guide/tribal-wars-2/farm-manager-tribal-wars-2-farmbot.md)
-
-+ How to automate traveling in EVE Online - Using a warp-to-0 autopilot: [./guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md](./guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md)
-
-+ How to automate mining asteroids in EVE Online: [./guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md](./guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md)
-
-### Developing Bots
++ Running a bot using the botengine console app: [./guide/how-to-run-a-bot.md](./guide/how-to-run-a-bot.md)
 
 + Developing Bots for EVE Online: [./guide/eve-online/developing-bots-for-eve-online.md](./guide/eve-online/developing-bots-for-eve-online.md)
 
 + How to collect samples for 64-bit memory reading development: [./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md](./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md)
 
-## Bots
+## Example Projects
 
-Following is a list of bots that you can run directly using the botengine console:
++ EVE Online warp-to-0 autopilot
+  + User guide: [./guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md](./guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md)
+  + Program code: [./implement/applications/eve-online/eve-online-warp-to-0-autopilot](./implement/applications/eve-online/eve-online-warp-to-0-autopilot)
 
-+ EVE Online warp-to-0 autopilot: [./implement/applications/eve-online/eve-online-warp-to-0-autopilot](./implement/applications/eve-online/eve-online-warp-to-0-autopilot)
++ EVE Online mining bot
+  + User guide: [./guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md](./guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md)
+  + Program code: [./implement/applications/eve-online/eve-online-mining-bot](./implement/applications/eve-online/eve-online-mining-bot)
 
-+ EVE Online mining bot: [./implement/applications/eve-online/eve-online-mining-bot](./implement/applications/eve-online/eve-online-mining-bot)
++ Tribal Wars 2 farmbot
+  + User guide: [./guide/tribal-wars-2/farm-manager-tribal-wars-2-farmbot.md](./guide/tribal-wars-2/farm-manager-tribal-wars-2-farmbot.md)
+  + Program code: [./implement/applications/tribal-wars-2/tribal-wars-2-farmbot](./implement/applications/tribal-wars-2/tribal-wars-2-farmbot)
 
-+ Tribal Wars 2 farmbot: [./implement/applications/tribal-wars-2/tribal-wars-2-farmbot](./implement/applications/tribal-wars-2/tribal-wars-2-farmbot)
 
-+ More bots: [botcatalog.org](http://botcatalog.org)
+More links to program codes are listed at [https://botcatalog.org](https://botcatalog.org)
 
 ## Exploration
 

@@ -1,8 +1,10 @@
 # Developing Bots for EVE Online
 
-In this guide, I describe how I develop bots and monitoring tools for EVE Online.
+Do you want to learn how to build a bot or intel tool for EVE Online or customize an existing one? This guide explains the process I use to make these apps.
 
-In part, this guide is a summary of what I learned in development projects like the EVE Online mission running and anomaly ratting bots, or the Tribal Wars 2 farmbot. But most importantly, this guide lives from and evolves with your questions, so thank you for the feedback!
+In part, this is a summary of my ~~failings~~ learnings from development projects. But most importantly, this guide lives from and evolves with your questions, so thank you for the feedback!
+
+Wondering what outcome to expect? Two examples are the [mining bot](https://github.com/Viir/bots/blob/master/guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md) and [warp-to-0 autopilot](https://github.com/Viir/bots/blob/master/guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md).
 
 ## Scope and Overall Direction
 

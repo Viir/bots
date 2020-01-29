@@ -21,9 +21,7 @@ It automatically detects barbarian villages, available troops and configured arm
 + Uses a normal web browser to interact with the game server for maximum security.
 + Stops the farming when the configured time limit is met to avoid perpetual activity on your account.
 
-## How to Use Farm Manager to Automate Farming in Tribal Wars 2
-
-To start the bot for the first time, follow these steps:
+## Starting the Farmbot
 
 Download the BotEngine console app from the following address:
 [https://botengine.blob.core.windows.net/blob-library/by-name/2020-01-24.botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-01-24.botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
@@ -31,7 +29,7 @@ Download the BotEngine console app from the following address:
 To start the farmbot, run the `BotEngine.exe` program with the following command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/4f0e503b714a7258e5a03619b7e40dc69ae852e9/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
+C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/42b11c257f99c61538b7060ea1a4fd4f7d40f0eb/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
 ```
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
 

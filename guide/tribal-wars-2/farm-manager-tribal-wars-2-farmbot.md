@@ -74,6 +74,11 @@ In the console window, it displays the number of sent attacks and other informat
 > Sent 129 attacks.  
 > Checked 1413 coordinates and found 364 villages, 129 of wich are barbarian villages. 
 
+
+When all your villages are out of units or at the attack limit, the bot stops with this message:
+
+> There is nothing left to do.
+
 ## Further Configuration
 
 In case you need the bot to run more than 15 minutes per session, use an online-bot session as explained at [https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions](https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions)

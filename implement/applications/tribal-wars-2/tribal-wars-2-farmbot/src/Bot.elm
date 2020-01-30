@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-01-28
+{- Tribal Wars 2 farmbot version 2020-01-30
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -36,6 +36,41 @@ import Set
 import WebBrowser.BotFramework as BotFramework exposing (BotEvent, BotResponse)
 
 
+maximumNumberOfFarmCycles : Int
+maximumNumberOfFarmCycles =
+    1
+
+
+farmCycleBreakLengthMinMinutes : Int
+farmCycleBreakLengthMinMinutes =
+    120
+
+
+farmCycleBreakLengthMaxMinutes : Int
+farmCycleBreakLengthMaxMinutes =
+    180
+
+
+farmArmyPresetNamePattern : String
+farmArmyPresetNamePattern =
+    "farm"
+
+
+numberOfAttacksLimitPerVillage : Int
+numberOfAttacksLimitPerVillage =
+    50
+
+
+ownVillageInfoMaxAge : Int
+ownVillageInfoMaxAge =
+    120
+
+
+selectedVillageInfoMaxAge : Int
+selectedVillageInfoMaxAge =
+    15
+
+
 type alias BotState =
     { timeInMilliseconds : Int
     , lastRunJavascriptResult :
@@ -48,11 +83,22 @@ type alias BotState =
     , getArmyPresetsResult : Maybe (List ArmyPreset)
     , lastJumpToCoordinates : Maybe { timeInMilliseconds : Int, coordinates : VillageCoordinates }
     , coordinatesLastCheck : Dict.Dict ( Int, Int ) { timeInMilliseconds : Int, result : VillageByCoordinatesResult }
-    , sentAttackByCoordinates : Dict.Dict ( Int, Int ) ()
+    , farmState : FarmState
     , lastAttackTimeInMilliseconds : Maybe Int
     , lastActivatedVillageTimeInMilliseconds : Maybe Int
+    , completedFarmCycles : List FarmCycleState
     , parseResponseError : Maybe Json.Decode.Error
     }
+
+
+type alias FarmCycleState =
+    { sentAttackByCoordinates : Dict.Dict ( Int, Int ) ()
+    }
+
+
+type FarmState
+    = InFarmCycle FarmCycleState
+    | InBreak { lastCycleCompletionTime : Int, nextCycleStartTime : Int }
 
 
 type alias State =
@@ -149,24 +195,9 @@ type alias VillageCoordinates =
     }
 
 
-farmArmyPresetNamePattern : String
-farmArmyPresetNamePattern =
-    "farm"
-
-
-numberOfAttacksLimitPerVillage : Int
-numberOfAttacksLimitPerVillage =
-    50
-
-
-ownVillageInfoMaxAge : Int
-ownVillageInfoMaxAge =
-    120
-
-
-selectedVillageInfoMaxAge : Int
-selectedVillageInfoMaxAge =
-    15
+type InFarmCycleResponse
+    = ContinueFarmCycle { javascriptToRun : Maybe String, activityDescription : String }
+    | FinishFarmCycle
 
 
 initState : State
@@ -179,11 +210,17 @@ initState =
         , getArmyPresetsResult = Nothing
         , lastJumpToCoordinates = Nothing
         , coordinatesLastCheck = Dict.empty
-        , sentAttackByCoordinates = Dict.empty
+        , farmState = InFarmCycle initFarmCycle
         , lastAttackTimeInMilliseconds = Nothing
         , lastActivatedVillageTimeInMilliseconds = Nothing
+        , completedFarmCycles = []
         , parseResponseError = Nothing
         }
+
+
+initFarmCycle : FarmCycleState
+initFarmCycle =
+    { sentAttackByCoordinates = Dict.empty }
 
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
@@ -197,10 +234,106 @@ processWebBrowserBotEvent event stateBefore =
         state =
             stateBefore |> integrateWebBrowserBotEvent event
 
-        ( responseToFramework, responseDescription ) =
-            responseWithDescriptionToFramework state
+        ( responseToFramework, responseDescription, maybeUpdatedState ) =
+            case state.farmState of
+                InBreak farmBreak ->
+                    let
+                        minutesSinceLastFarmCycleCompletion =
+                            (stateBefore.timeInMilliseconds // 1000 - farmBreak.lastCycleCompletionTime) // 60
+
+                        minutesToNextFarmCycleStart =
+                            (farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000) // 60
+
+                        stateAfterStartingFarmCycle =
+                            if minutesToNextFarmCycleStart < 1 then
+                                Just { state | farmState = InFarmCycle initFarmCycle }
+
+                            else
+                                Nothing
+                    in
+                    ( BotFramework.ContinueSession Nothing
+                    , "Next farm cycle starts in "
+                        ++ (minutesToNextFarmCycleStart |> String.fromInt)
+                        ++ " minutes. Last cycle completed "
+                        ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
+                        ++ " minutes ago."
+                    , stateAfterStartingFarmCycle
+                    )
+
+                InFarmCycle farmCycleStateBefore ->
+                    let
+                        responseInFarmCycle =
+                            responseWithDescriptionToFramework state farmCycleStateBefore
+                    in
+                    case responseInFarmCycle of
+                        ContinueFarmCycle { javascriptToRun, activityDescription } ->
+                            let
+                                maybeRequest =
+                                    javascriptToRun
+                                        |> Maybe.map
+                                            (\javascript ->
+                                                BotFramework.RunJavascriptInCurrentPageRequest
+                                                    { javascript = javascript
+                                                    , requestId = "request-id"
+                                                    , timeToWaitForCallbackMilliseconds = 1000
+                                                    }
+                                            )
+                            in
+                            ( BotFramework.ContinueSession maybeRequest, activityDescription, Nothing )
+
+                        FinishFarmCycle ->
+                            let
+                                completedFarmCycles =
+                                    farmCycleStateBefore :: state.completedFarmCycles
+
+                                currentTimeInSeconds =
+                                    stateBefore.timeInMilliseconds // 1000
+
+                                breakLengthRange =
+                                    (farmCycleBreakLengthMaxMinutes - farmCycleBreakLengthMinMinutes) * 60
+
+                                breakLengthRandomComponent =
+                                    if breakLengthRange == 0 then
+                                        0
+
+                                    else
+                                        stateBefore.timeInMilliseconds |> modBy breakLengthRange
+
+                                breakLength =
+                                    (farmCycleBreakLengthMinMinutes * 60) + breakLengthRandomComponent
+
+                                nextCycleStartTime =
+                                    currentTimeInSeconds + breakLength
+
+                                farmState =
+                                    InBreak
+                                        { lastCycleCompletionTime = currentTimeInSeconds
+                                        , nextCycleStartTime = nextCycleStartTime
+                                        }
+
+                                stateAfterFinishingFarmCycle =
+                                    { state
+                                        | farmState = farmState
+                                        , completedFarmCycles = completedFarmCycles
+                                    }
+
+                                numberOfCompletedFarmCycles =
+                                    completedFarmCycles |> List.length
+                            in
+                            if maximumNumberOfFarmCycles <= numberOfCompletedFarmCycles then
+                                -- TODO: Move derivation of 'BotFramework.FinishSession' from completedFarmCycles further up.
+                                ( BotFramework.FinishSession
+                                , "Finished all " ++ (numberOfCompletedFarmCycles |> String.fromInt) ++ " farm cycles."
+                                , Just stateAfterFinishingFarmCycle
+                                )
+
+                            else
+                                ( BotFramework.ContinueSession Nothing
+                                , "There is nothing left to do in this farm cycle."
+                                , Just stateAfterFinishingFarmCycle
+                                )
     in
-    { newState = state
+    { newState = maybeUpdatedState |> Maybe.withDefault state
     , response = responseToFramework
     , statusMessage = statusMessageFromState state ++ "\n" ++ responseDescription
     }
@@ -304,16 +437,29 @@ integrateWebBrowserBotEvent event stateBefore =
 
                         SendFirstPresetAsAttackToCoordinatesResponse sendFirstPresetAsAttackToCoordinatesResponse ->
                             let
-                                sentAttackByCoordinates =
-                                    stateAfterParseSuccess.sentAttackByCoordinates
-                                        |> Dict.insert
-                                            ( sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.x
-                                            , sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.y
-                                            )
-                                            ()
+                                updatedFarmState =
+                                    case stateAfterParseSuccess.farmState of
+                                        InFarmCycle currentFarmCycleBefore ->
+                                            let
+                                                sentAttackByCoordinates =
+                                                    currentFarmCycleBefore.sentAttackByCoordinates
+                                                        |> Dict.insert
+                                                            ( sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.x
+                                                            , sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.y
+                                                            )
+                                                            ()
+                                            in
+                                            { currentFarmCycleBefore
+                                                | sentAttackByCoordinates = sentAttackByCoordinates
+                                            }
+                                                |> InFarmCycle
+                                                |> Just
+
+                                        InBreak _ ->
+                                            Nothing
                             in
                             { stateAfterParseSuccess
-                                | sentAttackByCoordinates = sentAttackByCoordinates
+                                | farmState = updatedFarmState |> Maybe.withDefault stateAfterParseSuccess.farmState
                                 , lastAttackTimeInMilliseconds = Just stateBefore.timeInMilliseconds
                             }
 
@@ -324,8 +470,8 @@ integrateWebBrowserBotEvent event stateBefore =
                             { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
 
 
-responseWithDescriptionToFramework : BotState -> ( BotResponse, String )
-responseWithDescriptionToFramework state =
+responseWithDescriptionToFramework : BotState -> FarmCycleState -> InFarmCycleResponse
+responseWithDescriptionToFramework state farmCycleState =
     let
         waitAfterJumpedToCoordinates =
             state.lastJumpToCoordinates
@@ -334,23 +480,23 @@ responseWithDescriptionToFramework state =
                 |> Maybe.withDefault False
     in
     if waitAfterJumpedToCoordinates then
-        ( BotFramework.ContinueSession Nothing, "Waiting after jumping to village." )
+        ContinueFarmCycle { javascriptToRun = Nothing, activityDescription = "Waiting after jumping to village." }
 
     else
-        responseToFrameworkWhenNotWaitingGlobally state
+        responseToFrameworkWhenNotWaitingGlobally state farmCycleState
 
 
-responseToFrameworkWhenNotWaitingGlobally : BotState -> ( BotResponse, String )
-responseToFrameworkWhenNotWaitingGlobally state =
+responseToFrameworkWhenNotWaitingGlobally : BotState -> FarmCycleState -> InFarmCycleResponse
+responseToFrameworkWhenNotWaitingGlobally botState farmCycleState =
     let
         sufficientlyNewGameRootInformation =
-            state.gameRootInformationResult
+            botState.gameRootInformationResult
                 |> Maybe.andThen
                     (\gameRootInformationResult ->
                         let
                             updateTimeMinimumMilli =
-                                (state.lastActivatedVillageTimeInMilliseconds |> Maybe.withDefault 0)
-                                    |> max (state.timeInMilliseconds - 15000)
+                                (botState.lastActivatedVillageTimeInMilliseconds |> Maybe.withDefault 0)
+                                    |> max (botState.timeInMilliseconds - 15000)
                         in
                         if gameRootInformationResult.timeInMilliseconds <= updateTimeMinimumMilli then
                             Nothing
@@ -367,10 +513,10 @@ responseToFrameworkWhenNotWaitingGlobally state =
                 Just gameRootInformation ->
                     let
                         ownVillageUpdateTimeMinimumMilli =
-                            state.timeInMilliseconds - (ownVillageInfoMaxAge * 1000)
+                            botState.timeInMilliseconds - (ownVillageInfoMaxAge * 1000)
 
                         sufficientyFreshOwnVillagesDetails =
-                            state.ownVillagesDetails
+                            botState.ownVillagesDetails
                                 |> Dict.filter (\_ response -> ownVillageUpdateTimeMinimumMilli < response.timeInMilliseconds)
 
                         ownVillagesNeedingDetailsUpdate =
@@ -378,8 +524,8 @@ responseToFrameworkWhenNotWaitingGlobally state =
                                 |> List.filter (\villageId -> sufficientyFreshOwnVillagesDetails |> Dict.member villageId |> not)
 
                         selectedVillageUpdateTimeMinimumMilli =
-                            (state.lastAttackTimeInMilliseconds |> Maybe.withDefault 0)
-                                |> max (state.timeInMilliseconds - (selectedVillageInfoMaxAge * 1000))
+                            (botState.lastAttackTimeInMilliseconds |> Maybe.withDefault 0)
+                                |> max (botState.timeInMilliseconds - (selectedVillageInfoMaxAge * 1000))
 
                         selectedVillageUpdatedDetails =
                             sufficientyFreshOwnVillagesDetails
@@ -403,7 +549,7 @@ responseToFrameworkWhenNotWaitingGlobally state =
                                     Just (readSelectedCharacterVillageDetailsScript gameRootInformation.selectedVillageId)
 
                                 Just selectedVillageDetails ->
-                                    case state.getArmyPresetsResult |> Maybe.withDefault [] of
+                                    case botState.getArmyPresetsResult |> Maybe.withDefault [] of
                                         [] ->
                                             {- 2020-01-28 Observation: We get an empty list here at least sometimes at the beginning of a session.
                                                The number of presets we get can increase with the next query.
@@ -416,7 +562,8 @@ responseToFrameworkWhenNotWaitingGlobally state =
                                             let
                                                 selectedVillageActionOptions =
                                                     computeVillageActionOptions
-                                                        state
+                                                        botState
+                                                        farmCycleState
                                                         ( gameRootInformation.selectedVillageId, selectedVillageDetails )
                                             in
                                             case selectedVillageActionOptions.nextAction of
@@ -424,7 +571,7 @@ responseToFrameworkWhenNotWaitingGlobally state =
                                                     Just (startVillageByCoordinatesScript coordinates { jumpToVillage = False })
 
                                                 Just (AttackAtCoordinates armyPreset coordinates) ->
-                                                    (scriptToJumpToVillageIfNotYetDone state coordinates
+                                                    (scriptToJumpToVillageIfNotYetDone botState coordinates
                                                         |> Maybe.withDefault
                                                             (startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId = armyPreset.id })
                                                     )
@@ -450,34 +597,25 @@ responseToFrameworkWhenNotWaitingGlobally state =
                                                         otherVillagesWithAvailableAction =
                                                             otherVillagesWithDetails
                                                                 |> List.filter
-                                                                    (computeVillageActionOptions state >> .nextAction >> (/=) Nothing)
+                                                                    (computeVillageActionOptions botState farmCycleState >> .nextAction >> (/=) Nothing)
                                                     in
                                                     case otherVillagesWithAvailableAction |> List.head of
                                                         Nothing ->
                                                             Nothing
 
                                                         Just ( villageToActivateId, villageToActivateDetails ) ->
-                                                            (scriptToJumpToVillageIfNotYetDone state villageToActivateDetails.coordinates
+                                                            (scriptToJumpToVillageIfNotYetDone botState villageToActivateDetails.coordinates
                                                                 |> Maybe.withDefault villageMenuActivateVillageScript
                                                             )
                                                                 |> Just
     in
     case maybeJavascriptToContinue of
         Nothing ->
-            ( BotFramework.FinishSession
-            , "There is nothing left to do."
-            )
+            FinishFarmCycle
 
         Just javascript ->
-            ( BotFramework.RunJavascriptInCurrentPageRequest
-                { javascript = javascript
-                , requestId = "request-id"
-                , timeToWaitForCallbackMilliseconds = 1000
-                }
-                |> Just
-                |> BotFramework.ContinueSession
-            , ""
-            )
+            -- TODO: more specific activityDescription (Consolidate with the other functions generating descriptions)
+            ContinueFarmCycle { javascriptToRun = Just javascript, activityDescription = "" }
 
 
 scriptToJumpToVillageIfNotYetDone : BotState -> VillageCoordinates -> Maybe String
@@ -522,22 +660,22 @@ type ActionFromVillage
     | AttackAtCoordinates ArmyPreset VillageCoordinates
 
 
-computeVillageActionOptions : BotState -> ( Int, VillageDetails ) -> VillageActionOptions
-computeVillageActionOptions state ( villageId, villageDetails ) =
+computeVillageActionOptions : BotState -> FarmCycleState -> ( Int, VillageDetails ) -> VillageActionOptions
+computeVillageActionOptions botState farmCycleState ( villageId, villageDetails ) =
     let
         preset =
-            computeVillagePresetOptions (state.getArmyPresetsResult |> Maybe.withDefault []) ( villageId, villageDetails )
+            computeVillagePresetOptions (botState.getArmyPresetsResult |> Maybe.withDefault []) ( villageId, villageDetails )
     in
     { preset = preset
-    , nextAction = computeVillageNextAction state ( villageId, villageDetails ) preset
+    , nextAction = computeVillageNextAction botState farmCycleState ( villageId, villageDetails ) preset
     }
 
 
-computeVillageNextAction : BotState -> ( Int, VillageDetails ) -> VillagePresetOptions -> Maybe ActionFromVillage
-computeVillageNextAction state ( villageId, villageDetails ) presetOptions =
+computeVillageNextAction : BotState -> FarmCycleState -> ( Int, VillageDetails ) -> VillagePresetOptions -> Maybe ActionFromVillage
+computeVillageNextAction botState farmCycleState ( villageId, villageDetails ) presetOptions =
     let
         villageInfoCheckFromCoordinates coordinates =
-            state.coordinatesLastCheck |> Dict.get ( coordinates.x, coordinates.y )
+            botState.coordinatesLastCheck |> Dict.get ( coordinates.x, coordinates.y )
     in
     if numberOfAttacksLimitPerVillage <= (villageDetails.commands.outgoing |> List.length) then
         Nothing
@@ -553,7 +691,10 @@ computeVillageNextAction state ( villageId, villageDetails ) presetOptions =
                                 |> coordinatesToSearchFromOwnVillagesCoordinates 20
 
                         sentAttackToCoordinates coordinates =
-                            (state.sentAttackByCoordinates |> Dict.get ( coordinates.x, coordinates.y )) /= Nothing
+                            (farmCycleState.sentAttackByCoordinates
+                                |> Dict.get ( coordinates.x, coordinates.y )
+                            )
+                                /= Nothing
 
                         remainingCoordinates =
                             coordinatesAroundVillage
@@ -588,7 +729,7 @@ computeVillageNextAction state ( villageId, villageDetails ) presetOptions =
 
                                             Just coordinatesInfo ->
                                                 -- Avoid attacking a village that only recently was conquered by a player: Recheck the coordinates if the last check was too long ago.
-                                                state.timeInMilliseconds < coordinatesInfo.timeInMilliseconds + 10000
+                                                botState.timeInMilliseconds < coordinatesInfo.timeInMilliseconds + 10000
                                 in
                                 if isCoordinatesInfoRecentEnoughToAttack then
                                     AttackAtCoordinates armyPreset nextCoordinates
@@ -1050,8 +1191,30 @@ statusMessageFromState state =
                 ++ (villagesByCoordinates |> Dict.filter (\_ village -> village.affiliation == AffiliationBarbarian) |> Dict.size |> String.fromInt)
                 ++ " of wich are barbarian villages."
 
+        sentAttacks =
+            countSentAttacks state
+
+        sentAttacksReportPartSession =
+            "Sent " ++ (sentAttacks.inSession |> String.fromInt) ++ " attacks in this session"
+
+        sentAttacksReportPartCurrentCycle =
+            case sentAttacks.inCurrentCycle of
+                Nothing ->
+                    "."
+
+                Just inCurrentCycle ->
+                    ", " ++ (inCurrentCycle |> String.fromInt) ++ " in the current cycle."
+
+        completedFarmCyclesReportLines =
+            case state.completedFarmCycles of
+                [] ->
+                    []
+
+                completedFarmCycles ->
+                    [ "Completed " ++ (completedFarmCycles |> List.length |> String.fromInt) ++ " farm cycles." ]
+
         sentAttacksReport =
-            "Sent " ++ (state.sentAttackByCoordinates |> Dict.size |> String.fromInt) ++ " attacks."
+            sentAttacksReportPartSession ++ sentAttacksReportPartCurrentCycle
 
         inGameReport =
             case state.gameRootInformationResult of
@@ -1080,12 +1243,21 @@ statusMessageFromState state =
                                                     // 1000
 
                                             villageOptions =
-                                                computeVillageActionOptions
-                                                    state
-                                                    ( gameRootInformation.selectedVillageId, villageDetailsResponse.villageDetails )
+                                                case state.farmState of
+                                                    InFarmCycle farmCycle ->
+                                                        computeVillageActionOptions
+                                                            state
+                                                            farmCycle
+                                                            ( gameRootInformation.selectedVillageId, villageDetailsResponse.villageDetails )
+                                                            |> Just
+
+                                                    InBreak _ ->
+                                                        Nothing
 
                                             villageOptionsReport =
-                                                villageOptionsDisplayText villageOptions
+                                                villageOptions
+                                                    |> Maybe.map villageOptionsDisplayText
+                                                    |> Maybe.withDefault ""
 
                                             outgoingCommandsCount =
                                                 villageDetailsResponse.villageDetails.commands.outgoing |> List.length
@@ -1112,10 +1284,12 @@ statusMessageFromState state =
                                 ++ selectedVillageDetails
                                 ++ ")"
                     in
-                    [ ownVillagesReport
-                    , sentAttacksReport
-                    , coordinatesChecksReport
+                    [ [ ownVillagesReport ]
+                    , completedFarmCyclesReportLines
+                    , [ sentAttacksReport ]
+                    , [ coordinatesChecksReport ]
                     ]
+                        |> List.concat
                         |> String.join "\n"
 
         parseResponseErrorReport =
@@ -1170,6 +1344,26 @@ villageOptionsDisplayText villageActionOptions =
 
         Just bestPreset ->
             "Best matching army preset for this village is '" ++ bestPreset.name ++ "'."
+
+
+countSentAttacks : BotState -> { inSession : Int, inCurrentCycle : Maybe Int }
+countSentAttacks state =
+    let
+        countInFarmCycle =
+            .sentAttackByCoordinates >> Dict.size
+
+        attackSentInEarlierCycles =
+            state.completedFarmCycles |> List.map countInFarmCycle |> List.sum
+
+        inCurrentCycle =
+            case state.farmState of
+                InFarmCycle farmCycle ->
+                    Just (farmCycle |> countInFarmCycle)
+
+                InBreak _ ->
+                    Nothing
+    in
+    { inSession = attackSentInEarlierCycles + (inCurrentCycle |> Maybe.withDefault 0), inCurrentCycle = inCurrentCycle }
 
 
 villageCoordinatesDisplayText : VillageCoordinates -> String

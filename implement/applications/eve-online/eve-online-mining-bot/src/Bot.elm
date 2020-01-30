@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-01-27
+{- Michaels EVE Online mining bot version 2020-01-30
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -400,7 +400,7 @@ describeMemoryReadingForMonitoring memoryReading =
         describeShip =
             case memoryReading.shipUI of
                 CanSee shipUI ->
-                    "I am in space, shield HP at " ++ ((shipUI.hitpointsMilli.shield // 10) |> String.fromInt) ++ "%."
+                    "I am in space, shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
 
                 CanNotSeeIt ->
                     case memoryReading.infoPanelLocationInfo |> maybeVisibleAndThen .expandedContent |> maybeNothingFromCanNotSeeIt |> Maybe.andThen .currentStationName of

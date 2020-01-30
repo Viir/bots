@@ -195,120 +195,7 @@ processWebBrowserBotEvent : BotEvent -> BotState -> { newState : BotState, respo
 processWebBrowserBotEvent event stateBefore =
     let
         state =
-            case event of
-                BotFramework.SetBotConfiguration _ ->
-                    stateBefore
-
-                BotFramework.ArrivedAtTime { timeInMilliseconds } ->
-                    { stateBefore | timeInMilliseconds = timeInMilliseconds }
-
-                BotFramework.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
-                    let
-                        parseAsRootInfoResult =
-                            runJavascriptInCurrentPageResponse.directReturnValueAsString
-                                |> Json.Decode.decodeString decodeRootInformation
-
-                        stateAfterIntegrateResponse =
-                            { stateBefore
-                                | lastRunJavascriptResult =
-                                    Just
-                                        { response = runJavascriptInCurrentPageResponse
-                                        , parseResult = parseAsRootInfoResult
-                                        }
-                            }
-
-                        parseResult =
-                            runJavascriptInCurrentPageResponse.directReturnValueAsString
-                                |> Json.Decode.decodeString decodeResponseFromBrowser
-                    in
-                    case parseResult of
-                        Err error ->
-                            { stateAfterIntegrateResponse | parseResponseError = Just error }
-
-                        Ok parseSuccess ->
-                            let
-                                stateAfterParseSuccess =
-                                    { stateAfterIntegrateResponse | parseResponseError = Nothing }
-                            in
-                            case parseSuccess of
-                                RootInformation rootInformation ->
-                                    case rootInformation.tribalWars2 of
-                                        Nothing ->
-                                            stateAfterIntegrateResponse
-
-                                        Just gameRootInformation ->
-                                            { stateAfterParseSuccess
-                                                | gameRootInformationResult =
-                                                    Just
-                                                        { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                                        , gameRootInformation = gameRootInformation
-                                                        }
-                                            }
-
-                                ReadSelectedCharacterVillageDetailsResponse readVillageDetailsResponse ->
-                                    { stateAfterParseSuccess
-                                        | ownVillagesDetails =
-                                            stateAfterParseSuccess.ownVillagesDetails
-                                                |> Dict.insert readVillageDetailsResponse.villageId
-                                                    { timeInMilliseconds = stateBefore.timeInMilliseconds, villageDetails = readVillageDetailsResponse.villageDetails }
-                                    }
-
-                                VillageByCoordinatesResponse readVillageByCoordinatesResponse ->
-                                    let
-                                        stateAfterRememberJump =
-                                            if readVillageByCoordinatesResponse.jumpToVillage then
-                                                { stateAfterParseSuccess
-                                                    | lastJumpToCoordinates =
-                                                        Just
-                                                            { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                                            , coordinates = readVillageByCoordinatesResponse.villageCoordinates
-                                                            }
-                                                }
-
-                                            else
-                                                stateAfterParseSuccess
-                                    in
-                                    case runJavascriptInCurrentPageResponse.callbackReturnValueAsString of
-                                        Nothing ->
-                                            -- This case indicates the timeout while waiting for the result from the callback.
-                                            stateAfterRememberJump
-
-                                        Just callbackReturnValueAsString ->
-                                            case callbackReturnValueAsString |> Json.Decode.decodeString decodeVillageByCoordinatesResult of
-                                                Err error ->
-                                                    { stateAfterRememberJump | parseResponseError = Just error }
-
-                                                Ok villageByCoordinates ->
-                                                    { stateAfterRememberJump
-                                                        | coordinatesLastCheck =
-                                                            stateAfterRememberJump.coordinatesLastCheck
-                                                                |> Dict.insert
-                                                                    ( readVillageByCoordinatesResponse.villageCoordinates.x, readVillageByCoordinatesResponse.villageCoordinates.y )
-                                                                    { timeInMilliseconds = stateAfterRememberJump.timeInMilliseconds
-                                                                    , result = villageByCoordinates
-                                                                    }
-                                                    }
-
-                                SendFirstPresetAsAttackToCoordinatesResponse sendFirstPresetAsAttackToCoordinatesResponse ->
-                                    let
-                                        sentAttackByCoordinates =
-                                            stateAfterParseSuccess.sentAttackByCoordinates
-                                                |> Dict.insert
-                                                    ( sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.x
-                                                    , sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.y
-                                                    )
-                                                    ()
-                                    in
-                                    { stateAfterParseSuccess
-                                        | sentAttackByCoordinates = sentAttackByCoordinates
-                                        , lastAttackTimeInMilliseconds = Just stateBefore.timeInMilliseconds
-                                    }
-
-                                GetPresetsResponse armyPresets ->
-                                    { stateBefore | getArmyPresetsResult = Just armyPresets }
-
-                                ActivatedVillageResponse ->
-                                    { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
+            stateBefore |> integrateWebBrowserBotEvent event
 
         ( responseToFramework, responseDescription ) =
             responseWithDescriptionToFramework state
@@ -317,6 +204,124 @@ processWebBrowserBotEvent event stateBefore =
     , response = responseToFramework
     , statusMessage = statusMessageFromState state ++ "\n" ++ responseDescription
     }
+
+
+integrateWebBrowserBotEvent : BotEvent -> BotState -> BotState
+integrateWebBrowserBotEvent event stateBefore =
+    case event of
+        BotFramework.SetBotConfiguration _ ->
+            stateBefore
+
+        BotFramework.ArrivedAtTime { timeInMilliseconds } ->
+            { stateBefore | timeInMilliseconds = timeInMilliseconds }
+
+        BotFramework.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
+            let
+                parseAsRootInfoResult =
+                    runJavascriptInCurrentPageResponse.directReturnValueAsString
+                        |> Json.Decode.decodeString decodeRootInformation
+
+                stateAfterIntegrateResponse =
+                    { stateBefore
+                        | lastRunJavascriptResult =
+                            Just
+                                { response = runJavascriptInCurrentPageResponse
+                                , parseResult = parseAsRootInfoResult
+                                }
+                    }
+
+                parseResult =
+                    runJavascriptInCurrentPageResponse.directReturnValueAsString
+                        |> Json.Decode.decodeString decodeResponseFromBrowser
+            in
+            case parseResult of
+                Err error ->
+                    { stateAfterIntegrateResponse | parseResponseError = Just error }
+
+                Ok parseSuccess ->
+                    let
+                        stateAfterParseSuccess =
+                            { stateAfterIntegrateResponse | parseResponseError = Nothing }
+                    in
+                    case parseSuccess of
+                        RootInformation rootInformation ->
+                            case rootInformation.tribalWars2 of
+                                Nothing ->
+                                    stateAfterIntegrateResponse
+
+                                Just gameRootInformation ->
+                                    { stateAfterParseSuccess
+                                        | gameRootInformationResult =
+                                            Just
+                                                { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                                , gameRootInformation = gameRootInformation
+                                                }
+                                    }
+
+                        ReadSelectedCharacterVillageDetailsResponse readVillageDetailsResponse ->
+                            { stateAfterParseSuccess
+                                | ownVillagesDetails =
+                                    stateAfterParseSuccess.ownVillagesDetails
+                                        |> Dict.insert readVillageDetailsResponse.villageId
+                                            { timeInMilliseconds = stateBefore.timeInMilliseconds, villageDetails = readVillageDetailsResponse.villageDetails }
+                            }
+
+                        VillageByCoordinatesResponse readVillageByCoordinatesResponse ->
+                            let
+                                stateAfterRememberJump =
+                                    if readVillageByCoordinatesResponse.jumpToVillage then
+                                        { stateAfterParseSuccess
+                                            | lastJumpToCoordinates =
+                                                Just
+                                                    { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                                    , coordinates = readVillageByCoordinatesResponse.villageCoordinates
+                                                    }
+                                        }
+
+                                    else
+                                        stateAfterParseSuccess
+                            in
+                            case runJavascriptInCurrentPageResponse.callbackReturnValueAsString of
+                                Nothing ->
+                                    -- This case indicates the timeout while waiting for the result from the callback.
+                                    stateAfterRememberJump
+
+                                Just callbackReturnValueAsString ->
+                                    case callbackReturnValueAsString |> Json.Decode.decodeString decodeVillageByCoordinatesResult of
+                                        Err error ->
+                                            { stateAfterRememberJump | parseResponseError = Just error }
+
+                                        Ok villageByCoordinates ->
+                                            { stateAfterRememberJump
+                                                | coordinatesLastCheck =
+                                                    stateAfterRememberJump.coordinatesLastCheck
+                                                        |> Dict.insert
+                                                            ( readVillageByCoordinatesResponse.villageCoordinates.x, readVillageByCoordinatesResponse.villageCoordinates.y )
+                                                            { timeInMilliseconds = stateAfterRememberJump.timeInMilliseconds
+                                                            , result = villageByCoordinates
+                                                            }
+                                            }
+
+                        SendFirstPresetAsAttackToCoordinatesResponse sendFirstPresetAsAttackToCoordinatesResponse ->
+                            let
+                                sentAttackByCoordinates =
+                                    stateAfterParseSuccess.sentAttackByCoordinates
+                                        |> Dict.insert
+                                            ( sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.x
+                                            , sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.y
+                                            )
+                                            ()
+                            in
+                            { stateAfterParseSuccess
+                                | sentAttackByCoordinates = sentAttackByCoordinates
+                                , lastAttackTimeInMilliseconds = Just stateBefore.timeInMilliseconds
+                            }
+
+                        GetPresetsResponse armyPresets ->
+                            { stateBefore | getArmyPresetsResult = Just armyPresets }
+
+                        ActivatedVillageResponse ->
+                            { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
 
 
 responseWithDescriptionToFramework : BotState -> ( BotResponse, String )

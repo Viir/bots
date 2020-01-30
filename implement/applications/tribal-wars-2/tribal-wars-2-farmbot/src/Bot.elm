@@ -159,6 +159,16 @@ numberOfAttacksLimitPerVillage =
     50
 
 
+ownVillageInfoMaxAge : Int
+ownVillageInfoMaxAge =
+    120
+
+
+selectedVillageInfoMaxAge : Int
+selectedVillageInfoMaxAge =
+    15
+
+
 initState : State
 initState =
     BotFramework.initState
@@ -351,16 +361,23 @@ responseToFrameworkWhenNotWaitingGlobally state =
 
                 Just gameRootInformation ->
                     let
-                        villagesWithoutDetails =
+                        ownVillageUpdateTimeMinimumMilli =
+                            state.timeInMilliseconds - (ownVillageInfoMaxAge * 1000)
+
+                        sufficientyFreshOwnVillagesDetails =
+                            state.ownVillagesDetails
+                                |> Dict.filter (\_ response -> ownVillageUpdateTimeMinimumMilli < response.timeInMilliseconds)
+
+                        ownVillagesNeedingDetailsUpdate =
                             gameRootInformation.readyVillages
-                                |> List.filter (\villageId -> state.ownVillagesDetails |> Dict.member villageId |> not)
+                                |> List.filter (\villageId -> sufficientyFreshOwnVillagesDetails |> Dict.member villageId |> not)
 
                         selectedVillageUpdateTimeMinimumMilli =
                             (state.lastAttackTimeInMilliseconds |> Maybe.withDefault 0)
-                                |> max (state.timeInMilliseconds - 15000)
+                                |> max (state.timeInMilliseconds - (selectedVillageInfoMaxAge * 1000))
 
                         selectedVillageUpdatedDetails =
-                            state.ownVillagesDetails
+                            sufficientyFreshOwnVillagesDetails
                                 |> Dict.get gameRootInformation.selectedVillageId
                                 |> Maybe.andThen
                                     (\selectedVillageDetailsResponse ->
@@ -371,9 +388,9 @@ responseToFrameworkWhenNotWaitingGlobally state =
                                             Just selectedVillageDetailsResponse.villageDetails
                                     )
                     in
-                    case villagesWithoutDetails of
-                        villageWithoutDetails :: _ ->
-                            Just (readSelectedCharacterVillageDetailsScript villageWithoutDetails)
+                    case ownVillagesNeedingDetailsUpdate of
+                        ownVillageNeedingDetailsUpdate :: _ ->
+                            Just (readSelectedCharacterVillageDetailsScript ownVillageNeedingDetailsUpdate)
 
                         [] ->
                             case selectedVillageUpdatedDetails of
@@ -417,7 +434,7 @@ responseToFrameworkWhenNotWaitingGlobally state =
                                                                 |> Set.toList
                                                                 |> List.filterMap
                                                                     (\otherVillageId ->
-                                                                        state.ownVillagesDetails
+                                                                        sufficientyFreshOwnVillagesDetails
                                                                             |> Dict.get otherVillageId
                                                                             |> Maybe.map
                                                                                 (\otherVillageDetailsResponse ->

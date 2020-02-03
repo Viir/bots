@@ -38,6 +38,9 @@ inventory_capacity_gauge_text =
 
     -- Example from https://forum.botengine.org/t/standard-mining-bot-problems/2715/14?u=viir
     , ( "4 999,8/5 000,0 m³", Ok { used = 4999, maximum = 5000 } )
+
+    -- 2020-01-31 sample 'process-sample-2FA2DCF580-[In Space with selected Ore Hold].zip' from Leon Bechen.
+    , ( "0/5.000,0 m³", Ok { used = 0, maximum = 5000 } )
     ]
         |> List.map
             (\( text, expectedResult ) ->

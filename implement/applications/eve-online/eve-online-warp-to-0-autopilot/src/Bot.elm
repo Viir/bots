@@ -16,7 +16,7 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
-import EveOnline.BotFramework exposing (BotEventAtTime, BotRequest(..))
+import EveOnline.BotFramework exposing (BotEffect(..))
 import EveOnline.MemoryReading
     exposing
         ( InfoPanelRouteRouteElementMarker
@@ -30,7 +30,7 @@ import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseB
 
 
 {-| The autopilot bot does not need to remember anything from the past; the information on the game client screen is sufficient to decide what to do next.
-Therefore we need no state and use an empty tuple '()' to define the type of the state.
+Therefore we need no state and use a type that only has one value to model the state.
 -}
 type alias BotState =
     ()
@@ -51,44 +51,32 @@ processEvent =
 
 
 processEveOnlineBotEvent :
-    BotEventAtTime
+    EveOnline.BotFramework.BotEventWithContext
     -> BotState
-    -> { newState : BotState, requests : List BotRequest, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
-processEveOnlineBotEvent eventAtTime stateBefore =
-    case eventAtTime.event of
+    -> { newState : BotState, effects : List BotEffect, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
+processEveOnlineBotEvent eventWithContext stateBefore =
+    case eventWithContext.event of
         EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
             let
-                ( requests, statusMessage ) =
-                    botRequestsFromGameClientState parsedUserInterface
+                ( effects, statusMessage ) =
+                    botEffectsFromGameClientState parsedUserInterface
 
                 millisecondsToNextMemoryReading =
-                    if requests |> List.isEmpty then
+                    if effects |> List.isEmpty then
                         4000
 
                     else
                         2000
             in
             { newState = stateBefore
-            , requests = requests
+            , effects = effects
             , millisecondsToNextMemoryReading = millisecondsToNextMemoryReading
             , statusDescriptionText = statusMessage
             }
 
-        EveOnline.BotFramework.SetBotConfiguration botConfiguration ->
-            { newState = stateBefore
-            , requests = []
-            , millisecondsToNextMemoryReading = 2000
-            , statusDescriptionText =
-                if botConfiguration |> String.isEmpty then
-                    ""
 
-                else
-                    "I have a problem with this configuration: I am not programmed to support configuration at all. Maybe the bot catalog (https://to.botengine.org/bot-catalog) has a bot which better matches your use case?"
-            }
-
-
-botRequestsFromGameClientState : ParsedUserInterface -> ( List BotRequest, String )
-botRequestsFromGameClientState parsedUserInterface =
+botEffectsFromGameClientState : ParsedUserInterface -> ( List BotEffect, String )
+botEffectsFromGameClientState parsedUserInterface =
     case parsedUserInterface |> infoPanelRouteFirstMarkerFromParsedUserInterface of
         Nothing ->
             ( []
@@ -109,16 +97,16 @@ botRequestsFromGameClientState parsedUserInterface =
                         )
 
                     else
-                        botRequestsWhenNotWaitingForShipManeuver
+                        botEffectsWhenNotWaitingForShipManeuver
                             parsedUserInterface
                             infoPanelRouteFirstMarker
 
 
-botRequestsWhenNotWaitingForShipManeuver :
+botEffectsWhenNotWaitingForShipManeuver :
     ParsedUserInterface
     -> InfoPanelRouteRouteElementMarker
-    -> ( List BotRequest, String )
-botRequestsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstMarker =
+    -> ( List BotEffect, String )
+botEffectsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstMarker =
     let
         openMenuAnnouncementAndEffect =
             ( [ EffectOnGameClientWindow
@@ -127,7 +115,7 @@ botRequestsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirst
                         (infoPanelRouteFirstMarker.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
                     )
               ]
-            , "I click on the route marker in the info panel to open the menu."
+            , "I click on the route element icon in the info panel to open the menu."
             )
     in
     case parsedUserInterface.contextMenus |> List.head of

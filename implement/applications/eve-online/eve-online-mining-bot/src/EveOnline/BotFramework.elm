@@ -11,9 +11,10 @@
 
 
 module EveOnline.BotFramework exposing
-    ( BotEvent(..)
-    , BotEventAtTime
-    , BotRequest(..)
+    ( BotEffect(..)
+    , BotEvent(..)
+    , BotEventContext
+    , BotEventWithContext
     , SetupState
     , StateIncludingSetup
     , VolatileHostState(..)
@@ -27,20 +28,26 @@ import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
 
 
-type alias BotEventAtTime =
+type BotEvent
+    = MemoryReadingCompleted EveOnline.MemoryReading.ParsedUserInterface
+
+
+type alias BotEventContext =
     { timeInMilliseconds : Int
-    , event : BotEvent
+    , configuration : Maybe String
+    , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
 
-type BotEvent
-    = MemoryReadingCompleted EveOnline.MemoryReading.ParsedUserInterface
-    | SetBotConfiguration String
+type alias BotEventWithContext =
+    { event : BotEvent
+    , context : BotEventContext
+    }
 
 
-type BotRequest
+type BotEffect
     = EffectOnGameClientWindow VolatileHostInterface.EffectOnWindowStructure
-    | ConsoleBeepSequenceRequest (List ConsoleBeepStructure)
+    | EffectConsoleBeepSequence (List ConsoleBeepStructure)
 
 
 type alias StateIncludingSetup simpleBotState =
@@ -49,18 +56,20 @@ type alias StateIncludingSetup simpleBotState =
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
     , taskInProgress : Maybe { startTimeInMilliseconds : Int, taskIdString : String, taskDescription : String }
+    , configuration : Maybe String
+    , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
 
 type alias BotState simpleBotState =
     { simpleBotState : simpleBotState
     , lastEvent : Maybe { timeInMilliseconds : Int, eventResult : BotProcessEventResult simpleBotState }
-    , requestQueue : BotRequestQueue
+    , effectQueue : BotEffectQueue
     }
 
 
-type alias BotRequestQueue =
-    List { timeInMilliseconds : Int, request : BotRequest }
+type alias BotEffectQueue =
+    List { timeInMilliseconds : Int, effect : BotEffect }
 
 
 type alias SetupState =
@@ -79,13 +88,13 @@ type VolatileHostState
 
 type SetupTask
     = ContinueSetup SetupState InterfaceToHost.Task String
-    | OperateBot { buildTaskFromBotRequest : BotRequest -> InterfaceToHost.Task, getMemoryReadingTask : InterfaceToHost.Task }
+    | OperateBot { buildTaskFromBotEffect : BotEffect -> InterfaceToHost.Task, getMemoryReadingTask : InterfaceToHost.Task }
     | FinishSession String
 
 
 type alias BotProcessEventResult simpleBotState =
     { newState : simpleBotState
-    , requests : List BotRequest
+    , effects : List BotEffect
     , millisecondsToNextMemoryReading : Int
     , statusDescriptionText : String
     }
@@ -113,16 +122,18 @@ initState simpleBotState =
     , botState =
         { simpleBotState = simpleBotState
         , lastEvent = Nothing
-        , requestQueue = []
+        , effectQueue = []
         }
     , timeInMilliseconds = 0
     , lastTaskIndex = 0
     , taskInProgress = Nothing
+    , configuration = Nothing
+    , sessionTimeLimitInMilliseconds = Nothing
     }
 
 
 processEvent :
-    (BotEventAtTime -> simpleBotState -> BotProcessEventResult simpleBotState)
+    (BotEventWithContext -> simpleBotState -> BotProcessEventResult simpleBotState)
     -> InterfaceToHost.BotEvent
     -> StateIncludingSetup simpleBotState
     -> ( StateIncludingSetup simpleBotState, InterfaceToHost.BotResponse )
@@ -166,8 +177,8 @@ processEvent simpleBotProcessEvent fromHostEvent stateBeforeIntegratingEvent =
 
 
 processEventNotWaitingForTaskCompletion :
-    (BotEventAtTime -> simpleBotState -> BotProcessEventResult simpleBotState)
-    -> Maybe BotEventAtTime
+    (BotEventWithContext -> simpleBotState -> BotProcessEventResult simpleBotState)
+    -> Maybe BotEventWithContext
     -> StateIncludingSetup simpleBotState
     -> ( StateIncludingSetup simpleBotState, InterfaceToHost.BotResponse )
 processEventNotWaitingForTaskCompletion simpleBotProcessEvent maybeBotEvent stateBefore =
@@ -207,39 +218,39 @@ processEventNotWaitingForTaskCompletion simpleBotProcessEvent maybeBotEvent stat
                         |> Maybe.map
                             (\botEvent -> botStateBefore.simpleBotState |> simpleBotProcessEvent botEvent)
 
-                botStateBeforeRequest =
+                botStateBeforeProcessEffects =
                     case maybeSimpleBotEventResult of
                         Nothing ->
                             stateBefore.botState
 
                         Just simpleBotEventResult ->
                             let
-                                requestQueue =
-                                    simpleBotEventResult.requests
+                                effectQueue =
+                                    simpleBotEventResult.effects
                                         |> List.map
-                                            (\botRequest ->
-                                                { timeInMilliseconds = stateBefore.timeInMilliseconds, request = botRequest }
+                                            (\botEffect ->
+                                                { timeInMilliseconds = stateBefore.timeInMilliseconds, effect = botEffect }
                                             )
                             in
                             { botStateBefore
                                 | simpleBotState = simpleBotEventResult.newState
                                 , lastEvent = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, eventResult = simpleBotEventResult }
-                                , requestQueue = requestQueue
+                                , effectQueue = effectQueue
                             }
 
-                ( botRequestQueue, botRequestTask ) =
+                ( botEffectQueue, botEffectTask ) =
                     case
-                        botStateBeforeRequest.requestQueue
-                            |> dequeueNextRequestFromBotState { currentTimeInMs = stateBefore.timeInMilliseconds }
+                        botStateBeforeProcessEffects.effectQueue
+                            |> dequeueNextEffectFromBotState { currentTimeInMs = stateBefore.timeInMilliseconds }
                     of
-                        NoRequest ->
-                            ( botStateBeforeRequest.requestQueue, Nothing )
+                        NoEffect ->
+                            ( botStateBeforeProcessEffects.effectQueue, Nothing )
 
-                        ForwardRequest forward ->
-                            ( forward.newQueueState, forward.request |> operateBot.buildTaskFromBotRequest |> Just )
+                        ForwardEffect forward ->
+                            ( forward.newQueueState, forward.effect |> operateBot.buildTaskFromBotEffect |> Just )
 
                 botState =
-                    { botStateBeforeRequest | requestQueue = botRequestQueue }
+                    { botStateBeforeProcessEffects | effectQueue = botEffectQueue }
 
                 timeForNextMemoryReadingGeneral =
                     (stateBefore.setup.lastMemoryReading |> Maybe.map .timeInMilliseconds |> Maybe.withDefault 0) + 10000
@@ -260,7 +271,7 @@ processEventNotWaitingForTaskCompletion simpleBotProcessEvent maybeBotEvent stat
                         []
 
                 ( taskInProgress, startTasks ) =
-                    (botRequestTask |> Maybe.map List.singleton |> Maybe.withDefault [])
+                    (botEffectTask |> Maybe.map List.singleton |> Maybe.withDefault [])
                         ++ memoryReadingTasks
                         |> List.head
                         |> Maybe.map
@@ -272,7 +283,7 @@ processEventNotWaitingForTaskCompletion simpleBotProcessEvent maybeBotEvent stat
                                 ( Just
                                     { startTimeInMilliseconds = stateBefore.timeInMilliseconds
                                     , taskIdString = taskIdString
-                                    , taskDescription = "From bot request or memory reading."
+                                    , taskDescription = "From bot effect or memory reading."
                                     }
                                 , [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task } ]
                                 )
@@ -293,33 +304,41 @@ processEventNotWaitingForTaskCompletion simpleBotProcessEvent maybeBotEvent stat
             )
 
 
-integrateFromHostEvent : InterfaceToHost.BotEvent -> StateIncludingSetup a -> ( StateIncludingSetup a, Maybe BotEventAtTime )
+integrateFromHostEvent : InterfaceToHost.BotEvent -> StateIncludingSetup a -> ( StateIncludingSetup a, Maybe BotEventWithContext )
 integrateFromHostEvent fromHostEvent stateBefore =
-    case fromHostEvent of
-        InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
-            ( { stateBefore | timeInMilliseconds = timeInMilliseconds }, Nothing )
+    let
+        ( state, maybeBotEvent ) =
+            case fromHostEvent of
+                InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
+                    ( { stateBefore | timeInMilliseconds = timeInMilliseconds }, Nothing )
 
-        InterfaceToHost.CompletedTask taskComplete ->
-            let
-                ( setupState, maybeBotEvent ) =
-                    stateBefore.setup
-                        |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
-                        |> Tuple.mapSecond
-                            (Maybe.map
-                                (\botEvent ->
-                                    { timeInMilliseconds = stateBefore.timeInMilliseconds, event = botEvent }
-                                )
-                            )
-            in
-            ( { stateBefore | setup = setupState, taskInProgress = Nothing }, maybeBotEvent )
+                InterfaceToHost.CompletedTask taskComplete ->
+                    let
+                        ( setupState, maybeBotEventFromTaskComplete ) =
+                            stateBefore.setup
+                                |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
+                    in
+                    ( { stateBefore | setup = setupState, taskInProgress = Nothing }, maybeBotEventFromTaskComplete )
 
-        InterfaceToHost.SetBotConfiguration newBotConfiguration ->
-            ( stateBefore
-            , Just { timeInMilliseconds = stateBefore.timeInMilliseconds, event = SetBotConfiguration newBotConfiguration }
+                InterfaceToHost.SetBotConfiguration newBotConfiguration ->
+                    ( { stateBefore | configuration = Just newBotConfiguration }, Nothing )
+
+                InterfaceToHost.SetSessionTimeLimit sessionTimeLimit ->
+                    ( { stateBefore | sessionTimeLimitInMilliseconds = Just sessionTimeLimit.timeInMilliseconds }, Nothing )
+    in
+    ( state
+    , maybeBotEvent
+        |> Maybe.map
+            (\botEvent ->
+                { event = botEvent
+                , context =
+                    { timeInMilliseconds = state.timeInMilliseconds
+                    , configuration = state.configuration
+                    , sessionTimeLimitInMilliseconds = state.sessionTimeLimitInMilliseconds
+                    }
+                }
             )
-
-        InterfaceToHost.SetSessionTimeLimit _ ->
-            ( stateBefore, Nothing )
+    )
 
 
 integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe BotEvent )
@@ -436,21 +455,21 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
             ( state, maybeBotEvent )
 
 
-type NextBotRequestFromQueue
-    = NoRequest
-    | ForwardRequest { newQueueState : BotRequestQueue, request : BotRequest }
+type NextBotEffectFromQueue
+    = NoEffect
+    | ForwardEffect { newQueueState : BotEffectQueue, effect : BotEffect }
 
 
-dequeueNextRequestFromBotState : { currentTimeInMs : Int } -> BotRequestQueue -> NextBotRequestFromQueue
-dequeueNextRequestFromBotState { currentTimeInMs } requestQueueBefore =
-    case requestQueueBefore of
+dequeueNextEffectFromBotState : { currentTimeInMs : Int } -> BotEffectQueue -> NextBotEffectFromQueue
+dequeueNextEffectFromBotState { currentTimeInMs } effectQueueBefore =
+    case effectQueueBefore of
         [] ->
-            NoRequest
+            NoEffect
 
         nextEntry :: remainingEntries ->
-            ForwardRequest
+            ForwardEffect
                 { newQueueState = remainingEntries
-                , request = nextEntry.request
+                , effect = nextEntry.effect
                 }
 
 
@@ -519,20 +538,20 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                                 }
                                     in
                                     OperateBot
-                                        { buildTaskFromBotRequest =
-                                            \request ->
-                                                case request of
-                                                    EffectOnGameClientWindow effect ->
+                                        { buildTaskFromBotEffect =
+                                            \effect ->
+                                                case effect of
+                                                    EffectOnGameClientWindow effectOnWindow ->
                                                         { windowId = lastCompletedMemoryReading.mainWindowId
-                                                        , task = effect
+                                                        , task = effectOnWindow
                                                         , bringWindowToForeground = True
                                                         }
                                                             |> VolatileHostInterface.EffectOnWindow
                                                             |> buildTaskFromRequestToVolatileHost
 
-                                                    ConsoleBeepSequenceRequest consoleBeepSequence ->
+                                                    EffectConsoleBeepSequence consoleBeepSequence ->
                                                         consoleBeepSequence
-                                                            |> VolatileHostInterface.ConsoleBeepSequenceRequest
+                                                            |> VolatileHostInterface.EffectConsoleBeepSequence
                                                             |> buildTaskFromRequestToVolatileHost
                                         , getMemoryReadingTask =
                                             VolatileHostInterface.GetMemoryReading { processId = eveOnlineProcessId } |> buildTaskFromRequestToVolatileHost
@@ -593,8 +612,8 @@ statusReportFromState state =
                         |> Maybe.withDefault "Nothing"
                    )
 
-        botRequestQueueLength =
-            state.botState.requestQueue |> List.length
+        botEffectQueueLength =
+            state.botState.effectQueue |> List.length
 
         memoryReadingDurations =
             state.setup.memoryReadingDurations
@@ -609,12 +628,12 @@ statusReportFromState state =
         runtimeExpensesReport =
             "amrd=" ++ (averageMemoryReadingDuration |> String.fromInt) ++ "ms"
 
-        botRequestQueueLengthWarning =
-            if botRequestQueueLength < 4 then
+        botEffectQueueLengthWarning =
+            if botEffectQueueLength < 4 then
                 []
 
             else
-                [ "Bot request queue length is " ++ (botRequestQueueLength |> String.fromInt) ]
+                [ "Bot effect queue length is " ++ (botEffectQueueLength |> String.fromInt) ]
     in
     [ fromBot
     , "----"
@@ -623,7 +642,7 @@ statusReportFromState state =
     -- , runtimeExpensesReport
     , lastScriptRunResult
     ]
-        ++ botRequestQueueLengthWarning
+        ++ botEffectQueueLengthWarning
         |> String.join "\n"
 
 

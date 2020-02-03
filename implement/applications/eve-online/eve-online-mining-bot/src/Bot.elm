@@ -26,7 +26,7 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
-import EveOnline.BotFramework exposing (BotEventAtTime, BotRequest(..))
+import EveOnline.BotFramework exposing (BotEffect(..))
 import EveOnline.MemoryReading
     exposing
         ( MaybeVisible(..)
@@ -319,11 +319,11 @@ processEvent =
 
 
 processEveOnlineBotEvent :
-    BotEventAtTime
+    EveOnline.BotFramework.BotEventWithContext
     -> BotState
-    -> { newState : BotState, requests : List BotRequest, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
-processEveOnlineBotEvent eventAtTime stateBefore =
-    case eventAtTime.event of
+    -> { newState : BotState, effects : List BotEffect, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
+processEveOnlineBotEvent eventWithContext stateBefore =
+    case eventWithContext.event of
         EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
             let
                 botMemory =
@@ -336,7 +336,7 @@ processEveOnlineBotEvent eventAtTime stateBefore =
                 ( decisionStagesDescriptions, decisionLeaf ) =
                     unpackToDecisionStagesDescriptionsAndLeaf programStateBefore.decision
 
-                ( currentStepDescription, effects, programState ) =
+                ( currentStepDescription, effectsOnGameClientWindow, programState ) =
                     case decisionLeaf of
                         Wait ->
                             ( "Wait", [], Nothing )
@@ -355,8 +355,8 @@ processEveOnlineBotEvent eventAtTime stateBefore =
                                 Nothing ->
                                     ( "Completed sequence.", [], Nothing )
 
-                                Just ( stepDescription, computeStepResult ) ->
-                                    case parsedUserInterface |> computeStepResult of
+                                Just ( stepDescription, effectOnGameClientWindowFromUserInterface ) ->
+                                    case parsedUserInterface |> effectOnGameClientWindowFromUserInterface of
                                         Nothing ->
                                             ( "Failed step: " ++ stepDescription, [], Nothing )
 
@@ -364,7 +364,7 @@ processEveOnlineBotEvent eventAtTime stateBefore =
                                             ( stepDescription, [ effect ], Just programStateAdvancedToNextStep )
 
                 effectsRequests =
-                    effects |> List.map EffectOnGameClientWindow
+                    effectsOnGameClientWindow |> List.map EveOnline.BotFramework.EffectOnGameClientWindow
 
                 describeActivity =
                     (decisionStagesDescriptions ++ [ currentStepDescription ])
@@ -377,21 +377,9 @@ processEveOnlineBotEvent eventAtTime stateBefore =
                         |> String.join "\n"
             in
             { newState = { stateBefore | botMemory = botMemory, programState = programState }
-            , requests = effectsRequests
+            , effects = effectsRequests
             , millisecondsToNextMemoryReading = generalStepDelayMilliseconds
             , statusDescriptionText = statusMessage
-            }
-
-        EveOnline.BotFramework.SetBotConfiguration botConfiguration ->
-            { newState = stateBefore
-            , requests = []
-            , millisecondsToNextMemoryReading = generalStepDelayMilliseconds
-            , statusDescriptionText =
-                if botConfiguration |> String.isEmpty then
-                    ""
-
-                else
-                    "I have a problem with this configuration: I am not programmed to support configuration at all. Maybe the bot catalog (https://to.botengine.org/bot-catalog) has a bot which better matches your use case?"
             }
 
 

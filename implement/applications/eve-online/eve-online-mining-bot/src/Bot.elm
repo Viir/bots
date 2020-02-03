@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-01-30
+{- Michaels EVE Online mining bot version 2020-02-03
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -12,7 +12,8 @@
    + Setup inventory window so that 'Ore Hold' is always selected.
    + In the ship UI, arrange the mining modules to appear all in the upper row of modules.
    + Enable the info panel 'System info'.
-
+-}
+{-
    bot-catalog-tags:eve-online,mining
    authors-forum-usernames:viir
 -}
@@ -86,30 +87,30 @@ generalStepDelayMilliseconds =
 {-| A first outline of the decision tree for a mining bot is coming from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
 -}
 decideNextAction : BotMemory -> ParsedUserInterface -> DecisionPathNode
-decideNextAction botMemory memoryReading =
-    if memoryReading |> isShipWarpingOrJumping then
+decideNextAction botMemory parsedUserInterface =
+    if parsedUserInterface |> isShipWarpingOrJumping then
         -- TODO: Look also on the previous memory reading.
         DescribeBranch "I see we are warping." (EndDecisionPath Wait)
 
-    else if memoryReading.overviewWindow == CanNotSeeIt then
-        DescribeBranch "I see no overview window, assume we are docked." (decideNextActionWhenDocked memoryReading)
+    else if parsedUserInterface.overviewWindow == CanNotSeeIt then
+        DescribeBranch "I see no overview window, assume we are docked." (decideNextActionWhenDocked parsedUserInterface)
 
     else
         -- TODO: For robustness, also look also on the previous memory reading. Only continue when both indicate is undocked.
-        DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory memoryReading)
+        DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory parsedUserInterface)
 
 
 decideNextActionWhenDocked : ParsedUserInterface -> DecisionPathNode
-decideNextActionWhenDocked memoryReading =
-    case memoryReading |> inventoryWindowItemHangar of
+decideNextActionWhenDocked parsedUserInterface =
+    case parsedUserInterface |> inventoryWindowItemHangar of
         Nothing ->
             DescribeBranch "I do not see the item hangar in the inventory." (EndDecisionPath Wait)
 
         Just itemHangar ->
-            case memoryReading |> inventoryWindowSelectedContainerFirstItem of
+            case parsedUserInterface |> inventoryWindowSelectedContainerFirstItem of
                 Nothing ->
                     DescribeBranch "I see no item in the ore hold. Time to undock."
-                        (case memoryReading |> activeShipUiElementFromInventoryWindow of
+                        (case parsedUserInterface |> activeShipUiElementFromInventoryWindow of
                             Nothing ->
                                 EndDecisionPath Wait
 
@@ -148,8 +149,8 @@ decideNextActionWhenDocked memoryReading =
 
 
 decideNextActionWhenInSpace : BotMemory -> ParsedUserInterface -> DecisionPathNode
-decideNextActionWhenInSpace botMemory memoryReading =
-    case memoryReading |> oreHoldFillPercent of
+decideNextActionWhenInSpace botMemory parsedUserInterface =
+    case parsedUserInterface |> oreHoldFillPercent of
         Nothing ->
             DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
@@ -161,18 +162,18 @@ decideNextActionWhenInSpace botMemory memoryReading =
                             DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
 
                         Just lastDockedStationNameFromInfoPanel ->
-                            dockToStation { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel } memoryReading
+                            dockToStation { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel } parsedUserInterface
                     )
 
             else
                 DescribeBranch "The ore hold is not full enough yet. Get more ore."
-                    (case memoryReading.targets |> List.head of
+                    (case parsedUserInterface.targets |> List.head of
                         Nothing ->
-                            DescribeBranch "I see no locked target." (decideNextActionAcquireLockedTarget memoryReading)
+                            DescribeBranch "I see no locked target." (decideNextActionAcquireLockedTarget parsedUserInterface)
 
                         Just _ ->
                             DescribeBranch "I see a locked target."
-                                (case memoryReading |> shipUiMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                (case parsedUserInterface |> shipUiMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                     -- TODO: Check previous memory reading too for module activity.
                                     Nothing ->
                                         DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
@@ -191,11 +192,11 @@ decideNextActionWhenInSpace botMemory memoryReading =
 
 
 decideNextActionAcquireLockedTarget : ParsedUserInterface -> DecisionPathNode
-decideNextActionAcquireLockedTarget memoryReading =
-    case memoryReading |> topmostAsteroidFromOverviewWindow of
+decideNextActionAcquireLockedTarget parsedUserInterface =
+    case parsedUserInterface |> topmostAsteroidFromOverviewWindow of
         Nothing ->
             DescribeBranch "I see no asteroid in the overview. Warp to mining site."
-                (warpToMiningSite memoryReading)
+                (warpToMiningSite parsedUserInterface)
 
         Just asteroidInOverview ->
             if asteroidInOverview |> overviewWindowEntryIsInRange |> Maybe.withDefault False then
@@ -232,8 +233,8 @@ decideNextActionAcquireLockedTarget memoryReading =
 
 
 dockToStation : { stationNameFromInfoPanel : String } -> ParsedUserInterface -> DecisionPathNode
-dockToStation { stationNameFromInfoPanel } memoryReading =
-    case memoryReading.infoPanelLocationInfo of
+dockToStation { stationNameFromInfoPanel } parsedUserInterface =
+    case parsedUserInterface.infoPanelLocationInfo of
         CanNotSeeIt ->
             DescribeBranch "I cannot see the location info panel." (EndDecisionPath Wait)
 
@@ -268,8 +269,8 @@ dockToStation { stationNameFromInfoPanel } memoryReading =
 
 
 warpToMiningSite : ParsedUserInterface -> DecisionPathNode
-warpToMiningSite memoryReading =
-    case memoryReading.infoPanelLocationInfo of
+warpToMiningSite parsedUserInterface =
+    case parsedUserInterface.infoPanelLocationInfo of
         CanNotSeeIt ->
             DescribeBranch "I cannot see the current system info panel." (EndDecisionPath Wait)
 
@@ -286,7 +287,7 @@ warpToMiningSite memoryReading =
                         , ( "Click on one of the menu entries."
                           , lastContextMenuOrSubmenu
                                 >> Maybe.andThen
-                                    (.entries >> listElementAtWrappedIndex (getEntropyIntFromMemoryReading memoryReading))
+                                    (.entries >> listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface))
                                 >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
                           )
                         , ( "Click menu entry 'Warp to Within'"
@@ -323,14 +324,14 @@ processEveOnlineBotEvent :
     -> { newState : BotState, requests : List BotRequest, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
 processEveOnlineBotEvent eventAtTime stateBefore =
     case eventAtTime.event of
-        EveOnline.BotFramework.MemoryReadingCompleted memoryReading ->
+        EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
             let
                 botMemory =
-                    stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory memoryReading
+                    stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory parsedUserInterface
 
                 programStateBefore =
                     stateBefore.programState
-                        |> Maybe.withDefault { decision = decideNextAction botMemory memoryReading, lastStepIndexInSequence = 0 }
+                        |> Maybe.withDefault { decision = decideNextAction botMemory parsedUserInterface, lastStepIndexInSequence = 0 }
 
                 ( decisionStagesDescriptions, decisionLeaf ) =
                     unpackToDecisionStagesDescriptionsAndLeaf programStateBefore.decision
@@ -355,7 +356,7 @@ processEveOnlineBotEvent eventAtTime stateBefore =
                                     ( "Completed sequence.", [], Nothing )
 
                                 Just ( stepDescription, computeStepResult ) ->
-                                    case memoryReading |> computeStepResult of
+                                    case parsedUserInterface |> computeStepResult of
                                         Nothing ->
                                             ( "Failed step: " ++ stepDescription, [], Nothing )
 
@@ -372,7 +373,7 @@ processEveOnlineBotEvent eventAtTime stateBefore =
                         |> String.join "\n"
 
                 statusMessage =
-                    [ memoryReading |> describeMemoryReadingForMonitoring, describeActivity ]
+                    [ parsedUserInterface |> describeUserInterfaceForMonitoring, describeActivity ]
                         |> String.join "\n"
             in
             { newState = { stateBefore | botMemory = botMemory, programState = programState }
@@ -394,16 +395,16 @@ processEveOnlineBotEvent eventAtTime stateBefore =
             }
 
 
-describeMemoryReadingForMonitoring : ParsedUserInterface -> String
-describeMemoryReadingForMonitoring memoryReading =
+describeUserInterfaceForMonitoring : ParsedUserInterface -> String
+describeUserInterfaceForMonitoring parsedUserInterface =
     let
         describeShip =
-            case memoryReading.shipUI of
+            case parsedUserInterface.shipUI of
                 CanSee shipUI ->
                     "I am in space, shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
 
                 CanNotSeeIt ->
-                    case memoryReading.infoPanelLocationInfo |> maybeVisibleAndThen .expandedContent |> maybeNothingFromCanNotSeeIt |> Maybe.andThen .currentStationName of
+                    case parsedUserInterface.infoPanelLocationInfo |> maybeVisibleAndThen .expandedContent |> maybeNothingFromCanNotSeeIt |> Maybe.andThen .currentStationName of
                         Just stationName ->
                             "I am docked at '" ++ stationName ++ "'."
 
@@ -411,7 +412,7 @@ describeMemoryReadingForMonitoring memoryReading =
                             "I cannot see if I am docked or in space. Please set up game client first."
 
         describeOreHold =
-            "Ore hold filled " ++ (memoryReading |> oreHoldFillPercent |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown") ++ "%."
+            "Ore hold filled " ++ (parsedUserInterface |> oreHoldFillPercent |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown") ++ "%."
     in
     [ describeShip, describeOreHold ] |> String.join " "
 
@@ -601,8 +602,8 @@ isShipWarpingOrJumping =
         >> Maybe.withDefault False
 
 
-getEntropyIntFromMemoryReading : ParsedUserInterface -> Int
-getEntropyIntFromMemoryReading memoryReading =
+getEntropyIntFromUserInterface : ParsedUserInterface -> Int
+getEntropyIntFromUserInterface parsedUserInterface =
     let
         entropyFromUiElement uiElement =
             [ uiElement.uiNode.pythonObjectAddress |> String.toInt |> Maybe.withDefault 0
@@ -618,12 +619,12 @@ getEntropyIntFromMemoryReading memoryReading =
                 |> List.sum
 
         fromMenus =
-            memoryReading.contextMenus
+            parsedUserInterface.contextMenus
                 |> List.concatMap (.entries >> List.map .uiNode)
                 |> List.map entropyFromUiElement
 
         fromOverview =
-            memoryReading.overviewWindow
+            parsedUserInterface.overviewWindow
                 |> maybeNothingFromCanNotSeeIt
                 |> Maybe.map .entries
                 |> Maybe.withDefault []

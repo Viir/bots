@@ -1,7 +1,8 @@
 {- This bot demonstrates how to remember the bot configuration by keeping it in the bot state.
    It takes any configuration string received from the user and stores it in the bot state.
    This bot also updates the status message to show the last received bot configuration, so you can check that a method (e.g., via command line) of setting the bot configuration works.
-
+-}
+{-
    bot-catalog-tags:template,remember-bot-configuration,demo-interface-to-host
 -}
 

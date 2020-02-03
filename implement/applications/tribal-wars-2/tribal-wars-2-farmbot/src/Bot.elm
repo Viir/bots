@@ -16,7 +16,8 @@
    If multiple army presets match these criteria, I use the first one by alphabetical order.
    If no army preset matches this filter, I activate another village which has a matching preset and enough available units.
    If there is no village with a matching preset and enough units, I stop attacking.
-
+-}
+{-
    bot-catalog-tags:tribal-wars-2,farmbot
    authors-forum-usernames:viir
 -}

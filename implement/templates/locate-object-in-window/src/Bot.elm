@@ -1,7 +1,8 @@
 {- This template demonstrates how to locate an object in a game client or another application window.
 
    You can test this by placing a screenshot in a paint app like MS Paint or Paint.NET, where you can change its location within the window easily.
-
+-}
+{-
    bot-catalog-tags:template,locate-object-in-window,test
 -}
 

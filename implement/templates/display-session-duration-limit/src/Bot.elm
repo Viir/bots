@@ -1,7 +1,8 @@
 {- This app demonstrates how to use the session time limit.
    Some bots should consider the remaining time in the current session when choosing the next activity.
    This template demonstrates how to get the remaining time in the current session.
-
+-}
+{-
    bot-catalog-tags:template,demo-interface-to-host
 -}
 

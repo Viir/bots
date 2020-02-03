@@ -2,7 +2,8 @@
    This bot only sends a sequence of inputs to the window and then stops.
    As the example input sequence below shows, we can implement drag&drop operations by using the inputs `MouseButtonDown`, `MoveMouseToLocation`, and `MouseButtonUp`.
    A good way to test and visualize the mouse paths is to use this bot on a canvas in the MS Paint app.
-
+-}
+{-
    bot-catalog-tags:template,send-input-to-window,test
 -}
 

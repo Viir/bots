@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-02-03
+{- Michaels EVE Online mining bot version 2020-02-04
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -76,7 +76,7 @@ type alias BotMemory =
 
 
 type alias State =
-    EveOnline.BotFramework.StateIncludingSetup BotState
+    EveOnline.BotFramework.StateIncludingFramework BotState
 
 
 generalStepDelayMilliseconds : Int
@@ -319,11 +319,12 @@ processEvent =
 
 
 processEveOnlineBotEvent :
-    EveOnline.BotFramework.BotEventWithContext
+    EveOnline.BotFramework.BotEventContext
+    -> EveOnline.BotFramework.BotEvent
     -> BotState
-    -> { newState : BotState, effects : List BotEffect, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
-processEveOnlineBotEvent eventWithContext stateBefore =
-    case eventWithContext.event of
+    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
+processEveOnlineBotEvent eventContext event stateBefore =
+    case event of
         EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
             let
                 botMemory =
@@ -376,11 +377,13 @@ processEveOnlineBotEvent eventWithContext stateBefore =
                     [ parsedUserInterface |> describeUserInterfaceForMonitoring, describeActivity ]
                         |> String.join "\n"
             in
-            { newState = { stateBefore | botMemory = botMemory, programState = programState }
-            , effects = effectsRequests
-            , millisecondsToNextMemoryReading = generalStepDelayMilliseconds
-            , statusDescriptionText = statusMessage
-            }
+            ( { stateBefore | botMemory = botMemory, programState = programState }
+            , EveOnline.BotFramework.ContinueSession
+                { effects = effectsRequests
+                , millisecondsToNextReadingFromGame = generalStepDelayMilliseconds
+                , statusDescriptionText = statusMessage
+                }
+            )
 
 
 describeUserInterfaceForMonitoring : ParsedUserInterface -> String

@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2020-02-03
+{- EVE Online Warp-to-0 auto-pilot version 2020-02-04
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
    Before starting the bot, set the in-game autopilot route and make sure the autopilot is expanded, so that the route is visible.
    Make sure you are undocked before starting the bot because the bot does not undock.
@@ -29,15 +29,15 @@ import EveOnline.MemoryReading
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
 
 
-{-| The autopilot bot does not need to remember anything from the past; the information on the game client screen is sufficient to decide what to do next.
-Therefore we need no state and use a type that only has one value to model the state.
+{-| This bot does not need to remember anything from the past; the information on the game client user interface is sufficient to decide what to do next.
+Therefore we use a type that only supports one value.
 -}
 type alias BotState =
     ()
 
 
 type alias State =
-    EveOnline.BotFramework.StateIncludingSetup BotState
+    EveOnline.BotFramework.StateIncludingFramework BotState
 
 
 initState : State
@@ -51,28 +51,31 @@ processEvent =
 
 
 processEveOnlineBotEvent :
-    EveOnline.BotFramework.BotEventWithContext
+    EveOnline.BotFramework.BotEventContext
+    -> EveOnline.BotFramework.BotEvent
     -> BotState
-    -> { newState : BotState, effects : List BotEffect, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
-processEveOnlineBotEvent eventWithContext stateBefore =
-    case eventWithContext.event of
+    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
+processEveOnlineBotEvent eventContext event stateBefore =
+    case event of
         EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
             let
                 ( effects, statusMessage ) =
                     botEffectsFromGameClientState parsedUserInterface
 
-                millisecondsToNextMemoryReading =
+                millisecondsToNextReadingFromGame =
                     if effects |> List.isEmpty then
                         4000
 
                     else
                         2000
             in
-            { newState = stateBefore
-            , effects = effects
-            , millisecondsToNextMemoryReading = millisecondsToNextMemoryReading
-            , statusDescriptionText = statusMessage
-            }
+            ( stateBefore
+            , EveOnline.BotFramework.ContinueSession
+                { effects = effects
+                , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
+                , statusDescriptionText = statusMessage
+                }
+            )
 
 
 botEffectsFromGameClientState : ParsedUserInterface -> ( List BotEffect, String )

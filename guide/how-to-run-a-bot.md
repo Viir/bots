@@ -28,7 +28,7 @@ The engine then loads the bot from the specified location and runs it until you 
 
 ### The `bot-source` Parameter
 
-The `bot-source` parameter at the end of the command tells the engine where to load the bot code from. It can point to following different kinds of sources:
+The `bot-source` parameter at the end of the command tells the engine where to load the bot code from. It can point to different kinds of sources:
 
 + A directory on the local file system. Example: `C:\directory-containing-bot-code`.
 + A directory in a repository on [Github](https://github.com). Example: `https://github.com/Viir/bots/tree/c0a858667e1f366501ac09079b4ac0ad83bc60f4/implement/applications/eve-online/eve-online-warp-to-0-autopilot`
@@ -60,6 +60,18 @@ C:\path\to\the\botengine.exe  run-bot  --bot-configuration="My bot configuration
 ```
 
 The supported bot configuration values depend entirely on the bot that you chose. To learn which bot configuration values are supported in your case, look up the description for the bot or contact the developer of the bot. A good place to look for guidance on a specific bot is the `src/Bot.elm` file contained in the directory specified as `bot-source`. Bot authors often write a guide at the beginning of that file, for example in [this EVE Online mining bot](https://github.com/Viir/bots/blob/c0a858667e1f366501ac09079b4ac0ad83bc60f4/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
+
+## Viewing Bot Description
+
+To learn more about a bot, you can view its description, using the `describe-bot` command:
+
+```cmd
+C:\path\to\the\BotEngine.exe  describe-bot  "https://github.com/Viir/bots/tree/c0a858667e1f366501ac09079b4ac0ad83bc60f4/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+```
+
+The `describe-bot` command works with any bot source that is supported by the `run-bot` command.
+
+The information you get this way includes the description given by the author of the app. This description often contains a guide on how to use the app.
 
 ## Online Bot Sessions
 

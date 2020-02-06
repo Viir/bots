@@ -78,6 +78,38 @@ Now you could generate random sequences of program text and test which ones are 
 But the number of possible combinations is too large to proceed in such a simple way. We need a way to discard the useless combinations faster.
 In the remainder of this guide, I show how to speed up this process of discovering and identifying useful combinations.
 
+
+## Navigation Basics
+
+This chapter explains the foundations to navigate the implementation of an application, to be able to read the code and understand how different parts work together when the application runs.
+
+To explore how a program works, we start from the part that you have already experience with: The observable behavior. From there, we work towards the parts which are invisible to the user, the implementation details.
+
+On this journey, we will also pick up some basic vocabulary used in application development. Knowing the language will help you communicate with other developers and get help in case you need it.
+
+### Effects
+
+For the application to be useful, it needs to affect its environment in some way eventually. If it is a bot, it might send input to the game client. An intel tool, on the other hand, might play a sound. We have a common name for these observable consequences of running the application: These are the effects.
+
+### Events
+
+To be able to decide which effects would be most useful, the application needs to learn about its environment. In our case, this environment is the game client. The application receives this information about the game client with events.
+
+When programming an application, every effect originates from an event. An event can result in zero or multiple effects, but the application cannot issue an effect without an event. This constraint is not so evident from a user's perspective because the user does not know when events happen. But knowing this rule will help to understand the structure of the program code.
+
+### Event Response
+
+This section explains the structure of the response of the application to an event (type `EveOnline.BotFramework.BotEventResponse`)
+An important component of this response is the effects, as explained above. But besides the effects, the application can give some more information back to the framework to decide how the session continues. The responses are divided into two categories: `ContinueSession` and `FinishSession`.
+
+Following are the components for a `ContinueSession` response (type `EveOnline.BotFramework.ContinueSessionStructure`):
+
++ `statusDescriptionText`: The text to display as status description from the bot. You see this in the console window or on the session view on the web interface.
++ `effects`: The effects, as explained above.
++ `millisecondsToNextReadingFromGame`: You choose how many milliseconds the framework should wait before starting to acquire the next reading from the game client. If your bot has some work to do, you might want it to do several steps per second. Sometimes, you have to wait for some progress in the game world, idling. In these cases, choosing a lower update frequency can save processing resources and space.
+
+In case the app responds with `FinishSession`, the only component is the `statusDescriptionText`.
+
 ## Setting up the Programming Tools
 
 This section introduces a setup to help us:

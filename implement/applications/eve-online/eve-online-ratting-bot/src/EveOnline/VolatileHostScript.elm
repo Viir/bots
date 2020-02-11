@@ -47,15 +47,24 @@ class Request
 {
     public object getEveOnlineProcessesIds;
 
+    public SearchUIRootAddressStructure SearchUIRootAddress;
+
     public GetMemoryReadingStructure GetMemoryReading;
 
     public TaskOnWindow<EffectOnWindow> effectOnWindow;
 
     public ConsoleBeepStructure[] EffectConsoleBeepSequence;
 
+    public class SearchUIRootAddressStructure
+    {
+        public int processId;
+    }
+
     public class GetMemoryReadingStructure
     {
         public int processId;
+
+        public ulong uiRootAddress;
     }
 
     public class TaskOnWindow<Task>
@@ -121,9 +130,18 @@ class Response
 {
     public int[] eveOnlineProcessesIds;
 
+    public SearchUIRootAddressResultStructure SearchUIRootAddressResult;
+
     public GetMemoryReadingResultStructure GetMemoryReadingResult;
 
     public object effectExecuted;
+
+    public class SearchUIRootAddressResultStructure
+    {
+        public int processId;
+
+        public string uiRootAddress;
+    }
 
     public class GetMemoryReadingResultStructure
     {
@@ -149,16 +167,6 @@ string serialRequest(string serializedRequest)
     return SerializeToJsonForBot(response);
 }
 
-//  TODO: Simplify: Remove cache.
-struct UiTreeRootSearchResultCache
-{
-    public int processId;
-
-    public ulong uiTreeRootAddress;
-}
-
-UiTreeRootSearchResultCache? uiTreeRootSearchResultCache = null;
-
 Response request(Request request)
 {
     SetProcessDPIAware();
@@ -169,6 +177,20 @@ Response request(Request request)
         {
             eveOnlineProcessesIds =
                 GetWindowsProcessesLookingLikeEVEOnlineClient().Select(proc => proc.Id).ToArray(),
+        };
+    }
+
+    if (request.SearchUIRootAddress != null)
+    {
+        var uiTreeRootAddress = FindUIRootAddressFromProcessId(request.SearchUIRootAddress.processId);
+
+        return new Response
+        {
+            SearchUIRootAddressResult = new Response.SearchUIRootAddressResultStructure
+            {
+                processId = request.SearchUIRootAddress.processId,
+                uiRootAddress = uiTreeRootAddress?.ToString(),
+            },
         };
     }
 
@@ -187,36 +209,18 @@ Response request(Request request)
 
         var process = System.Diagnostics.Process.GetProcessById(processId);
 
-        //  TODO: Simplify: Remove cache.
-        if (uiTreeRootSearchResultCache?.processId != processId)
-            uiTreeRootSearchResultCache = null;
-
-
-        var uiTreeRootAddress =
-            uiTreeRootSearchResultCache?.uiTreeRootAddress;
-        
-        if(!uiTreeRootAddress.HasValue)
-        {
-            uiTreeRootAddress = FindUIRootAddressFromProcessId(processId);
-        }
-
         string serialRepresentationJson = null;
 
-        if(uiTreeRootAddress.HasValue)
+        using (var memoryReader = new read_memory_64_bit.MemoryReaderFromLiveProcess(processId))
         {
-            using (var memoryReader = new read_memory_64_bit.MemoryReaderFromLiveProcess(processId))
-            {
-                var uiTree = read_memory_64_bit.EveOnline64.ReadUITreeFromAddress(uiTreeRootAddress.Value, memoryReader, 99);
+            var uiTree = read_memory_64_bit.EveOnline64.ReadUITreeFromAddress(request.GetMemoryReading.uiRootAddress, memoryReader, 99);
 
-                if(uiTree != null)
-                    serialRepresentationJson = Newtonsoft.Json.JsonConvert.SerializeObject(
-                        uiTree.WithOtherDictEntriesRemoved(),
-                        //  Support popular JSON parsers: Wrap large integers in a string to work around limitations there. (https://discourse.elm-lang.org/t/how-to-parse-a-json-object/4977)
-                        new read_memory_64_bit.IntegersToStringJsonConverter()
-                        );
-            }
-
-            uiTreeRootSearchResultCache = new UiTreeRootSearchResultCache { processId = processId, uiTreeRootAddress = uiTreeRootAddress.Value };
+            if(uiTree != null)
+                serialRepresentationJson = Newtonsoft.Json.JsonConvert.SerializeObject(
+                    uiTree.WithOtherDictEntriesRemoved(),
+                    //  Support popular JSON parsers: Wrap large integers in a string to work around limitations there. (https://discourse.elm-lang.org/t/how-to-parse-a-json-object/4977)
+                    new read_memory_64_bit.IntegersToStringJsonConverter()
+                    );
         }
 
         return new Response

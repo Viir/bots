@@ -82,6 +82,7 @@ type alias SetupState =
     { volatileHost : Maybe ( InterfaceToHost.VolatileHostId, VolatileHostState )
     , lastRunScriptResult : Maybe (Result String InterfaceToHost.RunInVolatileHostComplete)
     , eveOnlineProcessesIds : Maybe (List Int)
+    , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
     , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : VolatileHostInterface.GetMemoryReadingResultStructure }
     , memoryReadingDurations : List Int
     }
@@ -109,6 +110,7 @@ initSetup =
     { volatileHost = Nothing
     , lastRunScriptResult = Nothing
     , eveOnlineProcessesIds = Nothing
+    , searchUIRootAddressResult = Nothing
     , lastMemoryReading = Nothing
     , memoryReadingDurations = []
     }
@@ -454,6 +456,13 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
         VolatileHostInterface.EveOnlineProcessesIds eveOnlineProcessesIds ->
             ( { stateBefore | eveOnlineProcessesIds = Just eveOnlineProcessesIds }, Nothing )
 
+        VolatileHostInterface.SearchUIRootAddressResult searchUIRootAddressResult ->
+            let
+                state =
+                    { stateBefore | searchUIRootAddressResult = Just searchUIRootAddressResult }
+            in
+            ( state, Nothing )
+
         VolatileHostInterface.GetMemoryReadingResult getMemoryReadingResult ->
             let
                 memoryReadingDurations =
@@ -526,30 +535,53 @@ getNextSetupTask stateBefore =
 
 getSetupTaskWhenVolatileHostSetupCompleted : SetupState -> InterfaceToHost.VolatileHostId -> SetupTask
 getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
-    case stateBefore.eveOnlineProcessesIds of
+    case stateBefore.searchUIRootAddressResult of
         Nothing ->
-            ContinueSetup stateBefore
-                (InterfaceToHost.RunInVolatileHost
-                    { hostId = volatileHostId
-                    , script = VolatileHostInterface.buildScriptToGetResponseFromVolatileHost VolatileHostInterface.GetEveOnlineProcessesIds
-                    }
-                )
-                "Get ids of EVE Online client processes."
-
-        Just eveOnlineProcessesIds ->
-            case eveOnlineProcessesIds |> List.head of
+            case stateBefore.eveOnlineProcessesIds of
                 Nothing ->
-                    FrameworkStopSession "I did not find an EVE Online client process."
+                    ContinueSetup stateBefore
+                        (InterfaceToHost.RunInVolatileHost
+                            { hostId = volatileHostId
+                            , script =
+                                VolatileHostInterface.buildScriptToGetResponseFromVolatileHost
+                                    VolatileHostInterface.GetEveOnlineProcessesIds
+                            }
+                        )
+                        "Get ids of EVE Online client processes."
 
-                Just eveOnlineProcessId ->
+                Just eveOnlineProcessesIds ->
+                    case eveOnlineProcessesIds |> List.head of
+                        Nothing ->
+                            FrameworkStopSession "I did not find an EVE Online client process."
+
+                        Just eveOnlineProcessId ->
+                            ContinueSetup stateBefore
+                                (InterfaceToHost.RunInVolatileHost
+                                    { hostId = volatileHostId
+                                    , script =
+                                        VolatileHostInterface.buildScriptToGetResponseFromVolatileHost
+                                            (VolatileHostInterface.SearchUIRootAddress { processId = eveOnlineProcessId })
+                                    }
+                                )
+                                ("Search the address of the UI root in process " ++ (eveOnlineProcessId |> String.fromInt))
+
+        Just searchResult ->
+            case searchResult.uiRootAddress of
+                Nothing ->
+                    FrameworkStopSession ("Did not find the UI root in process " ++ (searchResult.processId |> String.fromInt))
+
+                Just uiRootAddress ->
+                    let
+                        getMemoryReadingRequest =
+                            VolatileHostInterface.GetMemoryReading { processId = searchResult.processId, uiRootAddress = uiRootAddress }
+                    in
                     case stateBefore.lastMemoryReading of
                         Nothing ->
                             ContinueSetup stateBefore
                                 (InterfaceToHost.RunInVolatileHost
                                     { hostId = volatileHostId
                                     , script =
-                                        VolatileHostInterface.buildScriptToGetResponseFromVolatileHost
-                                            (VolatileHostInterface.GetMemoryReading { processId = eveOnlineProcessId })
+                                        VolatileHostInterface.buildScriptToGetResponseFromVolatileHost getMemoryReadingRequest
                                     }
                                 )
                                 "Get the first memory reading from the EVE Online client process. This can take several seconds."
@@ -583,8 +615,7 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                                         consoleBeepSequence
                                                             |> VolatileHostInterface.EffectConsoleBeepSequence
                                                             |> buildTaskFromRequestToVolatileHost
-                                        , getMemoryReadingTask =
-                                            VolatileHostInterface.GetMemoryReading { processId = eveOnlineProcessId } |> buildTaskFromRequestToVolatileHost
+                                        , getMemoryReadingTask = getMemoryReadingRequest |> buildTaskFromRequestToVolatileHost
                                         }
 
 

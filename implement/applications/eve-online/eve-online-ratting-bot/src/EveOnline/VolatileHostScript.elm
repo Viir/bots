@@ -45,13 +45,13 @@ string ToStringBase16(byte[] array) => BitConverter.ToString(array).Replace("-",
 
 class Request
 {
-    public object getEveOnlineProcessesIds;
+    public object GetEveOnlineProcessesIds;
 
     public SearchUIRootAddressStructure SearchUIRootAddress;
 
     public GetMemoryReadingStructure GetMemoryReading;
 
-    public TaskOnWindow<EffectOnWindow> effectOnWindow;
+    public TaskOnWindow<EffectOnWindowStructure> EffectOnWindow;
 
     public ConsoleBeepStructure[] EffectConsoleBeepSequence;
 
@@ -76,7 +76,7 @@ class Request
         public Task task;
     }
 
-    public class EffectOnWindow
+    public class EffectOnWindowStructure
     {
         public SimpleMouseClickAtLocation simpleMouseClickAtLocation;
 
@@ -171,7 +171,7 @@ Response request(Request request)
 {
     SetProcessDPIAware();
 
-    if (request.getEveOnlineProcessesIds != null)
+    if (request.GetEveOnlineProcessesIds != null)
     {
         return new Response
         {
@@ -236,11 +236,11 @@ Response request(Request request)
         };
     }
 
-    if (request?.effectOnWindow?.task != null)
+    if (request?.EffectOnWindow?.task != null)
     {
-        var windowHandle = new IntPtr(long.Parse(request.effectOnWindow.windowId));
+        var windowHandle = new IntPtr(long.Parse(request.EffectOnWindow.windowId));
 
-        ExecuteEffectOnWindow(request.effectOnWindow.task, windowHandle, request.effectOnWindow.bringWindowToForeground);
+        ExecuteEffectOnWindow(request.EffectOnWindow.task, windowHandle, request.EffectOnWindow.bringWindowToForeground);
 
         return new Response
         {
@@ -288,7 +288,7 @@ ulong? FindUIRootAddressFromProcessId(int processId)
 }
 
 void ExecuteEffectOnWindow(
-    Request.EffectOnWindow effectOnWindow,
+    Request.EffectOnWindowStructure effectOnWindow,
     IntPtr windowHandle,
     bool bringWindowToForeground)
 {

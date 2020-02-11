@@ -167,7 +167,7 @@ encodeRequestToVolatileHost : RequestToVolatileHost -> Json.Encode.Value
 encodeRequestToVolatileHost request =
     case request of
         GetEveOnlineProcessesIds ->
-            Json.Encode.object [ ( "getEveOnlineProcessesIds", Json.Encode.object [] ) ]
+            Json.Encode.object [ ( "GetEveOnlineProcessesIds", Json.Encode.object [] ) ]
 
         SearchUIRootAddress searchUIRootAddress ->
             Json.Encode.object [ ( "SearchUIRootAddress", searchUIRootAddress |> encodeSearchUIRootAddress ) ]
@@ -176,7 +176,7 @@ encodeRequestToVolatileHost request =
             Json.Encode.object [ ( "GetMemoryReading", getMemoryReading |> encodeGetMemoryReading ) ]
 
         EffectOnWindow taskOnWindow ->
-            Json.Encode.object [ ( "effectOnWindow", taskOnWindow |> encodeTaskOnWindow encodeEffectOnWindowStructure ) ]
+            Json.Encode.object [ ( "EffectOnWindow", taskOnWindow |> encodeTaskOnWindow encodeEffectOnWindowStructure ) ]
 
         EffectConsoleBeepSequence effectConsoleBeepSequence ->
             Json.Encode.object [ ( "EffectConsoleBeepSequence", effectConsoleBeepSequence |> Json.Encode.list encodeConsoleBeep ) ]
@@ -185,10 +185,11 @@ encodeRequestToVolatileHost request =
 decodeRequestToVolatileHost : Json.Decode.Decoder RequestToVolatileHost
 decodeRequestToVolatileHost =
     Json.Decode.oneOf
-        [ Json.Decode.field "getEveOnlineProcessesIds" (Json.Decode.succeed GetEveOnlineProcessesIds)
+        [ Json.Decode.field "GetEveOnlineProcessesIds" (Json.Decode.succeed GetEveOnlineProcessesIds)
         , Json.Decode.field "SearchUIRootAddress" (decodeSearchUIRootAddress |> Json.Decode.map SearchUIRootAddress)
         , Json.Decode.field "GetMemoryReading" (decodeGetMemoryReading |> Json.Decode.map GetMemoryReading)
-        , Json.Decode.field "effectOnWindow" (decodeTaskOnWindow decodeEffectOnWindowStructure |> Json.Decode.map EffectOnWindow)
+        , Json.Decode.field "EffectOnWindow" (decodeTaskOnWindow decodeEffectOnWindowStructure |> Json.Decode.map EffectOnWindow)
+        , Json.Decode.field "EffectConsoleBeepSequence" (Json.Decode.list decodeConsoleBeep |> Json.Decode.map EffectConsoleBeepSequence)
         ]
 
 
@@ -381,6 +382,13 @@ encodeConsoleBeep consoleBeep =
         [ ( "frequency", consoleBeep.frequency |> Json.Encode.int )
         , ( "durationInMs", consoleBeep.durationInMs |> Json.Encode.int )
         ]
+
+
+decodeConsoleBeep : Json.Decode.Decoder ConsoleBeepStructure
+decodeConsoleBeep =
+    Json.Decode.map2 ConsoleBeepStructure
+        (Json.Decode.field "frequency" Json.Decode.int)
+        (Json.Decode.field "durationInMs" Json.Decode.int)
 
 
 effectMouseClickAtLocation : MouseButton -> Location2d -> EffectOnWindowStructure

@@ -42,6 +42,11 @@ attackMaxRange =
     7000
 
 
+maxTargetCount : Int
+maxTargetCount =
+    3
+
+
 type alias UIElement =
     EveOnline.MemoryReading.UITreeNodeWithDisplayRegion
 
@@ -83,7 +88,7 @@ type alias State =
 
 generalStepDelayMilliseconds : Int
 generalStepDelayMilliseconds =
-    2000
+    1300
 
 
 decideNextAction : BotMemory -> ParsedUserInterface -> DecisionPathNode
@@ -127,6 +132,10 @@ combat botMemory overviewWindow parsedUserInterface =
                 |> List.sortBy (.distanceInMeters >> Result.withDefault 999999)
                 |> List.filter shouldAttackOverviewEntry
 
+        overviewEntriesToLock =
+            overviewEntriesToAttack
+                |> List.filter (overviewEntryIsAlreadyTargetedOrTargeting >> not)
+
         targetsToUnlock =
             if overviewEntriesToAttack |> List.any overviewEntryIsActiveTarget then
                 []
@@ -152,32 +161,45 @@ combat botMemory overviewWindow parsedUserInterface =
                 )
 
         Nothing ->
-            case overviewEntriesToAttack of
-                [] ->
-                    DescribeBranch "I see no overview entry to attack." (EndDecisionPath Wait)
+            case parsedUserInterface.targets |> List.head of
+                Nothing ->
+                    DescribeBranch "I see no locked target."
+                        (case overviewEntriesToLock of
+                            [] ->
+                                DescribeBranch "I see no overview entry to lock." (EndDecisionPath Wait)
 
-                nextOverviewEntryToAttack :: _ ->
-                    DescribeBranch "I see an overview entry to attack."
-                        (case parsedUserInterface.targets |> List.head of
+                            nextOverviewEntryToLock :: _ ->
+                                DescribeBranch "I see an overview entry to lock."
+                                    (decideNextActionAcquireLockedTarget nextOverviewEntryToLock)
+                        )
+
+                Just _ ->
+                    DescribeBranch "I see a locked target."
+                        (case parsedUserInterface |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                            -- TODO: Check previous memory reading too for module activity.
                             Nothing ->
-                                DescribeBranch "I see no locked target." (decideNextActionAcquireLockedTarget nextOverviewEntryToAttack)
+                                DescribeBranch "All attack modules are active."
+                                    (if maxTargetCount <= (parsedUserInterface.targets |> List.length) then
+                                        DescribeBranch "Enough locked targets." (EndDecisionPath Wait)
 
-                            Just _ ->
-                                DescribeBranch "I see a locked target."
-                                    (case parsedUserInterface |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                        -- TODO: Check previous memory reading too for module activity.
-                                        Nothing ->
-                                            DescribeBranch "All attack modules are active." (EndDecisionPath Wait)
+                                     else
+                                        case overviewEntriesToLock of
+                                            [] ->
+                                                DescribeBranch "I see no more overview entries to lock." (EndDecisionPath Wait)
 
-                                        Just inactiveModule ->
-                                            DescribeBranch "I see an inactive module to activate on targets. Click on it to activate."
-                                                (EndDecisionPath
-                                                    (Act
-                                                        { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                                                        , followingSteps = []
-                                                        }
-                                                    )
-                                                )
+                                            nextOverviewEntryToLock :: _ ->
+                                                DescribeBranch "Lock more targets."
+                                                    (decideNextActionAcquireLockedTarget nextOverviewEntryToLock)
+                                    )
+
+                            Just inactiveModule ->
+                                DescribeBranch "I see an inactive module to activate on targets. Click on it to activate."
+                                    (EndDecisionPath
+                                        (Act
+                                            { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
+                                            , followingSteps = []
+                                            }
+                                        )
                                     )
                         )
 

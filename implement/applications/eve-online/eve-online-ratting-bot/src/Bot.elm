@@ -1,4 +1,4 @@
-{- EVE Online ratting bot version 2020-02-11
+{- EVE Online ratting bot version 2020-02-12
 
    Setup instructions for the EVE Online client:
    + Enable `Run clients with 64 bit` in the settings, because this bot only works with the 64-bit version of the EVE Online client.
@@ -126,35 +126,60 @@ combat botMemory overviewWindow parsedUserInterface =
             overviewWindow.entries
                 |> List.sortBy (.distanceInMeters >> Result.withDefault 999999)
                 |> List.filter shouldAttackOverviewEntry
+
+        targetsToUnlock =
+            if overviewEntriesToAttack |> List.any overviewEntryIsActiveTarget then
+                []
+
+            else
+                parsedUserInterface.targets |> List.filter targetIsSelected
     in
-    case overviewEntriesToAttack of
-        [] ->
-            DescribeBranch "I see no overview entry to attack." (EndDecisionPath Wait)
-
-        nextOverviewEntryToAttack :: _ ->
-            DescribeBranch "I see an overview entry to attack."
-                (case parsedUserInterface.targets |> List.head of
-                    Nothing ->
-                        DescribeBranch "I see no locked target." (decideNextActionAcquireLockedTarget nextOverviewEntryToAttack)
-
-                    Just _ ->
-                        DescribeBranch "I see a locked target."
-                            (case parsedUserInterface |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                -- TODO: Check previous memory reading too for module activity.
-                                Nothing ->
-                                    DescribeBranch "All attack modules are active." (EndDecisionPath Wait)
-
-                                Just inactiveModule ->
-                                    DescribeBranch "I see an inactive module to activate on targets. Click on it to activate."
-                                        (EndDecisionPath
-                                            (Act
-                                                { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                                                , followingSteps = []
-                                                }
-                                            )
-                                        )
-                            )
+    case targetsToUnlock |> List.head of
+        Just targetToUnlock ->
+            DescribeBranch "I see a target to unlock."
+                (EndDecisionPath
+                    (Act
+                        { firstAction = targetToUnlock.uiNode |> clickOnUIElement MouseButtonRight
+                        , followingSteps =
+                            [ ( "Click menu entry 'unlock'."
+                              , lastContextMenuOrSubmenu
+                                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "unlock")
+                                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                              )
+                            ]
+                        }
+                    )
                 )
+
+        Nothing ->
+            case overviewEntriesToAttack of
+                [] ->
+                    DescribeBranch "I see no overview entry to attack." (EndDecisionPath Wait)
+
+                nextOverviewEntryToAttack :: _ ->
+                    DescribeBranch "I see an overview entry to attack."
+                        (case parsedUserInterface.targets |> List.head of
+                            Nothing ->
+                                DescribeBranch "I see no locked target." (decideNextActionAcquireLockedTarget nextOverviewEntryToAttack)
+
+                            Just _ ->
+                                DescribeBranch "I see a locked target."
+                                    (case parsedUserInterface |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                        -- TODO: Check previous memory reading too for module activity.
+                                        Nothing ->
+                                            DescribeBranch "All attack modules are active." (EndDecisionPath Wait)
+
+                                        Just inactiveModule ->
+                                            DescribeBranch "I see an inactive module to activate on targets. Click on it to activate."
+                                                (EndDecisionPath
+                                                    (Act
+                                                        { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
+                                                        , followingSteps = []
+                                                        }
+                                                    )
+                                                )
+                                    )
+                        )
 
 
 decideNextActionAcquireLockedTarget : OverviewWindowEntry -> DecisionPathNode
@@ -307,7 +332,7 @@ overviewEntryIsAlreadyTargetedOrTargeting overviewEntry =
                 |> List.filterMap EveOnline.MemoryReading.getNameFromDictEntries
                 |> Set.fromList
     in
-    [ "targetedByMe", "targeting" ]
+    [ "targetedByMeIndicator", "targetingIndicator" ]
         |> Set.fromList
         |> Set.intersect nodesNames
         |> Set.isEmpty
@@ -321,7 +346,7 @@ overviewEntryIsActiveTarget overviewEntry =
         |> EveOnline.MemoryReading.listDescendantsInUITreeNode
         |> List.filterMap EveOnline.MemoryReading.getNameFromDictEntries
         |> Set.fromList
-        |> Set.member "myActiveTarget"
+        |> Set.member "myActiveTargetIndicator"
 
 
 shouldAttackOverviewEntry : EveOnline.MemoryReading.OverviewWindowEntry -> Bool
@@ -382,6 +407,14 @@ shipUIModulesToActivateAlways =
 shipUiModules : ParsedUserInterface -> List ShipUIModule
 shipUiModules =
     .shipUI >> maybeNothingFromCanNotSeeIt >> Maybe.map .modules >> Maybe.withDefault []
+
+
+targetIsSelected : EveOnline.MemoryReading.Target -> Bool
+targetIsSelected =
+    .uiNode
+        >> .uiNode
+        >> EveOnline.MemoryReading.listDescendantsInUITreeNode
+        >> List.any (.pythonObjectTypeName >> (==) "ActiveTargetOnBracket")
 
 
 {-| Groups the modules into rows.

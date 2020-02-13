@@ -13,7 +13,7 @@ module Bot exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
 import Json.Encode
 
 

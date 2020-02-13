@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-02-11
+{- Michaels EVE Online mining bot version 2020-02-13
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -25,7 +25,7 @@ module Bot exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
 import EveOnline.BotFramework exposing (BotEffect(..))
 import EveOnline.MemoryReading
     exposing

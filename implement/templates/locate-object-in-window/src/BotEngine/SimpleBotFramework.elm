@@ -43,7 +43,7 @@ module BotEngine.SimpleBotFramework exposing
     , taskIdFromString
     )
 
-import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
 import BotEngine.VolatileHostWindowsApi as VolatileHostWindowsApi
 import Dict
 import Json.Decode
@@ -131,7 +131,7 @@ type Task
 
 type alias State simpleBotState =
     { timeInMilliseconds : Int
-    , volatileHost : Maybe VolatileHostState
+    , createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileHostErrorStructure InterfaceToHost.CreateVolatileHostComplete)
     , windowId : Maybe VolatileHostWindowsApi.WindowId
     , lastWindowTitleMeasurement : Maybe { timeInMilliseconds : Int, windowTitle : String }
     , waitingForTaskId : Maybe InterfaceToHost.TaskId
@@ -142,11 +142,6 @@ type alias State simpleBotState =
     , simpleBotLastResponse : Maybe BotResponse
     , simpleBotTasksInProgress : List ( InterfaceToHost.TaskId, StartTaskStructure )
     }
-
-
-type VolatileHostState
-    = Initial { volatileHostId : InterfaceToHost.VolatileHostId }
-    | SetupCompleted { volatileHostId : InterfaceToHost.VolatileHostId }
 
 
 type FrameworkSetupStepActivity
@@ -169,7 +164,7 @@ type ImageSearchRegion
 initState : simpleBotState -> State simpleBotState
 initState simpleBotInitState =
     { timeInMilliseconds = 0
-    , volatileHost = Nothing
+    , createVolatileHostResult = Nothing
     , windowId = Nothing
     , lastWindowTitleMeasurement = Nothing
     , waitingForTaskId = Nothing
@@ -288,8 +283,8 @@ processEvent simpleBotProcessEvent event stateBefore =
                                                         InterfaceToHost.CompleteWithoutResult ->
                                                             Err "CompleteWithoutResult"
 
-                                                        InterfaceToHost.RunInVolatileHostResponse volatileHostResponse ->
-                                                            case volatileHostResponse of
+                                                        InterfaceToHost.RequestToVolatileHostResponse requestToVolatileHostResponse ->
+                                                            case requestToVolatileHostResponse of
                                                                 Err InterfaceToHost.HostNotFound ->
                                                                     Err "Error running script in volatile host: HostNotFound"
 
@@ -620,16 +615,11 @@ integrateEvent event stateBefore =
 
         InterfaceToHost.CompletedTask { taskId, taskResult } ->
             case taskResult of
-                InterfaceToHost.CreateVolatileHostResponse createVolatileHostResponse ->
-                    case createVolatileHostResponse of
-                        Err _ ->
-                            { stateBefore | error = Just "Failed to create volatile host." }
+                InterfaceToHost.CreateVolatileHostResponse createVolatileHostResult ->
+                    { stateBefore | createVolatileHostResult = Just createVolatileHostResult }
 
-                        Ok { hostId } ->
-                            { stateBefore | volatileHost = Just (Initial { volatileHostId = hostId }) }
-
-                InterfaceToHost.RunInVolatileHostResponse runInVolatileHostResponse ->
-                    case runInVolatileHostResponse of
+                InterfaceToHost.RequestToVolatileHostResponse requestToVolatileHostResponse ->
+                    case requestToVolatileHostResponse of
                         Err InterfaceToHost.HostNotFound ->
                             { stateBefore | error = Just "Error running script in volatile host: HostNotFound" }
 
@@ -639,18 +629,14 @@ integrateEvent event stateBefore =
                                     { stateBefore | error = Just ("Error in volatile host: " ++ (runInVolatileHostComplete.exceptionToString |> Maybe.withDefault "")) }
 
                                 Just returnValueToString ->
-                                    case stateBefore.volatileHost of
+                                    case stateBefore.createVolatileHostResult of
                                         Nothing ->
                                             { stateBefore | error = Just ("Unexpected response from volatile host: " ++ returnValueToString) }
 
-                                        Just (Initial volatileHost) ->
-                                            if returnValueToString == "Setup Completed" then
-                                                { stateBefore | volatileHost = Just (SetupCompleted volatileHost) }
+                                        Just (Err createVolatileHostError) ->
+                                            { stateBefore | error = Just ("Failed to create volatile host: " ++ createVolatileHostError.exceptionToString) }
 
-                                            else
-                                                { stateBefore | error = Just ("Unexpected response from volatile host: " ++ returnValueToString) }
-
-                                        Just (SetupCompleted { volatileHostId }) ->
+                                        Just (Ok createVolatileHostCompleted) ->
                                             case returnValueToString |> VolatileHostWindowsApi.deserializeResponseFromVolatileHost of
                                                 Err error ->
                                                     { stateBefore | error = Just ("Failed to parse response from volatile host: " ++ (error |> Json.Decode.errorToString)) }
@@ -698,37 +684,29 @@ statusDescriptionFromState state =
 
 getNextSetupStepWithDescriptionFromState : State simpleBotState -> FrameworkSetupStepActivity
 getNextSetupStepWithDescriptionFromState state =
-    case state.volatileHost of
+    case state.createVolatileHostResult of
         Nothing ->
             { task =
                 { taskId = InterfaceToHost.taskIdFromString "create_volatile_host"
-                , task = InterfaceToHost.CreateVolatileHost
-                }
-            , taskDescription = "Create volatile host."
-            }
-                |> ContinueSetupWithTask
-
-        Just (Initial { volatileHostId }) ->
-            { task =
-                { taskId = InterfaceToHost.taskIdFromString "set_up_volatile_host"
-                , task =
-                    InterfaceToHost.RunInVolatileHost
-                        { hostId = volatileHostId
-                        , script = VolatileHostWindowsApi.setupScript
-                        }
+                , task = InterfaceToHost.CreateVolatileHost { script = VolatileHostWindowsApi.setupScript }
                 }
             , taskDescription = "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
             }
                 |> ContinueSetupWithTask
 
-        Just (SetupCompleted { volatileHostId }) ->
+        Just (Err createVolatileHostError) ->
+            StopWithResult { resultDescription = "Failed to create volatile host: " ++ createVolatileHostError.exceptionToString }
+
+        Just (Ok createVolatileHostCompleted) ->
             case state.windowId of
                 Nothing ->
                     let
                         task =
-                            InterfaceToHost.RunInVolatileHost
-                                { hostId = volatileHostId
-                                , script = VolatileHostWindowsApi.GetForegroundWindow |> VolatileHostWindowsApi.buildScriptToGetResponseFromVolatileHost
+                            InterfaceToHost.RequestToVolatileHost
+                                { hostId = createVolatileHostCompleted.hostId
+                                , request =
+                                    VolatileHostWindowsApi.GetForegroundWindow
+                                        |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
                                 }
                     in
                     { task = { taskId = InterfaceToHost.taskIdFromString "get_foreground_window", task = task }
@@ -741,9 +719,12 @@ getNextSetupStepWithDescriptionFromState state =
                         Nothing ->
                             let
                                 task =
-                                    InterfaceToHost.RunInVolatileHost
-                                        { hostId = volatileHostId
-                                        , script = windowId |> VolatileHostWindowsApi.GetWindowText |> VolatileHostWindowsApi.buildScriptToGetResponseFromVolatileHost
+                                    InterfaceToHost.RequestToVolatileHost
+                                        { hostId = createVolatileHostCompleted.hostId
+                                        , request =
+                                            windowId
+                                                |> VolatileHostWindowsApi.GetWindowText
+                                                |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
                                         }
                             in
                             { task = { taskId = InterfaceToHost.taskIdFromString "get_window_title", task = task }
@@ -755,9 +736,12 @@ getNextSetupStepWithDescriptionFromState state =
                             OperateSimpleBot
                                 { buildTaskFromTaskOnWindow =
                                     \taskOnWindow ->
-                                        InterfaceToHost.RunInVolatileHost
-                                            { hostId = volatileHostId
-                                            , script = VolatileHostWindowsApi.TaskOnWindow { windowId = windowId, task = taskOnWindow } |> VolatileHostWindowsApi.buildScriptToGetResponseFromVolatileHost
+                                        InterfaceToHost.RequestToVolatileHost
+                                            { hostId = createVolatileHostCompleted.hostId
+                                            , request =
+                                                { windowId = windowId, task = taskOnWindow }
+                                                    |> VolatileHostWindowsApi.TaskOnWindow
+                                                    |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
                                             }
                                 }
 

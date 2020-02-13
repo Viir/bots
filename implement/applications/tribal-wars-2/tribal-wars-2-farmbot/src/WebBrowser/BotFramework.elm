@@ -11,12 +11,11 @@ module WebBrowser.BotFramework exposing
     , RunJavascriptInCurrentPageResponseStructure
     , SetupState
     , StateIncludingSetup
-    , VolatileHostState(..)
     , initState
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
 import WebBrowser.VolatileHostInterface as VolatileHostInterface
 import WebBrowser.VolatileHostScript as VolatileHostScript
 
@@ -72,15 +71,10 @@ type alias BotState botState =
 
 
 type alias SetupState =
-    { volatileHost : Maybe ( InterfaceToHost.VolatileHostId, VolatileHostState )
+    { createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileHostErrorStructure InterfaceToHost.CreateVolatileHostComplete)
     , lastRunScriptResult : Maybe (Result String (Maybe String))
     , webBrowserStarted : Bool
     }
-
-
-type VolatileHostState
-    = Initial
-    | SetupCompleted
 
 
 type SetupTask
@@ -91,7 +85,7 @@ type SetupTask
 
 initSetup : SetupState
 initSetup =
-    { volatileHost = Nothing
+    { createVolatileHostResult = Nothing
     , lastRunScriptResult = Nothing
     , webBrowserStarted = False
     }
@@ -296,18 +290,13 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBefore =
 integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe BotEvent )
 integrateTaskResult ( time, taskResult ) setupStateBefore =
     case taskResult of
-        InterfaceToHost.CreateVolatileHostResponse createVolatileHostResult ->
-            case createVolatileHostResult of
-                Err _ ->
-                    ( setupStateBefore, Nothing )
+        InterfaceToHost.CreateVolatileHostResponse createVolatileHostResponse ->
+            ( { setupStateBefore | createVolatileHostResult = Just createVolatileHostResponse }, Nothing )
 
-                Ok createVolatileHostComplete ->
-                    ( { setupStateBefore | volatileHost = Just ( createVolatileHostComplete.hostId, Initial ) }, Nothing )
-
-        InterfaceToHost.RunInVolatileHostResponse runInVolatileHostResponse ->
+        InterfaceToHost.RequestToVolatileHostResponse requestToVolatileHostResponse ->
             let
                 runScriptResult =
-                    runInVolatileHostResponse
+                    requestToVolatileHostResponse
                         |> Result.mapError
                             (\error ->
                                 case error of
@@ -324,15 +313,6 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                                         Err ("Exception from host: " ++ exception)
                             )
 
-                volatileHost =
-                    case runInVolatileHostResponse of
-                        Err _ ->
-                            setupStateBefore.volatileHost
-
-                        Ok runInVolatileHostComplete ->
-                            setupStateBefore.volatileHost
-                                |> Maybe.map (Tuple.mapSecond (updateVolatileHostState runInVolatileHostComplete))
-
                 maybeResponseFromVolatileHost =
                     runScriptResult
                         |> Result.toMaybe
@@ -341,10 +321,7 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                         |> Maybe.andThen Result.toMaybe
 
                 setupStateWithScriptRunResult =
-                    { setupStateBefore
-                        | lastRunScriptResult = Just runScriptResult
-                        , volatileHost = volatileHost
-                    }
+                    { setupStateBefore | lastRunScriptResult = Just runScriptResult }
             in
             case maybeResponseFromVolatileHost of
                 Nothing ->
@@ -374,32 +351,27 @@ integrateResponseFromVolatileHost ( time, response ) stateBefore =
 
 getNextSetupTask : SetupState -> SetupTask
 getNextSetupTask stateBefore =
-    case stateBefore.volatileHost of
+    case stateBefore.createVolatileHostResult of
         Nothing ->
-            ContinueSetup stateBefore InterfaceToHost.CreateVolatileHost "Create volatile host."
+            ContinueSetup
+                stateBefore
+                (InterfaceToHost.CreateVolatileHost { script = VolatileHostScript.setupScript })
+                "Create volatile host."
 
-        Just ( volatileHostId, volatileHostState ) ->
-            case volatileHostState of
-                Initial ->
-                    ContinueSetup stateBefore
-                        (InterfaceToHost.RunInVolatileHost
-                            { hostId = volatileHostId
-                            , script = VolatileHostScript.setupScript
-                            }
-                        )
-                        "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
+        Just (Err error) ->
+            FailSetup ("Create volatile host failed with exception: " ++ error.exceptionToString)
 
-                SetupCompleted ->
-                    getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId
+        Just (Ok createVolatileHostComplete) ->
+            getSetupTaskWhenVolatileHostSetupCompleted stateBefore createVolatileHostComplete.hostId
 
 
 getSetupTaskWhenVolatileHostSetupCompleted : SetupState -> InterfaceToHost.VolatileHostId -> SetupTask
 getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
     if stateBefore.webBrowserStarted |> not then
         ContinueSetup stateBefore
-            (InterfaceToHost.RunInVolatileHost
+            (InterfaceToHost.RequestToVolatileHost
                 { hostId = volatileHostId
-                , script = VolatileHostInterface.buildScriptToGetResponseFromVolatileHost VolatileHostInterface.StartWebBrowserRequest
+                , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost VolatileHostInterface.StartWebBrowserRequest
                 }
             )
             "Starting the web browser. This can take a while because I might need to download the web browser software first."
@@ -414,30 +386,11 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                 RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest ->
                                     VolatileHostInterface.RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest
                     in
-                    InterfaceToHost.RunInVolatileHost
+                    InterfaceToHost.RequestToVolatileHost
                         { hostId = volatileHostId
-                        , script = VolatileHostInterface.buildScriptToGetResponseFromVolatileHost requestToVolatileHost
+                        , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
                         }
             }
-
-
-updateVolatileHostState : InterfaceToHost.RunInVolatileHostComplete -> VolatileHostState -> VolatileHostState
-updateVolatileHostState runInVolatileHostComplete stateBefore =
-    case runInVolatileHostComplete.returnValueToString of
-        Nothing ->
-            stateBefore
-
-        Just returnValueString ->
-            case stateBefore of
-                Initial ->
-                    if returnValueString |> String.contains "Setup Completed" then
-                        SetupCompleted
-
-                    else
-                        stateBefore
-
-                SetupCompleted ->
-                    stateBefore
 
 
 runScriptResultDisplayString : Result String (Maybe String) -> String

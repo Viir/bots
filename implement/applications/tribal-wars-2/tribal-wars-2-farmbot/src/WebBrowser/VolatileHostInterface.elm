@@ -1,7 +1,7 @@
 module WebBrowser.VolatileHostInterface exposing
     ( RequestToVolatileHost(..)
     , ResponseFromVolatileHost(..)
-    , buildScriptToGetResponseFromVolatileHost
+    , buildRequestStringToGetResponseFromVolatileHost
     , deserializeResponseFromVolatileHost
     )
 
@@ -73,13 +73,7 @@ decodeRunJavascriptInCurrentPageResponse =
         (Json.Decode.Extra.optionalField "callbackReturnValueAsString" Json.Decode.string)
 
 
-buildScriptToGetResponseFromVolatileHost : RequestToVolatileHost -> String
-buildScriptToGetResponseFromVolatileHost request =
-    "serialRequest("
-        ++ (request
-                |> encodeRequestToVolatileHost
-                |> Json.Encode.encode 0
-                |> Json.Encode.string
-                |> Json.Encode.encode 0
-           )
-        ++ ")"
+buildRequestStringToGetResponseFromVolatileHost : RequestToVolatileHost -> String
+buildRequestStringToGetResponseFromVolatileHost =
+    encodeRequestToVolatileHost
+        >> Json.Encode.encode 0

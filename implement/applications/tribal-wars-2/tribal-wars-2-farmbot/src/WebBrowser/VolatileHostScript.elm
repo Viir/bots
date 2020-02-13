@@ -191,5 +191,9 @@ static async System.Threading.Tasks.Task startBrowserAndSaveScreenshotToFile(str
     await page.ScreenshotAsync(outputFilePath);
 }
 
-"Setup Completed"
+string InterfaceToHost_Request(string request)
+{
+    return serialRequest(request);
+}
+
 """

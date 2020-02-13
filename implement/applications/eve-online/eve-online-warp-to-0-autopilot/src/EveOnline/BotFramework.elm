@@ -17,12 +17,11 @@ module EveOnline.BotFramework exposing
     , BotEventResponse(..)
     , SetupState
     , StateIncludingFramework
-    , VolatileHostState(..)
     , initState
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
 import EveOnline.MemoryReading
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
@@ -79,18 +78,13 @@ type alias BotEffectQueue =
 
 
 type alias SetupState =
-    { volatileHost : Maybe ( InterfaceToHost.VolatileHostId, VolatileHostState )
-    , lastRunScriptResult : Maybe (Result String InterfaceToHost.RunInVolatileHostComplete)
+    { createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileHostErrorStructure InterfaceToHost.CreateVolatileHostComplete)
+    , lastRequestToVolatileHostResult : Maybe (Result String InterfaceToHost.RequestToVolatileHostComplete)
     , eveOnlineProcessesIds : Maybe (List Int)
     , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
     , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : VolatileHostInterface.GetMemoryReadingResultStructure }
     , memoryReadingDurations : List Int
     }
-
-
-type VolatileHostState
-    = Initial
-    | SetupCompleted
 
 
 type SetupTask
@@ -107,8 +101,8 @@ type alias ConsoleBeepStructure =
 
 initSetup : SetupState
 initSetup =
-    { volatileHost = Nothing
-    , lastRunScriptResult = Nothing
+    { createVolatileHostResult = Nothing
+    , lastRequestToVolatileHostResult = Nothing
     , eveOnlineProcessesIds = Nothing
     , searchUIRootAddressResult = Nothing
     , lastMemoryReading = Nothing
@@ -377,17 +371,12 @@ integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState
 integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
     case taskResult of
         InterfaceToHost.CreateVolatileHostResponse createVolatileHostResult ->
-            case createVolatileHostResult of
-                Err _ ->
-                    ( setupStateBefore, Nothing )
+            ( { setupStateBefore | createVolatileHostResult = Just createVolatileHostResult }, Nothing )
 
-                Ok createVolatileHostComplete ->
-                    ( { setupStateBefore | volatileHost = Just ( createVolatileHostComplete.hostId, Initial ) }, Nothing )
-
-        InterfaceToHost.RunInVolatileHostResponse runInVolatileHostResponse ->
+        InterfaceToHost.RequestToVolatileHostResponse requestToVolatileHostResponse ->
             let
-                runScriptResult =
-                    runInVolatileHostResponse
+                requestToVolatileHostResult =
+                    requestToVolatileHostResponse
                         |> Result.mapError
                             (\error ->
                                 case error of
@@ -404,17 +393,8 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
                                         Err ("Exception from host: " ++ exception)
                             )
 
-                volatileHost =
-                    case runInVolatileHostResponse of
-                        Err _ ->
-                            setupStateBefore.volatileHost
-
-                        Ok runInVolatileHostComplete ->
-                            setupStateBefore.volatileHost
-                                |> Maybe.map (Tuple.mapSecond (updateVolatileHostState runInVolatileHostComplete))
-
                 maybeResponseFromVolatileHost =
-                    runScriptResult
+                    requestToVolatileHostResult
                         |> Result.toMaybe
                         |> Maybe.andThen
                             (\fromHostResult ->
@@ -426,10 +406,7 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
                             )
 
                 setupStateWithScriptRunResult =
-                    { setupStateBefore
-                        | lastRunScriptResult = Just runScriptResult
-                        , volatileHost = volatileHost
-                    }
+                    { setupStateBefore | lastRequestToVolatileHostResult = Just requestToVolatileHostResult }
             in
             case maybeResponseFromVolatileHost of
                 Nothing ->
@@ -514,23 +491,18 @@ dequeueNextEffectFromBotState { currentTimeInMs } effectQueueBefore =
 
 getNextSetupTask : SetupState -> SetupTask
 getNextSetupTask stateBefore =
-    case stateBefore.volatileHost of
+    case stateBefore.createVolatileHostResult of
         Nothing ->
-            ContinueSetup stateBefore InterfaceToHost.CreateVolatileHost "Create volatile host."
+            ContinueSetup
+                stateBefore
+                (InterfaceToHost.CreateVolatileHost { script = VolatileHostScript.setupScript })
+                "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
 
-        Just ( volatileHostId, volatileHostState ) ->
-            case volatileHostState of
-                Initial ->
-                    ContinueSetup stateBefore
-                        (InterfaceToHost.RunInVolatileHost
-                            { hostId = volatileHostId
-                            , script = VolatileHostScript.setupScript
-                            }
-                        )
-                        "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
+        Just (Err error) ->
+            FrameworkStopSession ("Create volatile host failed with exception: " ++ error.exceptionToString)
 
-                SetupCompleted ->
-                    getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId
+        Just (Ok createVolatileHostComplete) ->
+            getSetupTaskWhenVolatileHostSetupCompleted stateBefore createVolatileHostComplete.hostId
 
 
 getSetupTaskWhenVolatileHostSetupCompleted : SetupState -> InterfaceToHost.VolatileHostId -> SetupTask
@@ -540,10 +512,10 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
             case stateBefore.eveOnlineProcessesIds of
                 Nothing ->
                     ContinueSetup stateBefore
-                        (InterfaceToHost.RunInVolatileHost
+                        (InterfaceToHost.RequestToVolatileHost
                             { hostId = volatileHostId
-                            , script =
-                                VolatileHostInterface.buildScriptToGetResponseFromVolatileHost
+                            , request =
+                                VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
                                     VolatileHostInterface.GetEveOnlineProcessesIds
                             }
                         )
@@ -556,10 +528,10 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
 
                         Just eveOnlineProcessId ->
                             ContinueSetup stateBefore
-                                (InterfaceToHost.RunInVolatileHost
+                                (InterfaceToHost.RequestToVolatileHost
                                     { hostId = volatileHostId
-                                    , script =
-                                        VolatileHostInterface.buildScriptToGetResponseFromVolatileHost
+                                    , request =
+                                        VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
                                             (VolatileHostInterface.SearchUIRootAddress { processId = eveOnlineProcessId })
                                     }
                                 )
@@ -578,10 +550,10 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                     case stateBefore.lastMemoryReading of
                         Nothing ->
                             ContinueSetup stateBefore
-                                (InterfaceToHost.RunInVolatileHost
+                                (InterfaceToHost.RequestToVolatileHost
                                     { hostId = volatileHostId
-                                    , script =
-                                        VolatileHostInterface.buildScriptToGetResponseFromVolatileHost getMemoryReadingRequest
+                                    , request =
+                                        VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost getMemoryReadingRequest
                                     }
                                 )
                                 "Get the first memory reading from the EVE Online client process. This can take several seconds."
@@ -594,9 +566,9 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                 VolatileHostInterface.Completed lastCompletedMemoryReading ->
                                     let
                                         buildTaskFromRequestToVolatileHost requestToVolatileHost =
-                                            InterfaceToHost.RunInVolatileHost
+                                            InterfaceToHost.RequestToVolatileHost
                                                 { hostId = volatileHostId
-                                                , script = VolatileHostInterface.buildScriptToGetResponseFromVolatileHost requestToVolatileHost
+                                                , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
                                                 }
                                     in
                                     OperateBot
@@ -619,27 +591,8 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                         }
 
 
-updateVolatileHostState : InterfaceToHost.RunInVolatileHostComplete -> VolatileHostState -> VolatileHostState
-updateVolatileHostState runInVolatileHostComplete stateBefore =
-    case runInVolatileHostComplete.returnValueToString of
-        Nothing ->
-            stateBefore
-
-        Just returnValueString ->
-            case stateBefore of
-                Initial ->
-                    if returnValueString |> String.contains "Setup Completed" then
-                        SetupCompleted
-
-                    else
-                        stateBefore
-
-                SetupCompleted ->
-                    stateBefore
-
-
-runScriptResultDisplayString : Result String InterfaceToHost.RunInVolatileHostComplete -> { string : String, isErr : Bool }
-runScriptResultDisplayString result =
+requestToVolatileHostResultDisplayString : Result String InterfaceToHost.RequestToVolatileHostComplete -> { string : String, isErr : Bool }
+requestToVolatileHostResultDisplayString result =
     case result of
         Err error ->
             { string = "Error: " ++ error, isErr = True }
@@ -664,15 +617,15 @@ statusReportFromState state =
                     )
                 |> Maybe.withDefault ""
 
-        lastScriptRunResult =
-            "Last script run result is: "
-                ++ (state.setup.lastRunScriptResult
-                        |> Maybe.map runScriptResultDisplayString
+        lastResultFromVolatileHost =
+            "Last result from volatile host is: "
+                ++ (state.setup.lastRequestToVolatileHostResult
+                        |> Maybe.map requestToVolatileHostResultDisplayString
                         |> Maybe.map
-                            (\runScriptResult ->
-                                runScriptResult.string
+                            (\resultDisplayInfo ->
+                                resultDisplayInfo.string
                                     |> stringEllipsis
-                                        (if runScriptResult.isErr then
+                                        (if resultDisplayInfo.isErr then
                                             640
 
                                          else
@@ -711,7 +664,7 @@ statusReportFromState state =
     , "EVE Online framework status:"
 
     -- , runtimeExpensesReport
-    , lastScriptRunResult
+    , lastResultFromVolatileHost
     ]
         ++ botEffectQueueLengthWarning
         |> String.join "\n"

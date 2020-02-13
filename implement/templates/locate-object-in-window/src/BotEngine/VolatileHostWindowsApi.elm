@@ -7,7 +7,7 @@ module BotEngine.VolatileHostWindowsApi exposing (
     , MouseButton(..)
     , KeyboardKey(..)
     , WindowId
-    , buildScriptToGetResponseFromVolatileHost
+    , buildRequestStringToGetResponseFromVolatileHost
     , deserializeResponseFromVolatileHost
     , setupScript)
 
@@ -76,16 +76,10 @@ type MouseButton
     | MouseButtonRight
 
 
-buildScriptToGetResponseFromVolatileHost : RequestToVolatileHost -> String
-buildScriptToGetResponseFromVolatileHost request =
-    "serialRequest("
-        ++ (request
-                |> encodeRequestToVolatileHost
-                |> Json.Encode.encode 0
-                |> Json.Encode.string
-                |> Json.Encode.encode 0
-           )
-        ++ ")"
+buildRequestStringToGetResponseFromVolatileHost : RequestToVolatileHost -> String
+buildRequestStringToGetResponseFromVolatileHost =
+    encodeRequestToVolatileHost
+        >> Json.Encode.encode 0
 
 
 encodeRequestToVolatileHost : RequestToVolatileHost -> Json.Encode.Value
@@ -616,5 +610,9 @@ string SerializeToJsonForBot<T>(T value) =>
             ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore,
         });
 
-"Setup Completed"
+string InterfaceToHost_Request(string request)
+{
+    return serialRequest(request);
+}
+
 """

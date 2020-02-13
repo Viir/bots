@@ -1,6 +1,6 @@
 {- This is a template to test functions to locate objects in images.
 
-   To use this template, use it like a bot and start it using the `start-bot` command.
+   To use this template, use it like a bot and run it using the `run-bot` command.
    Specify the path to the file to load the image from using the `--bot-configuration` parameter.
 
    To test an image search function, replace the function `image_shows_object_at_origin` below with your search function.
@@ -13,7 +13,8 @@
     > Stopped with result: Decoded image: bitmapWidthInPixels: 153, bitmapHeightInPixels: 81
     > Found matches in 4 locations:
     > [ { x = 23, y = 57 }, { x = 33, y = 57 }, { x = 43, y = 57 }, { x = 53, y = 57 } ]
-
+-}
+{-
    bot-catalog-tags:devtool,test,locate-object-in-image
 -}
 
@@ -25,7 +26,7 @@ module Bot exposing
     )
 
 import Base64.Decode
-import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
 import DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue)
 import Dict
 import Json.Decode
@@ -42,7 +43,6 @@ type alias State =
 
 type ProcessStepResult
     = Initialized
-    | VolatileHostCreated VolatileHostCreatedStructure
     | VolatileHostSetupCompleted VolatileHostCreatedStructure
     | FileContentsRead FileContentsReadStructure
 
@@ -209,10 +209,10 @@ integrateEvent event stateBefore =
                             { stateBefore | error = Just "Failed to create volatile host." }
 
                         Ok { hostId } ->
-                            { stateBefore | lastStepResult = VolatileHostCreated { hostId = hostId } }
+                            { stateBefore | lastStepResult = VolatileHostSetupCompleted { hostId = hostId } }
 
-                InterfaceToHost.RunInVolatileHostResponse runInVolatileHostResponse ->
-                    case runInVolatileHostResponse of
+                InterfaceToHost.RequestToVolatileHostResponse requestToVolatileHostResponse ->
+                    case requestToVolatileHostResponse of
                         Err InterfaceToHost.HostNotFound ->
                             { stateBefore | error = Just "Error running script in volatile host: HostNotFound" }
 
@@ -228,13 +228,6 @@ integrateEvent event stateBefore =
 
                                         FileContentsRead _ ->
                                             stateBefore
-
-                                        VolatileHostCreated volatileHost ->
-                                            if returnValueToString == "Setup Completed" then
-                                                { stateBefore | lastStepResult = VolatileHostSetupCompleted volatileHost }
-
-                                            else
-                                                stateBefore
 
                                         VolatileHostSetupCompleted volatileHost ->
                                             case returnValueToString |> VolatileHostSetup.deserializeResponseFromVolatileHost of
@@ -302,20 +295,7 @@ getNextRequestWithDescriptionFromState state =
             ContinueWithTask
                 { task =
                     { taskId = InterfaceToHost.taskIdFromString "create_volatile_host"
-                    , task = InterfaceToHost.CreateVolatileHost
-                    }
-                , taskDescription = "Create volatile host."
-                }
-
-        VolatileHostCreated volatileHost ->
-            ContinueWithTask
-                { task =
-                    { taskId = InterfaceToHost.taskIdFromString "set_up_volatile_host"
-                    , task =
-                        InterfaceToHost.RunInVolatileHost
-                            { hostId = volatileHost.hostId
-                            , script = VolatileHostSetup.setupScript
-                            }
+                    , task = InterfaceToHost.CreateVolatileHost { script = VolatileHostSetup.setupScript }
                     }
                 , taskDescription = "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
                 }
@@ -333,9 +313,9 @@ getNextRequestWithDescriptionFromState state =
             else
                 let
                     task =
-                        InterfaceToHost.RunInVolatileHost
+                        InterfaceToHost.RequestToVolatileHost
                             { hostId = volatileHost.hostId
-                            , script = { filePath = imageFilePath } |> ReadFileContent |> VolatileHostSetup.buildScriptToGetResponseFromVolatileHost
+                            , request = { filePath = imageFilePath } |> ReadFileContent |> VolatileHostSetup.buildRequestStringToGetResponseFromVolatileHost
                             }
                 in
                 ContinueWithTask

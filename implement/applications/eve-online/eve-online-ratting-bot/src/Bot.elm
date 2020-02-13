@@ -1,4 +1,4 @@
-{- EVE Online ratting bot version 2020-02-12
+{- EVE Online ratting bot version 2020-02-13
 
    Setup instructions for the EVE Online client:
    + Enable `Run clients with 64 bit` in the settings, because this bot only works with the 64-bit version of the EVE Online client.
@@ -20,7 +20,7 @@ module Bot exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20190808 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
 import EveOnline.BotFramework exposing (BotEffect(..))
 import EveOnline.MemoryReading
     exposing

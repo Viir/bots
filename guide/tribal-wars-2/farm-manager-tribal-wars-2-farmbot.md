@@ -23,13 +23,13 @@ It automatically detects barbarian villages, available troops and configured arm
 
 ## Starting the Farmbot
 
-Download the BotEngine console app from the following address:
-[https://botengine.blob.core.windows.net/blob-library/by-name/2020-02-03.botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-02-03.botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
+Download the BotEngine Windows console app from 
+[https://botengine.blob.core.windows.net/blob-library/by-name/2020-02-13.botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-02-13.botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
 
 To start the farmbot, run the `BotEngine.exe` program with the following command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/42b11c257f99c61538b7060ea1a4fd4f7d40f0eb/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
+C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
 ```
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
 
@@ -82,6 +82,10 @@ When all your villages are out of units or at the attack limit, the bot stops wi
 ## Further Configuration
 
 In case you need the bot to run more than 15 minutes per session, use an online-bot session as explained at [https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions](https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions)
+
+Online bot sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
+
+For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
 
 ## Getting Help
 

@@ -26,7 +26,7 @@ In this section, we will follow the fastest way to your custom bot.
 First, let's look at an EVE Online bot from the examples. Run this autopilot bot:
 
 ```cmd
-botengine  run-bot  "https://github.com/Viir/bots/tree/c0a858667e1f366501ac09079b4ac0ad83bc60f4/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+botengine  run-bot  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
 If you are not yet familiar with this method of running a bot, read that guide first: [./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md](./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md)
@@ -54,7 +54,7 @@ Running this command gives you the same bot with the same behavior because the b
 
 To change the bot code, open the file `Bot.elm` in this directory in a text editor. For now, the Windows Notepad app is sufficient as an editor.
 
-On [line 86](https://github.com/Viir/bots/blob/c0a858667e1f366501ac09079b4ac0ad83bc60f4/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L86), you find the text that we saw in the bots status message earlier, enclosed in double-quotes:
+On [line 86](https://github.com/Viir/bots/blob/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L86), you find the text that we saw in the bots status message earlier, enclosed in double-quotes:
 
 ![EVE Online autopilot bot code in Notepad](./image/2020-01-26.eve-online-autopilot-bot-code-in-notepad.png)
 
@@ -125,7 +125,7 @@ To achieve this, we combine the following tools:
 
 The following subsections explain in detail how to set up these tools.
 
-To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/c0a858667e1f366501ac09079b4ac0ad83bc60f4/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
+To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
 
 ### Elm command line program
 
@@ -153,7 +153,7 @@ Success! Compiled 1 module.
 ```
 That number of modules it mentions can vary;
 
-To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on [line 90](https://github.com/Viir/bots/blob/c0a858667e1f366501ac09079b4ac0ad83bc60f4/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L90), replace `shipUI` with `shipUi`.
+To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on [line 90](https://github.com/Viir/bots/blob/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L90), replace `shipUI` with `shipUi`.
 After saving the changed file, invoke Elm with the same command again. Now we get a different output, informing us about a problem in the code:
 ![Elm compilation detected a problem in the bot code](./../image/2020-01-20.elm-detected-problem.png)
 
@@ -204,7 +204,7 @@ In the previous section, we already changed the code in the `Bot.elm` file. This
 
 ### Entry Point - `processEvent`
 
-Each time an event happens, the framework calls the function [`processEvent`](https://github.com/Viir/bots/blob/c0a858667e1f366501ac09079b4ac0ad83bc60f4/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L48-L50). Because of this unique role, this function is sometimes also referred to as 'entry point'.
+Each time an event happens, the framework calls the function [`processEvent`](https://github.com/Viir/bots/blob/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L48-L50). Because of this unique role, this function is sometimes also referred to as 'entry point'.
 
 Let's look at how this function is implemented:
 ```Elm

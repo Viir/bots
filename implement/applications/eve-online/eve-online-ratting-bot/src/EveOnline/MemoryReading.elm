@@ -41,6 +41,7 @@ module EveOnline.MemoryReading exposing
     , centerFromDisplayRegion
     , countDescendantsInUITreeNode
     , decodeMemoryReadingFromString
+    , getAllContainedDisplayTexts
     , getDisplayText
     , getHorizontalOffsetFromParentAndWidth
     , getMostPopulousDescendantMatchingPredicate
@@ -224,6 +225,8 @@ type alias ColorComponents =
 type alias DronesWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , droneGroups : List DronesWindowDroneGroup
+    , droneGroupInBay : Maybe DronesWindowDroneGroup
+    , droneGroupInLocalSpace : Maybe DronesWindowDroneGroup
     }
 
 
@@ -237,6 +240,7 @@ type alias DronesWindowDroneGroupHeader =
     { uiNode : UITreeNodeWithDisplayRegion
     , mainText : Maybe String
     , expander : MaybeVisible Expander
+    , quantityFromTitle : Maybe Int
     }
 
 
@@ -888,8 +892,19 @@ parseDronesWindowFromUITreeRoot uiTreeRoot =
                                 , drones = droneEntries |> List.filter (headerFromDroneEntry >> (==) (Just header))
                                 }
                             )
+
+                droneGroupFromHeaderTextPart headerTextPart =
+                    droneGroups
+                        |> List.filter (.header >> .mainText >> Maybe.withDefault "" >> String.toLower >> String.contains (headerTextPart |> String.toLower))
+                        |> List.sortBy (.header >> .mainText >> Maybe.map String.length >> Maybe.withDefault 999)
+                        |> List.head
             in
-            CanSee { uiNode = windowNode, droneGroups = droneGroups }
+            CanSee
+                { uiNode = windowNode
+                , droneGroups = droneGroups
+                , droneGroupInBay = droneGroupFromHeaderTextPart "in Bay"
+                , droneGroupInLocalSpace = droneGroupFromHeaderTextPart "in local space"
+                }
 
 
 parseDronesWindowDroneGroupHeader : UITreeNodeWithDisplayRegion -> DronesWindowDroneGroupHeader
@@ -911,11 +926,40 @@ parseDronesWindowDroneGroupHeader groupHeaderUiNode =
                         >> (Maybe.map (String.toLower >> String.contains "expander") >> Maybe.withDefault False)
                     )
                 |> List.head
+
+        quantityFromTitle =
+            mainText |> Maybe.andThen (parseQuantityFromDroneGroupTitleText >> Result.withDefault Nothing)
     in
     { uiNode = groupHeaderUiNode
     , mainText = mainText
     , expander = expanderNode |> Maybe.map parseExpander |> canNotSeeItFromMaybeNothing
+    , quantityFromTitle = quantityFromTitle
     }
+
+
+parseQuantityFromDroneGroupTitleText : String -> Result String (Maybe Int)
+parseQuantityFromDroneGroupTitleText droneGroupTitleText =
+    case "\\(\\s*(\\d+)\\s*\\)*$" |> Regex.fromString of
+        Nothing ->
+            Err "Regex code error"
+
+        Just regex ->
+            case droneGroupTitleText |> String.trim |> Regex.find regex |> List.head of
+                Nothing ->
+                    Ok Nothing
+
+                Just match ->
+                    case match.submatches of
+                        [ quantityText ] ->
+                            quantityText
+                                |> Maybe.withDefault ""
+                                |> String.trim
+                                |> String.toInt
+                                |> Maybe.map (Just >> Ok)
+                                |> Maybe.withDefault (Err ("Failed to parse to integer: " ++ match.match))
+
+                        _ ->
+                            Err "Unexpected number of text elements."
 
 
 parseDronesWindowEntry : UITreeNodeWithDisplayRegion -> DronesWindowEntry
@@ -1267,7 +1311,7 @@ parseNeocomClockText clockText =
                                             Ok { hour = hour, minute = minute }
 
                         _ ->
-                            Err "Unexpected numer of text elements."
+                            Err "Unexpected number of text elements."
 
 
 parseExpander : UITreeNodeWithDisplayRegion -> Expander

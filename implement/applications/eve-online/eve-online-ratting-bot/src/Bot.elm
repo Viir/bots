@@ -169,7 +169,11 @@ combat botMemory overviewWindow parsedUserInterface =
                     DescribeBranch "I see no locked target."
                         (case overviewEntriesToLock of
                             [] ->
-                                DescribeBranch "I see no overview entry to lock." (EndDecisionPath Wait)
+                                DescribeBranch "I see no overview entry to lock."
+                                    (returnDronesToBay parsedUserInterface
+                                        |> Maybe.withDefault
+                                            (DescribeBranch "No drones to return." (EndDecisionPath Wait))
+                                    )
 
                             nextOverviewEntryToLock :: _ ->
                                 DescribeBranch "I see an overview entry to lock."
@@ -182,17 +186,22 @@ combat botMemory overviewWindow parsedUserInterface =
                             -- TODO: Check previous memory reading too for module activity.
                             Nothing ->
                                 DescribeBranch "All attack modules are active."
-                                    (if maxTargetCount <= (parsedUserInterface.targets |> List.length) then
-                                        DescribeBranch "Enough locked targets." (EndDecisionPath Wait)
+                                    (launchAndEngageDrones parsedUserInterface
+                                        |> Maybe.withDefault
+                                            (DescribeBranch "No idling drones."
+                                                (if maxTargetCount <= (parsedUserInterface.targets |> List.length) then
+                                                    DescribeBranch "Enough locked targets." (EndDecisionPath Wait)
 
-                                     else
-                                        case overviewEntriesToLock of
-                                            [] ->
-                                                DescribeBranch "I see no more overview entries to lock." (EndDecisionPath Wait)
+                                                 else
+                                                    case overviewEntriesToLock of
+                                                        [] ->
+                                                            DescribeBranch "I see no more overview entries to lock." (EndDecisionPath Wait)
 
-                                            nextOverviewEntryToLock :: _ ->
-                                                DescribeBranch "Lock more targets."
-                                                    (decideNextActionAcquireLockedTarget nextOverviewEntryToLock)
+                                                        nextOverviewEntryToLock :: _ ->
+                                                            DescribeBranch "Lock more targets."
+                                                                (decideNextActionAcquireLockedTarget nextOverviewEntryToLock)
+                                                )
+                                            )
                                     )
 
                             Just inactiveModule ->
@@ -205,6 +214,99 @@ combat botMemory overviewWindow parsedUserInterface =
                                         )
                                     )
                         )
+
+
+launchAndEngageDrones : ParsedUserInterface -> Maybe DecisionPathNode
+launchAndEngageDrones parsedUserInterface =
+    parsedUserInterface.dronesWindow
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.andThen
+            (\dronesWindow ->
+                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
+                    ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
+                        let
+                            idlingDrones =
+                                droneGroupInLocalSpace.drones
+                                    |> List.filter (.uiNode >> .uiNode >> EveOnline.MemoryReading.getAllContainedDisplayTexts >> List.any (String.toLower >> String.contains "idle"))
+
+                            dronesInBayQuantity =
+                                droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
+
+                            dronesInLocalSpaceQuantity =
+                                droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
+                        in
+                        if 0 < (idlingDrones |> List.length) then
+                            Just
+                                (DescribeBranch "Engage idling drone(s)"
+                                    (EndDecisionPath
+                                        (Act
+                                            { firstAction = droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight
+                                            , followingSteps =
+                                                [ ( "Click menu entry 'engage target'."
+                                                  , lastContextMenuOrSubmenu
+                                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "engage target")
+                                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                                  )
+                                                ]
+                                            }
+                                        )
+                                    )
+                                )
+
+                        else if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
+                            Just
+                                (DescribeBranch "Launch drones"
+                                    (EndDecisionPath
+                                        (Act
+                                            { firstAction = droneGroupInBay.header.uiNode |> clickOnUIElement MouseButtonRight
+                                            , followingSteps =
+                                                [ ( "Click menu entry 'Launch drone'."
+                                                  , lastContextMenuOrSubmenu
+                                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Launch drone")
+                                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                                  )
+                                                ]
+                                            }
+                                        )
+                                    )
+                                )
+
+                        else
+                            Nothing
+
+                    _ ->
+                        Nothing
+            )
+
+
+returnDronesToBay : ParsedUserInterface -> Maybe DecisionPathNode
+returnDronesToBay parsedUserInterface =
+    parsedUserInterface.dronesWindow
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.andThen .droneGroupInLocalSpace
+        |> Maybe.andThen
+            (\droneGroupInLocalSpace ->
+                if 0 < (droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0) then
+                    Just
+                        (DescribeBranch "I see there are drones in local space. Return those to bay."
+                            (EndDecisionPath
+                                (Act
+                                    { firstAction = droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight
+                                    , followingSteps =
+                                        [ ( "Click menu entry 'Return to drone bay'."
+                                          , lastContextMenuOrSubmenu
+                                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Return to drone bay")
+                                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                          )
+                                        ]
+                                    }
+                                )
+                            )
+                        )
+
+                else
+                    Nothing
+            )
 
 
 decideNextActionAcquireLockedTarget : OverviewWindowEntry -> DecisionPathNode
@@ -336,8 +438,20 @@ describeUserInterfaceForMonitoring parsedUserInterface =
 
                 CanNotSeeIt ->
                     "I cannot see the ship UI. Please set up game client first."
+
+        describeDrones =
+            case parsedUserInterface.dronesWindow of
+                CanNotSeeIt ->
+                    "Can not see drone window."
+
+                CanSee dronesWindow ->
+                    "Can see the drones window: In bay: "
+                        ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                        ++ ", in local space: "
+                        ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                        ++ "."
     in
-    [ describeShip ] ++ combatInfoLines |> String.join " "
+    [ describeShip ] ++ combatInfoLines ++ [ describeDrones ] |> String.join " "
 
 
 allOverviewEntriesToAttack : ParsedUserInterface -> Maybe (List EveOnline.MemoryReading.OverviewWindowEntry)

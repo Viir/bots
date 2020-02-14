@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-02-13
+{- Tribal Wars 2 farmbot version 2020-02-14
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -16,6 +16,17 @@
    If multiple army presets match these criteria, I use the first one by alphabetical order.
    If no army preset matches this filter, I activate another village which has a matching preset and enough available units.
    If there is no village with a matching preset and enough units, I stop attacking.
+
+   ## Configuration Options
+
+   All configuration is optional; you only need it in case the defaults don't fit your use-case.
+   You can configure two variables:
+
+   + 'number-of-farm-cycles' : Number of farm cycles before the bot stops completely. The default is 1.
+   + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like '60-120'. I will then pick a random value in this range.
+
+   Here is an example of applying a configuration for three farm cycles with breaks of 20 to 40 minutes in between:
+   --bot-configuration="number-of-farm-cycles = 3, break-duration = 20 - 40"
 -}
 {-
    bot-catalog-tags:tribal-wars-2,farmbot
@@ -33,23 +44,17 @@ import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
 import Dict
 import Json.Decode
 import Json.Encode
+import Result.Extra
 import Set
 import WebBrowser.BotFramework as BotFramework exposing (BotEvent, BotResponse)
 
 
-maximumNumberOfFarmCycles : Int
-maximumNumberOfFarmCycles =
-    1
-
-
-farmCycleBreakLengthMinMinutes : Int
-farmCycleBreakLengthMinMinutes =
-    120
-
-
-farmCycleBreakLengthMaxMinutes : Int
-farmCycleBreakLengthMaxMinutes =
-    180
+botConfigurationDefault : BotConfiguration
+botConfigurationDefault =
+    { numberOfFarmCycles = 1
+    , breakDurationMinMinutes = 90
+    , breakDurationMaxMinutes = 120
+    }
 
 
 farmArmyPresetNamePattern : String
@@ -74,6 +79,7 @@ selectedVillageInfoMaxAge =
 
 type alias BotState =
     { timeInMilliseconds : Int
+    , configuration : BotConfiguration
     , lastRunJavascriptResult :
         Maybe
             { response : BotFramework.RunJavascriptInCurrentPageResponseStructure
@@ -89,6 +95,13 @@ type alias BotState =
     , lastActivatedVillageTimeInMilliseconds : Maybe Int
     , completedFarmCycles : List FarmCycleState
     , parseResponseError : Maybe Json.Decode.Error
+    }
+
+
+type alias BotConfiguration =
+    { numberOfFarmCycles : Int
+    , breakDurationMinMinutes : Int
+    , breakDurationMaxMinutes : Int
     }
 
 
@@ -205,6 +218,7 @@ initState : State
 initState =
     BotFramework.initState
         { timeInMilliseconds = 0
+        , configuration = botConfigurationDefault
         , lastRunJavascriptResult = Nothing
         , gameRootInformationResult = Nothing
         , ownVillagesDetails = Dict.empty
@@ -231,244 +245,335 @@ processEvent =
 
 processWebBrowserBotEvent : BotEvent -> BotState -> { newState : BotState, response : BotResponse, statusMessage : String }
 processWebBrowserBotEvent event stateBefore =
-    let
-        state =
-            stateBefore |> integrateWebBrowserBotEvent event
+    case stateBefore |> integrateWebBrowserBotEvent event of
+        Err integrateEventError ->
+            { newState = stateBefore, response = BotFramework.FinishSession, statusMessage = "Error: " ++ integrateEventError }
 
-        ( responseToFramework, responseDescription, maybeUpdatedState ) =
-            case state.farmState of
-                InBreak farmBreak ->
-                    let
-                        minutesSinceLastFarmCycleCompletion =
-                            (stateBefore.timeInMilliseconds // 1000 - farmBreak.lastCycleCompletionTime) // 60
-
-                        minutesToNextFarmCycleStart =
-                            (farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000) // 60
-
-                        stateAfterStartingFarmCycle =
-                            if minutesToNextFarmCycleStart < 1 then
-                                Just { state | farmState = InFarmCycle initFarmCycle }
-
-                            else
-                                Nothing
-                    in
-                    ( BotFramework.ContinueSession Nothing
-                    , "Next farm cycle starts in "
-                        ++ (minutesToNextFarmCycleStart |> String.fromInt)
-                        ++ " minutes. Last cycle completed "
-                        ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
-                        ++ " minutes ago."
-                    , stateAfterStartingFarmCycle
-                    )
-
-                InFarmCycle farmCycleStateBefore ->
-                    let
-                        responseInFarmCycle =
-                            responseWithDescriptionToFramework state farmCycleStateBefore
-                    in
-                    case responseInFarmCycle of
-                        ContinueFarmCycle { javascriptToRun, activityDescription } ->
+        Ok state ->
+            let
+                ( responseToFramework, responseDescription, maybeUpdatedState ) =
+                    case state.farmState of
+                        InBreak farmBreak ->
                             let
-                                maybeRequest =
-                                    javascriptToRun
-                                        |> Maybe.map
-                                            (\javascript ->
-                                                BotFramework.RunJavascriptInCurrentPageRequest
-                                                    { javascript = javascript
-                                                    , requestId = "request-id"
-                                                    , timeToWaitForCallbackMilliseconds = 1000
-                                                    }
-                                            )
-                            in
-                            ( BotFramework.ContinueSession maybeRequest, activityDescription, Nothing )
+                                minutesSinceLastFarmCycleCompletion =
+                                    (stateBefore.timeInMilliseconds // 1000 - farmBreak.lastCycleCompletionTime) // 60
 
-                        FinishFarmCycle ->
-                            let
-                                completedFarmCycles =
-                                    farmCycleStateBefore :: state.completedFarmCycles
+                                minutesToNextFarmCycleStart =
+                                    (farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000) // 60
 
-                                currentTimeInSeconds =
-                                    stateBefore.timeInMilliseconds // 1000
-
-                                breakLengthRange =
-                                    (farmCycleBreakLengthMaxMinutes - farmCycleBreakLengthMinMinutes) * 60
-
-                                breakLengthRandomComponent =
-                                    if breakLengthRange == 0 then
-                                        0
+                                stateAfterStartingFarmCycle =
+                                    if minutesToNextFarmCycleStart < 1 then
+                                        Just { state | farmState = InFarmCycle initFarmCycle }
 
                                     else
-                                        stateBefore.timeInMilliseconds |> modBy breakLengthRange
-
-                                breakLength =
-                                    (farmCycleBreakLengthMinMinutes * 60) + breakLengthRandomComponent
-
-                                nextCycleStartTime =
-                                    currentTimeInSeconds + breakLength
-
-                                farmState =
-                                    InBreak
-                                        { lastCycleCompletionTime = currentTimeInSeconds
-                                        , nextCycleStartTime = nextCycleStartTime
-                                        }
-
-                                stateAfterFinishingFarmCycle =
-                                    { state
-                                        | farmState = farmState
-                                        , completedFarmCycles = completedFarmCycles
-                                    }
-
-                                numberOfCompletedFarmCycles =
-                                    completedFarmCycles |> List.length
+                                        Nothing
                             in
-                            if maximumNumberOfFarmCycles <= numberOfCompletedFarmCycles then
-                                -- TODO: Move derivation of 'BotFramework.FinishSession' from completedFarmCycles further up.
-                                ( BotFramework.FinishSession
-                                , "Finished all " ++ (numberOfCompletedFarmCycles |> String.fromInt) ++ " farm cycles."
-                                , Just stateAfterFinishingFarmCycle
-                                )
+                            ( BotFramework.ContinueSession Nothing
+                            , "Next farm cycle starts in "
+                                ++ (minutesToNextFarmCycleStart |> String.fromInt)
+                                ++ " minutes. Last cycle completed "
+                                ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
+                                ++ " minutes ago."
+                            , stateAfterStartingFarmCycle
+                            )
 
-                            else
-                                ( BotFramework.ContinueSession Nothing
-                                , "There is nothing left to do in this farm cycle."
-                                , Just stateAfterFinishingFarmCycle
-                                )
+                        InFarmCycle farmCycleStateBefore ->
+                            let
+                                responseInFarmCycle =
+                                    responseWithDescriptionToFramework state farmCycleStateBefore
+                            in
+                            case responseInFarmCycle of
+                                ContinueFarmCycle { javascriptToRun, activityDescription } ->
+                                    let
+                                        maybeRequest =
+                                            javascriptToRun
+                                                |> Maybe.map
+                                                    (\javascript ->
+                                                        BotFramework.RunJavascriptInCurrentPageRequest
+                                                            { javascript = javascript
+                                                            , requestId = "request-id"
+                                                            , timeToWaitForCallbackMilliseconds = 1000
+                                                            }
+                                                    )
+                                    in
+                                    ( BotFramework.ContinueSession maybeRequest, activityDescription, Nothing )
+
+                                FinishFarmCycle ->
+                                    let
+                                        completedFarmCycles =
+                                            farmCycleStateBefore :: state.completedFarmCycles
+
+                                        currentTimeInSeconds =
+                                            stateBefore.timeInMilliseconds // 1000
+
+                                        breakLengthRange =
+                                            (stateBefore.configuration.breakDurationMaxMinutes
+                                                - stateBefore.configuration.breakDurationMinMinutes
+                                            )
+                                                * 60
+
+                                        breakLengthRandomComponent =
+                                            if breakLengthRange == 0 then
+                                                0
+
+                                            else
+                                                stateBefore.timeInMilliseconds |> modBy breakLengthRange
+
+                                        breakLength =
+                                            (stateBefore.configuration.breakDurationMinMinutes * 60) + breakLengthRandomComponent
+
+                                        nextCycleStartTime =
+                                            currentTimeInSeconds + breakLength
+
+                                        farmState =
+                                            InBreak
+                                                { lastCycleCompletionTime = currentTimeInSeconds
+                                                , nextCycleStartTime = nextCycleStartTime
+                                                }
+
+                                        stateAfterFinishingFarmCycle =
+                                            { state
+                                                | farmState = farmState
+                                                , completedFarmCycles = completedFarmCycles
+                                            }
+
+                                        numberOfCompletedFarmCycles =
+                                            completedFarmCycles |> List.length
+                                    in
+                                    if stateBefore.configuration.numberOfFarmCycles <= numberOfCompletedFarmCycles then
+                                        -- TODO: Move derivation of 'BotFramework.FinishSession' from completedFarmCycles further up.
+                                        ( BotFramework.FinishSession
+                                        , "Finished all " ++ (numberOfCompletedFarmCycles |> String.fromInt) ++ " farm cycles."
+                                        , Just stateAfterFinishingFarmCycle
+                                        )
+
+                                    else
+                                        ( BotFramework.ContinueSession Nothing
+                                        , "There is nothing left to do in this farm cycle."
+                                        , Just stateAfterFinishingFarmCycle
+                                        )
+            in
+            { newState = maybeUpdatedState |> Maybe.withDefault state
+            , response = responseToFramework
+            , statusMessage = statusMessageFromState state ++ "\n" ++ responseDescription
+            }
+
+
+parseConfigurationFromString : String -> Result String BotConfiguration
+parseConfigurationFromString configurationString =
+    let
+        assignments =
+            configurationString |> String.split ","
+
+        assignmentFunctionResults =
+            assignments
+                |> List.map
+                    (\assignment ->
+                        case assignment |> String.split "=" |> List.map String.trim of
+                            [ variableName, assignedValue ] ->
+                                case parseBotConfigurationAssignment |> Dict.get variableName of
+                                    Nothing ->
+                                        Err ("Unknown variable name '" ++ variableName ++ "'.")
+
+                                    Just parseFunction ->
+                                        parseFunction assignedValue
+                                            |> Result.mapError (\parseError -> "Failed to parse value for variable '" ++ variableName ++ "': " ++ parseError)
+
+                            _ ->
+                                Err ("Failed to parse assignment '" ++ assignment ++ "'.")
+                    )
     in
-    { newState = maybeUpdatedState |> Maybe.withDefault state
-    , response = responseToFramework
-    , statusMessage = statusMessageFromState state ++ "\n" ++ responseDescription
-    }
+    assignmentFunctionResults
+        |> Result.Extra.combine
+        |> Result.map
+            (\assignmentFunctions ->
+                assignmentFunctions
+                    |> List.foldl (\assignmentFunction previousConfig -> assignmentFunction previousConfig)
+                        botConfigurationDefault
+            )
 
 
-integrateWebBrowserBotEvent : BotEvent -> BotState -> BotState
+parseBotConfigurationBreakDurationMinutes : String -> Result String (BotConfiguration -> BotConfiguration)
+parseBotConfigurationBreakDurationMinutes breakDurationString =
+    let
+        boundsParseResults =
+            breakDurationString
+                |> String.split "-"
+                |> List.map (\boundString -> boundString |> String.trim |> String.toInt |> Result.fromMaybe ("Failed to parse '" ++ boundString ++ "'"))
+    in
+    boundsParseResults
+        |> Result.Extra.combine
+        |> Result.andThen
+            (\bounds ->
+                case ( bounds |> List.minimum, bounds |> List.maximum ) of
+                    ( Just minimum, Just maximum ) ->
+                        Ok (\configuration -> { configuration | breakDurationMinMinutes = minimum, breakDurationMaxMinutes = maximum })
+
+                    _ ->
+                        Err "Missing value"
+            )
+
+
+parseBotConfigurationNumberOfFarmCycles : String -> Result String (BotConfiguration -> BotConfiguration)
+parseBotConfigurationNumberOfFarmCycles numberString =
+    numberString
+        |> String.toInt
+        |> Maybe.map (\number -> \prevConfiguration -> { prevConfiguration | numberOfFarmCycles = number })
+        |> Result.fromMaybe ("Failed to parse number from '" ++ numberString ++ "'")
+
+
+parseBotConfigurationAssignment : Dict.Dict String (String -> Result String (BotConfiguration -> BotConfiguration))
+parseBotConfigurationAssignment =
+    [ ( "break-duration", parseBotConfigurationBreakDurationMinutes )
+    , ( "number-of-farm-cycles", parseBotConfigurationNumberOfFarmCycles )
+    ]
+        |> Dict.fromList
+
+
+integrateWebBrowserBotEvent : BotEvent -> BotState -> Result String BotState
 integrateWebBrowserBotEvent event stateBefore =
     case event of
-        BotFramework.SetBotConfiguration _ ->
-            stateBefore
+        BotFramework.SetBotConfiguration configurationString ->
+            let
+                parseConfigurationResult =
+                    parseConfigurationFromString configurationString
+            in
+            parseConfigurationResult
+                |> Result.map (\newConfiguration -> { stateBefore | configuration = newConfiguration })
+                |> Result.mapError (\parseError -> "Failed to parse this bot configuration: " ++ parseError)
 
         BotFramework.ArrivedAtTime { timeInMilliseconds } ->
-            { stateBefore | timeInMilliseconds = timeInMilliseconds }
+            Ok { stateBefore | timeInMilliseconds = timeInMilliseconds }
 
         BotFramework.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
-            let
-                parseAsRootInfoResult =
-                    runJavascriptInCurrentPageResponse.directReturnValueAsString
-                        |> Json.Decode.decodeString decodeRootInformation
+            Ok
+                (integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse
+                    runJavascriptInCurrentPageResponse
+                    stateBefore
+                )
 
-                stateAfterIntegrateResponse =
-                    { stateBefore
-                        | lastRunJavascriptResult =
-                            Just
-                                { response = runJavascriptInCurrentPageResponse
-                                , parseResult = parseAsRootInfoResult
-                                }
+
+integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse : BotFramework.RunJavascriptInCurrentPageResponseStructure -> BotState -> BotState
+integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse stateBefore =
+    let
+        parseAsRootInfoResult =
+            runJavascriptInCurrentPageResponse.directReturnValueAsString
+                |> Json.Decode.decodeString decodeRootInformation
+
+        stateAfterIntegrateResponse =
+            { stateBefore
+                | lastRunJavascriptResult =
+                    Just
+                        { response = runJavascriptInCurrentPageResponse
+                        , parseResult = parseAsRootInfoResult
+                        }
+            }
+
+        parseResult =
+            runJavascriptInCurrentPageResponse.directReturnValueAsString
+                |> Json.Decode.decodeString decodeResponseFromBrowser
+    in
+    case parseResult of
+        Err error ->
+            { stateAfterIntegrateResponse | parseResponseError = Just error }
+
+        Ok parseSuccess ->
+            let
+                stateAfterParseSuccess =
+                    { stateAfterIntegrateResponse | parseResponseError = Nothing }
+            in
+            case parseSuccess of
+                RootInformation rootInformation ->
+                    case rootInformation.tribalWars2 of
+                        Nothing ->
+                            stateAfterIntegrateResponse
+
+                        Just gameRootInformation ->
+                            { stateAfterParseSuccess
+                                | gameRootInformationResult =
+                                    Just
+                                        { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                        , gameRootInformation = gameRootInformation
+                                        }
+                            }
+
+                ReadSelectedCharacterVillageDetailsResponse readVillageDetailsResponse ->
+                    { stateAfterParseSuccess
+                        | ownVillagesDetails =
+                            stateAfterParseSuccess.ownVillagesDetails
+                                |> Dict.insert readVillageDetailsResponse.villageId
+                                    { timeInMilliseconds = stateBefore.timeInMilliseconds, villageDetails = readVillageDetailsResponse.villageDetails }
                     }
 
-                parseResult =
-                    runJavascriptInCurrentPageResponse.directReturnValueAsString
-                        |> Json.Decode.decodeString decodeResponseFromBrowser
-            in
-            case parseResult of
-                Err error ->
-                    { stateAfterIntegrateResponse | parseResponseError = Just error }
-
-                Ok parseSuccess ->
+                VillageByCoordinatesResponse readVillageByCoordinatesResponse ->
                     let
-                        stateAfterParseSuccess =
-                            { stateAfterIntegrateResponse | parseResponseError = Nothing }
-                    in
-                    case parseSuccess of
-                        RootInformation rootInformation ->
-                            case rootInformation.tribalWars2 of
-                                Nothing ->
-                                    stateAfterIntegrateResponse
+                        stateAfterRememberJump =
+                            if readVillageByCoordinatesResponse.jumpToVillage then
+                                { stateAfterParseSuccess
+                                    | lastJumpToCoordinates =
+                                        Just
+                                            { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                            , coordinates = readVillageByCoordinatesResponse.villageCoordinates
+                                            }
+                                }
 
-                                Just gameRootInformation ->
-                                    { stateAfterParseSuccess
-                                        | gameRootInformationResult =
-                                            Just
-                                                { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                                , gameRootInformation = gameRootInformation
-                                                }
+                            else
+                                stateAfterParseSuccess
+                    in
+                    case runJavascriptInCurrentPageResponse.callbackReturnValueAsString of
+                        Nothing ->
+                            -- This case indicates the timeout while waiting for the result from the callback.
+                            stateAfterRememberJump
+
+                        Just callbackReturnValueAsString ->
+                            case callbackReturnValueAsString |> Json.Decode.decodeString decodeVillageByCoordinatesResult of
+                                Err error ->
+                                    { stateAfterRememberJump | parseResponseError = Just error }
+
+                                Ok villageByCoordinates ->
+                                    { stateAfterRememberJump
+                                        | coordinatesLastCheck =
+                                            stateAfterRememberJump.coordinatesLastCheck
+                                                |> Dict.insert
+                                                    ( readVillageByCoordinatesResponse.villageCoordinates.x, readVillageByCoordinatesResponse.villageCoordinates.y )
+                                                    { timeInMilliseconds = stateAfterRememberJump.timeInMilliseconds
+                                                    , result = villageByCoordinates
+                                                    }
                                     }
 
-                        ReadSelectedCharacterVillageDetailsResponse readVillageDetailsResponse ->
-                            { stateAfterParseSuccess
-                                | ownVillagesDetails =
-                                    stateAfterParseSuccess.ownVillagesDetails
-                                        |> Dict.insert readVillageDetailsResponse.villageId
-                                            { timeInMilliseconds = stateBefore.timeInMilliseconds, villageDetails = readVillageDetailsResponse.villageDetails }
-                            }
+                SendFirstPresetAsAttackToCoordinatesResponse sendFirstPresetAsAttackToCoordinatesResponse ->
+                    let
+                        updatedFarmState =
+                            case stateAfterParseSuccess.farmState of
+                                InFarmCycle currentFarmCycleBefore ->
+                                    let
+                                        sentAttackByCoordinates =
+                                            currentFarmCycleBefore.sentAttackByCoordinates
+                                                |> Dict.insert
+                                                    ( sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.x
+                                                    , sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.y
+                                                    )
+                                                    ()
+                                    in
+                                    { currentFarmCycleBefore
+                                        | sentAttackByCoordinates = sentAttackByCoordinates
+                                    }
+                                        |> InFarmCycle
+                                        |> Just
 
-                        VillageByCoordinatesResponse readVillageByCoordinatesResponse ->
-                            let
-                                stateAfterRememberJump =
-                                    if readVillageByCoordinatesResponse.jumpToVillage then
-                                        { stateAfterParseSuccess
-                                            | lastJumpToCoordinates =
-                                                Just
-                                                    { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                                    , coordinates = readVillageByCoordinatesResponse.villageCoordinates
-                                                    }
-                                        }
+                                InBreak _ ->
+                                    Nothing
+                    in
+                    { stateAfterParseSuccess
+                        | farmState = updatedFarmState |> Maybe.withDefault stateAfterParseSuccess.farmState
+                        , lastAttackTimeInMilliseconds = Just stateBefore.timeInMilliseconds
+                    }
 
-                                    else
-                                        stateAfterParseSuccess
-                            in
-                            case runJavascriptInCurrentPageResponse.callbackReturnValueAsString of
-                                Nothing ->
-                                    -- This case indicates the timeout while waiting for the result from the callback.
-                                    stateAfterRememberJump
+                GetPresetsResponse armyPresets ->
+                    { stateBefore | getArmyPresetsResult = Just armyPresets }
 
-                                Just callbackReturnValueAsString ->
-                                    case callbackReturnValueAsString |> Json.Decode.decodeString decodeVillageByCoordinatesResult of
-                                        Err error ->
-                                            { stateAfterRememberJump | parseResponseError = Just error }
-
-                                        Ok villageByCoordinates ->
-                                            { stateAfterRememberJump
-                                                | coordinatesLastCheck =
-                                                    stateAfterRememberJump.coordinatesLastCheck
-                                                        |> Dict.insert
-                                                            ( readVillageByCoordinatesResponse.villageCoordinates.x, readVillageByCoordinatesResponse.villageCoordinates.y )
-                                                            { timeInMilliseconds = stateAfterRememberJump.timeInMilliseconds
-                                                            , result = villageByCoordinates
-                                                            }
-                                            }
-
-                        SendFirstPresetAsAttackToCoordinatesResponse sendFirstPresetAsAttackToCoordinatesResponse ->
-                            let
-                                updatedFarmState =
-                                    case stateAfterParseSuccess.farmState of
-                                        InFarmCycle currentFarmCycleBefore ->
-                                            let
-                                                sentAttackByCoordinates =
-                                                    currentFarmCycleBefore.sentAttackByCoordinates
-                                                        |> Dict.insert
-                                                            ( sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.x
-                                                            , sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.y
-                                                            )
-                                                            ()
-                                            in
-                                            { currentFarmCycleBefore
-                                                | sentAttackByCoordinates = sentAttackByCoordinates
-                                            }
-                                                |> InFarmCycle
-                                                |> Just
-
-                                        InBreak _ ->
-                                            Nothing
-                            in
-                            { stateAfterParseSuccess
-                                | farmState = updatedFarmState |> Maybe.withDefault stateAfterParseSuccess.farmState
-                                , lastAttackTimeInMilliseconds = Just stateBefore.timeInMilliseconds
-                            }
-
-                        GetPresetsResponse armyPresets ->
-                            { stateBefore | getArmyPresetsResult = Just armyPresets }
-
-                        ActivatedVillageResponse ->
-                            { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
+                ActivatedVillageResponse ->
+                    { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
 
 
 responseWithDescriptionToFramework : BotState -> FarmCycleState -> InFarmCycleResponse
@@ -1212,7 +1317,12 @@ statusMessageFromState state =
                     []
 
                 completedFarmCycles ->
-                    [ "Completed " ++ (completedFarmCycles |> List.length |> String.fromInt) ++ " farm cycles." ]
+                    [ "Completed "
+                        ++ (completedFarmCycles |> List.length |> String.fromInt)
+                        ++ " of "
+                        ++ (state.configuration.numberOfFarmCycles |> String.fromInt)
+                        ++ " farm cycles."
+                    ]
 
         sentAttacksReport =
             sentAttacksReportPartSession ++ sentAttacksReportPartCurrentCycle

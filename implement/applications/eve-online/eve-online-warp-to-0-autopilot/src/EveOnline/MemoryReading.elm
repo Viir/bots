@@ -66,6 +66,7 @@ import Json.Decode
 import Json.Encode
 import Regex
 import Result.Extra
+import Set
 
 
 type alias ParsedUserInterface =
@@ -193,7 +194,9 @@ type alias InfoPanelLocationInfoExpandedContent =
 
 type alias Target =
     { uiNode : UITreeNodeWithDisplayRegion
+    , barAndImageCont : Maybe UITreeNodeWithDisplayRegion
     , textsTopToBottom : List String
+    , isActiveTarget : Bool
     }
 
 
@@ -210,6 +213,7 @@ type alias OverviewWindowEntry =
     , cellsTexts : Dict.Dict String String
     , distanceInMeters : Result String Int
     , iconSpriteColorPercent : Maybe ColorComponents
+    , namesUnderSpaceObjectIcon : Set.Set String
     }
 
 
@@ -643,9 +647,22 @@ parseTarget targetNode =
                 |> getAllContainedDisplayTextsWithRegion
                 |> List.sortBy (Tuple.second >> .totalDisplayRegion >> .y)
                 |> List.map Tuple.first
+
+        barAndImageCont =
+            targetNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "barAndImageCont"))
+                |> List.head
+
+        isActiveTarget =
+            targetNode.uiNode
+                |> listDescendantsInUITreeNode
+                |> List.any (.pythonObjectTypeName >> (==) "ActiveTargetOnBracket")
     in
     { uiNode = targetNode
+    , barAndImageCont = barAndImageCont
     , textsTopToBottom = textsTopToBottom
+    , isActiveTarget = isActiveTarget
     }
 
 
@@ -771,12 +788,20 @@ parseOverviewWindowEntry entriesHeaders overviewEntryNode =
                 |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "iconSprite"))
                 |> List.head
                 |> Maybe.andThen (.uiNode >> getColorPercentFromDictEntries)
+
+        namesUnderSpaceObjectIcon =
+            spaceObjectIconNode
+                |> Maybe.map (.uiNode >> listDescendantsInUITreeNode)
+                |> Maybe.withDefault []
+                |> List.filterMap getNameFromDictEntries
+                |> Set.fromList
     in
     { uiNode = overviewEntryNode
     , textsLeftToRight = textsLeftToRight
     , cellsTexts = cellsTexts
     , distanceInMeters = distanceInMeters
     , iconSpriteColorPercent = iconSpriteColorPercent
+    , namesUnderSpaceObjectIcon = namesUnderSpaceObjectIcon
     }
 
 

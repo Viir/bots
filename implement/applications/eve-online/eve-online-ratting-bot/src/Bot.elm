@@ -1,4 +1,4 @@
-{- EVE Online ratting bot version 2020-02-13
+{- EVE Online ratting bot version 2020-02-14
 
    Setup instructions for the EVE Online client:
    + Enable `Run clients with 64 bit` in the settings, because this bot only works with the 64-bit version of the EVE Online client.
@@ -141,14 +141,17 @@ combat botMemory overviewWindow parsedUserInterface =
                 []
 
             else
-                parsedUserInterface.targets |> List.filter targetIsSelected
+                parsedUserInterface.targets |> List.filter .isActiveTarget
     in
     case targetsToUnlock |> List.head of
         Just targetToUnlock ->
             DescribeBranch "I see a target to unlock."
                 (EndDecisionPath
                     (Act
-                        { firstAction = targetToUnlock.uiNode |> clickOnUIElement MouseButtonRight
+                        { firstAction =
+                            targetToUnlock.barAndImageCont
+                                |> Maybe.withDefault targetToUnlock.uiNode
+                                |> clickOnUIElement MouseButtonRight
                         , followingSteps =
                             [ ( "Click menu entry 'unlock'."
                               , lastContextMenuOrSubmenu
@@ -345,30 +348,17 @@ allOverviewEntriesToAttack =
 
 
 overviewEntryIsAlreadyTargetedOrTargeting : EveOnline.MemoryReading.OverviewWindowEntry -> Bool
-overviewEntryIsAlreadyTargetedOrTargeting overviewEntry =
-    let
-        -- TODO: Probably add to parsing: Collect all names under the spaceObjectIconNode
-        nodesNames =
-            overviewEntry.uiNode.uiNode
-                |> EveOnline.MemoryReading.listDescendantsInUITreeNode
-                |> List.filterMap EveOnline.MemoryReading.getNameFromDictEntries
-                |> Set.fromList
-    in
-    [ "targetedByMeIndicator", "targetingIndicator" ]
-        |> Set.fromList
-        |> Set.intersect nodesNames
-        |> Set.isEmpty
-        |> not
+overviewEntryIsAlreadyTargetedOrTargeting =
+    .namesUnderSpaceObjectIcon
+        >> Set.intersect ([ "targetedByMeIndicator", "targeting" ] |> Set.fromList)
+        >> Set.isEmpty
+        >> not
 
 
 overviewEntryIsActiveTarget : EveOnline.MemoryReading.OverviewWindowEntry -> Bool
-overviewEntryIsActiveTarget overviewEntry =
-    -- TODO: Probably add to parsing: Collect all names under the spaceObjectIconNode
-    overviewEntry.uiNode.uiNode
-        |> EveOnline.MemoryReading.listDescendantsInUITreeNode
-        |> List.filterMap EveOnline.MemoryReading.getNameFromDictEntries
-        |> Set.fromList
-        |> Set.member "myActiveTargetIndicator"
+overviewEntryIsActiveTarget =
+    .namesUnderSpaceObjectIcon
+        >> Set.member "myActiveTargetIndicator"
 
 
 shouldAttackOverviewEntry : EveOnline.MemoryReading.OverviewWindowEntry -> Bool
@@ -429,14 +419,6 @@ shipUIModulesToActivateAlways =
 shipUiModules : ParsedUserInterface -> List ShipUIModule
 shipUiModules =
     .shipUI >> maybeNothingFromCanNotSeeIt >> Maybe.map .modules >> Maybe.withDefault []
-
-
-targetIsSelected : EveOnline.MemoryReading.Target -> Bool
-targetIsSelected =
-    .uiNode
-        >> .uiNode
-        >> EveOnline.MemoryReading.listDescendantsInUITreeNode
-        >> List.any (.pythonObjectTypeName >> (==) "ActiveTargetOnBracket")
 
 
 {-| Groups the modules into rows.

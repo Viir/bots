@@ -92,12 +92,20 @@ For more about purchasing and using credits, see the guide at [https://forum.bot
 
 ### Starting an Online Bot Session
 
-To start an online bot session, use the `--key-to-start-online-session` parameter with the `run-bot` command. Below is an example of a full command to run a bot in an online session:
-```cmd
-botengine  run-bot  --key-to-start-online-session=your-personal-key-here  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/templates/remember-bot-configuration"
-```
+To start an online bot session, use the `--key-to-start-online-session` parameter with the `run-bot` command.
 
-To get your key, go to https://reactor.botengine.org and log in to your account. After logging in, you see the key under `Bot session keys`.
+The complete parameter looks like this:
+
+`--key-to-start-online-session=33168cd96cc3c1842b6fb`
+
+Replace the part after the equals sign ('=') with your secret key.
+
+To get your key, go to https://reactor.botengine.org and log in to your account. After logging in, you see the key under `Bot session keys`. Please don't share this key with anyone, and don't post it on the forum.
+
+Below is an example of a full command to run a bot in an online session:
+```cmd
+botengine  run-bot  --key-to-start-online-session=33168cd96cc3c1842b6fb  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/templates/remember-bot-configuration"
+```
 
 ## Getting Help
 

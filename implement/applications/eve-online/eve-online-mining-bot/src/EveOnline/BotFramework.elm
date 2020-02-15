@@ -17,11 +17,14 @@ module EveOnline.BotFramework exposing
     , BotEventResponse(..)
     , SetupState
     , StateIncludingFramework
+    , getEntropyIntFromUserInterface
     , initState
     , processEvent
     )
 
 import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import Common.FNV
+import Dict
 import EveOnline.MemoryReading
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
@@ -668,6 +671,50 @@ statusReportFromState state =
     ]
         ++ botEffectQueueLengthWarning
         |> String.join "\n"
+
+
+getEntropyIntFromUserInterface : EveOnline.MemoryReading.ParsedUserInterface -> Int
+getEntropyIntFromUserInterface parsedUserInterface =
+    let
+        entropyFromString =
+            Common.FNV.hashString
+
+        entropyFromUiElement uiElement =
+            [ uiElement.uiNode.pythonObjectAddress |> String.toInt |> Maybe.withDefault 0
+            , uiElement.totalDisplayRegion.x
+            , uiElement.totalDisplayRegion.y
+            , uiElement.totalDisplayRegion.width
+            , uiElement.totalDisplayRegion.height
+            ]
+
+        entropyFromOverviewEntry overviewEntry =
+            (overviewEntry.cellsTexts |> Dict.values |> List.map entropyFromString)
+                ++ (overviewEntry.uiNode |> entropyFromUiElement)
+
+        entropyFromProbeScanResult probeScanResult =
+            [ probeScanResult.uiNode |> entropyFromUiElement, probeScanResult.textsLeftToRight |> List.map entropyFromString ]
+                |> List.concat
+
+        fromMenus =
+            parsedUserInterface.contextMenus
+                |> List.concatMap (.entries >> List.map .uiNode)
+                |> List.concatMap entropyFromUiElement
+
+        fromOverview =
+            parsedUserInterface.overviewWindow
+                |> EveOnline.MemoryReading.maybeNothingFromCanNotSeeIt
+                |> Maybe.map .entries
+                |> Maybe.withDefault []
+                |> List.concatMap entropyFromOverviewEntry
+
+        fromProbeScanner =
+            parsedUserInterface.probeScannerWindow
+                |> EveOnline.MemoryReading.maybeNothingFromCanNotSeeIt
+                |> Maybe.map .scanResults
+                |> Maybe.withDefault []
+                |> List.concatMap entropyFromProbeScanResult
+    in
+    (fromMenus ++ fromOverview ++ fromProbeScanner) |> List.sum
 
 
 stringEllipsis : Int -> String -> String -> String

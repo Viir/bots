@@ -29,7 +29,7 @@ Download the BotEngine Windows console app from
 To start the farmbot, run the `BotEngine.exe` program with the following command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
+C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/032f0dc8d3d229d8fee1ff2fb787b59ef9880c8e/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
 ```
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
 
@@ -71,21 +71,42 @@ The bot searches for barbarian villages and then attacks them using the matching
 In the console window, it displays the number of sent attacks and other information:
 
 > Found 3 own villages. Currently selected is 871 (482|523 'Segundo pueblo de skal'. Last update 6 s ago. 179 available units. Best matching army preset for this village is 'farm beta'. 49 outgoing commands.)  
-> Sent 129 attacks.  
+> Sent 129 attacks in this session, 129 in the current cycle.  
 > Checked 1413 coordinates and found 364 villages, 129 of wich are barbarian villages. 
 
 
 When all your villages are out of units or at the attack limit, the bot stops with this message:
 
-> There is nothing left to do.
+> Finished all X farm cycles.
 
-## Further Configuration
+## Pricing and Online Bot Sessions
 
-In case you need the bot to run more than 15 minutes per session, use an online-bot session as explained at [https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions](https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions)
+Following the instructions above, you can use the bot for up to 15 minutes per session for free. In case you need the bot to run more than 15 minutes per session, use an online-bot session as explained at [https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions](https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions)
 
 Online bot sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
 
 For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
+
+## Configuration Options
+
+All configuration is optional; you only need it in case the defaults don't fit your use-case.
+You can configure two variables:
+
++ `number-of-farm-cycles` : Number of farm cycles before the bot stops completely. The default is 1.
++ `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like '60-120'. I will then pick a random value in this range.
+
+Here is an example of applying a configuration for three farm cycles with breaks of 20 to 40 minutes in between:
+
+```text
+--bot-configuration="number-of-farm-cycles = 3, break-duration = 20 - 40"
+```
+
+Add this configuration option into the command used to start the bot:
+
+```cmd
+C:\path\to\the\BotEngine.exe  run-bot  --bot-configuration="number-of-farm-cycles = 3, break-duration = 20 - 40"  "https://github.com/Viir/bots/tree/032f0dc8d3d229d8fee1ff2fb787b59ef9880c8e/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
+```
+
 
 ## Getting Help
 

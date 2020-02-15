@@ -26,7 +26,7 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
-import EveOnline.BotFramework exposing (BotEffect(..))
+import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
 import EveOnline.MemoryReading
     exposing
         ( MaybeVisible(..)
@@ -626,37 +626,6 @@ isShipWarpingOrJumping =
             )
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
-
-
-getEntropyIntFromUserInterface : ParsedUserInterface -> Int
-getEntropyIntFromUserInterface parsedUserInterface =
-    let
-        entropyFromUiElement uiElement =
-            [ uiElement.uiNode.pythonObjectAddress |> String.toInt |> Maybe.withDefault 0
-            , uiElement.totalDisplayRegion.x
-            , uiElement.totalDisplayRegion.y
-            , uiElement.totalDisplayRegion.width
-            , uiElement.totalDisplayRegion.height
-            ]
-                |> List.sum
-
-        entropyFromOverviewEntry overviewEntry =
-            [ overviewEntry.uiNode |> entropyFromUiElement, overviewEntry.distanceInMeters |> Result.withDefault 0 ]
-                |> List.sum
-
-        fromMenus =
-            parsedUserInterface.contextMenus
-                |> List.concatMap (.entries >> List.map .uiNode)
-                |> List.map entropyFromUiElement
-
-        fromOverview =
-            parsedUserInterface.overviewWindow
-                |> maybeNothingFromCanNotSeeIt
-                |> Maybe.map .entries
-                |> Maybe.withDefault []
-                |> List.map entropyFromOverviewEntry
-    in
-    (fromMenus ++ fromOverview) |> List.sum
 
 
 listElementAtWrappedIndex : Int -> List element -> Maybe element

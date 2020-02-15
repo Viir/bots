@@ -1,4 +1,4 @@
-{- EVE Online ratting bot version 2020-02-14
+{- EVE Online anomaly ratting bot version 2020-02-15
 
    Setup instructions for the EVE Online client:
    + Enable `Run clients with 64 bit` in the settings, because this bot only works with the 64-bit version of the EVE Online client.
@@ -21,7 +21,7 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
-import EveOnline.BotFramework exposing (BotEffect(..))
+import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
 import EveOnline.MemoryReading
     exposing
         ( MaybeVisible(..)
@@ -39,7 +39,7 @@ import Set
 
 attackMaxRange : Int
 attackMaxRange =
-    7000
+    15000
 
 
 maxTargetCount : Int
@@ -91,6 +91,11 @@ generalStepDelayMilliseconds =
     1300
 
 
+probeScanResultsRepresentsMatchingAnomaly : EveOnline.MemoryReading.ProbeScanResult -> Bool
+probeScanResultsRepresentsMatchingAnomaly =
+    .textsLeftToRight >> List.any (String.toLower >> String.contains "combat")
+
+
 decideNextAction : BotMemory -> ParsedUserInterface -> DecisionPathNode
 decideNextAction botMemory parsedUserInterface =
     if parsedUserInterface |> isShipWarpingOrJumping then
@@ -121,11 +126,11 @@ decideNextActionWhenInSpace botMemory overviewWindow parsedUserInterface =
                 )
 
         Nothing ->
-            combat botMemory overviewWindow parsedUserInterface
+            combat botMemory overviewWindow parsedUserInterface enterAnomaly
 
 
-combat : BotMemory -> OverviewWindow -> ParsedUserInterface -> DecisionPathNode
-combat botMemory overviewWindow parsedUserInterface =
+combat : BotMemory -> OverviewWindow -> ParsedUserInterface -> (ParsedUserInterface -> DecisionPathNode) -> DecisionPathNode
+combat botMemory overviewWindow parsedUserInterface continueIfCombatComplete =
     let
         overviewEntriesToAttack =
             overviewWindow.entries
@@ -172,7 +177,7 @@ combat botMemory overviewWindow parsedUserInterface =
                                 DescribeBranch "I see no overview entry to lock."
                                     (returnDronesToBay parsedUserInterface
                                         |> Maybe.withDefault
-                                            (DescribeBranch "No drones to return." (EndDecisionPath Wait))
+                                            (DescribeBranch "No drones to return." (continueIfCombatComplete parsedUserInterface))
                                     )
 
                             nextOverviewEntryToLock :: _ ->
@@ -213,6 +218,45 @@ combat botMemory overviewWindow parsedUserInterface =
                                             }
                                         )
                                     )
+                        )
+
+
+enterAnomaly : ParsedUserInterface -> DecisionPathNode
+enterAnomaly parsedUserInterface =
+    case parsedUserInterface.probeScannerWindow of
+        CanNotSeeIt ->
+            DescribeBranch "Can not see the probe scanner window." (EndDecisionPath Wait)
+
+        CanSee probeScannerWindow ->
+            let
+                matchingScanResults =
+                    probeScannerWindow.scanResults |> List.filter probeScanResultsRepresentsMatchingAnomaly
+            in
+            case matchingScanResults |> listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface) of
+                Nothing ->
+                    DescribeBranch
+                        ("I see " ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt) ++ " scan results, and no matching anomaly.")
+                        (EndDecisionPath Wait)
+
+                Just anomalyScanResult ->
+                    DescribeBranch "Warp to anomaly."
+                        (EndDecisionPath
+                            (Act
+                                { firstAction = anomalyScanResult.uiNode |> clickOnUIElement MouseButtonRight
+                                , followingSteps =
+                                    [ ( "Click menu entry 'Warp to Within'"
+                                      , lastContextMenuOrSubmenu
+                                            >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Within")
+                                            >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                      )
+                                    , ( "Click menu entry 'Within 0 m'"
+                                      , lastContextMenuOrSubmenu
+                                            >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Within 0 m")
+                                            >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                      )
+                                    ]
+                                }
+                            )
                         )
 
 
@@ -609,6 +653,15 @@ isShipWarpingOrJumping =
             )
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
+
+
+listElementAtWrappedIndex : Int -> List element -> Maybe element
+listElementAtWrappedIndex indexToWrap list =
+    if (list |> List.length) < 1 then
+        Nothing
+
+    else
+        list |> List.drop (indexToWrap |> modBy (list |> List.length)) |> List.head
 
 
 listRemove : element -> List element -> List element

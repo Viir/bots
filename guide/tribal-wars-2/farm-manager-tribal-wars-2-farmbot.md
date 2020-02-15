@@ -74,7 +74,6 @@ In the console window, it displays the number of sent attacks and other informat
 > Sent 129 attacks in this session, 129 in the current cycle.  
 > Checked 1413 coordinates and found 364 villages, 129 of wich are barbarian villages. 
 
-
 When all your villages are out of units or at the attack limit, the bot stops with this message:
 
 > Finished all X farm cycles.
@@ -93,7 +92,7 @@ All configuration is optional; you only need it in case the defaults don't fit y
 You can configure two variables:
 
 + `number-of-farm-cycles` : Number of farm cycles before the bot stops completely. The default is 1.
-+ `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like '60-120'. I will then pick a random value in this range.
++ `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like '60-120'. It will then pick a random value in this range.
 
 Here is an example of applying a configuration for three farm cycles with breaks of 20 to 40 minutes in between:
 
@@ -107,6 +106,9 @@ Add this configuration option into the command used to start the bot:
 C:\path\to\the\BotEngine.exe  run-bot  --bot-configuration="number-of-farm-cycles = 3, break-duration = 20 - 40"  "https://github.com/Viir/bots/tree/032f0dc8d3d229d8fee1ff2fb787b59ef9880c8e/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
 ```
 
+When you have configured the bot for multiple farm cycles, it will display this message during the breaks between farm cycles:
+
+> Next farm cycle starts in 17 minutes. Last cycle completed 16 minutes ago. 
 
 ## Getting Help
 

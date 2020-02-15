@@ -40,6 +40,11 @@ import EveOnline.MemoryReading
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
 
 
+runAwayShieldHitpointsThresholdPercent : Int
+runAwayShieldHitpointsThresholdPercent =
+    50
+
+
 type alias UIElement =
     EveOnline.MemoryReading.UITreeNodeWithDisplayRegion
 
@@ -92,12 +97,18 @@ decideNextAction botMemory parsedUserInterface =
         -- TODO: Look also on the previous memory reading.
         DescribeBranch "I see we are warping." (EndDecisionPath Wait)
 
-    else if parsedUserInterface.overviewWindow == CanNotSeeIt then
-        DescribeBranch "I see no overview window, assume we are docked." (decideNextActionWhenDocked parsedUserInterface)
-
     else
         -- TODO: For robustness, also look also on the previous memory reading. Only continue when both indicate is undocked.
-        DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory parsedUserInterface)
+        case parsedUserInterface.shipUI of
+            CanNotSeeIt ->
+                DescribeBranch "I see no ship UI, assume we are docked." (decideNextActionWhenDocked parsedUserInterface)
+
+            CanSee shipUI ->
+                if shipUI.hitpointsPercent.shield < runAwayShieldHitpointsThresholdPercent then
+                    DescribeBranch "Shield hitpoints are too low, run away." (runAway parsedUserInterface)
+
+                else
+                    DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory parsedUserInterface)
 
 
 decideNextActionWhenDocked : ParsedUserInterface -> DecisionPathNode
@@ -233,7 +244,89 @@ decideNextActionAcquireLockedTarget parsedUserInterface =
 
 
 dockToStation : { stationNameFromInfoPanel : String } -> ParsedUserInterface -> DecisionPathNode
-dockToStation { stationNameFromInfoPanel } parsedUserInterface =
+dockToStation { stationNameFromInfoPanel } =
+    useContextMenuOnListSurroundingsButton
+        [ ( "Click on menu entry 'stations'."
+          , lastContextMenuOrSubmenu
+                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "stations")
+                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+          )
+        , ( "Click on menu entry representing the station '" ++ stationNameFromInfoPanel ++ "'."
+          , lastContextMenuOrSubmenu
+                >> Maybe.andThen
+                    (.entries
+                        >> List.filter
+                            (menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel)
+                        >> List.head
+                    )
+                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+          )
+        , ( "Click on menu entry 'dock'"
+          , lastContextMenuOrSubmenu
+                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "dock")
+                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+          )
+        ]
+
+
+warpToMiningSite : ParsedUserInterface -> DecisionPathNode
+warpToMiningSite parsedUserInterface =
+    parsedUserInterface
+        |> useContextMenuOnListSurroundingsButton
+            [ ( "Click on menu entry 'asteroid belts'."
+              , lastContextMenuOrSubmenu
+                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "asteroid belts")
+                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+              )
+            , ( "Click on one of the menu entries."
+              , lastContextMenuOrSubmenu
+                    >> Maybe.andThen
+                        (.entries >> listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface))
+                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+              )
+            , ( "Click menu entry 'Warp to Within'"
+              , lastContextMenuOrSubmenu
+                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Within")
+                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+              )
+            , ( "Click menu entry 'Within 0 m'"
+              , lastContextMenuOrSubmenu
+                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Within 0 m")
+                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+              )
+            ]
+
+
+runAway : ParsedUserInterface -> DecisionPathNode
+runAway parsedUserInterface =
+    parsedUserInterface
+        |> useContextMenuOnListSurroundingsButton
+            [ ( "Click on menu entry 'planets'."
+              , lastContextMenuOrSubmenu
+                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "planets")
+                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+              )
+            , ( "Click on one of the menu entries."
+              , lastContextMenuOrSubmenu
+                    >> Maybe.andThen
+                        (.entries >> listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface))
+                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+              )
+            , ( "Click menu entry 'Warp to Within'"
+              , lastContextMenuOrSubmenu
+                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Within")
+                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+              )
+            , ( "Click menu entry 'Within 0 m'"
+              , lastContextMenuOrSubmenu
+                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Within 0 m")
+                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+              )
+            ]
+
+
+useContextMenuOnListSurroundingsButton : List ( String, ParsedUserInterface -> Maybe VolatileHostInterface.EffectOnWindowStructure ) -> ParsedUserInterface -> DecisionPathNode
+useContextMenuOnListSurroundingsButton followingSteps parsedUserInterface =
     case parsedUserInterface.infoPanelLocationInfo of
         CanNotSeeIt ->
             DescribeBranch "I cannot see the location info panel." (EndDecisionPath Wait)
@@ -242,65 +335,7 @@ dockToStation { stationNameFromInfoPanel } parsedUserInterface =
             EndDecisionPath
                 (Act
                     { firstAction = infoPanelLocationInfo.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
-                    , followingSteps =
-                        [ ( "Click on menu entry 'stations'."
-                          , lastContextMenuOrSubmenu
-                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "stations")
-                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                          )
-                        , ( "Click on menu entry representing the station '" ++ stationNameFromInfoPanel ++ "'."
-                          , lastContextMenuOrSubmenu
-                                >> Maybe.andThen
-                                    (.entries
-                                        >> List.filter
-                                            (menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel)
-                                        >> List.head
-                                    )
-                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                          )
-                        , ( "Click on menu entry 'dock'"
-                          , lastContextMenuOrSubmenu
-                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "dock")
-                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                          )
-                        ]
-                    }
-                )
-
-
-warpToMiningSite : ParsedUserInterface -> DecisionPathNode
-warpToMiningSite parsedUserInterface =
-    case parsedUserInterface.infoPanelLocationInfo of
-        CanNotSeeIt ->
-            DescribeBranch "I cannot see the current system info panel." (EndDecisionPath Wait)
-
-        CanSee infoPanelLocationInfo ->
-            EndDecisionPath
-                (Act
-                    { firstAction = infoPanelLocationInfo.listSurroundingsButton |> clickOnUIElement MouseButtonLeft
-                    , followingSteps =
-                        [ ( "Click on menu entry 'asteroid belts'."
-                          , lastContextMenuOrSubmenu
-                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "asteroid belts")
-                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                          )
-                        , ( "Click on one of the menu entries."
-                          , lastContextMenuOrSubmenu
-                                >> Maybe.andThen
-                                    (.entries >> listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface))
-                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                          )
-                        , ( "Click menu entry 'Warp to Within'"
-                          , lastContextMenuOrSubmenu
-                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Within")
-                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                          )
-                        , ( "Click menu entry 'Within 0 m'"
-                          , lastContextMenuOrSubmenu
-                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Within 0 m")
-                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                          )
-                        ]
+                    , followingSteps = followingSteps
                     }
                 )
 

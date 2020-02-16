@@ -17,9 +17,11 @@ module EveOnline.MemoryReading exposing
     , InfoPanelLocationInfoExpandedContent
     , InfoPanelRoute
     , InfoPanelRouteRouteElementMarker
+    , InventoryItemsView(..)
     , InventoryWindow
     , InventoryWindowCapacityGauge
     , MaybeVisible(..)
+    , MessageBox
     , ModuleButtonTooltip
     , Neocom
     , NeocomClock
@@ -66,7 +68,6 @@ import Dict
 import Json.Decode
 import Json.Encode
 import Regex
-import Result.Extra
 import Set
 
 
@@ -85,6 +86,7 @@ type alias ParsedUserInterface =
     , chatWindowStacks : List ChatWindowStack
     , moduleButtonTooltip : MaybeVisible ModuleButtonTooltip
     , neocom : MaybeVisible Neocom
+    , messageBoxes : List MessageBox
     }
 
 
@@ -274,13 +276,19 @@ type alias InventoryWindow =
     , leftTreeEntries : List InventoryWindowLeftTreeEntry
     , selectedContainerCapacityGauge : Maybe InventoryWindowCapacityGauge
     , selectedContainerInventory : Maybe Inventory
+    , buttonToSwitchToListView : Maybe UITreeNodeWithDisplayRegion
     }
 
 
 type alias Inventory =
     { uiNode : UITreeNodeWithDisplayRegion
-    , listViewItems : List UITreeNodeWithDisplayRegion
+    , itemsView : Maybe InventoryItemsView
     }
+
+
+type InventoryItemsView
+    = InventoryItemsListView { items : List UITreeNodeWithDisplayRegion }
+    | InventoryItemsNotListView { items : List UITreeNodeWithDisplayRegion }
 
 
 type alias InventoryWindowLeftTreeEntry =
@@ -290,8 +298,9 @@ type alias InventoryWindowLeftTreeEntry =
 
 
 type alias InventoryWindowCapacityGauge =
-    { maximum : Int
+    { maximum : Maybe Int
     , used : Int
+    , selected : Maybe Int
     }
 
 
@@ -340,6 +349,12 @@ type alias Expander =
     }
 
 
+type alias MessageBox =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , buttons : List { uiNode : UITreeNodeWithDisplayRegion, mainText : Maybe String }
+    }
+
+
 type MaybeVisible feature
     = CanNotSeeIt
     | CanSee feature
@@ -366,6 +381,7 @@ parseUserInterfaceFromUITree uiTree =
     , moduleButtonTooltip = parseModuleButtonTooltipFromUITreeRoot uiTree
     , chatWindowStacks = parseChatWindowStacksFromUITreeRoot uiTree
     , neocom = parseNeocomFromUITreeRoot uiTree
+    , messageBoxes = parseMessageBoxesFromUITreeRoot uiTree
     }
 
 
@@ -1113,56 +1129,113 @@ parseInventoryWindow windowUiNode =
                 |> listDescendantsWithDisplayRegion
                 |> List.filter
                     (\uiNode ->
-                        uiNode.uiNode.pythonObjectTypeName
-                            == "Container"
+                        (uiNode.uiNode.pythonObjectTypeName == "Container")
                             && (uiNode.uiNode |> getNameFromDictEntries |> Maybe.map (String.contains "right") |> Maybe.withDefault False)
                     )
                 |> List.head
 
-        selectedContainerInventory =
+        maybeSelectedContainerInventoryNode =
             rightContainerNode
                 |> Maybe.andThen
                     (listDescendantsWithDisplayRegion
                         >> List.filter (\uiNode -> [ "ShipCargo", "ShipDroneBay", "ShipOreHold", "StationItems" ] |> List.member uiNode.uiNode.pythonObjectTypeName)
                         >> List.head
                     )
+
+        selectedContainerInventory =
+            maybeSelectedContainerInventoryNode
                 |> Maybe.map
                     (\selectedContainerInventoryNode ->
+                        let
+                            listViewItemNodes =
+                                selectedContainerInventoryNode
+                                    |> listDescendantsWithDisplayRegion
+                                    |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Item")
+
+                            notListViewItemNodes =
+                                selectedContainerInventoryNode
+                                    |> listDescendantsWithDisplayRegion
+                                    |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "InvItem")
+
+                            itemsView =
+                                if 0 < (listViewItemNodes |> List.length) then
+                                    Just (InventoryItemsListView { items = listViewItemNodes })
+
+                                else if 0 < (notListViewItemNodes |> List.length) then
+                                    Just (InventoryItemsNotListView { items = notListViewItemNodes })
+
+                                else
+                                    Nothing
+                        in
                         { uiNode = selectedContainerInventoryNode
-                        , listViewItems =
-                            selectedContainerInventoryNode
-                                |> listDescendantsWithDisplayRegion
-                                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Item")
+                        , itemsView = itemsView
                         }
                     )
+
+        buttonToSwitchToListView =
+            rightContainerNode
+                |> Maybe.map listDescendantsWithDisplayRegion
+                |> Maybe.withDefault []
+                |> List.filter
+                    (\uiNode ->
+                        (uiNode.uiNode.pythonObjectTypeName |> String.contains "ButtonIcon")
+                            && ((uiNode.uiNode |> getTexturePathFromDictEntries |> Maybe.withDefault "") |> String.endsWith "38_16_190.png")
+                    )
+                |> List.head
     in
     { uiNode = windowUiNode
     , leftTreeEntries = leftTreeEntries
     , selectedContainerCapacityGauge = selectedContainerCapacityGauge
     , selectedContainerInventory = selectedContainerInventory
+    , buttonToSwitchToListView = buttonToSwitchToListView
     }
 
 
 parseInventoryCapacityGaugeText : String -> Result String InventoryWindowCapacityGauge
 parseInventoryCapacityGaugeText capacityText =
     let
-        numbersParseResults =
-            capacityText
-                |> String.replace "m³" ""
-                |> String.split "/"
-                |> List.map (String.trim >> parseNumberTruncatingAfterOptionalDecimalSeparator)
-    in
-    case numbersParseResults |> Result.Extra.combine of
-        Err parseError ->
-            Err ("Failed to parse numbers: " ++ parseError)
+        parseMaybeNumber =
+            Maybe.map (String.trim >> parseNumberTruncatingAfterOptionalDecimalSeparator >> Result.map Just)
+                >> Maybe.withDefault (Ok Nothing)
 
-        Ok numbers ->
-            case numbers of
-                [ leftNumber, rightNumber ] ->
-                    Ok { used = leftNumber, maximum = rightNumber }
+        continueWithTexts { usedText, maybeMaximumText, maybeSelectedText } =
+            case usedText |> parseNumberTruncatingAfterOptionalDecimalSeparator of
+                Err parseNumberError ->
+                    Err ("Failed to parse used number: " ++ parseNumberError)
+
+                Ok used ->
+                    case maybeMaximumText |> parseMaybeNumber of
+                        Err parseNumberError ->
+                            Err ("Failed to parse maximum number: " ++ parseNumberError)
+
+                        Ok maximum ->
+                            case maybeSelectedText |> parseMaybeNumber of
+                                Err parseNumberError ->
+                                    Err ("Failed to parse selected number: " ++ parseNumberError)
+
+                                Ok selected ->
+                                    Ok { used = used, maximum = maximum, selected = selected }
+
+        continueAfterSeparatingBySlash { beforeSlashText, afterSlashMaybeText } =
+            case beforeSlashText |> String.trim |> String.split ")" of
+                [ onlyUsedText ] ->
+                    continueWithTexts { usedText = onlyUsedText, maybeMaximumText = afterSlashMaybeText, maybeSelectedText = Nothing }
+
+                [ firstPart, secondPart ] ->
+                    continueWithTexts { usedText = secondPart, maybeMaximumText = afterSlashMaybeText, maybeSelectedText = Just (firstPart |> String.replace "(" "") }
 
                 _ ->
-                    Err ("Unexpected number of components in capacityText '" ++ capacityText ++ "'")
+                    Err ("Unexpected number of components in text before slash '" ++ beforeSlashText ++ "'")
+    in
+    case capacityText |> String.replace "m³" "" |> String.split "/" of
+        [ withoutSlash ] ->
+            continueAfterSeparatingBySlash { beforeSlashText = withoutSlash, afterSlashMaybeText = Nothing }
+
+        [ partBeforeSlash, partAfterSlash ] ->
+            continueAfterSeparatingBySlash { beforeSlashText = partBeforeSlash, afterSlashMaybeText = Just partAfterSlash }
+
+        _ ->
+            Err ("Unexpected number of components in capacityText '" ++ capacityText ++ "'")
 
 
 parseModuleButtonTooltipFromUITreeRoot : UITreeNodeWithDisplayRegion -> MaybeVisible ModuleButtonTooltip
@@ -1333,6 +1406,38 @@ parseExpander uiNode =
     { uiNode = uiNode
     , texturePath = maybeTexturePath
     , isExpanded = isExpanded
+    }
+
+
+parseMessageBoxesFromUITreeRoot : UITreeNodeWithDisplayRegion -> List MessageBox
+parseMessageBoxesFromUITreeRoot uiTreeRoot =
+    uiTreeRoot
+        |> listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "MessageBox")
+        |> List.map parseMessageBox
+
+
+parseMessageBox : UITreeNodeWithDisplayRegion -> MessageBox
+parseMessageBox uiNode =
+    let
+        buttons =
+            uiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Button")
+                |> List.map
+                    (\buttonNode ->
+                        { uiNode = buttonNode
+                        , mainText =
+                            buttonNode
+                                |> getAllContainedDisplayTextsWithRegion
+                                |> List.sortBy (Tuple.second >> .totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
+                                |> List.map Tuple.first
+                                |> List.head
+                        }
+                    )
+    in
+    { buttons = buttons
+    , uiNode = uiNode
     }
 
 

@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-02-15
+{- Michaels EVE Online mining bot version 2020-02-16
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -8,7 +8,6 @@
    + Set the UI language to English.
    + In Overview window, make asteroids visible.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
-   + In the Inventory window select the 'List' view.
    + Setup inventory window so that 'Ore Hold' is always selected.
    + In the ship UI, arrange the mining modules to appear all in the upper row of modules.
    + Enable the info panel 'System info'.
@@ -578,7 +577,8 @@ oreHoldFillPercent =
     .inventoryWindows
         >> List.head
         >> Maybe.andThen .selectedContainerCapacityGauge
-        >> Maybe.map (\capacity -> capacity.used * 100 // capacity.maximum)
+        >> Maybe.andThen
+            (\capacity -> capacity.maximum |> Maybe.map (\maximum -> capacity.used * 100 // maximum))
 
 
 inventoryWindowSelectedContainerFirstItem : ParsedUserInterface -> Maybe UIElement
@@ -586,7 +586,17 @@ inventoryWindowSelectedContainerFirstItem =
     .inventoryWindows
         >> List.head
         >> Maybe.andThen .selectedContainerInventory
-        >> Maybe.andThen (.listViewItems >> List.head)
+        >> Maybe.andThen .itemsView
+        >> Maybe.map
+            (\itemsView ->
+                case itemsView of
+                    EveOnline.MemoryReading.InventoryItemsListView { items } ->
+                        items
+
+                    EveOnline.MemoryReading.InventoryItemsNotListView { items } ->
+                        items
+            )
+        >> Maybe.andThen List.head
 
 
 inventoryWindowItemHangar : ParsedUserInterface -> Maybe UIElement

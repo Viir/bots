@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-02-15
+{- EVE Online anomaly ratting bot version 2020-02-16
 
    Setup instructions for the EVE Online client:
    + Enable `Run clients with 64 bit` in the settings, because this bot only works with the 64-bit version of the EVE Online client.

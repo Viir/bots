@@ -680,7 +680,7 @@ getEntropyIntFromUserInterface parsedUserInterface =
             Common.FNV.hashString
 
         entropyFromUiElement uiElement =
-            [ uiElement.uiNode.pythonObjectAddress |> String.toInt |> Maybe.withDefault 0
+            [ uiElement.uiNode.pythonObjectAddress |> entropyFromString
             , uiElement.totalDisplayRegion.x
             , uiElement.totalDisplayRegion.y
             , uiElement.totalDisplayRegion.width

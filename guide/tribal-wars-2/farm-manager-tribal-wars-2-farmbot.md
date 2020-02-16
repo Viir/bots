@@ -24,7 +24,7 @@ It automatically detects barbarian villages, available troops and configured arm
 ## Starting the Farmbot
 
 Download the BotEngine Windows console app from 
-[https://botengine.blob.core.windows.net/blob-library/by-name/2020-02-14.botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-02-14.botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
+[https://botengine.blob.core.windows.net/blob-library/by-name/2020-02-16-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-02-16-botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
 
 To start the farmbot, run the `BotEngine.exe` program with the following command:
 

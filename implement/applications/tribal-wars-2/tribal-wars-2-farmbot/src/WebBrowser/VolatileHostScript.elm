@@ -91,7 +91,7 @@ Response request(Request request)
 {
     if (request.StartWebBrowserRequest != null)
     {
-        //  startBrowserAndSaveScreenshotToFile("screenshot.png").Wait();
+        KillPreviousWebBrowserProcesses();
 
         StartBrowser().Wait();
 
@@ -164,6 +164,38 @@ async System.Threading.Tasks.Task<Response.RunJavascriptInCurrentPageResponseStr
         directReturnValueAsString = directReturnValueAsString,
         callbackReturnValueAsString = callbackReturnValue,
     };
+}
+
+void KillPreviousWebBrowserProcesses()
+{
+    var matchingProcesses =
+        System.Diagnostics.Process.GetProcesses()
+        /*
+        2020-02-17
+        .Where(process => process.StartInfo.Arguments.Contains(UserDataDirPath(), StringComparison.InvariantCultureIgnoreCase))
+        */
+        .Where(ProcessIsWebBrowser)
+        .ToList();
+
+    foreach (var process in matchingProcesses)
+    {
+        if (process.HasExited)
+            continue;
+
+        process.Kill();
+    }
+}
+
+bool ProcessIsWebBrowser(System.Diagnostics.Process process)
+{
+    try
+    {
+        return process.MainModule.FileName.Contains(".local-chromium");
+    }
+    catch
+    {
+        return false;
+    }
 }
 
 string SerializeToJsonForBot<T>(T value) =>

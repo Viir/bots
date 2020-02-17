@@ -356,10 +356,10 @@ getNextSetupTask stateBefore =
             ContinueSetup
                 stateBefore
                 (InterfaceToHost.CreateVolatileHost { script = VolatileHostScript.setupScript })
-                "Create volatile host."
+                "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
 
         Just (Err error) ->
-            FailSetup ("Create volatile host failed with exception: " ++ error.exceptionToString)
+            FailSetup ("Set up the volatile host failed with exception: " ++ error.exceptionToString)
 
         Just (Ok createVolatileHostComplete) ->
             getSetupTaskWhenVolatileHostSetupCompleted stateBefore createVolatileHostComplete.hostId

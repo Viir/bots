@@ -6,6 +6,7 @@
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + Undock, open probe scanner, overview window and drones window.
    + In the ship UI, arrange the modules: The modules to use in combat must appear all in the upper row. Place modules which should always be active in a second row.
+   + In the ship UI, hide passive modules by disabling the check-box `Display Passive Modules`.
    + Enable the info panel 'System info'.
 -}
 {-

@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-02-16
+{- EVE Online anomaly ratting bot version 2020-02-17
 
    Setup instructions for the EVE Online client:
    + Enable `Run clients with 64 bit` in the settings, because this bot only works with the 64-bit version of the EVE Online client.
@@ -8,6 +8,7 @@
    + In the ship UI, arrange the modules: The modules to use in combat must appear all in the upper row. Place modules which should always be active in a second row.
    + In the ship UI, hide passive modules by disabling the check-box `Display Passive Modules`.
    + Enable the info panel 'System info'.
+   + Configure the keyboard key 'W' to make the ship orbit.
 -}
 {-
    bot-catalog-tags:eve-online,ratting
@@ -29,6 +30,7 @@ import EveOnline.MemoryReading
         , OverviewWindow
         , OverviewWindowEntry
         , ParsedUserInterface
+        , ShipUI
         , ShipUIModule
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
@@ -40,7 +42,7 @@ import Set
 
 attackMaxRange : Int
 attackMaxRange =
-    15000
+    18000
 
 
 maxTargetCount : Int
@@ -104,17 +106,21 @@ decideNextAction botMemory parsedUserInterface =
         DescribeBranch "I see we are warping." (EndDecisionPath Wait)
 
     else
-        case parsedUserInterface.overviewWindow of
+        case parsedUserInterface.shipUI of
             CanNotSeeIt ->
-                DescribeBranch "I see no overview window, assume we are docked." (EndDecisionPath Wait)
+                DescribeBranch "I see no ship UI, assume we are docked." (EndDecisionPath Wait)
 
-            CanSee overviewWindow ->
-                -- TODO: For robustness, also look also on the previous memory reading. Only continue when both indicate is undocked.
-                DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory overviewWindow parsedUserInterface)
+            CanSee shipUI ->
+                case parsedUserInterface.overviewWindow of
+                    CanNotSeeIt ->
+                        DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
+
+                    CanSee overviewWindow ->
+                        DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory shipUI overviewWindow parsedUserInterface)
 
 
-decideNextActionWhenInSpace : BotMemory -> OverviewWindow -> ParsedUserInterface -> DecisionPathNode
-decideNextActionWhenInSpace botMemory overviewWindow parsedUserInterface =
+decideNextActionWhenInSpace : BotMemory -> ShipUI -> OverviewWindow -> ParsedUserInterface -> DecisionPathNode
+decideNextActionWhenInSpace botMemory shipUI overviewWindow parsedUserInterface =
     case parsedUserInterface |> shipUIModulesToActivateAlways |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
         Just inactiveModule ->
             DescribeBranch "I see an inactive module in the middle row. Click on it to activate."
@@ -127,11 +133,11 @@ decideNextActionWhenInSpace botMemory overviewWindow parsedUserInterface =
                 )
 
         Nothing ->
-            combat botMemory overviewWindow parsedUserInterface enterAnomaly
+            combat botMemory shipUI overviewWindow parsedUserInterface enterAnomaly
 
 
-combat : BotMemory -> OverviewWindow -> ParsedUserInterface -> (ParsedUserInterface -> DecisionPathNode) -> DecisionPathNode
-combat botMemory overviewWindow parsedUserInterface continueIfCombatComplete =
+combat : BotMemory -> ShipUI -> OverviewWindow -> ParsedUserInterface -> (ParsedUserInterface -> DecisionPathNode) -> DecisionPathNode
+combat botMemory shipUI overviewWindow parsedUserInterface continueIfCombatComplete =
     let
         overviewEntriesToAttack =
             overviewWindow.entries
@@ -148,78 +154,91 @@ combat botMemory overviewWindow parsedUserInterface continueIfCombatComplete =
 
             else
                 parsedUserInterface.targets |> List.filter .isActiveTarget
-    in
-    case targetsToUnlock |> List.head of
-        Just targetToUnlock ->
-            DescribeBranch "I see a target to unlock."
-                (EndDecisionPath
-                    (Act
-                        { firstAction =
-                            targetToUnlock.barAndImageCont
-                                |> Maybe.withDefault targetToUnlock.uiNode
-                                |> clickOnUIElement MouseButtonRight
-                        , followingSteps =
-                            [ ( "Click menu entry 'unlock'."
-                              , lastContextMenuOrSubmenu
-                                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "unlock")
-                                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                              )
-                            ]
-                        }
-                    )
-                )
 
-        Nothing ->
-            case parsedUserInterface.targets |> List.head of
-                Nothing ->
-                    DescribeBranch "I see no locked target."
-                        (case overviewEntriesToLock of
-                            [] ->
-                                DescribeBranch "I see no overview entry to lock."
-                                    (returnDronesToBay parsedUserInterface
-                                        |> Maybe.withDefault
-                                            (DescribeBranch "No drones to return." (continueIfCombatComplete parsedUserInterface))
-                                    )
+        ensureShipIsOrbitingDecision =
+            overviewEntriesToAttack
+                |> List.head
+                |> Maybe.andThen (\overviewEntryToAttack -> ensureShipIsOrbiting shipUI overviewEntryToAttack)
 
-                            nextOverviewEntryToLock :: _ ->
-                                DescribeBranch "I see an overview entry to lock."
-                                    (decideNextActionAcquireLockedTarget nextOverviewEntryToLock)
+        decisionIfAlreadyOrbiting =
+            case targetsToUnlock |> List.head of
+                Just targetToUnlock ->
+                    DescribeBranch "I see a target to unlock."
+                        (EndDecisionPath
+                            (Act
+                                { firstAction =
+                                    targetToUnlock.barAndImageCont
+                                        |> Maybe.withDefault targetToUnlock.uiNode
+                                        |> clickOnUIElement MouseButtonRight
+                                , followingSteps =
+                                    [ ( "Click menu entry 'unlock'."
+                                      , lastContextMenuOrSubmenu
+                                            >> Maybe.andThen (menuEntryContainingTextIgnoringCase "unlock")
+                                            >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                      )
+                                    ]
+                                }
+                            )
                         )
 
-                Just _ ->
-                    DescribeBranch "I see a locked target."
-                        (case parsedUserInterface |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                            -- TODO: Check previous memory reading too for module activity.
-                            Nothing ->
-                                DescribeBranch "All attack modules are active."
-                                    (launchAndEngageDrones parsedUserInterface
-                                        |> Maybe.withDefault
-                                            (DescribeBranch "No idling drones."
-                                                (if maxTargetCount <= (parsedUserInterface.targets |> List.length) then
-                                                    DescribeBranch "Enough locked targets." (EndDecisionPath Wait)
+                Nothing ->
+                    case parsedUserInterface.targets |> List.head of
+                        Nothing ->
+                            DescribeBranch "I see no locked target."
+                                (case overviewEntriesToLock of
+                                    [] ->
+                                        DescribeBranch "I see no overview entry to lock."
+                                            (if overviewEntriesToAttack |> List.isEmpty then
+                                                returnDronesToBay parsedUserInterface
+                                                    |> Maybe.withDefault
+                                                        (DescribeBranch "No drones to return." (continueIfCombatComplete parsedUserInterface))
 
-                                                 else
-                                                    case overviewEntriesToLock of
-                                                        [] ->
-                                                            DescribeBranch "I see no more overview entries to lock." (EndDecisionPath Wait)
+                                             else
+                                                DescribeBranch "Wait for target locking to complete." (EndDecisionPath Wait)
+                                            )
 
-                                                        nextOverviewEntryToLock :: _ ->
-                                                            DescribeBranch "Lock more targets."
-                                                                (decideNextActionAcquireLockedTarget nextOverviewEntryToLock)
+                                    nextOverviewEntryToLock :: _ ->
+                                        DescribeBranch "I see an overview entry to lock."
+                                            (lockTargetFromOverviewEntry nextOverviewEntryToLock)
+                                )
+
+                        Just _ ->
+                            DescribeBranch "I see a locked target."
+                                (case parsedUserInterface |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                    -- TODO: Check previous memory reading too for module activity.
+                                    Nothing ->
+                                        DescribeBranch "All attack modules are active."
+                                            (launchAndEngageDrones parsedUserInterface
+                                                |> Maybe.withDefault
+                                                    (DescribeBranch "No idling drones."
+                                                        (if maxTargetCount <= (parsedUserInterface.targets |> List.length) then
+                                                            DescribeBranch "Enough locked targets." (EndDecisionPath Wait)
+
+                                                         else
+                                                            case overviewEntriesToLock of
+                                                                [] ->
+                                                                    DescribeBranch "I see no more overview entries to lock." (EndDecisionPath Wait)
+
+                                                                nextOverviewEntryToLock :: _ ->
+                                                                    DescribeBranch "Lock more targets."
+                                                                        (lockTargetFromOverviewEntry nextOverviewEntryToLock)
+                                                        )
+                                                    )
+                                            )
+
+                                    Just inactiveModule ->
+                                        DescribeBranch "I see an inactive module to activate on targets. Click on it to activate."
+                                            (EndDecisionPath
+                                                (Act
+                                                    { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
+                                                    , followingSteps = []
+                                                    }
                                                 )
                                             )
-                                    )
-
-                            Just inactiveModule ->
-                                DescribeBranch "I see an inactive module to activate on targets. Click on it to activate."
-                                    (EndDecisionPath
-                                        (Act
-                                            { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                                            , followingSteps = []
-                                            }
-                                        )
-                                    )
-                        )
+                                )
+    in
+    ensureShipIsOrbitingDecision
+        |> Maybe.withDefault decisionIfAlreadyOrbiting
 
 
 enterAnomaly : ParsedUserInterface -> DecisionPathNode
@@ -259,6 +278,32 @@ enterAnomaly parsedUserInterface =
                                 }
                             )
                         )
+
+
+ensureShipIsOrbiting : ShipUI -> OverviewWindowEntry -> Maybe DecisionPathNode
+ensureShipIsOrbiting shipUI overviewEntryToOrbit =
+    if (shipUI.indication |> maybeVisibleAndThen .maneuverType) == CanSee EveOnline.MemoryReading.ManeuverOrbit then
+        Nothing
+
+    else
+        Just
+            (DescribeBranch "Overview entry is in range. Lock target."
+                (EndDecisionPath
+                    (Act
+                        { firstAction = overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
+                        , followingSteps =
+                            [ ( "Use keyboard key 'W' to begin orbit. Key down.", always (VolatileHostInterface.KeyDown keyCodeLetterW |> Just) )
+                            , ( "Use keyboard key 'W' to begin orbit. Key up.", always (VolatileHostInterface.KeyUp keyCodeLetterW |> Just) )
+                            ]
+                        }
+                    )
+                )
+            )
+
+
+keyCodeLetterW : VolatileHostInterface.VirtualKeyCode
+keyCodeLetterW =
+    VolatileHostInterface.VirtualKeyCodeFromInt 0x57
 
 
 launchAndEngageDrones : ParsedUserInterface -> Maybe DecisionPathNode
@@ -354,8 +399,8 @@ returnDronesToBay parsedUserInterface =
             )
 
 
-decideNextActionAcquireLockedTarget : OverviewWindowEntry -> DecisionPathNode
-decideNextActionAcquireLockedTarget overviewEntry =
+lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
+lockTargetFromOverviewEntry overviewEntry =
     if overviewEntry |> overviewWindowEntryIsInRange |> Maybe.withDefault False then
         DescribeBranch "Overview entry is in range. Lock target."
             (EndDecisionPath

@@ -19,6 +19,7 @@ What is more exciting than playing video games? - Building an AI that plays vide
   + Program code: [./implement/applications/eve-online/eve-online-mining-bot](./implement/applications/eve-online/eve-online-mining-bot)
 
 + EVE Online anomaly ratting bot
+  + User guide: [./guide/eve-online/eve-online-anomaly-ratting-bot.md](./guide/eve-online/eve-online-anomaly-ratting-bot.md)
   + Program code: [./implement/applications/eve-online/eve-online-anomaly-ratting-bot](./implement/applications/eve-online/eve-online-anomaly-ratting-bot)
 
 + Tribal Wars 2 farmbot

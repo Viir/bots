@@ -1,13 +1,12 @@
-{- EVE Online anomaly ratting bot version 2020-02-17
+{- EVE Online anomaly ratting bot version 2020-02-18
 
    Setup instructions for the EVE Online client:
-   + Enable `Run clients with 64 bit` in the settings, because this bot only works with the 64-bit version of the EVE Online client.
    + Set the UI language to English.
-   + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
+   + Enable the info panel 'System info'.
    + Undock, open probe scanner, overview window and drones window.
+   + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + In the ship UI, arrange the modules: The modules to use in combat must appear all in the upper row. Place modules which should always be active in a second row.
    + In the ship UI, hide passive modules by disabling the check-box `Display Passive Modules`.
-   + Enable the info panel 'System info'.
    + Configure the keyboard key 'W' to make the ship orbit.
 -}
 {-

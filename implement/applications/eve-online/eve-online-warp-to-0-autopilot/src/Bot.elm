@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2020-02-16
+{- EVE Online Warp-to-0 auto-pilot version 2020-02-20
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
    Before starting the bot, set the in-game autopilot route and make sure the autopilot is expanded, so that the route is visible.
    Make sure you are undocked before starting the bot because the bot does not undock.
@@ -29,11 +29,16 @@ import EveOnline.MemoryReading
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
 
 
-{-| This bot does not need to remember anything from the past; the information on the game client user interface is sufficient to decide what to do next.
-Therefore we use a type that only supports one value.
+finishSessionAfterInactivityMinutes : Int
+finishSessionAfterInactivityMinutes =
+    3
+
+
+{-| To support the feature that finishes the session some time of inactivity, it needs to remember the time of the last activity.
 -}
 type alias BotState =
-    ()
+    { lastActivityTime : Int
+    }
 
 
 type alias State =
@@ -42,7 +47,7 @@ type alias State =
 
 initState : State
 initState =
-    EveOnline.BotFramework.initState ()
+    EveOnline.BotFramework.initState { lastActivityTime = 0 }
 
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
@@ -62,20 +67,31 @@ processEveOnlineBotEvent eventContext event stateBefore =
                 ( effects, statusMessage ) =
                     botEffectsFromGameClientState parsedUserInterface
 
-                millisecondsToNextReadingFromGame =
+                ( lastActivityTime, millisecondsToNextReadingFromGame ) =
                     if effects |> List.isEmpty then
-                        4000
+                        ( stateBefore.lastActivityTime, 4000 )
 
                     else
-                        2000
+                        ( eventContext.timeInMilliseconds // 1000, 2000 )
             in
-            ( stateBefore
-            , EveOnline.BotFramework.ContinueSession
-                { effects = effects
-                , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
-                , statusDescriptionText = statusMessage
-                }
-            )
+            if 60 * finishSessionAfterInactivityMinutes < eventContext.timeInMilliseconds // 1000 - lastActivityTime then
+                ( stateBefore
+                , EveOnline.BotFramework.FinishSession
+                    { statusDescriptionText =
+                        "I finish this session because there was nothing to do for me in the last "
+                            ++ (finishSessionAfterInactivityMinutes |> String.fromInt)
+                            ++ " minutes."
+                    }
+                )
+
+            else
+                ( { stateBefore | lastActivityTime = lastActivityTime }
+                , EveOnline.BotFramework.ContinueSession
+                    { effects = effects
+                    , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
+                    , statusDescriptionText = statusMessage
+                    }
+                )
 
 
 botEffectsFromGameClientState : ParsedUserInterface -> ( List BotEffect, String )

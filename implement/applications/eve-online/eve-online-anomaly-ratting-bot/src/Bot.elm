@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-02-18
+{- EVE Online anomaly ratting bot version 2020-02-23
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.

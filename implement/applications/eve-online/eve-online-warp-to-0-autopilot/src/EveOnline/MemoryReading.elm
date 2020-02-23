@@ -17,6 +17,7 @@ module EveOnline.MemoryReading exposing
     , InfoPanelLocationInfoExpandedContent
     , InfoPanelRoute
     , InfoPanelRouteRouteElementMarker
+    , Inventory
     , InventoryItemsView(..)
     , InventoryWindow
     , InventoryWindowCapacityGauge
@@ -175,7 +176,8 @@ type ShipManeuverType
 
 
 type alias InfoPanelRoute =
-    { routeElementMarker : List InfoPanelRouteRouteElementMarker
+    { uiNode : UITreeNodeWithDisplayRegion
+    , routeElementMarker : List InfoPanelRouteRouteElementMarker
     }
 
 
@@ -185,7 +187,8 @@ type alias InfoPanelRouteRouteElementMarker =
 
 
 type alias InfoPanelLocationInfo =
-    { listSurroundingsButton : UITreeNodeWithDisplayRegion
+    { uiNode : UITreeNodeWithDisplayRegion
+    , listSurroundingsButton : UITreeNodeWithDisplayRegion
     , expandedContent : MaybeVisible InfoPanelLocationInfoExpandedContent
     }
 
@@ -274,7 +277,7 @@ type alias StationWindow =
 type alias InventoryWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , leftTreeEntries : List InventoryWindowLeftTreeEntry
-    , selectedContainerCapacityGauge : Maybe InventoryWindowCapacityGauge
+    , selectedContainerCapacityGauge : Maybe (Result String InventoryWindowCapacityGauge)
     , selectedContainerInventory : Maybe Inventory
     , buttonToSwitchToListView : Maybe UITreeNodeWithDisplayRegion
     }
@@ -298,8 +301,8 @@ type alias InventoryWindowLeftTreeEntry =
 
 
 type alias InventoryWindowCapacityGauge =
-    { maximum : Maybe Int
-    , used : Int
+    { used : Int
+    , maximum : Maybe Int
     , selected : Maybe Int
     }
 
@@ -495,7 +498,8 @@ parseInfoPanelLocationInfoFromUITreeRoot uiTreeRoot =
             maybeListSurroundingsButton
                 |> Maybe.map
                     (\listSurroundingsButton ->
-                        { listSurroundingsButton = listSurroundingsButton
+                        { uiNode = infoPanelNode
+                        , listSurroundingsButton = listSurroundingsButton
                         , expandedContent = expandedContent
                         }
                     )
@@ -536,15 +540,15 @@ parseInfoPanelRouteFromUITreeRoot uiTreeRoot =
         Nothing ->
             CanNotSeeIt
 
-        Just infoPanelRouteElement ->
+        Just infoPanelRouteNode ->
             let
                 routeElementMarker =
-                    infoPanelRouteElement
+                    infoPanelRouteNode
                         |> listDescendantsWithDisplayRegion
                         |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "AutopilotDestinationIcon")
                         |> List.map (\uiNode -> { uiNode = uiNode })
             in
-            CanSee { routeElementMarker = routeElementMarker }
+            CanSee { uiNode = infoPanelRouteNode, routeElementMarker = routeElementMarker }
 
 
 parseContextMenu : UITreeNodeWithDisplayRegion -> ContextMenu
@@ -1099,7 +1103,7 @@ parseInventoryWindow windowUiNode =
                 |> List.filterMap getDisplayText
                 |> List.sortBy (String.length >> negate)
                 |> List.head
-                |> Maybe.andThen (parseInventoryCapacityGaugeText >> Result.toMaybe)
+                |> Maybe.map parseInventoryCapacityGaugeText
 
         leftTreeEntries =
             windowUiNode
@@ -1457,6 +1461,8 @@ parseNumberTruncatingAfterOptionalDecimalSeparator numberDisplayText =
                         |> String.replace "," ""
                         |> String.replace "." ""
                         |> String.replace " " ""
+                        |> String.replace "\u{00A0}" ""
+                        |> String.replace "\u{202F}" ""
                         |> String.toInt
                         |> Result.fromMaybe ("Failed to parse to integer: " ++ match.match)
 

@@ -59,7 +59,7 @@ Some bots support configuration. When starting a bot from the command line, you 
 C:\path\to\the\botengine.exe  run-bot  --bot-configuration="My bot configuration"  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/templates/remember-bot-configuration"
 ```
 
-The supported bot configuration values depend entirely on the bot that you chose. To learn which bot configuration values are supported in your case, look up the description for the bot or contact the developer of the bot. A good place to look for guidance on a specific bot is the `src/Bot.elm` file contained in the directory specified as `bot-source`. Bot authors often write a guide at the beginning of that file, for example in [this EVE Online mining bot](https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
+The supported bot configuration values depend entirely on the bot that you chose. To learn which bot configuration values are supported in your case, look up the description for the bot or contact the developer of the bot. A good place to look for guidance on a specific bot is the `src/Bot.elm` file contained in the directory specified as `bot-source`. Bot authors often write a guide at the beginning of that file, for example in [this EVE Online mining bot](https://github.com/Viir/bots/tree/99f4a388753ad4970d1f10a7276ea004c9d75643/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
 
 ## Viewing Bot Description
 

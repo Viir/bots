@@ -114,7 +114,7 @@ decideNextAction botMemory parsedUserInterface =
 
             CanSee shipUI ->
                 if shipUI.hitpointsPercent.shield < runAwayShieldHitpointsThresholdPercent then
-                    DescribeBranch "Shield hitpoints are too low, run away." (runAway parsedUserInterface)
+                    DescribeBranch "Shield hitpoints are too low, run away." (runAway botMemory parsedUserInterface)
 
                 else
                     case shipUI |> groupShipUIModulesIntoRows of
@@ -199,7 +199,9 @@ decideNextActionWhenInSpace botMemory shipUIModules parsedUserInterface =
                                     DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
 
                                 Just lastDockedStationNameFromInfoPanel ->
-                                    dockToStation { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel } parsedUserInterface
+                                    dockToStationMatchingNameSeenInInfoPanel
+                                        { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
+                                        parsedUserInterface
                             )
 
                     else
@@ -269,22 +271,29 @@ decideNextActionAcquireLockedTarget parsedUserInterface =
                     )
 
 
-dockToStation : { stationNameFromInfoPanel : String } -> ParsedUserInterface -> DecisionPathNode
-dockToStation { stationNameFromInfoPanel } =
+dockToStationMatchingNameSeenInInfoPanel : { stationNameFromInfoPanel : String } -> ParsedUserInterface -> DecisionPathNode
+dockToStationMatchingNameSeenInInfoPanel { stationNameFromInfoPanel } =
+    dockToStationUsingSurroundingsButtonMenu
+        ( "Click on menu entry representing the station '" ++ stationNameFromInfoPanel ++ "'."
+        , List.filter (menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel)
+            >> List.head
+        )
+
+
+dockToStationUsingSurroundingsButtonMenu :
+    ( String, List EveOnline.MemoryReading.ContextMenuEntry -> Maybe EveOnline.MemoryReading.ContextMenuEntry )
+    -> ParsedUserInterface
+    -> DecisionPathNode
+dockToStationUsingSurroundingsButtonMenu ( describeChooseStation, chooseStationMenuEntry ) =
     useContextMenuOnListSurroundingsButton
         [ ( "Click on menu entry 'stations'."
           , lastContextMenuOrSubmenu
                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase "stations")
                 >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
           )
-        , ( "Click on menu entry representing the station '" ++ stationNameFromInfoPanel ++ "'."
+        , ( describeChooseStation
           , lastContextMenuOrSubmenu
-                >> Maybe.andThen
-                    (.entries
-                        >> List.filter
-                            (menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel)
-                        >> List.head
-                    )
+                >> Maybe.andThen (.entries >> chooseStationMenuEntry)
                 >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
           )
         , ( "Click on menu entry 'dock'"
@@ -323,32 +332,23 @@ warpToMiningSite parsedUserInterface =
             ]
 
 
-runAway : ParsedUserInterface -> DecisionPathNode
-runAway parsedUserInterface =
-    parsedUserInterface
-        |> useContextMenuOnListSurroundingsButton
-            [ ( "Click on menu entry 'planets'."
-              , lastContextMenuOrSubmenu
-                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "planets")
-                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-              )
-            , ( "Click on one of the menu entries."
-              , lastContextMenuOrSubmenu
-                    >> Maybe.andThen
-                        (.entries >> listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface))
-                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-              )
-            , ( "Click menu entry 'Warp to Within'"
-              , lastContextMenuOrSubmenu
-                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Within")
-                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-              )
-            , ( "Click menu entry 'Within 0 m'"
-              , lastContextMenuOrSubmenu
-                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Within 0 m")
-                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-              )
-            ]
+runAway : BotMemory -> ParsedUserInterface -> DecisionPathNode
+runAway botMemory parsedUserInterface =
+    case botMemory.lastDockedStationNameFromInfoPanel of
+        Nothing ->
+            dockToRandomStation parsedUserInterface
+
+        Just lastDockedStationNameFromInfoPanel ->
+            dockToStationMatchingNameSeenInInfoPanel
+                { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
+                parsedUserInterface
+
+
+dockToRandomStation : ParsedUserInterface -> DecisionPathNode
+dockToRandomStation parsedUserInterface =
+    dockToStationUsingSurroundingsButtonMenu
+        ( "Pick random station.", listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface) )
+        parsedUserInterface
 
 
 useContextMenuOnListSurroundingsButton : List ( String, ParsedUserInterface -> Maybe VolatileHostInterface.EffectOnWindowStructure ) -> ParsedUserInterface -> DecisionPathNode
@@ -672,8 +672,3 @@ listElementAtWrappedIndex indexToWrap list =
 
     else
         list |> List.drop (indexToWrap |> modBy (list |> List.length)) |> List.head
-
-
-listRemove : element -> List element -> List element
-listRemove elementToRemove =
-    List.filter ((/=) elementToRemove)

@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-02-17
+{- Tribal Wars 2 farmbot version 2020-02-25
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -62,6 +62,16 @@ farmArmyPresetNamePattern =
     "farm"
 
 
+reloadWebPageInterval : Int
+reloadWebPageInterval =
+    60 * 15
+
+
+waitDurationAfterReloadWebPage : Int
+waitDurationAfterReloadWebPage =
+    15
+
+
 numberOfAttacksLimitPerVillage : Int
 numberOfAttacksLimitPerVillage =
     50
@@ -80,9 +90,11 @@ selectedVillageInfoMaxAge =
 type alias BotState =
     { timeInMilliseconds : Int
     , configuration : BotConfiguration
+    , lastRequest : Maybe { timeInMilliseconds : Int, activityDescription : String }
     , lastRunJavascriptResult :
         Maybe
-            { response : BotFramework.RunJavascriptInCurrentPageResponseStructure
+            { timeInMilliseconds : Int
+            , response : BotFramework.RunJavascriptInCurrentPageResponseStructure
             , parseResult : Result Json.Decode.Error RootInformationStructure
             }
     , gameRootInformationResult : Maybe { timeInMilliseconds : Int, gameRootInformation : TribalWars2RootInformation }
@@ -93,6 +105,7 @@ type alias BotState =
     , farmState : FarmState
     , lastAttackTimeInMilliseconds : Maybe Int
     , lastActivatedVillageTimeInMilliseconds : Maybe Int
+    , lastReloadPageTimeInSeconds : Maybe Int
     , completedFarmCycles : List FarmCycleState
     , parseResponseError : Maybe Json.Decode.Error
     }
@@ -210,8 +223,15 @@ type alias VillageCoordinates =
 
 
 type InFarmCycleResponse
-    = ContinueFarmCycle { javascriptToRun : Maybe String, activityDescription : String }
+    = ContinueFarmCycle ContinueFarmCycleStructure
     | FinishFarmCycle
+
+
+type alias ContinueFarmCycleStructure =
+    { javascriptToRun : Maybe String
+    , activityDescription : String
+    , updateState : Maybe (BotState -> BotState)
+    }
 
 
 initState : State
@@ -219,6 +239,7 @@ initState =
     BotFramework.initState
         { timeInMilliseconds = 0
         , configuration = botConfigurationDefault
+        , lastRequest = Nothing
         , lastRunJavascriptResult = Nothing
         , gameRootInformationResult = Nothing
         , ownVillagesDetails = Dict.empty
@@ -228,9 +249,15 @@ initState =
         , farmState = InFarmCycle initFarmCycle
         , lastAttackTimeInMilliseconds = Nothing
         , lastActivatedVillageTimeInMilliseconds = Nothing
+        , lastReloadPageTimeInSeconds = Nothing
         , completedFarmCycles = []
         , parseResponseError = Nothing
         }
+
+
+shouldReloadWebPage : BotState -> Bool
+shouldReloadWebPage state =
+    reloadWebPageInterval < (state.timeInMilliseconds // 1000) - (state.lastReloadPageTimeInSeconds |> Maybe.withDefault 0)
 
 
 initFarmCycle : FarmCycleState
@@ -244,118 +271,175 @@ processEvent =
 
 
 processWebBrowserBotEvent : BotEvent -> BotState -> { newState : BotState, response : BotResponse, statusMessage : String }
-processWebBrowserBotEvent event stateBefore =
-    case stateBefore |> integrateWebBrowserBotEvent event of
+processWebBrowserBotEvent event stateBeforeIntegrateEvent =
+    case stateBeforeIntegrateEvent |> integrateWebBrowserBotEvent event of
         Err integrateEventError ->
-            { newState = stateBefore, response = BotFramework.FinishSession, statusMessage = "Error: " ++ integrateEventError }
+            { newState = stateBeforeIntegrateEvent, response = BotFramework.FinishSession, statusMessage = "Error: " ++ integrateEventError }
 
-        Ok state ->
+        Ok stateBefore ->
             let
-                ( responseToFramework, responseDescription, maybeUpdatedState ) =
-                    case state.farmState of
-                        InBreak farmBreak ->
+                maybeWaitForPendingRequestActivityDescription =
+                    case stateBefore.lastRequest of
+                        Nothing ->
+                            Nothing
+
+                        Just lastRequest ->
                             let
-                                minutesSinceLastFarmCycleCompletion =
-                                    (stateBefore.timeInMilliseconds // 1000 - farmBreak.lastCycleCompletionTime) // 60
+                                pendingRequestTimeInMilliseconds =
+                                    case stateBefore.lastRunJavascriptResult of
+                                        Nothing ->
+                                            Just lastRequest.timeInMilliseconds
 
-                                minutesToNextFarmCycleStart =
-                                    (farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000) // 60
-
-                                stateAfterStartingFarmCycle =
-                                    if minutesToNextFarmCycleStart < 1 then
-                                        Just { state | farmState = InFarmCycle initFarmCycle }
-
-                                    else
-                                        Nothing
-                            in
-                            ( BotFramework.ContinueSession Nothing
-                            , "Next farm cycle starts in "
-                                ++ (minutesToNextFarmCycleStart |> String.fromInt)
-                                ++ " minutes. Last cycle completed "
-                                ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
-                                ++ " minutes ago."
-                            , stateAfterStartingFarmCycle
-                            )
-
-                        InFarmCycle farmCycleStateBefore ->
-                            let
-                                responseInFarmCycle =
-                                    responseWithDescriptionToFramework state farmCycleStateBefore
-                            in
-                            case responseInFarmCycle of
-                                ContinueFarmCycle { javascriptToRun, activityDescription } ->
-                                    let
-                                        maybeRequest =
-                                            javascriptToRun
-                                                |> Maybe.map
-                                                    (\javascript ->
-                                                        BotFramework.RunJavascriptInCurrentPageRequest
-                                                            { javascript = javascript
-                                                            , requestId = "request-id"
-                                                            , timeToWaitForCallbackMilliseconds = 1000
-                                                            }
-                                                    )
-                                    in
-                                    ( BotFramework.ContinueSession maybeRequest, activityDescription, Nothing )
-
-                                FinishFarmCycle ->
-                                    let
-                                        completedFarmCycles =
-                                            farmCycleStateBefore :: state.completedFarmCycles
-
-                                        currentTimeInSeconds =
-                                            stateBefore.timeInMilliseconds // 1000
-
-                                        breakLengthRange =
-                                            (stateBefore.configuration.breakDurationMaxMinutes
-                                                - stateBefore.configuration.breakDurationMinMinutes
-                                            )
-                                                * 60
-
-                                        breakLengthRandomComponent =
-                                            if breakLengthRange == 0 then
-                                                0
+                                        Just lastRunJavascriptResult ->
+                                            if lastRequest.timeInMilliseconds < lastRunJavascriptResult.timeInMilliseconds then
+                                                Nothing
 
                                             else
-                                                stateBefore.timeInMilliseconds |> modBy breakLengthRange
+                                                Just lastRequest.timeInMilliseconds
 
-                                        breakLength =
-                                            (stateBefore.configuration.breakDurationMinMinutes * 60) + breakLengthRandomComponent
+                                waitTimeLimits =
+                                    [ stateBefore.lastRunJavascriptResult |> Maybe.map (.timeInMilliseconds >> (+) 500)
+                                    , pendingRequestTimeInMilliseconds |> Maybe.map ((+) 3000)
+                                    ]
+                                        |> List.filterMap identity
+                            in
+                            if stateBefore.timeInMilliseconds < (waitTimeLimits |> List.maximum |> Maybe.withDefault 0) then
+                                Just lastRequest.activityDescription
 
-                                        nextCycleStartTime =
-                                            currentTimeInSeconds + breakLength
-
-                                        farmState =
-                                            InBreak
-                                                { lastCycleCompletionTime = currentTimeInSeconds
-                                                , nextCycleStartTime = nextCycleStartTime
-                                                }
-
-                                        stateAfterFinishingFarmCycle =
-                                            { state
-                                                | farmState = farmState
-                                                , completedFarmCycles = completedFarmCycles
-                                            }
-
-                                        numberOfCompletedFarmCycles =
-                                            completedFarmCycles |> List.length
-                                    in
-                                    if stateBefore.configuration.numberOfFarmCycles <= numberOfCompletedFarmCycles then
-                                        -- TODO: Move derivation of 'BotFramework.FinishSession' from completedFarmCycles further up.
-                                        ( BotFramework.FinishSession
-                                        , "Finished all " ++ (numberOfCompletedFarmCycles |> String.fromInt) ++ " farm cycles."
-                                        , Just stateAfterFinishingFarmCycle
-                                        )
-
-                                    else
-                                        ( BotFramework.ContinueSession Nothing
-                                        , "There is nothing left to do in this farm cycle."
-                                        , Just stateAfterFinishingFarmCycle
-                                        )
+                            else
+                                Nothing
             in
-            { newState = maybeUpdatedState |> Maybe.withDefault state
+            let
+                ( responseToFramework, responseDescription, maybeUpdatedState ) =
+                    case maybeWaitForPendingRequestActivityDescription of
+                        Just waitForPendingRequestActivityDescription ->
+                            ( BotFramework.ContinueSession Nothing
+                            , waitForPendingRequestActivityDescription
+                            , Nothing
+                            )
+
+                        Nothing ->
+                            case stateBefore.farmState of
+                                InBreak farmBreak ->
+                                    let
+                                        minutesSinceLastFarmCycleCompletion =
+                                            (stateBefore.timeInMilliseconds // 1000 - farmBreak.lastCycleCompletionTime) // 60
+
+                                        minutesToNextFarmCycleStart =
+                                            (farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000) // 60
+
+                                        stateAfterStartingFarmCycle =
+                                            if minutesToNextFarmCycleStart < 1 then
+                                                Just { stateBefore | farmState = InFarmCycle initFarmCycle }
+
+                                            else
+                                                Nothing
+                                    in
+                                    ( BotFramework.ContinueSession Nothing
+                                    , "Next farm cycle starts in "
+                                        ++ (minutesToNextFarmCycleStart |> String.fromInt)
+                                        ++ " minutes. Last cycle completed "
+                                        ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
+                                        ++ " minutes ago."
+                                    , stateAfterStartingFarmCycle
+                                    )
+
+                                InFarmCycle farmCycleStateBefore ->
+                                    let
+                                        responseInFarmCycle =
+                                            responseWithDescriptionToFramework stateBefore farmCycleStateBefore
+                                    in
+                                    case responseInFarmCycle of
+                                        ContinueFarmCycle continueFarmCycle ->
+                                            let
+                                                maybeRequest =
+                                                    continueFarmCycle.javascriptToRun
+                                                        |> Maybe.map
+                                                            (\javascript ->
+                                                                BotFramework.RunJavascriptInCurrentPageRequest
+                                                                    { javascript = javascript
+                                                                    , requestId = "request-id"
+                                                                    , timeToWaitForCallbackMilliseconds = 1000
+                                                                    }
+                                                            )
+
+                                                lastRequest =
+                                                    if continueFarmCycle.javascriptToRun == Nothing then
+                                                        stateBefore.lastRequest
+
+                                                    else
+                                                        Just
+                                                            { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                                            , activityDescription = continueFarmCycle.activityDescription
+                                                            }
+
+                                                updatedStateFromContinueCycle =
+                                                    { stateBefore | lastRequest = lastRequest }
+                                                        |> (continueFarmCycle.updateState |> Maybe.withDefault identity)
+                                            in
+                                            ( BotFramework.ContinueSession maybeRequest
+                                            , continueFarmCycle.activityDescription
+                                            , Just updatedStateFromContinueCycle
+                                            )
+
+                                        FinishFarmCycle ->
+                                            let
+                                                completedFarmCycles =
+                                                    farmCycleStateBefore :: stateBefore.completedFarmCycles
+
+                                                currentTimeInSeconds =
+                                                    stateBefore.timeInMilliseconds // 1000
+
+                                                breakLengthRange =
+                                                    (stateBefore.configuration.breakDurationMaxMinutes
+                                                        - stateBefore.configuration.breakDurationMinMinutes
+                                                    )
+                                                        * 60
+
+                                                breakLengthRandomComponent =
+                                                    if breakLengthRange == 0 then
+                                                        0
+
+                                                    else
+                                                        stateBefore.timeInMilliseconds |> modBy breakLengthRange
+
+                                                breakLength =
+                                                    (stateBefore.configuration.breakDurationMinMinutes * 60) + breakLengthRandomComponent
+
+                                                nextCycleStartTime =
+                                                    currentTimeInSeconds + breakLength
+
+                                                farmState =
+                                                    InBreak
+                                                        { lastCycleCompletionTime = currentTimeInSeconds
+                                                        , nextCycleStartTime = nextCycleStartTime
+                                                        }
+
+                                                stateAfterFinishingFarmCycle =
+                                                    { stateBefore
+                                                        | farmState = farmState
+                                                        , completedFarmCycles = completedFarmCycles
+                                                    }
+
+                                                numberOfCompletedFarmCycles =
+                                                    completedFarmCycles |> List.length
+                                            in
+                                            if stateBefore.configuration.numberOfFarmCycles <= numberOfCompletedFarmCycles then
+                                                -- TODO: Move derivation of 'BotFramework.FinishSession' from completedFarmCycles further up.
+                                                ( BotFramework.FinishSession
+                                                , "Finished all " ++ (numberOfCompletedFarmCycles |> String.fromInt) ++ " farm cycles."
+                                                , Just stateAfterFinishingFarmCycle
+                                                )
+
+                                            else
+                                                ( BotFramework.ContinueSession Nothing
+                                                , "There is nothing left to do in this farm cycle."
+                                                , Just stateAfterFinishingFarmCycle
+                                                )
+            in
+            { newState = maybeUpdatedState |> Maybe.withDefault stateBefore
             , response = responseToFramework
-            , statusMessage = statusMessageFromState state ++ "\n" ++ responseDescription
+            , statusMessage = statusMessageFromState stateBefore ++ "\n" ++ responseDescription
             }
 
 
@@ -449,10 +533,7 @@ integrateWebBrowserBotEvent event stateBefore =
 
         BotFramework.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
             Ok
-                (integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse
-                    runJavascriptInCurrentPageResponse
-                    stateBefore
-                )
+                (integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse stateBefore)
 
 
 integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse : BotFramework.RunJavascriptInCurrentPageResponseStructure -> BotState -> BotState
@@ -466,7 +547,8 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
             { stateBefore
                 | lastRunJavascriptResult =
                     Just
-                        { response = runJavascriptInCurrentPageResponse
+                        { timeInMilliseconds = stateBefore.timeInMilliseconds
+                        , response = runJavascriptInCurrentPageResponse
                         , parseResult = parseAsRootInfoResult
                         }
             }
@@ -580,18 +662,43 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
 
 responseWithDescriptionToFramework : BotState -> FarmCycleState -> InFarmCycleResponse
 responseWithDescriptionToFramework state farmCycleState =
-    let
-        waitAfterJumpedToCoordinates =
-            state.lastJumpToCoordinates
-                |> Maybe.map
-                    (\lastJumpToCoordinates -> state.timeInMilliseconds - lastJumpToCoordinates.timeInMilliseconds < 1100)
-                |> Maybe.withDefault False
-    in
-    if waitAfterJumpedToCoordinates then
-        ContinueFarmCycle { javascriptToRun = Nothing, activityDescription = "Waiting after jumping to village." }
+    case state |> lastReloadPageAgeInSecondsFromState |> Maybe.andThen (nothingFromIntIfGreaterThan waitDurationAfterReloadWebPage) of
+        Just lastReloadPageAgeInSeconds ->
+            ContinueFarmCycle
+                { javascriptToRun = Nothing
+                , activityDescription = "Waiting because reloaded web page " ++ (lastReloadPageAgeInSeconds |> String.fromInt) ++ " seconds ago."
+                , updateState = Nothing
+                }
 
-    else
-        responseToFrameworkWhenNotWaitingGlobally state farmCycleState
+        Nothing ->
+            if state |> shouldReloadWebPage then
+                ContinueFarmCycle reloadWebPage
+
+            else
+                let
+                    waitAfterJumpedToCoordinates =
+                        state.lastJumpToCoordinates
+                            |> Maybe.map
+                                (\lastJumpToCoordinates -> state.timeInMilliseconds - lastJumpToCoordinates.timeInMilliseconds < 1100)
+                            |> Maybe.withDefault False
+                in
+                if waitAfterJumpedToCoordinates then
+                    ContinueFarmCycle
+                        { javascriptToRun = Nothing
+                        , activityDescription = "Waiting after jumping to village."
+                        , updateState = Nothing
+                        }
+
+                else
+                    responseToFrameworkWhenNotWaitingGlobally state farmCycleState
+
+
+reloadWebPage : ContinueFarmCycleStructure
+reloadWebPage =
+    { javascriptToRun = Just reloadPageScript
+    , activityDescription = "Reload the web page."
+    , updateState = Just (\stateBefore -> { stateBefore | lastReloadPageTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000) })
+    }
 
 
 responseToFrameworkWhenNotWaitingGlobally : BotState -> FarmCycleState -> InFarmCycleResponse
@@ -723,7 +830,13 @@ responseToFrameworkWhenNotWaitingGlobally botState farmCycleState =
 
         Just javascript ->
             -- TODO: more specific activityDescription (Consolidate with the other functions generating descriptions)
-            ContinueFarmCycle { javascriptToRun = Just javascript, activityDescription = "" }
+            ContinueFarmCycle { javascriptToRun = Just javascript, activityDescription = "", updateState = Nothing }
+
+
+lastReloadPageAgeInSecondsFromState : BotState -> Maybe Int
+lastReloadPageAgeInSecondsFromState state =
+    state.lastReloadPageTimeInSeconds
+        |> Maybe.map (\lastReloadPageTimeInSeconds -> state.timeInMilliseconds // 1000 - lastReloadPageTimeInSeconds)
 
 
 scriptToJumpToVillageIfNotYetDone : BotState -> VillageCoordinates -> Maybe String
@@ -923,6 +1036,11 @@ squareDistanceBetweenCoordinates coordsA coordsB =
             coordsA.y - coordsB.y
     in
     distX * distX + distY * distY
+
+
+reloadPageScript : String
+reloadPageScript =
+    """window.location.reload()"""
 
 
 readRootInformationScript : String
@@ -1203,12 +1321,12 @@ startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId } =
         type = 'attack';
 
         socketService.emit(routeProvider.GET_ATTACKING_FACTOR, {
-            'target_id'		: targetVillageId
+            'target_id'\t\t: targetVillageId
         }, function(data) {
             var targetData = {
-                'id'				: targetVillageId,
-                'attackProtection'	: data.attack_protection,
-                'barbarianVillage'	: data.owner_id === null
+                'id'\t\t\t\t: targetVillageId,
+                'attackProtection'\t: data.attack_protection,
+                'barbarianVillage'\t: data.owner_id === null
             };
 
             mapService.updateVillageOwner(targetData.id, data.owner_id);
@@ -1419,16 +1537,26 @@ statusMessageFromState state =
         enableDebugInspection =
             False
 
-        allReportLines =
-            [ inGameReport
-            , parseResponseErrorReport
-            ]
-                ++ (if enableDebugInspection then
-                        debugInspectionLines
+        reloadReportLines =
+            state
+                |> lastReloadPageAgeInSecondsFromState
+                |> Maybe.map
+                    (\lastReloadPageAgeInSeconds ->
+                        [ "Reloaded the web page " ++ ((lastReloadPageAgeInSeconds // 60) |> String.fromInt) ++ " minutes ago." ]
+                    )
+                |> Maybe.withDefault []
 
-                    else
-                        []
-                   )
+        allReportLines =
+            [ [ inGameReport ]
+            , reloadReportLines
+            , [ parseResponseErrorReport ]
+            , if enableDebugInspection then
+                debugInspectionLines
+
+              else
+                []
+            ]
+                |> List.concat
     in
     allReportLines
         |> String.join "\n"
@@ -1516,3 +1644,12 @@ stringEllipsis howLong append string =
 
     else
         String.left (howLong - String.length append) string ++ append
+
+
+nothingFromIntIfGreaterThan : Int -> Int -> Maybe Int
+nothingFromIntIfGreaterThan limit originalInt =
+    if limit < originalInt then
+        Nothing
+
+    else
+        Just originalInt

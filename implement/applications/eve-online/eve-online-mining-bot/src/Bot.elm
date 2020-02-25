@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-02-23
+{- Michaels EVE Online mining bot version 2020-02-25
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -9,7 +9,10 @@
    + In Overview window, make asteroids visible.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + Setup inventory window so that 'Ore Hold' is always selected.
-   + In the ship UI, arrange the mining modules to appear all in the upper row of modules.
+   + In the ship UI, arrange the modules:
+     + Place all mining modules (to activate on targets) in the upper row.
+     + Place modules that should always be active in the middle row.
+     + Hide passive modules by disabling the check-box `Display Passive Modules`.
    + Enable the info panel 'System info'.
 -}
 {-
@@ -83,6 +86,13 @@ type alias State =
     EveOnline.BotFramework.StateIncludingFramework BotState
 
 
+type alias ShipUIModulesGroupedIntoRows =
+    { upper : List ShipUIModule
+    , middle : List ShipUIModule
+    , lower : List ShipUIModule
+    }
+
+
 generalStepDelayMilliseconds : Int
 generalStepDelayMilliseconds =
     2000
@@ -107,7 +117,12 @@ decideNextAction botMemory parsedUserInterface =
                     DescribeBranch "Shield hitpoints are too low, run away." (runAway parsedUserInterface)
 
                 else
-                    DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory parsedUserInterface)
+                    case shipUI |> groupShipUIModulesIntoRows of
+                        Nothing ->
+                            DescribeBranch "Failed to group the ship UI modules into rows." (EndDecisionPath Wait)
+
+                        Just groupedShipModules ->
+                            DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory groupedShipModules parsedUserInterface)
 
 
 decideNextActionWhenDocked : ParsedUserInterface -> DecisionPathNode
@@ -158,47 +173,59 @@ decideNextActionWhenDocked parsedUserInterface =
                         )
 
 
-decideNextActionWhenInSpace : BotMemory -> ParsedUserInterface -> DecisionPathNode
-decideNextActionWhenInSpace botMemory parsedUserInterface =
-    case parsedUserInterface |> oreHoldFillPercent of
+decideNextActionWhenInSpace : BotMemory -> ShipUIModulesGroupedIntoRows -> ParsedUserInterface -> DecisionPathNode
+decideNextActionWhenInSpace botMemory shipUIModules parsedUserInterface =
+    case shipUIModules.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+        Just inactiveModule ->
+            DescribeBranch "I see an inactive module in the middle row. Click on it to activate."
+                (EndDecisionPath
+                    (Act
+                        { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
+                        , followingSteps = []
+                        }
+                    )
+                )
+
         Nothing ->
-            DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
+            case parsedUserInterface |> oreHoldFillPercent of
+                Nothing ->
+                    DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
-        Just fillPercent ->
-            if 99 <= fillPercent then
-                DescribeBranch "The ore hold is full enough. Dock to station."
-                    (case botMemory.lastDockedStationNameFromInfoPanel of
-                        Nothing ->
-                            DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
+                Just fillPercent ->
+                    if 99 <= fillPercent then
+                        DescribeBranch "The ore hold is full enough. Dock to station."
+                            (case botMemory.lastDockedStationNameFromInfoPanel of
+                                Nothing ->
+                                    DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
 
-                        Just lastDockedStationNameFromInfoPanel ->
-                            dockToStation { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel } parsedUserInterface
-                    )
+                                Just lastDockedStationNameFromInfoPanel ->
+                                    dockToStation { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel } parsedUserInterface
+                            )
 
-            else
-                DescribeBranch "The ore hold is not full enough yet. Get more ore."
-                    (case parsedUserInterface.targets |> List.head of
-                        Nothing ->
-                            DescribeBranch "I see no locked target." (decideNextActionAcquireLockedTarget parsedUserInterface)
+                    else
+                        DescribeBranch "The ore hold is not full enough yet. Get more ore."
+                            (case parsedUserInterface.targets |> List.head of
+                                Nothing ->
+                                    DescribeBranch "I see no locked target." (decideNextActionAcquireLockedTarget parsedUserInterface)
 
-                        Just _ ->
-                            DescribeBranch "I see a locked target."
-                                (case parsedUserInterface |> shipUiMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                    -- TODO: Check previous memory reading too for module activity.
-                                    Nothing ->
-                                        DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
+                                Just _ ->
+                                    DescribeBranch "I see a locked target."
+                                        (case shipUIModules.upper |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                            -- TODO: Check previous memory reading too for module activity.
+                                            Nothing ->
+                                                DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
 
-                                    Just inactiveModule ->
-                                        DescribeBranch "I see an inactive mining module. Click on it to activate."
-                                            (EndDecisionPath
-                                                (Act
-                                                    { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                                                    , followingSteps = []
-                                                    }
-                                                )
-                                            )
-                                )
-                    )
+                                            Just inactiveModule ->
+                                                DescribeBranch "I see an inactive mining module. Click on it to activate."
+                                                    (EndDecisionPath
+                                                        (Act
+                                                            { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
+                                                            , followingSteps = []
+                                                            }
+                                                        )
+                                                    )
+                                        )
+                            )
 
 
 decideNextActionAcquireLockedTarget : ParsedUserInterface -> DecisionPathNode
@@ -482,43 +509,42 @@ activeShipUiElementFromInventoryWindow =
         >> Maybe.map .uiNode
 
 
-{-| Assume upper row of modules only contains mining modules.
--}
-shipUiMiningModules : ParsedUserInterface -> List ShipUIModule
-shipUiMiningModules =
-    shipUiModulesRows >> List.head >> Maybe.withDefault []
-
-
-shipUiModules : ParsedUserInterface -> List ShipUIModule
-shipUiModules =
-    .shipUI >> maybeNothingFromCanNotSeeIt >> Maybe.map .modules >> Maybe.withDefault []
-
-
-{-| Groups the modules into rows.
--}
-shipUiModulesRows : ParsedUserInterface -> List (List ShipUIModule)
-shipUiModulesRows =
+groupShipUIModulesIntoRows : EveOnline.MemoryReading.ShipUI -> Maybe ShipUIModulesGroupedIntoRows
+groupShipUIModulesIntoRows shipUI =
     let
-        putModulesInSameGroup moduleA moduleB =
-            let
-                distanceY =
-                    (moduleA.uiNode.totalDisplayRegion |> centerFromDisplayRegion).y
-                        - (moduleB.uiNode.totalDisplayRegion |> centerFromDisplayRegion).y
-            in
-            abs distanceY < 10
+        maybeCapacitorUINode =
+            shipUI.uiNode
+                |> EveOnline.MemoryReading.listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "CapacitorContainer")
+                |> List.head
     in
-    shipUiModules
-        >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
-        >> List.foldl
-            (\shipModule groups ->
-                case groups |> List.filter (List.any (putModulesInSameGroup shipModule)) |> List.head of
-                    Nothing ->
-                        groups ++ [ [ shipModule ] ]
+    maybeCapacitorUINode
+        |> Maybe.map
+            (\capacitorUINode ->
+                let
+                    verticalDistanceThreshold =
+                        20
 
-                    Just matchingGroup ->
-                        (groups |> listRemove matchingGroup) ++ [ matchingGroup ++ [ shipModule ] ]
+                    verticalCenterOfUINode uiNode =
+                        uiNode.totalDisplayRegion.y + uiNode.totalDisplayRegion.height // 2
+
+                    capacitorVerticalCenter =
+                        verticalCenterOfUINode capacitorUINode
+                in
+                shipUI.modules
+                    |> List.foldr
+                        (\shipModule previousRows ->
+                            if verticalCenterOfUINode shipModule.uiNode < capacitorVerticalCenter - verticalDistanceThreshold then
+                                { previousRows | upper = shipModule :: previousRows.upper }
+
+                            else if verticalCenterOfUINode shipModule.uiNode > capacitorVerticalCenter + verticalDistanceThreshold then
+                                { previousRows | lower = shipModule :: previousRows.lower }
+
+                            else
+                                { previousRows | middle = shipModule :: previousRows.middle }
+                        )
+                        { upper = [], middle = [], lower = [] }
             )
-            []
 
 
 {-| Returns the menu entry containing the string from the parameter `textToSearch`.

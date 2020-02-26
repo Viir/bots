@@ -125,7 +125,7 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                                 False
 
                             FinishSession ->
-                                False
+                                True
                     )
                 |> Maybe.withDefault False
 

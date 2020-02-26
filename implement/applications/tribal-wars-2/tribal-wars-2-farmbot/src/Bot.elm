@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-02-25
+{- Tribal Wars 2 farmbot version 2020-02-26
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -321,28 +321,35 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                         Nothing ->
                             case stateBefore.farmState of
                                 InBreak farmBreak ->
-                                    let
-                                        minutesSinceLastFarmCycleCompletion =
-                                            (stateBefore.timeInMilliseconds // 1000 - farmBreak.lastCycleCompletionTime) // 60
+                                    if stateBefore.configuration.numberOfFarmCycles <= (stateBefore.completedFarmCycles |> List.length) then
+                                        ( BotFramework.FinishSession
+                                        , "Finished all " ++ (stateBefore.completedFarmCycles |> List.length |> String.fromInt) ++ " farm cycles."
+                                        , Nothing
+                                        )
 
-                                        minutesToNextFarmCycleStart =
-                                            (farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000) // 60
+                                    else
+                                        let
+                                            minutesSinceLastFarmCycleCompletion =
+                                                (stateBefore.timeInMilliseconds // 1000 - farmBreak.lastCycleCompletionTime) // 60
 
-                                        stateAfterStartingFarmCycle =
-                                            if minutesToNextFarmCycleStart < 1 then
-                                                Just { stateBefore | farmState = InFarmCycle initFarmCycle }
+                                            minutesToNextFarmCycleStart =
+                                                (farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000) // 60
 
-                                            else
-                                                Nothing
-                                    in
-                                    ( BotFramework.ContinueSession Nothing
-                                    , "Next farm cycle starts in "
-                                        ++ (minutesToNextFarmCycleStart |> String.fromInt)
-                                        ++ " minutes. Last cycle completed "
-                                        ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
-                                        ++ " minutes ago."
-                                    , stateAfterStartingFarmCycle
-                                    )
+                                            stateAfterStartingFarmCycle =
+                                                if minutesToNextFarmCycleStart < 1 then
+                                                    Just { stateBefore | farmState = InFarmCycle initFarmCycle }
+
+                                                else
+                                                    Nothing
+                                        in
+                                        ( BotFramework.ContinueSession Nothing
+                                        , "Next farm cycle starts in "
+                                            ++ (minutesToNextFarmCycleStart |> String.fromInt)
+                                            ++ " minutes. Last cycle completed "
+                                            ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
+                                            ++ " minutes ago."
+                                        , stateAfterStartingFarmCycle
+                                        )
 
                                 InFarmCycle farmCycleStateBefore ->
                                     let
@@ -420,22 +427,11 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                                                         | farmState = farmState
                                                         , completedFarmCycles = completedFarmCycles
                                                     }
-
-                                                numberOfCompletedFarmCycles =
-                                                    completedFarmCycles |> List.length
                                             in
-                                            if stateBefore.configuration.numberOfFarmCycles <= numberOfCompletedFarmCycles then
-                                                -- TODO: Move derivation of 'BotFramework.FinishSession' from completedFarmCycles further up.
-                                                ( BotFramework.FinishSession
-                                                , "Finished all " ++ (numberOfCompletedFarmCycles |> String.fromInt) ++ " farm cycles."
-                                                , Just stateAfterFinishingFarmCycle
-                                                )
-
-                                            else
-                                                ( BotFramework.ContinueSession Nothing
-                                                , "There is nothing left to do in this farm cycle."
-                                                , Just stateAfterFinishingFarmCycle
-                                                )
+                                            ( BotFramework.ContinueSession Nothing
+                                            , "There is nothing left to do in this farm cycle."
+                                            , Just stateAfterFinishingFarmCycle
+                                            )
             in
             { newState = maybeUpdatedState |> Maybe.withDefault stateBefore
             , response = responseToFramework

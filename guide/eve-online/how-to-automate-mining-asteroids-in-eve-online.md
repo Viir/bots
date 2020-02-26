@@ -9,7 +9,7 @@ Before going into the setup, a quick overview of this bot and what it does:
 + When the ore hold is not full, warps to an asteroid belt.
 + Mines from asteroids.
 + When the ore hold is full, warps and docks to a station to unload the ore into the item hangar. (It remembers the station in which it was last docked, and docks again at the same station.)
-+ At least so far, does not use drones or any defence against rats. (Maybe we will add this later.)
++ Runs away if shield hitpoints drop too low (The default threshold is 50%).
 
 If you haven't yet, follow the [guide on using a warp-to-0 autopilot bot](./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md), because it covers the details of setting up and using an EVE Online bot:
 https://github.com/Viir/bots/blob/master/guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md
@@ -18,19 +18,17 @@ When you have successfully used the warp-to-0 autopilot bot, you can continue he
 
 Despite being quite robust, this mining bot is far from being as smart as a human. For example, its perception is more limited than ours, so we need to set up the game to make sure that the bot can see everything it needs to. Following is the list of setup instructions for the EVE Online client:
 
-+ Enable `Run clients with 64 bit` in the EVE Online client settings.
 + Set the UI language to English.
-+ In the Overview window, make asteroids visible and hide everything else.
++ In Overview window, make asteroids visible.
 + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
-+ Activate a ship with an ore hold.
-+ In the Inventory window, select the 'List' view.
-+ Enable the info panel 'System info'. The bot uses this to warp to asteroid belts and stations.
-+ Arrange windows not to occlude ship modules or info panels.
-+ In the ship UI, disable 'Display Passive Modules' and disable 'Display Empty Slots'.
-+ Set up the inventory window so that the 'Ore Hold' is always selected.
-+ In the ship UI, arrange the mining modules to appear all in the upper row of modules. The bot activates all modules in the top row.
++ Setup inventory window so that 'Ore Hold' is always selected.
++ In the ship UI, arrange the modules:
+    + Place all mining modules (to activate on targets) in the upper row.
+    + Place modules that should always be active in the middle row.
+    + Hide passive modules by disabling the check-box `Display Passive Modules`.
++ Enable the info panel 'System info'.
 
-To start the mining bot, you use almost the same command as shown in the guide on the warp-to-0 autopilot bot. The only difference is that to start the mining bot, you supply this bot source:
+To start the mining bot, you use almost the same command as shown in the guide on the warp-to-0 autopilot bot. The only difference is that to start the mining bot, you supply a different bot source. This is the whole command to run the mining bot:
 
 ```cmd
 botengine  run-bot  https://github.com/Viir/bots/tree/99f4a388753ad4970d1f10a7276ea004c9d75643/implement/applications/eve-online/eve-online-mining-bot

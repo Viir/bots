@@ -1,10 +1,8 @@
-{- EVE Online Warp-to-0 auto-pilot version 2020-02-23
-   This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
-   Before starting the bot, set the in-game autopilot route and make sure the autopilot is expanded, so that the route is visible.
-   Make sure you are undocked before starting the bot because the bot does not undock.
+{- EVE Online Intel Bot - Local Watch Script
+   This bot watches local and plays an alarm sound when a pilot with bad standing appears.
 -}
 {-
-   bot-catalog-tags:eve-online,auto-pilot,travel
+   bot-catalog-tags:eve-online,intel,local-watch
    authors-forum-usernames:viir
 -}
 
@@ -19,26 +17,21 @@ import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
 import EveOnline.BotFramework exposing (BotEffect(..))
 import EveOnline.MemoryReading
     exposing
-        ( InfoPanelRouteRouteElementMarker
-        , MaybeVisible(..)
+        ( MaybeVisible(..)
         , ParsedUserInterface
-        , ShipUI
-        , centerFromDisplayRegion
-        , maybeNothingFromCanNotSeeIt
+        , canNotSeeItFromMaybeNothing
         )
-import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
 
 
-finishSessionAfterInactivityMinutes : Int
-finishSessionAfterInactivityMinutes =
-    3
+goodStandingPatterns : List String
+goodStandingPatterns =
+    [ "good standing", "excellent standing", "is in your" ]
 
 
 {-| To support the feature that finishes the session some time of inactivity, it needs to remember the time of the last activity.
 -}
 type alias BotState =
-    { lastActivityTime : Int
-    }
+    {}
 
 
 type alias State =
@@ -47,7 +40,7 @@ type alias State =
 
 initState : State
 initState =
-    EveOnline.BotFramework.initState { lastActivityTime = 0 }
+    EveOnline.BotFramework.initState {}
 
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
@@ -66,124 +59,71 @@ processEveOnlineBotEvent eventContext event stateBefore =
             let
                 ( effects, statusMessage ) =
                     botEffectsFromGameClientState parsedUserInterface
-
-                ( lastActivityTime, millisecondsToNextReadingFromGame ) =
-                    if effects |> List.isEmpty then
-                        ( stateBefore.lastActivityTime, 4000 )
-
-                    else
-                        ( eventContext.timeInMilliseconds // 1000, 2000 )
             in
-            if 60 * finishSessionAfterInactivityMinutes < eventContext.timeInMilliseconds // 1000 - lastActivityTime then
-                ( stateBefore
-                , EveOnline.BotFramework.FinishSession
-                    { statusDescriptionText =
-                        "I finish this session because there was nothing to do for me in the last "
-                            ++ (finishSessionAfterInactivityMinutes |> String.fromInt)
-                            ++ " minutes."
-                    }
-                )
-
-            else
-                ( { stateBefore | lastActivityTime = lastActivityTime }
-                , EveOnline.BotFramework.ContinueSession
-                    { effects = effects
-                    , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
-                    , statusDescriptionText = statusMessage
-                    }
-                )
+            ( stateBefore
+            , EveOnline.BotFramework.ContinueSession
+                { effects = effects
+                , millisecondsToNextReadingFromGame = 2000
+                , statusDescriptionText = statusMessage
+                }
+            )
 
 
 botEffectsFromGameClientState : ParsedUserInterface -> ( List BotEffect, String )
 botEffectsFromGameClientState parsedUserInterface =
-    case parsedUserInterface |> infoPanelRouteFirstMarkerFromParsedUserInterface of
-        Nothing ->
-            ( []
-            , "I see no route in the info panel. I will start when a route is set."
+    case parsedUserInterface |> localChatWindowFromUserInterface of
+        CanNotSeeIt ->
+            ( [ EveOnline.BotFramework.EffectConsoleBeepSequence
+                    [ { frequency = 700, durationInMs = 100 }
+                    , { frequency = 0, durationInMs = 100 }
+                    , { frequency = 700, durationInMs = 100 }
+                    , { frequency = 400, durationInMs = 100 }
+                    ]
+              ]
+            , "I don't see the local chat window."
             )
 
-        Just infoPanelRouteFirstMarker ->
-            case parsedUserInterface.shipUI of
-                CanNotSeeIt ->
-                    ( []
-                    , "I cannot see if the ship is warping or jumping. I wait for the ship UI to appear on the screen."
-                    )
+        CanSee localChatWindow ->
+            let
+                chatUserHasGoodStanding chatUser =
+                    goodStandingPatterns
+                        |> List.any
+                            (\goodStandingPattern ->
+                                chatUser.standingIconHint
+                                    |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
+                                    |> Maybe.withDefault False
+                            )
 
-                CanSee shipUi ->
-                    if shipUi |> isShipWarpingOrJumping then
-                        ( []
-                        , "I see the ship is warping or jumping. I wait until that maneuver ends."
-                        )
+                subsetOfUsersWithNoGoodStanding =
+                    localChatWindow.visibleUsers
+                        |> List.filter (chatUserHasGoodStanding >> not)
+
+                chatWindowReport =
+                    "I see "
+                        ++ (localChatWindow.visibleUsers |> List.length |> String.fromInt)
+                        ++ " users in the local chat. "
+                        ++ (subsetOfUsersWithNoGoodStanding |> List.length |> String.fromInt)
+                        ++ " with no good standing."
+
+                alarmRequests =
+                    if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                        [ EveOnline.BotFramework.EffectConsoleBeepSequence
+                            [ { frequency = 700, durationInMs = 100 }
+                            , { frequency = 0, durationInMs = 100 }
+                            , { frequency = 700, durationInMs = 500 }
+                            ]
+                        ]
 
                     else
-                        botEffectsWhenNotWaitingForShipManeuver
-                            parsedUserInterface
-                            infoPanelRouteFirstMarker
-
-
-botEffectsWhenNotWaitingForShipManeuver :
-    ParsedUserInterface
-    -> InfoPanelRouteRouteElementMarker
-    -> ( List BotEffect, String )
-botEffectsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstMarker =
-    let
-        openMenuAnnouncementAndEffect =
-            ( [ EffectOnGameClientWindow
-                    (effectMouseClickAtLocation
-                        VolatileHostInterface.MouseButtonRight
-                        (infoPanelRouteFirstMarker.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
-                    )
-              ]
-            , "I click on the route element icon in the info panel to open the menu."
-            )
-    in
-    case parsedUserInterface.contextMenus |> List.head of
-        Nothing ->
-            openMenuAnnouncementAndEffect
-
-        Just firstMenu ->
-            let
-                maybeMenuEntryToClick =
-                    firstMenu.entries
-                        |> List.filter
-                            (\menuEntry ->
-                                let
-                                    textLowercase =
-                                        menuEntry.text |> String.toLower
-                                in
-                                (textLowercase |> String.contains "dock")
-                                    || (textLowercase |> String.contains "jump")
-                            )
-                        |> List.head
+                        []
             in
-            case maybeMenuEntryToClick of
-                Nothing ->
-                    openMenuAnnouncementAndEffect
-
-                Just menuEntryToClick ->
-                    ( [ EffectOnGameClientWindow (effectMouseClickAtLocation MouseButtonLeft (menuEntryToClick.uiNode.totalDisplayRegion |> centerFromDisplayRegion)) ]
-                    , "I click on the menu entry '" ++ menuEntryToClick.text ++ "' to start the next ship maneuver."
-                    )
+            ( alarmRequests, chatWindowReport )
 
 
-infoPanelRouteFirstMarkerFromParsedUserInterface : ParsedUserInterface -> Maybe InfoPanelRouteRouteElementMarker
-infoPanelRouteFirstMarkerFromParsedUserInterface =
-    .infoPanelRoute
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.map .routeElementMarker
-        >> Maybe.map (List.sortBy (\routeMarker -> routeMarker.uiNode.totalDisplayRegion.x + routeMarker.uiNode.totalDisplayRegion.y))
-        >> Maybe.andThen List.head
-
-
-isShipWarpingOrJumping : ShipUI -> Bool
-isShipWarpingOrJumping =
-    .indication
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
-        >> Maybe.map
-            (\maneuverType ->
-                [ EveOnline.MemoryReading.ManeuverWarp, EveOnline.MemoryReading.ManeuverJump ]
-                    |> List.member maneuverType
-            )
-        -- If the ship is just floating in space, there might be no indication displayed.
-        >> Maybe.withDefault False
+localChatWindowFromUserInterface : ParsedUserInterface -> MaybeVisible EveOnline.MemoryReading.ChatWindow
+localChatWindowFromUserInterface =
+    .chatWindowStacks
+        >> List.filterMap .chatWindow
+        >> List.filter (.name >> Maybe.map (String.endsWith "_local") >> Maybe.withDefault False)
+        >> List.head
+        >> canNotSeeItFromMaybeNothing

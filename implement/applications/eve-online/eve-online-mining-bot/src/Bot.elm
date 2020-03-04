@@ -238,37 +238,42 @@ decideNextActionAcquireLockedTarget parsedUserInterface =
                 (warpToMiningSite parsedUserInterface)
 
         Just asteroidInOverview ->
-            if asteroidInOverview |> overviewWindowEntryIsInRange |> Maybe.withDefault False then
-                DescribeBranch "Asteroid is in range. Lock target."
-                    (EndDecisionPath
-                        (Act
-                            { firstAction = asteroidInOverview.uiNode |> clickOnUIElement MouseButtonRight
-                            , followingSteps =
-                                [ ( "Click menu entry 'lock'."
-                                  , lastContextMenuOrSubmenu
-                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
-                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                                  )
-                                ]
-                            }
-                        )
-                    )
+            case asteroidInOverview.distanceInMeters of
+                Ok asteroidDistanceInMeters ->
+                    if asteroidDistanceInMeters < 1000 then
+                        DescribeBranch "Asteroid is in range. Lock target."
+                            (EndDecisionPath
+                                (Act
+                                    { firstAction = asteroidInOverview.uiNode |> clickOnUIElement MouseButtonRight
+                                    , followingSteps =
+                                        [ ( "Click menu entry 'lock'."
+                                          , lastContextMenuOrSubmenu
+                                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
+                                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                          )
+                                        ]
+                                    }
+                                )
+                            )
 
-            else
-                DescribeBranch "Asteroid is not in range. Approach."
-                    (EndDecisionPath
-                        (Act
-                            { firstAction = asteroidInOverview.uiNode |> clickOnUIElement MouseButtonRight
-                            , followingSteps =
-                                [ ( "Click menu entry 'approach'."
-                                  , lastContextMenuOrSubmenu
-                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
-                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                                  )
-                                ]
-                            }
-                        )
-                    )
+                    else
+                        DescribeBranch ("Asteroid is not in range (" ++ (asteroidDistanceInMeters |> String.fromInt) ++ " meters away). Approach.")
+                            (EndDecisionPath
+                                (Act
+                                    { firstAction = asteroidInOverview.uiNode |> clickOnUIElement MouseButtonRight
+                                    , followingSteps =
+                                        [ ( "Click menu entry 'approach'."
+                                          , lastContextMenuOrSubmenu
+                                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
+                                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                          )
+                                        ]
+                                    }
+                                )
+                            )
+
+                Err error ->
+                    DescribeBranch ("Failed to read the distance of the asteroid: " ++ error) (EndDecisionPath Wait)
 
 
 dockToStationMatchingNameSeenInInfoPanel : { stationNameFromInfoPanel : String } -> ParsedUserInterface -> DecisionPathNode
@@ -577,11 +582,6 @@ topmostAsteroidFromOverviewWindow =
     overviewWindowEntriesRepresentingAsteroids
         >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
         >> List.head
-
-
-overviewWindowEntryIsInRange : OverviewWindowEntry -> Maybe Bool
-overviewWindowEntryIsInRange =
-    .distanceInMeters >> Result.map (\distanceInMeters -> distanceInMeters < 1000) >> Result.toMaybe
 
 
 overviewWindowEntriesRepresentingAsteroids : ParsedUserInterface -> List OverviewWindowEntry

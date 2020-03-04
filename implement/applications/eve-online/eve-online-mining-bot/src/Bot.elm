@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-02-25
+{- Michaels EVE Online mining bot version 2020-03-04
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -87,9 +87,9 @@ type alias State =
 
 
 type alias ShipUIModulesGroupedIntoRows =
-    { upper : List ShipUIModule
+    { top : List ShipUIModule
     , middle : List ShipUIModule
-    , lower : List ShipUIModule
+    , bottom : List ShipUIModule
     }
 
 
@@ -212,7 +212,7 @@ decideNextActionWhenInSpace botMemory shipUIModules parsedUserInterface =
 
                                 Just _ ->
                                     DescribeBranch "I see a locked target."
-                                        (case shipUIModules.upper |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                        (case shipUIModules.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                             -- TODO: Check previous memory reading too for module activity.
                                             Nothing ->
                                                 DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
@@ -540,15 +540,15 @@ groupShipUIModulesIntoRows shipUI =
                     |> List.foldr
                         (\shipModule previousRows ->
                             if verticalCenterOfUINode shipModule.uiNode < capacitorVerticalCenter - verticalDistanceThreshold then
-                                { previousRows | upper = shipModule :: previousRows.upper }
+                                { previousRows | top = shipModule :: previousRows.top }
 
                             else if verticalCenterOfUINode shipModule.uiNode > capacitorVerticalCenter + verticalDistanceThreshold then
-                                { previousRows | lower = shipModule :: previousRows.lower }
+                                { previousRows | bottom = shipModule :: previousRows.bottom }
 
                             else
                                 { previousRows | middle = shipModule :: previousRows.middle }
                         )
-                        { upper = [], middle = [], lower = [] }
+                        { top = [], middle = [], bottom = [] }
             )
 
 

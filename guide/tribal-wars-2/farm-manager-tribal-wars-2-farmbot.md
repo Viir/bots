@@ -23,7 +23,7 @@ It automatically detects barbarian villages, available troops and configured arm
 
 ## Starting the Farmbot
 
-To start the farmbot, download the script from [https://github.com/Viir/bots/raw/master/guide/tribal-wars-2/run-app-0EA84324F3-tribal-wars-2-farmbot.bat](https://github.com/Viir/bots/raw/master/guide/tribal-wars-2/run-app-0EA84324F3-tribal-wars-2-farmbot.bat) and then run it.
+To start the farmbot, download the script from [https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-05-run-app-0EA84324F3-tribal-wars-2-farmbot.bat](https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-05-run-app-0EA84324F3-tribal-wars-2-farmbot.bat) and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at [https://to.botengine.org/failed-run-bot-did-not-find-botengine-program](https://to.botengine.org/failed-run-bot-did-not-find-botengine-program)
 

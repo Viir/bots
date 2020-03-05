@@ -1,6 +1,6 @@
 # Failed to Run Bot - Did Not Find the BotEngine Program
 
-When you land here, you probably tried to use the `botengine` program in some form. Maybe you downloaded a script from the botengine catalog, and got this error message when running the script:
+When you land here, you probably tried to use the `botengine` program in some form. Maybe you downloaded a script from the [botengine catalog](https://to.botengine.org/catalog), and got this error message when running the script:
 
 > I failed to run the app because I did not find the 'botengine.exe' program.
 
@@ -23,3 +23,5 @@ The botengine program is a tool for developing and running bots, and many guides
   > I added the path 'C:\Users\John\Downloads\2020-03-05-botengine-console' to the 'PATH' environment variable for the current Windows user account. You will be able to use the 'BotEngine' command in newer instances of the Command Prompt.
 
 That's it; the installation is complete. Now you can use the `botengine` command in the Windows Command Prompt in any directory. Note that this will not work in Command Prompt windows that were already open before. Open a new window to use the newly registered program.
+
+If you have any questions, the [BotEngine forum](https://forum.botengine.org) is a good place to learn more.

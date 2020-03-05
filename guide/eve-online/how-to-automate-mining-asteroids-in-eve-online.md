@@ -23,7 +23,7 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
 + Setup inventory window so that 'Ore Hold' is always selected.
 + In the ship UI, arrange the modules:
-    + Place all mining modules (to activate on targets) in the upper row.
+    + Place all mining modules (to activate on targets) in the top row.
     + Place modules that should always be active in the middle row.
     + Hide passive modules by disabling the check-box `Display Passive Modules`.
 + Enable the info panel 'System info'.
@@ -31,7 +31,7 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 To start the mining bot, you use almost the same command as shown in the guide on the warp-to-0 autopilot bot. The only difference is that to start the mining bot, you supply a different bot source. This is the whole command to run the mining bot:
 
 ```cmd
-botengine  run-bot  https://github.com/Viir/bots/tree/99f4a388753ad4970d1f10a7276ea004c9d75643/implement/applications/eve-online/eve-online-mining-bot
+botengine  run-bot  https://github.com/Viir/bots/tree/9d172423b89829e7c67321a16f1af2771e3b618b/implement/applications/eve-online/eve-online-mining-bot
 ```
 
 In case the bot does not work as expected, the first place to look is in the status message of the bot. Depending on what the bot is seeing and doing at the moment, it can display many different status messages.

@@ -10,12 +10,12 @@ This bot uses the probe scanner to warp to anomalies and kills rats using drones
 ## Starting the Bot
 
 + Download the BotEngine Windows console app from 
-[https://botengine.blob.core.windows.net/blob-library/by-name/2020-02-16-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-02-16-botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
+[https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-05-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-05-botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
 + Start the EVE Online client and log in to the game.
 + To start the autopilot bot, run the `BotEngine.exe` program with the following command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/d3bae4e41a790bd7c681750198da0aea14fb285a/implement/applications/eve-online/eve-online-anomaly-ratting-bot"
+C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/9d172423b89829e7c67321a16f1af2771e3b618b/implement/applications/eve-online/eve-online-anomaly-ratting-bot"
 ```
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
 
@@ -30,8 +30,10 @@ Follow these steps to configure the game client:
 + Enable the info panel 'System info'.
 + Undock, open probe scanner, overview window and drones window.
 + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
-+ In the ship UI, arrange the modules: The modules to use in combat must appear all in the upper row. Place modules which should always be active in a second row.
-+ In the ship UI, hide passive modules by disabling the check-box `Display Passive Modules`.
++ In the ship UI, arrange the modules:
+  + Place to use in combat (to activate on targets) in the top row.
+  + Place modules that should always be active in the middle row.
+  + Hide passive modules by disabling the check-box `Display Passive Modules`.
 + Configure the keyboard key 'W' to make the ship orbit.
 
 To meet bot developers and discuss development for EVE Online, see the [BotEngine forum](https://forum.botengine.org/tags/eve-online).

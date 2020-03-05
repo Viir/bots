@@ -1,16 +1,15 @@
-{- Michaels EVE Online mining bot version 2020-03-04
+{- Michaels EVE Online mining bot version 2020-03-05
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
 
    Setup instructions for the EVE Online client:
-   + Enable `Run clients with 64 bit` in the settings, because this bot only works with the 64-bit version of the EVE Online client.
    + Set the UI language to English.
    + In Overview window, make asteroids visible.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + Setup inventory window so that 'Ore Hold' is always selected.
    + In the ship UI, arrange the modules:
-     + Place all mining modules (to activate on targets) in the upper row.
+     + Place all mining modules (to activate on targets) in the top row.
      + Place modules that should always be active in the middle row.
      + Hide passive modules by disabling the check-box `Display Passive Modules`.
    + Enable the info panel 'System info'.

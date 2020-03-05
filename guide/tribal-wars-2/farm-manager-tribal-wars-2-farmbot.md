@@ -23,17 +23,11 @@ It automatically detects barbarian villages, available troops and configured arm
 
 ## Starting the Farmbot
 
-Download the BotEngine Windows console app from 
-[https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-05-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-05-botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
+To start the farmbot, download the script from [https://github.com/Viir/bots/raw/master/guide/tribal-wars-2/run-app-0EA84324F3-tribal-wars-2-farmbot.bat](https://github.com/Viir/bots/raw/master/guide/tribal-wars-2/run-app-0EA84324F3-tribal-wars-2-farmbot.bat) and then run it.
 
-To start the farmbot, run the `BotEngine.exe` program with the following command:
+In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at [https://to.botengine.org/failed-run-bot-did-not-find-botengine-program](https://to.botengine.org/failed-run-bot-did-not-find-botengine-program)
 
-```cmd
-C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/032f0dc8d3d229d8fee1ff2fb787b59ef9880c8e/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
-```
-You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
-
-After you have entered this command, the bot needs a few seconds to start.
+After completing the installation, run the script again to start the farmbot.
 The first time you start the bot, it will download a web browser component which does not come with the original download. This can take some time, depending on your internet connection.
 
 ![Tribal Wars 2 Farmbot Starting](./image/2020-01-25.tribal-wars-2-farmbot-before-login.png)
@@ -103,7 +97,7 @@ Here is an example of applying a configuration for three farm cycles with breaks
 Add this configuration option into the command used to start the bot:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  run-bot  --bot-configuration="number-of-farm-cycles = 3, break-duration = 20 - 40"  "https://github.com/Viir/bots/tree/032f0dc8d3d229d8fee1ff2fb787b59ef9880c8e/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
+botengine  run-bot  --bot-configuration="number-of-farm-cycles = 3, break-duration = 20 - 40"  "https://github.com/Viir/bots/tree/032f0dc8d3d229d8fee1ff2fb787b59ef9880c8e/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
 ```
 
 When you have configured the bot for multiple farm cycles, it will display this message during the breaks between farm cycles:

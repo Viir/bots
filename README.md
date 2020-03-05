@@ -2,6 +2,8 @@ What is more exciting than playing video games? - Building an AI that plays vide
 
 ## Guides
 
++ How to install/register the `botengine` command: [./guide/failed-run-bot-did-not-find-botengine-program.md](./guide/failed-run-bot-did-not-find-botengine-program.md)
+
 + Running a bot using the botengine console app: [./guide/how-to-run-a-bot.md](./guide/how-to-run-a-bot.md)
 
 + Developing Bots for EVE Online: [./guide/eve-online/developing-bots-for-eve-online.md](./guide/eve-online/developing-bots-for-eve-online.md)

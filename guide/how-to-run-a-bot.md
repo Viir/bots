@@ -81,12 +81,12 @@ When running a bot, you can choose to start it in an online bot session. Online 
 + Organize and keep track of your operations and experiments: Easily see which bots you already tested and when you used them the last time.
 + Longer bot running time: Run a bot continuously in one session for up to 72 hours.
 
-To see a list of your most recent online bot sessions, log in at https://reactor.botengine.org
+To see a list of your most recent online bot sessions, log in at https://app.botengine.org
 
 Below is a screenshot of the website you can use to view your online bot sessions and monitor your bots:
 ![monitor your bots using online bot sessions](./image/2019-12-11.online-bot-session.png)
 
-Online bot sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
+Online bot sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://app.botengine.org/billing/add-credits](https://app.botengine.org/billing/add-credits)
 
 For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
 
@@ -100,7 +100,7 @@ The complete parameter looks like this:
 
 Replace the part after the equals sign ('=') with your secret key.
 
-To get your key, go to https://reactor.botengine.org and log in to your account. After logging in, you see the key under `Bot session keys`. Please don't share this key with anyone, and don't post it on the forum.
+To get your key, go to https://app.botengine.org and log in to your account. After logging in, you see the key under `Online session keys`. Please don't share this key with anyone, and don't post it on the forum.
 
 Below is an example of a full command to run a bot in an online session:
 ```cmd

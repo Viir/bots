@@ -83,7 +83,7 @@ type alias BotEffectQueue =
 type alias SetupState =
     { createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileHostErrorStructure InterfaceToHost.CreateVolatileHostComplete)
     , lastRequestToVolatileHostResult : Maybe (Result String InterfaceToHost.RequestToVolatileHostComplete)
-    , eveOnlineProcessesIds : Maybe (List Int)
+    , gameClientProcesses : Maybe (List VolatileHostInterface.GameClientProcessSummaryStruct)
     , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
     , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : VolatileHostInterface.GetMemoryReadingResultStructure }
     , memoryReadingDurations : List Int
@@ -106,7 +106,7 @@ initSetup : SetupState
 initSetup =
     { createVolatileHostResult = Nothing
     , lastRequestToVolatileHostResult = Nothing
-    , eveOnlineProcessesIds = Nothing
+    , gameClientProcesses = Nothing
     , searchUIRootAddressResult = Nothing
     , lastMemoryReading = Nothing
     , memoryReadingDurations = []
@@ -433,8 +433,8 @@ integrateResponseFromVolatileHost :
     -> ( SetupState, Maybe BotEvent )
 integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost, runInVolatileHostDurationInMs } stateBefore =
     case responseFromVolatileHost of
-        VolatileHostInterface.EveOnlineProcessesIds eveOnlineProcessesIds ->
-            ( { stateBefore | eveOnlineProcessesIds = Just eveOnlineProcessesIds }, Nothing )
+        VolatileHostInterface.ListGameClientProcessesResponse gameClientProcesses ->
+            ( { stateBefore | gameClientProcesses = Just gameClientProcesses }, Nothing )
 
         VolatileHostInterface.SearchUIRootAddressResult searchUIRootAddressResult ->
             let
@@ -512,33 +512,39 @@ getSetupTaskWhenVolatileHostSetupCompleted : SetupState -> InterfaceToHost.Volat
 getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
     case stateBefore.searchUIRootAddressResult of
         Nothing ->
-            case stateBefore.eveOnlineProcessesIds of
+            case stateBefore.gameClientProcesses of
                 Nothing ->
                     ContinueSetup stateBefore
                         (InterfaceToHost.RequestToVolatileHost
                             { hostId = volatileHostId
                             , request =
                                 VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                                    VolatileHostInterface.GetEveOnlineProcessesIds
+                                    VolatileHostInterface.ListGameClientProcessesRequest
                             }
                         )
-                        "Get ids of EVE Online client processes."
+                        "Get list of EVE Online client processes."
 
-                Just eveOnlineProcessesIds ->
-                    case eveOnlineProcessesIds |> List.head of
-                        Nothing ->
-                            FrameworkStopSession "I did not find an EVE Online client process."
+                Just gameClientProcesses ->
+                    case gameClientProcesses |> selectGameClientProcess of
+                        Err selectGameClientProcessError ->
+                            FrameworkStopSession ("Failed to select the game client process: " ++ selectGameClientProcessError)
 
-                        Just eveOnlineProcessId ->
+                        Ok gameClientSelection ->
                             ContinueSetup stateBefore
                                 (InterfaceToHost.RequestToVolatileHost
                                     { hostId = volatileHostId
                                     , request =
                                         VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                                            (VolatileHostInterface.SearchUIRootAddress { processId = eveOnlineProcessId })
+                                            (VolatileHostInterface.SearchUIRootAddress { processId = gameClientSelection.selectedProcess.processId })
                                     }
                                 )
-                                ("Search the address of the UI root in process " ++ (eveOnlineProcessId |> String.fromInt))
+                                ((("Search the address of the UI root in process "
+                                    ++ (gameClientSelection.selectedProcess.processId |> String.fromInt)
+                                  )
+                                    :: gameClientSelection.report
+                                 )
+                                    |> String.join "\n"
+                                )
 
         Just searchResult ->
             case searchResult.uiRootAddress of
@@ -592,6 +598,33 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                                             |> buildTaskFromRequestToVolatileHost
                                         , getMemoryReadingTask = getMemoryReadingRequest |> buildTaskFromRequestToVolatileHost
                                         }
+
+
+selectGameClientProcess :
+    List VolatileHostInterface.GameClientProcessSummaryStruct
+    -> Result String { selectedProcess : VolatileHostInterface.GameClientProcessSummaryStruct, report : List String }
+selectGameClientProcess gameClientProcesses =
+    case gameClientProcesses |> List.sortBy .mainWindowZIndex |> List.head of
+        Nothing ->
+            Err "I did not find an EVE Online client process."
+
+        Just selectedProcess ->
+            let
+                report =
+                    if [ selectedProcess ] == gameClientProcesses then
+                        []
+
+                    else
+                        [ "I found "
+                            ++ (gameClientProcesses |> List.length |> String.fromInt)
+                            ++ " game client processes. I selected process "
+                            ++ (selectedProcess.processId |> String.fromInt)
+                            ++ " ('"
+                            ++ selectedProcess.mainWindowTitle
+                            ++ "') because its main window was the topmost."
+                        ]
+            in
+            Ok { selectedProcess = selectedProcess, report = report }
 
 
 requestToVolatileHostResultDisplayString : Result String InterfaceToHost.RequestToVolatileHostComplete -> { string : String, isErr : Bool }

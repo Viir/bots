@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-03-06
+{- Michaels EVE Online mining bot version 2020-03-10
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -33,11 +33,11 @@ import EveOnline.MemoryReading
         ( MaybeVisible(..)
         , OverviewWindowEntry
         , ParsedUserInterface
-        , ShipUIModule
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
+import EveOnline.ParseUserInterface exposing (ShipUIModulesGroupedIntoRows)
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
 
 
@@ -85,13 +85,6 @@ type alias State =
     EveOnline.BotFramework.StateIncludingFramework BotState
 
 
-type alias ShipUIModulesGroupedIntoRows =
-    { top : List ShipUIModule
-    , middle : List ShipUIModule
-    , bottom : List ShipUIModule
-    }
-
-
 generalStepDelayMilliseconds : Int
 generalStepDelayMilliseconds =
     2000
@@ -116,7 +109,7 @@ decideNextAction botMemory parsedUserInterface =
                     DescribeBranch "Shield hitpoints are too low, run away." (runAway botMemory parsedUserInterface)
 
                 else
-                    case shipUI |> groupShipUIModulesIntoRows of
+                    case shipUI |> EveOnline.ParseUserInterface.groupShipUIModulesIntoRows of
                         Nothing ->
                             DescribeBranch "Failed to group the ship UI modules into rows." (EndDecisionPath Wait)
 
@@ -511,44 +504,6 @@ activeShipUiElementFromInventoryWindow =
         -- Assume upmost entry is active ship.
         >> Maybe.andThen (List.sortBy (.uiNode >> .totalDisplayRegion >> .y) >> List.head)
         >> Maybe.map .uiNode
-
-
-groupShipUIModulesIntoRows : EveOnline.MemoryReading.ShipUI -> Maybe ShipUIModulesGroupedIntoRows
-groupShipUIModulesIntoRows shipUI =
-    let
-        maybeCapacitorUINode =
-            shipUI.uiNode
-                |> EveOnline.MemoryReading.listDescendantsWithDisplayRegion
-                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "CapacitorContainer")
-                |> List.head
-    in
-    maybeCapacitorUINode
-        |> Maybe.map
-            (\capacitorUINode ->
-                let
-                    verticalDistanceThreshold =
-                        20
-
-                    verticalCenterOfUINode uiNode =
-                        uiNode.totalDisplayRegion.y + uiNode.totalDisplayRegion.height // 2
-
-                    capacitorVerticalCenter =
-                        verticalCenterOfUINode capacitorUINode
-                in
-                shipUI.modules
-                    |> List.foldr
-                        (\shipModule previousRows ->
-                            if verticalCenterOfUINode shipModule.uiNode < capacitorVerticalCenter - verticalDistanceThreshold then
-                                { previousRows | top = shipModule :: previousRows.top }
-
-                            else if verticalCenterOfUINode shipModule.uiNode > capacitorVerticalCenter + verticalDistanceThreshold then
-                                { previousRows | bottom = shipModule :: previousRows.bottom }
-
-                            else
-                                { previousRows | middle = shipModule :: previousRows.middle }
-                        )
-                        { top = [], middle = [], bottom = [] }
-            )
 
 
 {-| Returns the menu entry containing the string from the parameter `textToSearch`.

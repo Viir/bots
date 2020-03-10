@@ -116,6 +116,7 @@ type VirtualKeyCode
     | VK_CONTROL
     | VK_MENU
     | VK_ESCAPE
+    | VK_SPACE
 
 
 type LocationRelativeToWindow
@@ -425,6 +426,9 @@ virtualKeyCodeAsInteger keyCode =
 
         VK_ESCAPE ->
             0x1B
+
+        VK_SPACE ->
+            0x20
 
 
 jsonDecodeSucceedWhenNotNull : a -> Json.Decode.Decoder a

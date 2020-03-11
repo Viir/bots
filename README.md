@@ -8,6 +8,8 @@ What is more exciting than playing video games? - Building an AI that plays vide
 
 + Developing Bots for EVE Online: [./guide/eve-online/developing-bots-for-eve-online.md](./guide/eve-online/developing-bots-for-eve-online.md)
 
++ Find things faster in the EVE Online game client user interface: [./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md](./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md)
+
 + How to collect samples for 64-bit memory reading development: [./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md](./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md)
 
 ## Example Projects

@@ -3,6 +3,8 @@
 
 + [Developing Bots for EVE Online](https://github.com/Viir/bots/blob/master/guide/eve-online/developing-bots-for-eve-online.md): Learn how to use the framework behind the most advanced EVE Online bots.
 
++ [Parsed User Interface of the EVE Online Game Client](https://github.com/Viir/bots/blob/master/guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md): Find things faster in the EVE Online game client user interface.
+
 ## Examples
 
 Wondering what outcome you can expect from following the guides? Below is a list of example bots developed using the same approach. You can test them for free:

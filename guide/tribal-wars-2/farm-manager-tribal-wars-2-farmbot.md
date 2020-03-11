@@ -28,11 +28,11 @@ To start the farmbot, download the script from [https://botengine.blob.core.wind
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at [https://to.botengine.org/failed-run-bot-did-not-find-botengine-program](https://to.botengine.org/failed-run-bot-did-not-find-botengine-program)
 
 After completing the installation, run the script again to start the farmbot.
-The first time you start the bot, it will download a web browser component which does not come with the original download. This can take some time, depending on your internet connection.
+The first time you start the bot, it will download a web browser component. This can take some time, depending on your internet connection.
 
 ![Tribal Wars 2 Farmbot Starting](./image/2020-01-25.tribal-wars-2-farmbot-before-login.png)
 
-When the browser download is finished, the bot opens a 'chromium' web browser window which is a kind of chrome (has a blueish version of the google chrome logo):
+When the browser download is finished, the bot opens a 'chromium' web browser window, which is a variant of googles chrome web browser. In the Windows taskbar, it appears with an icon that is a blueish version of the google chrome logo:
 
 ![Chromium Window Appears](./image/2020-01-25.tribal-wars-2-farmbot-chromium-taskbar.png)
 
@@ -45,7 +45,7 @@ Now the bot will probably display a message like this:
 
 ### Configuring Army Presets
 
-The bot only uses an army preset that matches the following three criteria:
+The bot only uses an army preset if it matches the following three criteria:
 
 + The preset name contains the string 'farm'.
 + The preset is enabled for the currently selected village.
@@ -70,15 +70,7 @@ In the console window, it displays the number of sent attacks and other informat
 
 When all your villages are out of units or at the attack limit, the bot stops with this message:
 
-> Finished all X farm cycles.
-
-## Pricing and Online Bot Sessions
-
-You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online-bot session as explained at [https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions](https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions)
-
-Online bot sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://app.botengine.org/billing/add-credits](https://app.botengine.org/billing/add-credits)
-
-For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
+> Finished all 1 farm cycles.
 
 ## Configuration Options
 
@@ -103,6 +95,25 @@ botengine  run-bot  --bot-configuration="number-of-farm-cycles = 3, break-durati
 When you have configured the bot for multiple farm cycles, it will display this message during the breaks between farm cycles:
 
 > Next farm cycle starts in 17 minutes. Last cycle completed 16 minutes ago. 
+
+## Pricing and Online Bot Sessions
+
+You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online-bot session as explained at [https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions](https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions)
+
+Online bot sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://app.botengine.org/billing/add-credits](https://app.botengine.org/billing/add-credits)
+
+For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
+
+## Frequently Asked Questions
+
+### How can I make the bot remember the locations of the barbarian villages?
+
+To make it remember the farm locations, configure more farm cycles. The bot remembers all those coordinates within the same session, so it can reuse this knowledge, starting with the second farm cycle. It sends only one attack per target per farm cycle, so the remembering does not affect the first farm cycle. If you don't use any configuration, the bot only performs one farm cycle and then stops.
+
+### How much time does this bot need to send all attacks on my account?
+
+Sending one attack takes less than seven seconds. So the bot can cover 500 farms per hour. The first farm cycle per session is a special case: For the first cycle, it needs additional time to find the farm villages. The game limits us to 50 concurrent attacks per village, and the bot switches to the next village when the currently selected village hits that limit. One farm cycle is complete when all your villages are at the limit, either because of the attack limit or because no matching units are remaining.
+
 
 ## Getting Help
 

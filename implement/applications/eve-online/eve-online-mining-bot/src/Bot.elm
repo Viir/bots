@@ -240,42 +240,49 @@ decideNextActionAcquireLockedTarget parsedUserInterface =
                 (warpToMiningSite parsedUserInterface)
 
         Just asteroidInOverview ->
-            case asteroidInOverview.distanceInMeters of
-                Ok asteroidDistanceInMeters ->
-                    if asteroidDistanceInMeters <= min targetingRange miningModuleRange then
-                        DescribeBranch "Asteroid is in range. Lock target."
-                            (EndDecisionPath
-                                (Act
-                                    { firstAction = asteroidInOverview.uiNode |> clickOnUIElement MouseButtonRight
-                                    , followingSteps =
-                                        [ ( "Click menu entry 'lock'."
-                                          , lastContextMenuOrSubmenu
-                                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
-                                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                                          )
-                                        ]
-                                    }
-                                )
-                            )
+            DescribeBranch
+                ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                (lockTargetFromOverviewEntryAndEnsureIsInRange (min targetingRange miningModuleRange) asteroidInOverview)
 
-                    else
-                        DescribeBranch ("Asteroid is not in range (" ++ (asteroidDistanceInMeters |> String.fromInt) ++ " meters away). Approach.")
-                            (EndDecisionPath
-                                (Act
-                                    { firstAction = asteroidInOverview.uiNode |> clickOnUIElement MouseButtonRight
-                                    , followingSteps =
-                                        [ ( "Click menu entry 'approach'."
-                                          , lastContextMenuOrSubmenu
-                                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
-                                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                                          )
-                                        ]
-                                    }
-                                )
-                            )
 
-                Err error ->
-                    DescribeBranch ("Failed to read the distance of the asteroid: " ++ error) (EndDecisionPath Wait)
+lockTargetFromOverviewEntryAndEnsureIsInRange : Int -> OverviewWindowEntry -> DecisionPathNode
+lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
+    case overviewEntry.objectDistanceInMeters of
+        Ok distanceInMeters ->
+            if distanceInMeters <= rangeInMeters then
+                DescribeBranch "Object is in range. Lock target."
+                    (EndDecisionPath
+                        (Act
+                            { firstAction = overviewEntry.uiNode |> clickOnUIElement MouseButtonRight
+                            , followingSteps =
+                                [ ( "Click menu entry 'lock'."
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                  )
+                                ]
+                            }
+                        )
+                    )
+
+            else
+                DescribeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
+                    (EndDecisionPath
+                        (Act
+                            { firstAction = overviewEntry.uiNode |> clickOnUIElement MouseButtonRight
+                            , followingSteps =
+                                [ ( "Click menu entry 'approach'."
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                  )
+                                ]
+                            }
+                        )
+                    )
+
+        Err error ->
+            DescribeBranch ("Failed to read the distance: " ++ error) (EndDecisionPath Wait)
 
 
 dockToStationMatchingNameSeenInInfoPanel : { stationNameFromInfoPanel : String } -> ParsedUserInterface -> DecisionPathNode

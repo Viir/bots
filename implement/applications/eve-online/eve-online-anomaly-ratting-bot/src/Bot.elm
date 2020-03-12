@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-03-10
+{- EVE Online anomaly ratting bot version 2020-03-12
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -143,7 +143,7 @@ combat botMemory shipUI overviewWindow parsedUserInterface continueIfCombatCompl
     let
         overviewEntriesToAttack =
             overviewWindow.entries
-                |> List.sortBy (.distanceInMeters >> Result.withDefault 999999)
+                |> List.sortBy (.objectDistanceInMeters >> Result.withDefault 999999)
                 |> List.filter shouldAttackOverviewEntry
 
         overviewEntriesToLock =
@@ -656,7 +656,7 @@ lastContextMenuOrSubmenu =
 
 overviewWindowEntryIsInRange : OverviewWindowEntry -> Maybe Bool
 overviewWindowEntryIsInRange =
-    .distanceInMeters >> Result.map (\distanceInMeters -> distanceInMeters < attackMaxRange) >> Result.toMaybe
+    .objectDistanceInMeters >> Result.map (\distanceInMeters -> distanceInMeters < attackMaxRange) >> Result.toMaybe
 
 
 clickOnUIElement : MouseButton -> UIElement -> VolatileHostInterface.EffectOnWindowStructure

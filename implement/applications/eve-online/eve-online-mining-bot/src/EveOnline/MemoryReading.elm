@@ -229,7 +229,9 @@ type alias OverviewWindowEntry =
     { uiNode : UITreeNodeWithDisplayRegion
     , textsLeftToRight : List String
     , cellsTexts : Dict.Dict String String
-    , distanceInMeters : Result String Int
+    , objectDistanceInMeters : Result String Int
+    , objectName : Maybe String
+    , objectType : Maybe String
     , iconSpriteColorPercent : Maybe ColorComponents
     , namesUnderSpaceObjectIcon : Set.Set String
     }
@@ -846,7 +848,7 @@ parseOverviewWindowEntry entriesHeaders overviewEntryNode =
                     )
                 |> Dict.fromList
 
-        distanceInMeters =
+        objectDistanceInMeters =
             cellsTexts
                 |> Dict.get "Distance"
                 |> Maybe.map parseOverviewEntryDistanceInMetersFromText
@@ -876,7 +878,9 @@ parseOverviewWindowEntry entriesHeaders overviewEntryNode =
     { uiNode = overviewEntryNode
     , textsLeftToRight = textsLeftToRight
     , cellsTexts = cellsTexts
-    , distanceInMeters = distanceInMeters
+    , objectDistanceInMeters = objectDistanceInMeters
+    , objectName = cellsTexts |> Dict.get "Name"
+    , objectType = cellsTexts |> Dict.get "Type"
     , iconSpriteColorPercent = iconSpriteColorPercent
     , namesUnderSpaceObjectIcon = namesUnderSpaceObjectIcon
     }

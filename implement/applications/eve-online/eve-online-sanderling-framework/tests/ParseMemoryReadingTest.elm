@@ -19,6 +19,9 @@ overview_entry_distance_text_to_meter =
     , ( "123 m", Ok 123 )
     , ( "16 km", Ok 16000 )
     , ( "   345 m  ", Ok 345 )
+
+    -- 2020-03-12 from TheRealManiac (https://forum.botengine.org/t/last-version-of-mining-bot/3149)
+    , ( "6.621 m  ", Ok 6621 )
     ]
         |> List.map
             (\( displayText, expectedResult ) ->

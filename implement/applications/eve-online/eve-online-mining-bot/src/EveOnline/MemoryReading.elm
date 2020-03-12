@@ -888,12 +888,12 @@ parseOverviewWindowEntry entriesHeaders overviewEntryNode =
 
 parseOverviewEntryDistanceInMetersFromText : String -> Result String Int
 parseOverviewEntryDistanceInMetersFromText distanceDisplayTextBeforeTrim =
-    case "^[\\d\\,]+(?=\\s*m)" |> Regex.fromString of
+    case "^[\\d\\,\\.]+(?=\\s*m)" |> Regex.fromString of
         Nothing ->
             Err "Regex code error"
 
         Just regexForUnitMeter ->
-            case "^[\\d\\,]+(?=\\s*km)" |> Regex.fromString of
+            case "^[\\d\\,\\.]+(?=\\s*km)" |> Regex.fromString of
                 Nothing ->
                     Err "Regex code error"
 
@@ -905,19 +905,15 @@ parseOverviewEntryDistanceInMetersFromText distanceDisplayTextBeforeTrim =
                     case distanceDisplayText |> Regex.find regexForUnitMeter |> List.head of
                         Just match ->
                             match.match
-                                |> String.replace "," ""
-                                |> String.toInt
-                                |> Result.fromMaybe ("Failed to parse to integer: " ++ match.match)
+                                |> parseNumberTruncatingAfterOptionalDecimalSeparator
 
                         Nothing ->
                             case distanceDisplayText |> Regex.find regexForUnitKilometer |> List.head of
                                 Just match ->
                                     match.match
-                                        |> String.replace "," ""
-                                        |> String.toInt
+                                        |> parseNumberTruncatingAfterOptionalDecimalSeparator
                                         -- unit 'km'
-                                        |> Maybe.map ((*) 1000)
-                                        |> Result.fromMaybe ("Failed to parse to integer: " ++ match.match)
+                                        |> Result.map ((*) 1000)
 
                                 Nothing ->
                                     Err ("Text did not match expected number format: '" ++ distanceDisplayText ++ "'")

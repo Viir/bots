@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-03-10
+{- Michaels EVE Online mining bot version 2020-03-12
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -44,6 +44,16 @@ import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseB
 runAwayShieldHitpointsThresholdPercent : Int
 runAwayShieldHitpointsThresholdPercent =
     50
+
+
+targetingRange : Int
+targetingRange =
+    10000
+
+
+miningModuleRange : Int
+miningModuleRange =
+    5000
 
 
 type alias UIElement =
@@ -232,7 +242,7 @@ decideNextActionAcquireLockedTarget parsedUserInterface =
         Just asteroidInOverview ->
             case asteroidInOverview.distanceInMeters of
                 Ok asteroidDistanceInMeters ->
-                    if asteroidDistanceInMeters < 1000 then
+                    if asteroidDistanceInMeters <= min targetingRange miningModuleRange then
                         DescribeBranch "Asteroid is in range. Lock target."
                             (EndDecisionPath
                                 (Act

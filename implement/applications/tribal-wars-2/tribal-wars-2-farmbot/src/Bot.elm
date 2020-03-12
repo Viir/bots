@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-02-26
+{- Tribal Wars 2 farmbot version 2020-03-12
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -17,10 +17,10 @@
    If no army preset matches this filter, I activate another village which has a matching preset and enough available units.
    If there is no village with a matching preset and enough units, I stop attacking.
 
-   ## Configuration Options
+   ## Configuration Settings
 
-   All configuration is optional; you only need it in case the defaults don't fit your use-case.
-   You can configure two variables:
+   All settings are optional; you only need it in case the defaults don't fit your use-case.
+   You can adjust two settings:
 
    + 'number-of-farm-cycles' : Number of farm cycles before the bot stops completely. The default is 1.
    + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like '60-120'. I will then pick a random value in this range.
@@ -49,8 +49,8 @@ import Set
 import WebBrowser.BotFramework as BotFramework exposing (BotEvent, BotResponse)
 
 
-botConfigurationDefault : BotConfiguration
-botConfigurationDefault =
+defaultBotSettings : BotSettings
+defaultBotSettings =
     { numberOfFarmCycles = 1
     , breakDurationMinMinutes = 90
     , breakDurationMaxMinutes = 120
@@ -89,7 +89,7 @@ selectedVillageInfoMaxAge =
 
 type alias BotState =
     { timeInMilliseconds : Int
-    , configuration : BotConfiguration
+    , settings : BotSettings
     , lastRequest : Maybe { timeInMilliseconds : Int, activityDescription : String }
     , lastRunJavascriptResult :
         Maybe
@@ -111,7 +111,7 @@ type alias BotState =
     }
 
 
-type alias BotConfiguration =
+type alias BotSettings =
     { numberOfFarmCycles : Int
     , breakDurationMinMinutes : Int
     , breakDurationMaxMinutes : Int
@@ -238,7 +238,7 @@ initState : State
 initState =
     BotFramework.initState
         { timeInMilliseconds = 0
-        , configuration = botConfigurationDefault
+        , settings = defaultBotSettings
         , lastRequest = Nothing
         , lastRunJavascriptResult = Nothing
         , gameRootInformationResult = Nothing
@@ -321,7 +321,7 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                         Nothing ->
                             case stateBefore.farmState of
                                 InBreak farmBreak ->
-                                    if stateBefore.configuration.numberOfFarmCycles <= (stateBefore.completedFarmCycles |> List.length) then
+                                    if stateBefore.settings.numberOfFarmCycles <= (stateBefore.completedFarmCycles |> List.length) then
                                         ( BotFramework.FinishSession
                                         , "Finished all " ++ (stateBefore.completedFarmCycles |> List.length |> String.fromInt) ++ " farm cycles."
                                         , Nothing
@@ -398,8 +398,8 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                                                     stateBefore.timeInMilliseconds // 1000
 
                                                 breakLengthRange =
-                                                    (stateBefore.configuration.breakDurationMaxMinutes
-                                                        - stateBefore.configuration.breakDurationMinMinutes
+                                                    (stateBefore.settings.breakDurationMaxMinutes
+                                                        - stateBefore.settings.breakDurationMinMinutes
                                                     )
                                                         * 60
 
@@ -411,7 +411,7 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                                                         stateBefore.timeInMilliseconds |> modBy breakLengthRange
 
                                                 breakLength =
-                                                    (stateBefore.configuration.breakDurationMinMinutes * 60) + breakLengthRandomComponent
+                                                    (stateBefore.settings.breakDurationMinMinutes * 60) + breakLengthRandomComponent
 
                                                 nextCycleStartTime =
                                                     currentTimeInSeconds + breakLength
@@ -439,11 +439,21 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
             }
 
 
-parseConfigurationFromString : String -> Result String BotConfiguration
-parseConfigurationFromString configurationString =
+parseBotSettingInt : (Int -> BotSettings -> BotSettings) -> String -> Result String (BotSettings -> BotSettings)
+parseBotSettingInt integrateInt argumentAsString =
+    case argumentAsString |> String.toInt of
+        Nothing ->
+            Err ("Failed to parse '" ++ argumentAsString ++ "' as integer.")
+
+        Just int ->
+            Ok (integrateInt int)
+
+
+parseSettingsFromString : BotSettings -> String -> Result String BotSettings
+parseSettingsFromString settingsBefore settingsString =
     let
         assignments =
-            configurationString |> String.split ","
+            settingsString |> String.split ","
 
         assignmentFunctionResults =
             assignments
@@ -452,14 +462,14 @@ parseConfigurationFromString configurationString =
                 |> List.map
                     (\assignment ->
                         case assignment |> String.split "=" |> List.map String.trim of
-                            [ variableName, assignedValue ] ->
-                                case parseBotConfigurationAssignment |> Dict.get variableName of
+                            [ settingName, assignedValue ] ->
+                                case parseBotSettingsNames |> Dict.get settingName of
                                     Nothing ->
-                                        Err ("Unknown variable name '" ++ variableName ++ "'.")
+                                        Err ("Unknown setting name '" ++ settingName ++ "'.")
 
                                     Just parseFunction ->
                                         parseFunction assignedValue
-                                            |> Result.mapError (\parseError -> "Failed to parse value for variable '" ++ variableName ++ "': " ++ parseError)
+                                            |> Result.mapError (\parseError -> "Failed to parse value for setting '" ++ settingName ++ "': " ++ parseError)
 
                             _ ->
                                 Err ("Failed to parse assignment '" ++ assignment ++ "'.")
@@ -470,13 +480,13 @@ parseConfigurationFromString configurationString =
         |> Result.map
             (\assignmentFunctions ->
                 assignmentFunctions
-                    |> List.foldl (\assignmentFunction previousConfig -> assignmentFunction previousConfig)
-                        botConfigurationDefault
+                    |> List.foldl (\assignmentFunction previousSettings -> assignmentFunction previousSettings)
+                        settingsBefore
             )
 
 
-parseBotConfigurationBreakDurationMinutes : String -> Result String (BotConfiguration -> BotConfiguration)
-parseBotConfigurationBreakDurationMinutes breakDurationString =
+parseBotSettingBreakDurationMinutes : String -> Result String (BotSettings -> BotSettings)
+parseBotSettingBreakDurationMinutes breakDurationString =
     let
         boundsParseResults =
             breakDurationString
@@ -489,25 +499,17 @@ parseBotConfigurationBreakDurationMinutes breakDurationString =
             (\bounds ->
                 case ( bounds |> List.minimum, bounds |> List.maximum ) of
                     ( Just minimum, Just maximum ) ->
-                        Ok (\configuration -> { configuration | breakDurationMinMinutes = minimum, breakDurationMaxMinutes = maximum })
+                        Ok (\settings -> { settings | breakDurationMinMinutes = minimum, breakDurationMaxMinutes = maximum })
 
                     _ ->
                         Err "Missing value"
             )
 
 
-parseBotConfigurationNumberOfFarmCycles : String -> Result String (BotConfiguration -> BotConfiguration)
-parseBotConfigurationNumberOfFarmCycles numberString =
-    numberString
-        |> String.toInt
-        |> Maybe.map (\number -> \prevConfiguration -> { prevConfiguration | numberOfFarmCycles = number })
-        |> Result.fromMaybe ("Failed to parse number from '" ++ numberString ++ "'")
-
-
-parseBotConfigurationAssignment : Dict.Dict String (String -> Result String (BotConfiguration -> BotConfiguration))
-parseBotConfigurationAssignment =
-    [ ( "break-duration", parseBotConfigurationBreakDurationMinutes )
-    , ( "number-of-farm-cycles", parseBotConfigurationNumberOfFarmCycles )
+parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
+parseBotSettingsNames =
+    [ ( "break-duration", parseBotSettingBreakDurationMinutes )
+    , ( "number-of-farm-cycles", parseBotSettingInt (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles }) )
     ]
         |> Dict.fromList
 
@@ -517,12 +519,12 @@ integrateWebBrowserBotEvent event stateBefore =
     case event of
         BotFramework.SetBotConfiguration configurationString ->
             let
-                parseConfigurationResult =
-                    parseConfigurationFromString configurationString
+                parseSettingsResult =
+                    parseSettingsFromString defaultBotSettings configurationString
             in
-            parseConfigurationResult
-                |> Result.map (\newConfiguration -> { stateBefore | configuration = newConfiguration })
-                |> Result.mapError (\parseError -> "Failed to parse this bot configuration: " ++ parseError)
+            parseSettingsResult
+                |> Result.map (\newSettings -> { stateBefore | settings = newSettings })
+                |> Result.mapError (\parseError -> "Failed to parse bot settings: " ++ parseError)
 
         BotFramework.ArrivedAtTime { timeInMilliseconds } ->
             Ok { stateBefore | timeInMilliseconds = timeInMilliseconds }
@@ -1436,7 +1438,7 @@ statusMessageFromState state =
                     [ "Completed "
                         ++ (completedFarmCycles |> List.length |> String.fromInt)
                         ++ " of "
-                        ++ (state.configuration.numberOfFarmCycles |> String.fromInt)
+                        ++ (state.settings.numberOfFarmCycles |> String.fromInt)
                         ++ " farm cycles."
                     ]
 

@@ -24,11 +24,11 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import Dict
 import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
 import EveOnline.MemoryReading
     exposing
         ( MaybeVisible(..)
-        , OverviewWindow
         , OverviewWindowEntry
         , ParsedUserInterface
         , ShipUI
@@ -39,17 +39,34 @@ import EveOnline.MemoryReading
         )
 import EveOnline.ParseUserInterface
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
+import Result.Extra
 import Set
 
 
-attackMaxRange : Int
-attackMaxRange =
-    18000
+defaultBotSettings : BotSettings
+defaultBotSettings =
+    { attackMaxRange = 18000
+    , maxTargetCount = 3
+    , botStepDelayMilliseconds = 1300
+    }
 
 
-maxTargetCount : Int
-maxTargetCount =
-    3
+{-| Names to support with the `--bot-configuration`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot>
+-}
+parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
+parseBotSettingsNames =
+    [ ( "bot-step-delay"
+      , parseBotSettingInt (\delay settings -> { settings | botStepDelayMilliseconds = delay })
+      )
+    ]
+        |> Dict.fromList
+
+
+type alias BotSettings =
+    { attackMaxRange : Int
+    , maxTargetCount : Int
+    , botStepDelayMilliseconds : Int
+    }
 
 
 type alias UIElement =
@@ -87,13 +104,15 @@ type alias BotMemory =
     }
 
 
+type alias BotDecisionContext =
+    { settings : BotSettings
+    , memory : BotMemory
+    , parsedUserInterface : ParsedUserInterface
+    }
+
+
 type alias State =
     EveOnline.BotFramework.StateIncludingFramework BotState
-
-
-generalStepDelayMilliseconds : Int
-generalStepDelayMilliseconds =
-    1300
 
 
 probeScanResultsRepresentsMatchingAnomaly : EveOnline.MemoryReading.ProbeScanResult -> Bool
@@ -101,48 +120,41 @@ probeScanResultsRepresentsMatchingAnomaly =
     .textsLeftToRight >> List.any (String.toLower >> String.contains "combat")
 
 
-decideNextAction : BotMemory -> ParsedUserInterface -> DecisionPathNode
-decideNextAction botMemory parsedUserInterface =
-    if parsedUserInterface |> isShipWarpingOrJumping then
-        -- TODO: Look also on the previous memory reading.
+decideNextAction : BotDecisionContext -> DecisionPathNode
+decideNextAction context =
+    branchDependingOnDockedOrInSpace
+        (DescribeBranch "I see no ship UI, assume we are docked." (EndDecisionPath Wait))
+        (always Nothing)
+        (decideNextActionWhenInSpace context)
+        context.parsedUserInterface
+
+
+decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
+decideNextActionWhenInSpace context seeUndockingComplete =
+    if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
         DescribeBranch "I see we are warping." (EndDecisionPath Wait)
 
     else
-        case parsedUserInterface.shipUI of
-            CanNotSeeIt ->
-                DescribeBranch "I see no ship UI, assume we are docked." (EndDecisionPath Wait)
-
-            CanSee shipUI ->
-                case parsedUserInterface.overviewWindow of
-                    CanNotSeeIt ->
-                        DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
-
-                    CanSee overviewWindow ->
-                        DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory shipUI overviewWindow parsedUserInterface)
-
-
-decideNextActionWhenInSpace : BotMemory -> ShipUI -> OverviewWindow -> ParsedUserInterface -> DecisionPathNode
-decideNextActionWhenInSpace botMemory shipUI overviewWindow parsedUserInterface =
-    case parsedUserInterface |> shipUIModulesToActivateAlways |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-        Just inactiveModule ->
-            DescribeBranch "I see an inactive module in the middle row. Click on it to activate."
-                (EndDecisionPath
-                    (Act
-                        { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                        , followingSteps = []
-                        }
+        case context.parsedUserInterface |> shipUIModulesToActivateAlways |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+            Just inactiveModule ->
+                DescribeBranch "I see an inactive module in the middle row. Click on it to activate."
+                    (EndDecisionPath
+                        (Act
+                            { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
+                            , followingSteps = []
+                            }
+                        )
                     )
-                )
 
-        Nothing ->
-            combat botMemory shipUI overviewWindow parsedUserInterface enterAnomaly
+            Nothing ->
+                combat context seeUndockingComplete enterAnomaly
 
 
-combat : BotMemory -> ShipUI -> OverviewWindow -> ParsedUserInterface -> (ParsedUserInterface -> DecisionPathNode) -> DecisionPathNode
-combat botMemory shipUI overviewWindow parsedUserInterface continueIfCombatComplete =
+combat : BotDecisionContext -> SeeUndockingComplete -> (ParsedUserInterface -> DecisionPathNode) -> DecisionPathNode
+combat context seeUndockingComplete continueIfCombatComplete =
     let
         overviewEntriesToAttack =
-            overviewWindow.entries
+            seeUndockingComplete.overviewWindow.entries
                 |> List.sortBy (.objectDistanceInMeters >> Result.withDefault 999999)
                 |> List.filter shouldAttackOverviewEntry
 
@@ -155,12 +167,12 @@ combat botMemory shipUI overviewWindow parsedUserInterface continueIfCombatCompl
                 []
 
             else
-                parsedUserInterface.targets |> List.filter .isActiveTarget
+                context.parsedUserInterface.targets |> List.filter .isActiveTarget
 
         ensureShipIsOrbitingDecision =
             overviewEntriesToAttack
                 |> List.head
-                |> Maybe.andThen (\overviewEntryToAttack -> ensureShipIsOrbiting shipUI overviewEntryToAttack)
+                |> Maybe.andThen (\overviewEntryToAttack -> ensureShipIsOrbiting seeUndockingComplete.shipUI overviewEntryToAttack)
 
         decisionIfAlreadyOrbiting =
             case targetsToUnlock |> List.head of
@@ -184,16 +196,16 @@ combat botMemory shipUI overviewWindow parsedUserInterface continueIfCombatCompl
                         )
 
                 Nothing ->
-                    case parsedUserInterface.targets |> List.head of
+                    case context.parsedUserInterface.targets |> List.head of
                         Nothing ->
                             DescribeBranch "I see no locked target."
                                 (case overviewEntriesToLock of
                                     [] ->
                                         DescribeBranch "I see no overview entry to lock."
                                             (if overviewEntriesToAttack |> List.isEmpty then
-                                                returnDronesToBay parsedUserInterface
+                                                returnDronesToBay context.parsedUserInterface
                                                     |> Maybe.withDefault
-                                                        (DescribeBranch "No drones to return." (continueIfCombatComplete parsedUserInterface))
+                                                        (DescribeBranch "No drones to return." (continueIfCombatComplete context.parsedUserInterface))
 
                                              else
                                                 DescribeBranch "Wait for target locking to complete." (EndDecisionPath Wait)
@@ -201,19 +213,19 @@ combat botMemory shipUI overviewWindow parsedUserInterface continueIfCombatCompl
 
                                     nextOverviewEntryToLock :: _ ->
                                         DescribeBranch "I see an overview entry to lock."
-                                            (lockTargetFromOverviewEntry nextOverviewEntryToLock)
+                                            (lockTargetFromOverviewEntryAndEnsureIsInRange context.settings.attackMaxRange nextOverviewEntryToLock)
                                 )
 
                         Just _ ->
                             DescribeBranch "I see a locked target."
-                                (case parsedUserInterface |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                (case context.parsedUserInterface |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                     -- TODO: Check previous memory reading too for module activity.
                                     Nothing ->
                                         DescribeBranch "All attack modules are active."
-                                            (launchAndEngageDrones parsedUserInterface
+                                            (launchAndEngageDrones context.parsedUserInterface
                                                 |> Maybe.withDefault
                                                     (DescribeBranch "No idling drones."
-                                                        (if maxTargetCount <= (parsedUserInterface.targets |> List.length) then
+                                                        (if context.settings.maxTargetCount <= (context.parsedUserInterface.targets |> List.length) then
                                                             DescribeBranch "Enough locked targets." (EndDecisionPath Wait)
 
                                                          else
@@ -223,7 +235,7 @@ combat botMemory shipUI overviewWindow parsedUserInterface continueIfCombatCompl
 
                                                                 nextOverviewEntryToLock :: _ ->
                                                                     DescribeBranch "Lock more targets."
-                                                                        (lockTargetFromOverviewEntry nextOverviewEntryToLock)
+                                                                        (lockTargetFromOverviewEntryAndEnsureIsInRange context.settings.attackMaxRange nextOverviewEntryToLock)
                                                         )
                                                     )
                                             )
@@ -401,39 +413,80 @@ returnDronesToBay parsedUserInterface =
             )
 
 
-lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
-lockTargetFromOverviewEntry overviewEntry =
-    if overviewEntry |> overviewWindowEntryIsInRange |> Maybe.withDefault False then
-        DescribeBranch "Overview entry is in range. Lock target."
-            (EndDecisionPath
-                (Act
-                    { firstAction = overviewEntry.uiNode |> clickOnUIElement MouseButtonRight
-                    , followingSteps =
-                        [ ( "Click menu entry 'lock'."
-                          , lastContextMenuOrSubmenu
-                                >> Maybe.andThen (menuEntryMatchingTextIgnoringCase "lock target")
-                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                          )
-                        ]
-                    }
-                )
-            )
+lockTargetFromOverviewEntryAndEnsureIsInRange : Int -> OverviewWindowEntry -> DecisionPathNode
+lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
+    case overviewEntry.objectDistanceInMeters of
+        Ok distanceInMeters ->
+            if distanceInMeters <= rangeInMeters then
+                DescribeBranch "Object is in range. Lock target."
+                    (EndDecisionPath
+                        (Act
+                            { firstAction = overviewEntry.uiNode |> clickOnUIElement MouseButtonRight
+                            , followingSteps =
+                                [ ( "Click menu entry 'lock'."
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                  )
+                                ]
+                            }
+                        )
+                    )
 
-    else
-        DescribeBranch "Overview entry is not in range. Approach."
-            (EndDecisionPath
-                (Act
-                    { firstAction = overviewEntry.uiNode |> clickOnUIElement MouseButtonRight
-                    , followingSteps =
-                        [ ( "Click menu entry 'approach'."
-                          , lastContextMenuOrSubmenu
-                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
-                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                          )
-                        ]
-                    }
-                )
-            )
+            else
+                DescribeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
+                    (EndDecisionPath
+                        (Act
+                            { firstAction = overviewEntry.uiNode |> clickOnUIElement MouseButtonRight
+                            , followingSteps =
+                                [ ( "Click menu entry 'approach'."
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                  )
+                                ]
+                            }
+                        )
+                    )
+
+        Err error ->
+            DescribeBranch ("Failed to read the distance: " ++ error) (EndDecisionPath Wait)
+
+
+type alias SeeUndockingComplete =
+    { shipUI : EveOnline.MemoryReading.ShipUI
+    , shipModulesRows : EveOnline.ParseUserInterface.ShipUIModulesGroupedIntoRows
+    , overviewWindow : EveOnline.MemoryReading.OverviewWindow
+    }
+
+
+branchDependingOnDockedOrInSpace :
+    DecisionPathNode
+    -> (EveOnline.MemoryReading.ShipUI -> Maybe DecisionPathNode)
+    -> (SeeUndockingComplete -> DecisionPathNode)
+    -> ParsedUserInterface
+    -> DecisionPathNode
+branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUndockingComplete parsedUserInterface =
+    case parsedUserInterface.shipUI of
+        CanNotSeeIt ->
+            DescribeBranch "I see no ship UI, assume we are docked." branchIfDocked
+
+        CanSee shipUI ->
+            branchIfCanSeeShipUI shipUI
+                |> Maybe.withDefault
+                    (case shipUI |> EveOnline.ParseUserInterface.groupShipUIModulesIntoRows of
+                        Nothing ->
+                            DescribeBranch "Failed to group the ship UI modules into rows." (EndDecisionPath Wait)
+
+                        Just shipModulesRows ->
+                            case parsedUserInterface.overviewWindow of
+                                CanNotSeeIt ->
+                                    DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
+
+                                CanSee overviewWindow ->
+                                    DescribeBranch "I see we are in space."
+                                        (branchIfUndockingComplete { shipUI = shipUI, shipModulesRows = shipModulesRows, overviewWindow = overviewWindow })
+                    )
 
 
 initState : State
@@ -455,6 +508,22 @@ processEveOnlineBotEvent :
     -> BotState
     -> ( BotState, EveOnline.BotFramework.BotEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
+    case parseSettingsFromString defaultBotSettings (eventContext.configuration |> Maybe.withDefault "") of
+        Err parseSettingsError ->
+            ( stateBefore
+            , EveOnline.BotFramework.FinishSession { statusDescriptionText = "Failed to parse bot settings: " ++ parseSettingsError }
+            )
+
+        Ok settings ->
+            processEveOnlineBotEventWithSettings settings event stateBefore
+
+
+processEveOnlineBotEventWithSettings :
+    BotSettings
+    -> EveOnline.BotFramework.BotEvent
+    -> BotState
+    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
+processEveOnlineBotEventWithSettings botSettings event stateBefore =
     case event of
         EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
             let
@@ -463,7 +532,12 @@ processEveOnlineBotEvent eventContext event stateBefore =
 
                 programStateBefore =
                     stateBefore.programState
-                        |> Maybe.withDefault { decision = decideNextAction botMemory parsedUserInterface, lastStepIndexInSequence = 0 }
+                        |> Maybe.withDefault
+                            { decision =
+                                decideNextAction
+                                    { settings = botSettings, memory = botMemory, parsedUserInterface = parsedUserInterface }
+                            , lastStepIndexInSequence = 0
+                            }
 
                 ( decisionStagesDescriptions, decisionLeaf ) =
                     unpackToDecisionStagesDescriptionsAndLeaf programStateBefore.decision
@@ -511,7 +585,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
             ( { stateBefore | botMemory = botMemory, programState = programState }
             , EveOnline.BotFramework.ContinueSession
                 { effects = effectsRequests
-                , millisecondsToNextReadingFromGame = generalStepDelayMilliseconds
+                , millisecondsToNextReadingFromGame = botSettings.botStepDelayMilliseconds
                 , statusDescriptionText = statusMessage
                 }
             )
@@ -642,21 +716,9 @@ menuEntryContainingTextIgnoringCase textToSearch =
         >> List.head
 
 
-menuEntryMatchingTextIgnoringCase : String -> EveOnline.MemoryReading.ContextMenu -> Maybe EveOnline.MemoryReading.ContextMenuEntry
-menuEntryMatchingTextIgnoringCase textToSearch =
-    .entries
-        >> List.filter (.text >> String.toLower >> (==) (textToSearch |> String.toLower))
-        >> List.head
-
-
 lastContextMenuOrSubmenu : ParsedUserInterface -> Maybe EveOnline.MemoryReading.ContextMenu
 lastContextMenuOrSubmenu =
     .contextMenus >> List.head
-
-
-overviewWindowEntryIsInRange : OverviewWindowEntry -> Maybe Bool
-overviewWindowEntryIsInRange =
-    .objectDistanceInMeters >> Result.map (\distanceInMeters -> distanceInMeters < attackMaxRange) >> Result.toMaybe
 
 
 clickOnUIElement : MouseButton -> UIElement -> VolatileHostInterface.EffectOnWindowStructure
@@ -664,11 +726,10 @@ clickOnUIElement mouseButton uiElement =
     effectMouseClickAtLocation mouseButton (uiElement.totalDisplayRegion |> centerFromDisplayRegion)
 
 
-isShipWarpingOrJumping : ParsedUserInterface -> Bool
+isShipWarpingOrJumping : EveOnline.MemoryReading.ShipUI -> Bool
 isShipWarpingOrJumping =
-    .shipUI
+    .indication
         >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen (.indication >> maybeNothingFromCanNotSeeIt)
         >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
         >> Maybe.map
             (\maneuverType ->
@@ -686,3 +747,49 @@ listElementAtWrappedIndex indexToWrap list =
 
     else
         list |> List.drop (indexToWrap |> modBy (list |> List.length)) |> List.head
+
+
+parseBotSettingInt : (Int -> BotSettings -> BotSettings) -> String -> Result String (BotSettings -> BotSettings)
+parseBotSettingInt integrateInt argumentAsString =
+    case argumentAsString |> String.toInt of
+        Nothing ->
+            Err ("Failed to parse '" ++ argumentAsString ++ "' as integer.")
+
+        Just int ->
+            Ok (integrateInt int)
+
+
+parseSettingsFromString : BotSettings -> String -> Result String BotSettings
+parseSettingsFromString settingsBefore settingsString =
+    let
+        assignments =
+            settingsString |> String.split ","
+
+        assignmentFunctionResults =
+            assignments
+                |> List.map String.trim
+                |> List.filter (String.isEmpty >> not)
+                |> List.map
+                    (\assignment ->
+                        case assignment |> String.split "=" |> List.map String.trim of
+                            [ settingName, assignedValue ] ->
+                                case parseBotSettingsNames |> Dict.get settingName of
+                                    Nothing ->
+                                        Err ("Unknown setting name '" ++ settingName ++ "'.")
+
+                                    Just parseFunction ->
+                                        parseFunction assignedValue
+                                            |> Result.mapError (\parseError -> "Failed to parse value for setting '" ++ settingName ++ "': " ++ parseError)
+
+                            _ ->
+                                Err ("Failed to parse assignment '" ++ assignment ++ "'.")
+                    )
+    in
+    assignmentFunctionResults
+        |> Result.Extra.combine
+        |> Result.map
+            (\assignmentFunctions ->
+                assignmentFunctions
+                    |> List.foldl (\assignmentFunction previousSettings -> assignmentFunction previousSettings)
+                        settingsBefore
+            )

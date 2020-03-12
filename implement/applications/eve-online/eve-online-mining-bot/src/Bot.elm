@@ -54,13 +54,16 @@ defaultBotSettings =
 
 {-| Names to support with the `--bot-configuration`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot>
 -}
-parseBotSettingsAssignment : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
-parseBotSettingsAssignment =
+parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
+parseBotSettingsNames =
     [ ( "run-away-shield-hitpoints-threshold-percent"
       , parseBotSettingInt (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
       )
     , ( "mining-module-range"
       , parseBotSettingInt (\range settings -> { settings | miningModuleRange = range })
+      )
+    , ( "bot-step-delay"
+      , parseBotSettingInt (\delay settings -> { settings | botStepDelayMilliseconds = delay })
       )
     ]
         |> Dict.fromList
@@ -743,7 +746,7 @@ parseSettingsFromString settingsBefore settingsString =
                     (\assignment ->
                         case assignment |> String.split "=" |> List.map String.trim of
                             [ settingName, assignedValue ] ->
-                                case parseBotSettingsAssignment |> Dict.get settingName of
+                                case parseBotSettingsNames |> Dict.get settingName of
                                     Nothing ->
                                         Err ("Unknown setting name '" ++ settingName ++ "'.")
 

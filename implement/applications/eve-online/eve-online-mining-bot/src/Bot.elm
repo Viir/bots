@@ -27,6 +27,7 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import Dict
 import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
 import EveOnline.MemoryReading
     exposing
@@ -39,21 +40,50 @@ import EveOnline.MemoryReading
         )
 import EveOnline.ParseUserInterface exposing (ShipUIModulesGroupedIntoRows)
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
+import Result.Extra
 
 
-runAwayShieldHitpointsThresholdPercent : Int
-runAwayShieldHitpointsThresholdPercent =
-    50
+defaultBotSettings : BotSettings
+defaultBotSettings =
+    { runAwayShieldHitpointsThresholdPercent = 50
+    , targetingRange = 10000
+    , miningModuleRange = 5000
+    , botStepDelayMilliseconds = 2000
+    }
 
 
-targetingRange : Int
-targetingRange =
-    10000
+{-| Names to support with the `--bot-configuration`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot>
+-}
+parseBotSettingsAssignment : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
+parseBotSettingsAssignment =
+    [ ( "run-away-shield-hitpoints-threshold-percent"
+      , parseBotSettingInt (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
+      )
+    , ( "mining-module-range"
+      , parseBotSettingInt (\range settings -> { settings | miningModuleRange = range })
+      )
+    ]
+        |> Dict.fromList
 
 
-miningModuleRange : Int
-miningModuleRange =
-    5000
+type alias BotSettings =
+    { runAwayShieldHitpointsThresholdPercent : Int
+    , targetingRange : Int
+    , miningModuleRange : Int
+    , botStepDelayMilliseconds : Int
+    }
+
+
+type alias BotMemory =
+    { lastDockedStationNameFromInfoPanel : Maybe String
+    }
+
+
+type alias BotDecisionContext =
+    { settings : BotSettings
+    , memory : BotMemory
+    , parsedUserInterface : ParsedUserInterface
+    }
 
 
 type alias UIElement =
@@ -86,37 +116,27 @@ type alias BotState =
     }
 
 
-type alias BotMemory =
-    { lastDockedStationNameFromInfoPanel : Maybe String
-    }
-
-
 type alias State =
     EveOnline.BotFramework.StateIncludingFramework BotState
 
 
-generalStepDelayMilliseconds : Int
-generalStepDelayMilliseconds =
-    2000
-
-
 {-| A first outline of the decision tree for a mining bot is coming from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
 -}
-decideNextAction : BotMemory -> ParsedUserInterface -> DecisionPathNode
-decideNextAction botMemory parsedUserInterface =
-    if parsedUserInterface |> isShipWarpingOrJumping then
+decideNextAction : BotDecisionContext -> DecisionPathNode
+decideNextAction context =
+    if context.parsedUserInterface |> isShipWarpingOrJumping then
         -- TODO: Look also on the previous memory reading.
         DescribeBranch "I see we are warping." (EndDecisionPath Wait)
 
     else
         -- TODO: For robustness, also look also on the previous memory reading. Only continue when both indicate is undocked.
-        case parsedUserInterface.shipUI of
+        case context.parsedUserInterface.shipUI of
             CanNotSeeIt ->
-                DescribeBranch "I see no ship UI, assume we are docked." (decideNextActionWhenDocked parsedUserInterface)
+                DescribeBranch "I see no ship UI, assume we are docked." (decideNextActionWhenDocked context.parsedUserInterface)
 
             CanSee shipUI ->
-                if shipUI.hitpointsPercent.shield < runAwayShieldHitpointsThresholdPercent then
-                    DescribeBranch "Shield hitpoints are too low, run away." (runAway botMemory parsedUserInterface)
+                if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
+                    DescribeBranch "Shield hitpoints are too low, run away." (runAway context)
 
                 else
                     case shipUI |> EveOnline.ParseUserInterface.groupShipUIModulesIntoRows of
@@ -124,7 +144,7 @@ decideNextAction botMemory parsedUserInterface =
                             DescribeBranch "Failed to group the ship UI modules into rows." (EndDecisionPath Wait)
 
                         Just groupedShipModules ->
-                            DescribeBranch "I see we are in space." (decideNextActionWhenInSpace botMemory groupedShipModules parsedUserInterface)
+                            DescribeBranch "I see we are in space." (decideNextActionWhenInSpace context groupedShipModules)
 
 
 decideNextActionWhenDocked : ParsedUserInterface -> DecisionPathNode
@@ -175,8 +195,8 @@ decideNextActionWhenDocked parsedUserInterface =
                         )
 
 
-decideNextActionWhenInSpace : BotMemory -> ShipUIModulesGroupedIntoRows -> ParsedUserInterface -> DecisionPathNode
-decideNextActionWhenInSpace botMemory shipUIModules parsedUserInterface =
+decideNextActionWhenInSpace : BotDecisionContext -> ShipUIModulesGroupedIntoRows -> DecisionPathNode
+decideNextActionWhenInSpace context shipUIModules =
     case shipUIModules.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
         Just inactiveModule ->
             DescribeBranch "I see an inactive module in the middle row. Click on it to activate."
@@ -189,28 +209,28 @@ decideNextActionWhenInSpace botMemory shipUIModules parsedUserInterface =
                 )
 
         Nothing ->
-            case parsedUserInterface |> oreHoldFillPercent of
+            case context.parsedUserInterface |> oreHoldFillPercent of
                 Nothing ->
                     DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
                 Just fillPercent ->
                     if 99 <= fillPercent then
                         DescribeBranch "The ore hold is full enough. Dock to station."
-                            (case botMemory.lastDockedStationNameFromInfoPanel of
+                            (case context.memory.lastDockedStationNameFromInfoPanel of
                                 Nothing ->
                                     DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
 
                                 Just lastDockedStationNameFromInfoPanel ->
                                     dockToStationMatchingNameSeenInInfoPanel
                                         { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
-                                        parsedUserInterface
+                                        context.parsedUserInterface
                             )
 
                     else
                         DescribeBranch "The ore hold is not full enough yet. Get more ore."
-                            (case parsedUserInterface.targets |> List.head of
+                            (case context.parsedUserInterface.targets |> List.head of
                                 Nothing ->
-                                    DescribeBranch "I see no locked target." (decideNextActionAcquireLockedTarget parsedUserInterface)
+                                    DescribeBranch "I see no locked target." (ensureIsAtMiningSiteAndTargetAsteroid context)
 
                                 Just _ ->
                                     DescribeBranch "I see a locked target."
@@ -232,17 +252,17 @@ decideNextActionWhenInSpace botMemory shipUIModules parsedUserInterface =
                             )
 
 
-decideNextActionAcquireLockedTarget : ParsedUserInterface -> DecisionPathNode
-decideNextActionAcquireLockedTarget parsedUserInterface =
-    case parsedUserInterface |> topmostAsteroidFromOverviewWindow of
+ensureIsAtMiningSiteAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
+ensureIsAtMiningSiteAndTargetAsteroid context =
+    case context.parsedUserInterface |> topmostAsteroidFromOverviewWindow of
         Nothing ->
             DescribeBranch "I see no asteroid in the overview. Warp to mining site."
-                (warpToMiningSite parsedUserInterface)
+                (warpToMiningSite context.parsedUserInterface)
 
         Just asteroidInOverview ->
             DescribeBranch
                 ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                (lockTargetFromOverviewEntryAndEnsureIsInRange (min targetingRange miningModuleRange) asteroidInOverview)
+                (lockTargetFromOverviewEntryAndEnsureIsInRange (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
 
 
 lockTargetFromOverviewEntryAndEnsureIsInRange : Int -> OverviewWindowEntry -> DecisionPathNode
@@ -346,16 +366,16 @@ warpToMiningSite parsedUserInterface =
             ]
 
 
-runAway : BotMemory -> ParsedUserInterface -> DecisionPathNode
-runAway botMemory parsedUserInterface =
-    case botMemory.lastDockedStationNameFromInfoPanel of
+runAway : BotDecisionContext -> DecisionPathNode
+runAway context =
+    case context.memory.lastDockedStationNameFromInfoPanel of
         Nothing ->
-            dockToRandomStation parsedUserInterface
+            dockToRandomStation context.parsedUserInterface
 
         Just lastDockedStationNameFromInfoPanel ->
             dockToStationMatchingNameSeenInInfoPanel
                 { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
-                parsedUserInterface
+                context.parsedUserInterface
 
 
 dockToRandomStation : ParsedUserInterface -> DecisionPathNode
@@ -399,6 +419,22 @@ processEveOnlineBotEvent :
     -> BotState
     -> ( BotState, EveOnline.BotFramework.BotEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
+    case parseSettingsFromString defaultBotSettings (eventContext.configuration |> Maybe.withDefault "") of
+        Err parseSettingsError ->
+            ( stateBefore
+            , EveOnline.BotFramework.FinishSession { statusDescriptionText = "Failed to parse bot settings: " ++ parseSettingsError }
+            )
+
+        Ok settings ->
+            processEveOnlineBotEventWithSettings settings event stateBefore
+
+
+processEveOnlineBotEventWithSettings :
+    BotSettings
+    -> EveOnline.BotFramework.BotEvent
+    -> BotState
+    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
+processEveOnlineBotEventWithSettings botSettings event stateBefore =
     case event of
         EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
             let
@@ -407,7 +443,12 @@ processEveOnlineBotEvent eventContext event stateBefore =
 
                 programStateBefore =
                     stateBefore.programState
-                        |> Maybe.withDefault { decision = decideNextAction botMemory parsedUserInterface, lastStepIndexInSequence = 0 }
+                        |> Maybe.withDefault
+                            { decision =
+                                decideNextAction
+                                    { settings = botSettings, memory = botMemory, parsedUserInterface = parsedUserInterface }
+                            , lastStepIndexInSequence = 0
+                            }
 
                 ( decisionStagesDescriptions, decisionLeaf ) =
                     unpackToDecisionStagesDescriptionsAndLeaf programStateBefore.decision
@@ -455,7 +496,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
             ( { stateBefore | botMemory = botMemory, programState = programState }
             , EveOnline.BotFramework.ContinueSession
                 { effects = effectsRequests
-                , millisecondsToNextReadingFromGame = generalStepDelayMilliseconds
+                , millisecondsToNextReadingFromGame = botSettings.botStepDelayMilliseconds
                 , statusDescriptionText = statusMessage
                 }
             )
@@ -643,3 +684,49 @@ listElementAtWrappedIndex indexToWrap list =
 
     else
         list |> List.drop (indexToWrap |> modBy (list |> List.length)) |> List.head
+
+
+parseBotSettingInt : (Int -> BotSettings -> BotSettings) -> String -> Result String (BotSettings -> BotSettings)
+parseBotSettingInt integrateInt argumentAsString =
+    case argumentAsString |> String.toInt of
+        Nothing ->
+            Err ("Failed to parse '" ++ argumentAsString ++ "' as integer.")
+
+        Just int ->
+            Ok (integrateInt int)
+
+
+parseSettingsFromString : BotSettings -> String -> Result String BotSettings
+parseSettingsFromString settingsBefore settingsString =
+    let
+        assignments =
+            settingsString |> String.split ","
+
+        assignmentFunctionResults =
+            assignments
+                |> List.map String.trim
+                |> List.filter (String.isEmpty >> not)
+                |> List.map
+                    (\assignment ->
+                        case assignment |> String.split "=" |> List.map String.trim of
+                            [ settingName, assignedValue ] ->
+                                case parseBotSettingsAssignment |> Dict.get settingName of
+                                    Nothing ->
+                                        Err ("Unknown setting name '" ++ settingName ++ "'.")
+
+                                    Just parseFunction ->
+                                        parseFunction assignedValue
+                                            |> Result.mapError (\parseError -> "Failed to parse value for setting '" ++ settingName ++ "': " ++ parseError)
+
+                            _ ->
+                                Err ("Failed to parse assignment '" ++ assignment ++ "'.")
+                    )
+    in
+    assignmentFunctionResults
+        |> Result.Extra.combine
+        |> Result.map
+            (\assignmentFunctions ->
+                assignmentFunctions
+                    |> List.foldl (\assignmentFunction previousSettings -> assignmentFunction previousSettings)
+                        settingsBefore
+            )

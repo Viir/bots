@@ -38,7 +38,7 @@ import EveOnline.MemoryReading
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
-import EveOnline.ParseUserInterface exposing (ShipUIModulesGroupedIntoRows)
+import EveOnline.ParseUserInterface
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
 import Result.Extra
 
@@ -120,31 +120,25 @@ type alias State =
     EveOnline.BotFramework.StateIncludingFramework BotState
 
 
-{-| A first outline of the decision tree for a mining bot is coming from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
+{-| A first outline of the decision tree for a mining bot came from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
 -}
 decideNextAction : BotDecisionContext -> DecisionPathNode
 decideNextAction context =
-    if context.parsedUserInterface |> isShipWarpingOrJumping then
-        -- TODO: Look also on the previous memory reading.
-        DescribeBranch "I see we are warping." (EndDecisionPath Wait)
+    branchDependingOnDockedOrInSpace
+        (DescribeBranch "I see no ship UI, assume we are docked." (decideNextActionWhenDocked context.parsedUserInterface))
+        (\shipUI ->
+            if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
+                Just
+                    (DescribeBranch
+                        ("Shield hitpoints are below " ++ (context.settings.runAwayShieldHitpointsThresholdPercent |> String.fromInt) ++ "% , run away.")
+                        (runAway context)
+                    )
 
-    else
-        -- TODO: For robustness, also look also on the previous memory reading. Only continue when both indicate is undocked.
-        case context.parsedUserInterface.shipUI of
-            CanNotSeeIt ->
-                DescribeBranch "I see no ship UI, assume we are docked." (decideNextActionWhenDocked context.parsedUserInterface)
-
-            CanSee shipUI ->
-                if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
-                    DescribeBranch "Shield hitpoints are too low, run away." (runAway context)
-
-                else
-                    case shipUI |> EveOnline.ParseUserInterface.groupShipUIModulesIntoRows of
-                        Nothing ->
-                            DescribeBranch "Failed to group the ship UI modules into rows." (EndDecisionPath Wait)
-
-                        Just groupedShipModules ->
-                            DescribeBranch "I see we are in space." (decideNextActionWhenInSpace context groupedShipModules)
+            else
+                Nothing
+        )
+        (decideNextActionWhenInSpace context)
+        context.parsedUserInterface
 
 
 decideNextActionWhenDocked : ParsedUserInterface -> DecisionPathNode
@@ -195,61 +189,65 @@ decideNextActionWhenDocked parsedUserInterface =
                         )
 
 
-decideNextActionWhenInSpace : BotDecisionContext -> ShipUIModulesGroupedIntoRows -> DecisionPathNode
-decideNextActionWhenInSpace context shipUIModules =
-    case shipUIModules.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-        Just inactiveModule ->
-            DescribeBranch "I see an inactive module in the middle row. Click on it to activate."
-                (EndDecisionPath
-                    (Act
-                        { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                        , followingSteps = []
-                        }
+decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
+decideNextActionWhenInSpace context seeUndockingComplete =
+    if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
+        DescribeBranch "I see we are warping." (EndDecisionPath Wait)
+
+    else
+        case seeUndockingComplete.shipModulesRows.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+            Just inactiveModule ->
+                DescribeBranch "I see an inactive module in the middle row. Click on it to activate."
+                    (EndDecisionPath
+                        (Act
+                            { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
+                            , followingSteps = []
+                            }
+                        )
                     )
-                )
 
-        Nothing ->
-            case context.parsedUserInterface |> oreHoldFillPercent of
-                Nothing ->
-                    DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
+            Nothing ->
+                case context.parsedUserInterface |> oreHoldFillPercent of
+                    Nothing ->
+                        DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
-                Just fillPercent ->
-                    if 99 <= fillPercent then
-                        DescribeBranch "The ore hold is full enough. Dock to station."
-                            (case context.memory.lastDockedStationNameFromInfoPanel of
-                                Nothing ->
-                                    DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
+                    Just fillPercent ->
+                        if 99 <= fillPercent then
+                            DescribeBranch "The ore hold is full enough. Dock to station."
+                                (case context.memory.lastDockedStationNameFromInfoPanel of
+                                    Nothing ->
+                                        DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
 
-                                Just lastDockedStationNameFromInfoPanel ->
-                                    dockToStationMatchingNameSeenInInfoPanel
-                                        { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
-                                        context.parsedUserInterface
-                            )
+                                    Just lastDockedStationNameFromInfoPanel ->
+                                        dockToStationMatchingNameSeenInInfoPanel
+                                            { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
+                                            context.parsedUserInterface
+                                )
 
-                    else
-                        DescribeBranch "The ore hold is not full enough yet. Get more ore."
-                            (case context.parsedUserInterface.targets |> List.head of
-                                Nothing ->
-                                    DescribeBranch "I see no locked target." (ensureIsAtMiningSiteAndTargetAsteroid context)
+                        else
+                            DescribeBranch "The ore hold is not full enough yet. Get more ore."
+                                (case context.parsedUserInterface.targets |> List.head of
+                                    Nothing ->
+                                        DescribeBranch "I see no locked target." (ensureIsAtMiningSiteAndTargetAsteroid context)
 
-                                Just _ ->
-                                    DescribeBranch "I see a locked target."
-                                        (case shipUIModules.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                            -- TODO: Check previous memory reading too for module activity.
-                                            Nothing ->
-                                                DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
+                                    Just _ ->
+                                        DescribeBranch "I see a locked target."
+                                            (case seeUndockingComplete.shipModulesRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                -- TODO: Check previous memory reading too for module activity.
+                                                Nothing ->
+                                                    DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
 
-                                            Just inactiveModule ->
-                                                DescribeBranch "I see an inactive mining module. Click on it to activate."
-                                                    (EndDecisionPath
-                                                        (Act
-                                                            { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                                                            , followingSteps = []
-                                                            }
+                                                Just inactiveModule ->
+                                                    DescribeBranch "I see an inactive mining module. Click on it to activate."
+                                                        (EndDecisionPath
+                                                            (Act
+                                                                { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
+                                                                , followingSteps = []
+                                                                }
+                                                            )
                                                         )
-                                                    )
-                                        )
-                            )
+                                            )
+                                )
 
 
 ensureIsAtMiningSiteAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
@@ -383,6 +381,42 @@ dockToRandomStation parsedUserInterface =
     dockToStationUsingSurroundingsButtonMenu
         ( "Pick random station.", listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface) )
         parsedUserInterface
+
+
+type alias SeeUndockingComplete =
+    { shipUI : EveOnline.MemoryReading.ShipUI
+    , shipModulesRows : EveOnline.ParseUserInterface.ShipUIModulesGroupedIntoRows
+    , overviewWindow : EveOnline.MemoryReading.OverviewWindow
+    }
+
+
+branchDependingOnDockedOrInSpace :
+    DecisionPathNode
+    -> (EveOnline.MemoryReading.ShipUI -> Maybe DecisionPathNode)
+    -> (SeeUndockingComplete -> DecisionPathNode)
+    -> ParsedUserInterface
+    -> DecisionPathNode
+branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUndockingComplete parsedUserInterface =
+    case parsedUserInterface.shipUI of
+        CanNotSeeIt ->
+            DescribeBranch "I see no ship UI, assume we are docked." branchIfDocked
+
+        CanSee shipUI ->
+            branchIfCanSeeShipUI shipUI
+                |> Maybe.withDefault
+                    (case shipUI |> EveOnline.ParseUserInterface.groupShipUIModulesIntoRows of
+                        Nothing ->
+                            DescribeBranch "Failed to group the ship UI modules into rows." (EndDecisionPath Wait)
+
+                        Just shipModulesRows ->
+                            case parsedUserInterface.overviewWindow of
+                                CanNotSeeIt ->
+                                    DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
+
+                                CanSee overviewWindow ->
+                                    DescribeBranch "I see we are in space."
+                                        (branchIfUndockingComplete { shipUI = shipUI, shipModulesRows = shipModulesRows, overviewWindow = overviewWindow })
+                    )
 
 
 useContextMenuOnListSurroundingsButton : List ( String, ParsedUserInterface -> Maybe VolatileHostInterface.EffectOnWindowStructure ) -> ParsedUserInterface -> DecisionPathNode
@@ -662,11 +696,10 @@ clickLocationOnInventoryShipEntry uiElement =
     }
 
 
-isShipWarpingOrJumping : ParsedUserInterface -> Bool
+isShipWarpingOrJumping : EveOnline.MemoryReading.ShipUI -> Bool
 isShipWarpingOrJumping =
-    .shipUI
+    .indication
         >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen (.indication >> maybeNothingFromCanNotSeeIt)
         >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
         >> Maybe.map
             (\maneuverType ->

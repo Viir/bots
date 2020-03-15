@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-03-12
+{- Tribal Wars 2 farmbot version 2020-03-15
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -44,6 +44,7 @@ import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
 import Dict
 import Json.Decode
 import Json.Encode
+import List.Extra
 import Result.Extra
 import Set
 import WebBrowser.BotFramework as BotFramework exposing (BotEvent, BotResponse)
@@ -85,6 +86,11 @@ ownVillageInfoMaxAge =
 selectedVillageInfoMaxAge : Int
 selectedVillageInfoMaxAge =
     15
+
+
+searchFarmsRadiusAroundOwnVillage : Int
+searchFarmsRadiusAroundOwnVillage =
+    30
 
 
 type alias BotState =
@@ -905,19 +911,15 @@ computeVillageNextAction botState farmCycleState ( villageId, villageDetails ) p
             |> Maybe.andThen
                 (\armyPreset ->
                     let
-                        coordinatesAroundVillage =
-                            [ villageDetails.coordinates ]
-                                |> coordinatesToSearchFromOwnVillagesCoordinates 20
-
                         sentAttackToCoordinates coordinates =
                             (farmCycleState.sentAttackByCoordinates
                                 |> Dict.get ( coordinates.x, coordinates.y )
                             )
                                 /= Nothing
 
-                        remainingCoordinates =
-                            coordinatesAroundVillage
-                                |> List.filter
+                        firstMatchFromRelativeCoordinates =
+                            List.map (offsetVillageCoordinates villageDetails.coordinates)
+                                >> List.filter
                                     (\coordinates ->
                                         if sentAttackToCoordinates coordinates then
                                             False
@@ -935,9 +937,25 @@ computeVillageNextAction botState farmCycleState ( villageId, villageDetails ) p
                                                         VillageThere village ->
                                                             village.affiliation == AffiliationBarbarian
                                     )
+                                >> List.head
+
+                        nextRemainingCoordinates =
+                            {- 2020-03-15 Specialize for runtime expenses:
+                               Adapt to limitations of the current Elm runtime:
+                               Process the coordinates in partitions to reduce computations of results we will not use anyway. In the end, we only take the first element, but the current runtime performs a more eager evaluation.
+                            -}
+                            relativeCoordinatesToSearchForFarmsPartitions
+                                |> List.foldl
+                                    (\coordinatesPartition result ->
+                                        if result /= Nothing then
+                                            result
+
+                                        else
+                                            firstMatchFromRelativeCoordinates coordinatesPartition
+                                    )
+                                    Nothing
                     in
-                    remainingCoordinates
-                        |> List.head
+                    nextRemainingCoordinates
                         |> Maybe.map
                             (\nextCoordinates ->
                                 let
@@ -995,33 +1013,34 @@ computeVillagePresetOptions presets ( villageId, villageDetails ) =
     }
 
 
-coordinatesToSearchFromOwnVillagesCoordinates : Int -> List VillageCoordinates -> List VillageCoordinates
-coordinatesToSearchFromOwnVillagesCoordinates radius ownVillagesCoordinates =
-    let
-        coordinatesFromSingleOwnVillageCoordinates ownVillageCoordinates =
-            List.range -radius radius
-                |> List.concatMap
-                    (\offsetX ->
-                        List.range -radius radius
-                            |> List.map (\offsetY -> ( ownVillageCoordinates.x + offsetX, ownVillageCoordinates.y + offsetY ))
-                    )
+relativeCoordinatesToSearchForFarms : List VillageCoordinates
+relativeCoordinatesToSearchForFarms =
+    coordinatesInCircleOrderedByDistance searchFarmsRadiusAroundOwnVillage
 
-        squareDistanceToClosestOwnVillage coordinates =
-            ownVillagesCoordinates
-                |> List.map (squareDistanceBetweenCoordinates coordinates)
-                |> List.minimum
-                |> Maybe.withDefault 0
 
-        allCoordinates : Set.Set ( Int, Int )
-        allCoordinates =
-            ownVillagesCoordinates
-                |> List.concatMap coordinatesFromSingleOwnVillageCoordinates
-                |> Set.fromList
-    in
-    allCoordinates
-        |> Set.toList
-        |> List.map (\( x, y ) -> { x = x, y = y })
-        |> List.sortBy squareDistanceToClosestOwnVillage
+relativeCoordinatesToSearchForFarmsPartitions : List (List VillageCoordinates)
+relativeCoordinatesToSearchForFarmsPartitions =
+    relativeCoordinatesToSearchForFarms
+        |> List.Extra.greedyGroupsOf 400
+
+
+coordinatesInCircleOrderedByDistance : Int -> List VillageCoordinates
+coordinatesInCircleOrderedByDistance radius =
+    List.range -radius radius
+        |> List.concatMap
+            (\offsetX ->
+                List.range -radius radius
+                    |> List.map (\offsetY -> ( offsetX, offsetY ))
+            )
+        |> List.map (\( x, y ) -> ( { x = x, y = y }, x * x + y * y ))
+        |> List.filter (\( _, distanceSquared ) -> distanceSquared <= radius * radius)
+        |> List.sortBy Tuple.second
+        |> List.map Tuple.first
+
+
+offsetVillageCoordinates : VillageCoordinates -> VillageCoordinates -> VillageCoordinates
+offsetVillageCoordinates coordsA coordsB =
+    { x = coordsA.x + coordsB.x, y = coordsA.y + coordsB.y }
 
 
 squareDistanceBetweenCoordinates : VillageCoordinates -> VillageCoordinates -> Int

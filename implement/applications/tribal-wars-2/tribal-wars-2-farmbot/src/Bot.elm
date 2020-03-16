@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-03-15
+{- Tribal Wars 2 farmbot version 2020-03-16
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -238,6 +238,28 @@ type alias ContinueFarmCycleStructure =
     , activityDescription : String
     , updateState : Maybe (BotState -> BotState)
     }
+
+
+type VillageCompletedStructure
+    = NoMatchingArmyPresetEnabledForThisVillage
+    | NotEnoughUnits
+    | ExhaustedAttackLimit
+    | AllFarmsInSearchedAreaAlreadyAttackedInThisCycle
+
+
+type VillageEndDecisionPathStructure
+    = CompletedThisVillage VillageCompletedStructure
+    | ContinueWithThisVillage ActionFromVillage
+
+
+type DecisionPathNode leaf
+    = DescribeBranch String (DecisionPathNode leaf)
+    | EndDecisionPath leaf
+
+
+type ActionFromVillage
+    = GetVillageInfoAtCoordinates VillageCoordinates
+    | AttackAtCoordinates ArmyPreset VillageCoordinates
 
 
 initState : State
@@ -724,10 +746,10 @@ responseToFrameworkWhenNotWaitingGlobally botState farmCycleState =
                             Just gameRootInformationResult.gameRootInformation
                     )
 
-        maybeJavascriptToContinue =
+        ( maybeJavascriptToContinue, activityDescription ) =
             case sufficientlyNewGameRootInformation of
                 Nothing ->
-                    Just readRootInformationScript
+                    ( Just readRootInformationScript, "Game root information is not recent enough." )
 
                 Just gameRootInformation ->
                     let
@@ -760,12 +782,16 @@ responseToFrameworkWhenNotWaitingGlobally botState farmCycleState =
                     in
                     case ownVillagesNeedingDetailsUpdate of
                         ownVillageNeedingDetailsUpdate :: _ ->
-                            Just (readSelectedCharacterVillageDetailsScript ownVillageNeedingDetailsUpdate)
+                            ( Just (readSelectedCharacterVillageDetailsScript ownVillageNeedingDetailsUpdate)
+                            , "Read status of own village " ++ (ownVillageNeedingDetailsUpdate |> String.fromInt) ++ "."
+                            )
 
                         [] ->
                             case selectedVillageUpdatedDetails of
                                 Nothing ->
-                                    Just (readSelectedCharacterVillageDetailsScript gameRootInformation.selectedVillageId)
+                                    ( Just (readSelectedCharacterVillageDetailsScript gameRootInformation.selectedVillageId)
+                                    , "Read status of current selected village (" ++ (gameRootInformation.selectedVillageId |> String.fromInt) ++ ")"
+                                    )
 
                                 Just selectedVillageDetails ->
                                     case botState.getArmyPresetsResult |> Maybe.withDefault [] of
@@ -775,66 +801,109 @@ responseToFrameworkWhenNotWaitingGlobally botState farmCycleState =
 
                                                -- TODO: Add timeout for getting presets.
                                             -}
-                                            Just getPresetsScript
+                                            ( Just getPresetsScript
+                                            , "Did not find any army presets. Maybe loading is not completed yet. Load army presets."
+                                            )
 
-                                        atLeastOnePreset :: _ ->
+                                        _ ->
                                             let
-                                                selectedVillageActionOptions =
-                                                    computeVillageActionOptions
-                                                        botState
-                                                        farmCycleState
-                                                        ( gameRootInformation.selectedVillageId, selectedVillageDetails )
-                                            in
-                                            case selectedVillageActionOptions.nextAction of
-                                                Just (GetVillageInfoAtCoordinates coordinates) ->
-                                                    Just (startVillageByCoordinatesScript coordinates { jumpToVillage = False })
+                                                decisionPath =
+                                                    decideNextActionForVillage botState farmCycleState ( gameRootInformation.selectedVillageId, selectedVillageDetails )
 
-                                                Just (AttackAtCoordinates armyPreset coordinates) ->
-                                                    (scriptToJumpToVillageIfNotYetDone botState coordinates
-                                                        |> Maybe.withDefault
-                                                            (startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId = armyPreset.id })
-                                                    )
-                                                        |> Just
+                                                ( decisionStagesDescriptions, decisionLeaf ) =
+                                                    unpackToDecisionStagesDescriptionsAndLeaf decisionPath
 
-                                                Nothing ->
-                                                    let
-                                                        otherVillagesWithDetails =
-                                                            gameRootInformation.readyVillages
-                                                                |> Set.fromList
-                                                                |> Set.remove gameRootInformation.selectedVillageId
-                                                                |> Set.toList
-                                                                |> List.filterMap
-                                                                    (\otherVillageId ->
-                                                                        sufficientyFreshOwnVillagesDetails
-                                                                            |> Dict.get otherVillageId
-                                                                            |> Maybe.map
-                                                                                (\otherVillageDetailsResponse ->
-                                                                                    ( otherVillageId, otherVillageDetailsResponse.villageDetails )
-                                                                                )
-                                                                    )
+                                                ( decisionLeafJavascript, currentStepDescription ) =
+                                                    case decisionLeaf of
+                                                        ContinueWithThisVillage (GetVillageInfoAtCoordinates coordinates) ->
+                                                            ( Just (startVillageByCoordinatesScript coordinates { jumpToVillage = False }), "Read village info at " ++ (coordinates |> villageCoordinatesDisplayText) ++ "." )
 
-                                                        otherVillagesWithAvailableAction =
-                                                            otherVillagesWithDetails
-                                                                |> List.filter
-                                                                    (computeVillageActionOptions botState farmCycleState >> .nextAction >> (/=) Nothing)
-                                                    in
-                                                    case otherVillagesWithAvailableAction |> List.head of
-                                                        Nothing ->
-                                                            Nothing
-
-                                                        Just ( villageToActivateId, villageToActivateDetails ) ->
-                                                            (scriptToJumpToVillageIfNotYetDone botState villageToActivateDetails.coordinates
-                                                                |> Maybe.withDefault villageMenuActivateVillageScript
+                                                        ContinueWithThisVillage (AttackAtCoordinates armyPreset coordinates) ->
+                                                            ( Just
+                                                                (scriptToJumpToVillageIfNotYetDone botState coordinates
+                                                                    |> Maybe.withDefault
+                                                                        (startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId = armyPreset.id })
+                                                                )
+                                                            , "Attack at " ++ (coordinates |> villageCoordinatesDisplayText) ++ "."
                                                             )
-                                                                |> Just
+
+                                                        CompletedThisVillage completion ->
+                                                            let
+                                                                describeCompletion =
+                                                                    case completion of
+                                                                        NoMatchingArmyPresetEnabledForThisVillage ->
+                                                                            "No matching preset for this village."
+
+                                                                        NotEnoughUnits ->
+                                                                            "Not enough units."
+
+                                                                        ExhaustedAttackLimit ->
+                                                                            "Exhausted the attack limit."
+
+                                                                        AllFarmsInSearchedAreaAlreadyAttackedInThisCycle ->
+                                                                            "All farms in the search area have already been attacked in this farm cycle."
+
+                                                                otherVillagesWithDetails =
+                                                                    gameRootInformation.readyVillages
+                                                                        |> Set.fromList
+                                                                        |> Set.remove gameRootInformation.selectedVillageId
+                                                                        |> Set.toList
+                                                                        |> List.filterMap
+                                                                            (\otherVillageId ->
+                                                                                sufficientyFreshOwnVillagesDetails
+                                                                                    |> Dict.get otherVillageId
+                                                                                    |> Maybe.map
+                                                                                        (\otherVillageDetailsResponse ->
+                                                                                            ( otherVillageId, otherVillageDetailsResponse.villageDetails )
+                                                                                        )
+                                                                            )
+
+                                                                otherVillagesWithAvailableAction =
+                                                                    otherVillagesWithDetails
+                                                                        |> List.filter
+                                                                            (decideNextActionForVillage botState farmCycleState
+                                                                                >> (\otherVillageDecisionPath ->
+                                                                                        case otherVillageDecisionPath |> unpackToDecisionStagesDescriptionsAndLeaf |> Tuple.second of
+                                                                                            CompletedThisVillage _ ->
+                                                                                                False
+
+                                                                                            ContinueWithThisVillage _ ->
+                                                                                                True
+                                                                                   )
+                                                                            )
+
+                                                                ( afterCurrentVillageCompleteJavascript, afterCurrentVillageCompleteDescribeActivity ) =
+                                                                    case otherVillagesWithAvailableAction |> List.head of
+                                                                        Nothing ->
+                                                                            ( Nothing, "All villages completed." )
+
+                                                                        Just ( villageToActivateId, villageToActivateDetails ) ->
+                                                                            ( Just
+                                                                                (scriptToJumpToVillageIfNotYetDone botState villageToActivateDetails.coordinates
+                                                                                    |> Maybe.withDefault villageMenuActivateVillageScript
+                                                                                )
+                                                                            , "Switch to village " ++ (villageToActivateId |> String.fromInt) ++ " at " ++ (villageToActivateDetails.coordinates |> villageCoordinatesDisplayText) ++ "."
+                                                                            )
+                                                            in
+                                                            ( afterCurrentVillageCompleteJavascript
+                                                            , "Current village is completed (" ++ describeCompletion ++ "). " ++ afterCurrentVillageCompleteDescribeActivity
+                                                            )
+
+                                                describeActivity =
+                                                    (decisionStagesDescriptions ++ [ currentStepDescription ])
+                                                        |> List.indexedMap
+                                                            (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
+                                                        |> String.join "\n"
+                                            in
+                                            ( decisionLeafJavascript, describeActivity )
     in
     case maybeJavascriptToContinue of
         Nothing ->
             FinishFarmCycle
 
         Just javascript ->
-            -- TODO: more specific activityDescription (Consolidate with the other functions generating descriptions)
-            ContinueFarmCycle { javascriptToRun = Just javascript, activityDescription = "", updateState = Nothing }
+            ContinueFarmCycle
+                { javascriptToRun = Just javascript, activityDescription = activityDescription, updateState = Nothing }
 
 
 lastReloadPageAgeInSecondsFromState : BotState -> Maybe Int
@@ -865,152 +934,158 @@ scriptToJumpToVillageIfNotYetDone state coordinates =
         Nothing
 
 
-type alias VillagePresetOptions =
-    { allPresets : List ArmyPreset
-    , farmPresetFilter : String
-    , farmPresets : List ArmyPreset
-    , farmPresetsEnabledForThisVillage : List ArmyPreset
-    , farmPresetsMatchingAvailableUnits : List ArmyPreset
-    }
+decideNextActionForVillage : BotState -> FarmCycleState -> ( Int, VillageDetails ) -> DecisionPathNode VillageEndDecisionPathStructure
+decideNextActionForVillage botState farmCycleState ( villageId, villageDetails ) =
+    pickBestMatchingArmyPresetForVillage
+        (botState.getArmyPresetsResult |> Maybe.withDefault [])
+        ( villageId, villageDetails )
+        (decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ))
 
 
-type alias VillageActionOptions =
-    { preset : VillagePresetOptions
-    , nextAction : Maybe ActionFromVillage
-    }
-
-
-type ActionFromVillage
-    = GetVillageInfoAtCoordinates VillageCoordinates
-    | AttackAtCoordinates ArmyPreset VillageCoordinates
-
-
-computeVillageActionOptions : BotState -> FarmCycleState -> ( Int, VillageDetails ) -> VillageActionOptions
-computeVillageActionOptions botState farmCycleState ( villageId, villageDetails ) =
-    let
-        preset =
-            computeVillagePresetOptions (botState.getArmyPresetsResult |> Maybe.withDefault []) ( villageId, villageDetails )
-    in
-    { preset = preset
-    , nextAction = computeVillageNextAction botState farmCycleState ( villageId, villageDetails ) preset
-    }
-
-
-computeVillageNextAction : BotState -> FarmCycleState -> ( Int, VillageDetails ) -> VillagePresetOptions -> Maybe ActionFromVillage
-computeVillageNextAction botState farmCycleState ( villageId, villageDetails ) presetOptions =
+decideNextActionForVillageAfterChoosingPreset : BotState -> FarmCycleState -> ( Int, VillageDetails ) -> ArmyPreset -> DecisionPathNode VillageEndDecisionPathStructure
+decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ) armyPreset =
     let
         villageInfoCheckFromCoordinates coordinates =
             botState.coordinatesLastCheck |> Dict.get ( coordinates.x, coordinates.y )
+
+        numberOfCommandsFromThisVillage =
+            villageDetails.commands.outgoing |> List.length
     in
     if numberOfAttacksLimitPerVillage <= (villageDetails.commands.outgoing |> List.length) then
-        Nothing
+        DescribeBranch
+            ("Number of commands from this village is " ++ (numberOfCommandsFromThisVillage |> String.fromInt) ++ ".")
+            (EndDecisionPath (CompletedThisVillage ExhaustedAttackLimit))
 
     else
-        presetOptions.farmPresetsMatchingAvailableUnits
-            |> List.head
-            |> Maybe.andThen
-                (\armyPreset ->
-                    let
-                        sentAttackToCoordinates coordinates =
-                            (farmCycleState.sentAttackByCoordinates
-                                |> Dict.get ( coordinates.x, coordinates.y )
-                            )
-                                /= Nothing
+        let
+            sentAttackToCoordinates coordinates =
+                (farmCycleState.sentAttackByCoordinates
+                    |> Dict.get ( coordinates.x, coordinates.y )
+                )
+                    /= Nothing
 
-                        firstMatchFromRelativeCoordinates =
-                            List.map (offsetVillageCoordinates villageDetails.coordinates)
-                                >> List.filter
-                                    (\coordinates ->
-                                        if sentAttackToCoordinates coordinates then
-                                            False
+            firstMatchFromRelativeCoordinates =
+                List.map (offsetVillageCoordinates villageDetails.coordinates)
+                    >> List.filter
+                        (\coordinates ->
+                            if sentAttackToCoordinates coordinates then
+                                False
 
-                                        else
-                                            case villageInfoCheckFromCoordinates coordinates of
-                                                Nothing ->
-                                                    True
+                            else
+                                case villageInfoCheckFromCoordinates coordinates of
+                                    Nothing ->
+                                        True
 
-                                                Just coordinatesCheck ->
-                                                    case coordinatesCheck.result of
-                                                        NoVillageThere ->
-                                                            False
-
-                                                        VillageThere village ->
-                                                            village.affiliation == AffiliationBarbarian
-                                    )
-                                >> List.head
-
-                        nextRemainingCoordinates =
-                            {- 2020-03-15 Specialize for runtime expenses:
-                               Adapt to limitations of the current Elm runtime:
-                               Process the coordinates in partitions to reduce computations of results we will not use anyway. In the end, we only take the first element, but the current runtime performs a more eager evaluation.
-                            -}
-                            relativeCoordinatesToSearchForFarmsPartitions
-                                |> List.foldl
-                                    (\coordinatesPartition result ->
-                                        if result /= Nothing then
-                                            result
-
-                                        else
-                                            firstMatchFromRelativeCoordinates coordinatesPartition
-                                    )
-                                    Nothing
-                    in
-                    nextRemainingCoordinates
-                        |> Maybe.map
-                            (\nextCoordinates ->
-                                let
-                                    isCoordinatesInfoRecentEnoughToAttack =
-                                        case villageInfoCheckFromCoordinates nextCoordinates of
-                                            Nothing ->
+                                    Just coordinatesCheck ->
+                                        case coordinatesCheck.result of
+                                            NoVillageThere ->
                                                 False
 
-                                            Just coordinatesInfo ->
-                                                -- Avoid attacking a village that only recently was conquered by a player: Recheck the coordinates if the last check was too long ago.
-                                                botState.timeInMilliseconds < coordinatesInfo.timeInMilliseconds + 10000
-                                in
-                                if isCoordinatesInfoRecentEnoughToAttack then
-                                    AttackAtCoordinates armyPreset nextCoordinates
+                                            VillageThere village ->
+                                                village.affiliation == AffiliationBarbarian
+                        )
+                    >> List.head
 
-                                else
-                                    GetVillageInfoAtCoordinates nextCoordinates
-                            )
+            nextRemainingCoordinates =
+                {- 2020-03-15 Specialize for runtime expenses:
+                   Adapt to limitations of the current Elm runtime:
+                   Process the coordinates in partitions to reduce computations of results we will not use anyway. In the end, we only take the first element, but the current runtime performs a more eager evaluation.
+                -}
+                relativeCoordinatesToSearchForFarmsPartitions
+                    |> List.foldl
+                        (\coordinatesPartition result ->
+                            if result /= Nothing then
+                                result
+
+                            else
+                                firstMatchFromRelativeCoordinates coordinatesPartition
+                        )
+                        Nothing
+        in
+        nextRemainingCoordinates
+            |> Maybe.map
+                (\nextCoordinates ->
+                    let
+                        isCoordinatesInfoRecentEnoughToAttack =
+                            case villageInfoCheckFromCoordinates nextCoordinates of
+                                Nothing ->
+                                    False
+
+                                Just coordinatesInfo ->
+                                    -- Avoid attacking a village that only recently was conquered by a player: Recheck the coordinates if the last check was too long ago.
+                                    botState.timeInMilliseconds < coordinatesInfo.timeInMilliseconds + 10000
+                    in
+                    if isCoordinatesInfoRecentEnoughToAttack then
+                        AttackAtCoordinates armyPreset nextCoordinates
+
+                    else
+                        GetVillageInfoAtCoordinates nextCoordinates
                 )
+            |> Maybe.map ContinueWithThisVillage
+            |> Maybe.withDefault (CompletedThisVillage AllFarmsInSearchedAreaAlreadyAttackedInThisCycle)
+            |> EndDecisionPath
 
 
-computeVillagePresetOptions : List ArmyPreset -> ( Int, VillageDetails ) -> VillagePresetOptions
-computeVillagePresetOptions presets ( villageId, villageDetails ) =
-    let
-        farmPresetFilter =
-            farmArmyPresetNamePattern
+pickBestMatchingArmyPresetForVillage :
+    List ArmyPreset
+    -> ( Int, VillageDetails )
+    -> (ArmyPreset -> DecisionPathNode VillageEndDecisionPathStructure)
+    -> DecisionPathNode VillageEndDecisionPathStructure
+pickBestMatchingArmyPresetForVillage presets ( villageId, villageDetails ) continueWithArmyPreset =
+    if presets |> List.isEmpty then
+        DescribeBranch "Did not find any army presets."
+            (EndDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
 
-        farmPresets =
-            presets
-                |> List.filter (.name >> String.toLower >> String.contains (farmPresetFilter |> String.toLower))
-                |> List.sortBy (.name >> String.toLower)
+    else
+        let
+            farmPresetFilter =
+                farmArmyPresetNamePattern
 
-        farmPresetsEnabledForThisVillage =
-            farmPresets
-                |> List.filter (.assigned_villages >> List.member villageId)
+            farmPresetsMaybeEmpty =
+                presets
+                    |> List.filter (.name >> String.toLower >> String.contains (farmPresetFilter |> String.toLower))
+                    |> List.sortBy (.name >> String.toLower)
+        in
+        case farmPresetsMaybeEmpty of
+            [] ->
+                DescribeBranch ("Found no army presets matching the filter '" ++ farmPresetFilter ++ "'.")
+                    (EndDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
 
-        farmPresetsMatchingAvailableUnits =
-            farmPresetsEnabledForThisVillage
-                |> List.filter
-                    (\preset ->
-                        preset.units
-                            |> Dict.toList
-                            |> List.all
-                                (\( unitId, presetUnitCount ) ->
-                                    presetUnitCount
-                                        <= (villageDetails.units |> Dict.get unitId |> Maybe.map .available |> Maybe.withDefault 0)
-                                )
-                    )
-    in
-    { allPresets = presets
-    , farmPresetFilter = farmPresetFilter
-    , farmPresets = farmPresets
-    , farmPresetsEnabledForThisVillage = farmPresetsEnabledForThisVillage
-    , farmPresetsMatchingAvailableUnits = farmPresetsMatchingAvailableUnits
-    }
+            farmPresets ->
+                case
+                    farmPresets
+                        |> List.filter (.assigned_villages >> List.member villageId)
+                of
+                    [] ->
+                        DescribeBranch
+                            ("Found " ++ (farmPresets |> List.length |> String.fromInt) ++ " army presets for farming, but none enabled for this village.")
+                            (EndDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
+
+                    farmPresetsEnabledForThisVillage ->
+                        let
+                            farmPresetsMatchingAvailableUnits =
+                                farmPresetsEnabledForThisVillage
+                                    |> List.filter
+                                        (\preset ->
+                                            preset.units
+                                                |> Dict.toList
+                                                |> List.all
+                                                    (\( unitId, presetUnitCount ) ->
+                                                        presetUnitCount
+                                                            <= (villageDetails.units |> Dict.get unitId |> Maybe.map .available |> Maybe.withDefault 0)
+                                                    )
+                                        )
+                        in
+                        case farmPresetsMatchingAvailableUnits |> List.head of
+                            Nothing ->
+                                DescribeBranch
+                                    ("Found " ++ (farmPresetsEnabledForThisVillage |> List.length |> String.fromInt) ++ " farming army presets enabled for this village, but not sufficient units available for any of these.")
+                                    (EndDecisionPath (CompletedThisVillage NotEnoughUnits))
+
+                            Just bestMatchingPreset ->
+                                DescribeBranch
+                                    ("Best matching army preset for this village is '" ++ bestMatchingPreset.name ++ "'.")
+                                    (continueWithArmyPreset bestMatchingPreset)
 
 
 relativeCoordinatesToSearchForFarms : List VillageCoordinates
@@ -1490,23 +1565,6 @@ statusMessageFromState state =
                                                 (state.timeInMilliseconds - villageDetailsResponse.timeInMilliseconds)
                                                     // 1000
 
-                                            villageOptions =
-                                                case state.farmState of
-                                                    InFarmCycle farmCycle ->
-                                                        computeVillageActionOptions
-                                                            state
-                                                            farmCycle
-                                                            ( gameRootInformation.selectedVillageId, villageDetailsResponse.villageDetails )
-                                                            |> Just
-
-                                                    InBreak _ ->
-                                                        Nothing
-
-                                            villageOptionsReport =
-                                                villageOptions
-                                                    |> Maybe.map villageOptionsDisplayText
-                                                    |> Maybe.withDefault ""
-
                                             outgoingCommandsCount =
                                                 villageDetailsResponse.villageDetails.commands.outgoing |> List.length
                                         in
@@ -1516,7 +1574,6 @@ statusMessageFromState state =
                                             ++ "'."
                                         , "Last update " ++ (lastUpdateAge |> String.fromInt) ++ " s ago."
                                         , (sumOfAvailableUnits |> String.fromInt) ++ " available units."
-                                        , villageOptionsReport
                                         , (outgoingCommandsCount |> String.fromInt) ++ " outgoing commands."
                                         ]
                                             |> String.join " "
@@ -1579,31 +1636,6 @@ statusMessageFromState state =
         |> String.join "\n"
 
 
-villageOptionsDisplayText : VillageActionOptions -> String
-villageOptionsDisplayText villageActionOptions =
-    {- TODO: Probably unify with the branching in the function to compute the next request to the framework.
-       Because the paths should be the same.
-    -}
-    case villageActionOptions.preset.farmPresetsMatchingAvailableUnits |> List.head of
-        Nothing ->
-            if (villageActionOptions.preset.farmPresetsEnabledForThisVillage |> List.length) == 0 then
-                if (villageActionOptions.preset.farmPresets |> List.length) == 0 then
-                    if (villageActionOptions.preset.allPresets |> List.length) == 0 then
-                        "Did not find any army presets. Maybe loading is not completed yet."
-
-                    else
-                        "Found no army presets matching the filter '" ++ villageActionOptions.preset.farmPresetFilter ++ "'."
-
-                else
-                    "Found " ++ (villageActionOptions.preset.farmPresets |> List.length |> String.fromInt) ++ " army presets for farming, but none enabled for this village."
-
-            else
-                "Found " ++ (villageActionOptions.preset.farmPresetsEnabledForThisVillage |> List.length |> String.fromInt) ++ " farming army presets enabled for this village, but not sufficient units available for any of these."
-
-        Just bestPreset ->
-            "Best matching army preset for this village is '" ++ bestPreset.name ++ "'."
-
-
 countSentAttacks : BotState -> { inSession : Int, inCurrentCycle : Maybe Int }
 countSentAttacks state =
     let
@@ -1637,6 +1669,20 @@ describeRunJavascriptInCurrentPageResponseStructure response =
         ++ ", callbackReturnValueAsString = "
         ++ describeMaybe (describeString 300) response.callbackReturnValueAsString
         ++ "\n}"
+
+
+unpackToDecisionStagesDescriptionsAndLeaf : DecisionPathNode leaf -> ( List String, leaf )
+unpackToDecisionStagesDescriptionsAndLeaf node =
+    case node of
+        EndDecisionPath leaf ->
+            ( [], leaf )
+
+        DescribeBranch branchDescription childNode ->
+            let
+                ( childDecisionsDescriptions, leaf ) =
+                    unpackToDecisionStagesDescriptionsAndLeaf childNode
+            in
+            ( branchDescription :: childDecisionsDescriptions, leaf )
 
 
 describeString : Int -> String -> String

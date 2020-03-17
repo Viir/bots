@@ -63,8 +63,8 @@ farmArmyPresetNamePattern =
     "farm"
 
 
-reloadWebPageInterval : Int
-reloadWebPageInterval =
+restartGameClientInterval : Int
+restartGameClientInterval =
     60 * 15
 
 
@@ -93,6 +93,11 @@ searchFarmsRadiusAroundOwnVillage =
     30
 
 
+readFromGameTimeoutCountThresholdToRestart : Int
+readFromGameTimeoutCountThresholdToRestart =
+    5
+
+
 type alias BotState =
     { timeInMilliseconds : Int
     , settings : BotSettings
@@ -108,10 +113,12 @@ type alias BotState =
     , getArmyPresetsResult : Maybe (List ArmyPreset)
     , lastJumpToCoordinates : Maybe { timeInMilliseconds : Int, coordinates : VillageCoordinates }
     , coordinatesLastCheck : Dict.Dict ( Int, Int ) { timeInMilliseconds : Int, result : VillageByCoordinatesResult }
+    , readFromGameConsecutiveTimeoutsCount : Int
     , farmState : FarmState
     , lastAttackTimeInMilliseconds : Maybe Int
     , lastActivatedVillageTimeInMilliseconds : Maybe Int
     , lastReloadPageTimeInSeconds : Maybe Int
+    , reloadPageCount : Int
     , completedFarmCycles : List FarmCycleState
     , parseResponseError : Maybe Json.Decode.Error
     }
@@ -276,18 +283,27 @@ initState =
         , getArmyPresetsResult = Nothing
         , lastJumpToCoordinates = Nothing
         , coordinatesLastCheck = Dict.empty
+        , readFromGameConsecutiveTimeoutsCount = 0
         , farmState = InFarmCycle initFarmCycle
         , lastAttackTimeInMilliseconds = Nothing
         , lastActivatedVillageTimeInMilliseconds = Nothing
         , lastReloadPageTimeInSeconds = Nothing
+        , reloadPageCount = 0
         , completedFarmCycles = []
         , parseResponseError = Nothing
         }
 
 
-shouldReloadWebPage : BotState -> Bool
-shouldReloadWebPage state =
-    reloadWebPageInterval < (state.timeInMilliseconds // 1000) - (state.lastReloadPageTimeInSeconds |> Maybe.withDefault 0)
+reasonToRestartGameClientFromBotState : BotState -> Maybe String
+reasonToRestartGameClientFromBotState state =
+    if restartGameClientInterval < (state.timeInMilliseconds // 1000) - (state.lastReloadPageTimeInSeconds |> Maybe.withDefault 0) then
+        Just ("Last restart was more than " ++ (restartGameClientInterval |> String.fromInt) ++ " seconds ago.")
+
+    else if readFromGameTimeoutCountThresholdToRestart < state.readFromGameConsecutiveTimeoutsCount then
+        Just ("Reading from game timed out consecutively more than " ++ (readFromGameTimeoutCountThresholdToRestart |> String.fromInt) ++ " times.")
+
+    else
+        Nothing
 
 
 initFarmCycle : FarmCycleState
@@ -422,6 +438,8 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                                                                                             ( reloadPageScript
                                                                                             , { stateBefore
                                                                                                 | lastReloadPageTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
+                                                                                                , reloadPageCount = stateBefore.reloadPageCount + 1
+                                                                                                , readFromGameConsecutiveTimeoutsCount = 0
                                                                                               }
                                                                                             )
                                                                             in
@@ -682,12 +700,17 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                     case runJavascriptInCurrentPageResponse.callbackReturnValueAsString of
                         Nothing ->
                             -- This case indicates the timeout while waiting for the result from the callback.
-                            stateAfterRememberJump
+                            { stateAfterRememberJump
+                                | readFromGameConsecutiveTimeoutsCount = stateAfterRememberJump.readFromGameConsecutiveTimeoutsCount + 1
+                            }
 
                         Just callbackReturnValueAsString ->
                             case callbackReturnValueAsString |> Json.Decode.decodeString decodeVillageByCoordinatesResult of
                                 Err error ->
-                                    { stateAfterRememberJump | parseResponseError = Just error }
+                                    { stateAfterRememberJump
+                                        | parseResponseError = Just error
+                                        , readFromGameConsecutiveTimeoutsCount = 0
+                                    }
 
                                 Ok villageByCoordinates ->
                                     { stateAfterRememberJump
@@ -698,6 +721,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                                                     { timeInMilliseconds = stateAfterRememberJump.timeInMilliseconds
                                                     , result = villageByCoordinates
                                                     }
+                                        , readFromGameConsecutiveTimeoutsCount = 0
                                     }
 
                 SendFirstPresetAsAttackToCoordinatesResponse sendFirstPresetAsAttackToCoordinatesResponse ->
@@ -744,26 +768,27 @@ decideInFarmCycle botState farmCycleState =
                 (EndDecisionPath (ContinueFarmCycle Nothing))
 
         Nothing ->
-            if botState |> shouldReloadWebPage then
-                DescribeBranch
-                    "Reload the web page."
-                    (EndDecisionPath (ContinueFarmCycle (Just ReloadWebPage)))
-
-            else
-                let
-                    waitAfterJumpedToCoordinates =
-                        botState.lastJumpToCoordinates
-                            |> Maybe.map
-                                (\lastJumpToCoordinates -> botState.timeInMilliseconds - lastJumpToCoordinates.timeInMilliseconds < 1100)
-                            |> Maybe.withDefault False
-                in
-                if waitAfterJumpedToCoordinates then
+            case botState |> reasonToRestartGameClientFromBotState of
+                Just reasonToRestartGameClient ->
                     DescribeBranch
-                        "Waiting after jumping to village."
-                        (EndDecisionPath (ContinueFarmCycle Nothing))
+                        ("Restart the game client (" ++ reasonToRestartGameClient ++ ").")
+                        (EndDecisionPath (ContinueFarmCycle (Just ReloadWebPage)))
 
-                else
-                    decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState
+                Nothing ->
+                    let
+                        waitAfterJumpedToCoordinates =
+                            botState.lastJumpToCoordinates
+                                |> Maybe.map
+                                    (\lastJumpToCoordinates -> botState.timeInMilliseconds - lastJumpToCoordinates.timeInMilliseconds < 1100)
+                                |> Maybe.withDefault False
+                    in
+                    if waitAfterJumpedToCoordinates then
+                        DescribeBranch
+                            "Waiting after jumping to village."
+                            (EndDecisionPath (ContinueFarmCycle Nothing))
+
+                    else
+                        decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState
 
 
 decideInFarmCycleWhenNotWaitingGlobally : BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
@@ -1687,7 +1712,12 @@ statusMessageFromState state =
                 |> lastReloadPageAgeInSecondsFromState
                 |> Maybe.map
                     (\lastReloadPageAgeInSeconds ->
-                        [ "Reloaded the web page " ++ ((lastReloadPageAgeInSeconds // 60) |> String.fromInt) ++ " minutes ago." ]
+                        [ "Reloaded the web page "
+                            ++ (state.reloadPageCount |> String.fromInt)
+                            ++ " times, last time was "
+                            ++ ((lastReloadPageAgeInSeconds // 60) |> String.fromInt)
+                            ++ " minutes ago."
+                        ]
                     )
                 |> Maybe.withDefault []
 

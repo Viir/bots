@@ -94,20 +94,43 @@ For more about purchasing and using credits, see the guide at [https://forum.bot
 
 ### Starting an Online Bot Session
 
-To start an online bot session, use the `--key-to-start-online-session` parameter with the `run-bot` command.
-
-The complete parameter looks like this:
-
-`--key-to-start-online-session=33168cd96cc3c1842b6fb`
-
-Replace the part after the equals sign ('=') with your secret key.
-
-To get your key, go to https://app.botengine.org and log in to your account. After logging in, you see the key under `Online session keys`. Please don't share this key with anyone, and don't post it on the forum.
+To start an online session, use the `--online-session` option with the `run-bot` command.
 
 Below is an example of a full command to run a bot in an online session:
 ```cmd
-botengine  run-bot  --key-to-start-online-session=33168cd96cc3c1842b6fb  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/templates/remember-bot-configuration"
+botengine  run-bot  --online-session  "https://github.com/Viir/bots/tree/652ed9fc83aa3f04cb21c1cbf28911201bd53925/implement/templates/remember-app-settings"
 ```
+
+If you have not set up your system for online sessions, the engine then stops with this error:
+
+```cmd
+Error: You used the '--online-session' option, but I did not find a stored default online session key. Use the 'online-session-key  store-default-key' command to store a key.
+```
+
+To get your key, go to https://app.botengine.org and log in to your account. After logging in, you see a section titled `Online session keys`. In this section, there is an entry for a key, containing a button labeled `Show key`. Clicking this button reveals your key. Please don't share this key with anyone, and don't post it on the forum.
+
+Besides the key itself, clicking the `Show key` button also reveals the complete command you can use to store the key on your system:
+
+![Web UI displaying online session key and a command to store the key](./image/2020-03-18-botengine-web-ui-online-session-keys.png)
+
+Copy that command from the web page into the Windows Command Prompt and execute it.
+
+The program then confirms:
+
+```text
+I stored this as the default key. You can now use it with the 'run-bot' command by adding the '--online-session' option.
+```
+
+Now you can use the `run-bot` command again to start the online session.
+
+After the online session is started, you can also see it at https://app.botengine.org/ under `Most recent bot sessions`:
+
+![List of most recent bot sessions](./image/2020-03-18-botengine-most-recent-sessions.png)
+
+
+Clicking on the session ID brings you to the details view of the session, where you can also see the status reported by the bot.
+
+The sessions under `Most recent bot sessions` are still available after stopping the Windows app, so you can continue to view details of past sessions.
 
 ## Getting Help
 

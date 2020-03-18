@@ -56,19 +56,19 @@ You can pause bot operation by pressing the `CTRL` + `ALT` keys. To let the bot 
 
 Some bots offer customization using settings. When starting a bot from the command line, you can use the `--app-settings` parameter to apply settings. The complete command line can then look as follows:
 ```cmd
-C:\path\to\the\botengine.exe  run-bot  --app-settings="My app settings"  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/templates/remember-bot-configuration"
+C:\path\to\the\botengine.exe  run-bot  --app-settings="My app settings"  "https://github.com/Viir/bots/tree/c4911ff9a0c3a279209e31a61b63bfa736c8f3c5/implement/templates/remember-app-settings"
 ```
 
 The supported settings depend entirely on the bot that you chose. To learn which settings are supported in your case, read the description for the bot or contact its author.
 
 ## Viewing Bot Description
 
-Authors often include a human-readable description with the bot code, for example, in [this EVE Online mining bot](https://github.com/Viir/bots/tree/2445085fc42782c1430ade867f773c2eaa71ee9e/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
+Authors often include a human-readable description with the bot code, for example, in [this EVE Online mining bot](https://github.com/Viir/bots/blob/c4911ff9a0c3a279209e31a61b63bfa736c8f3c5/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
 
 You can display this description using the `describe-bot` command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  describe-bot  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+C:\path\to\the\BotEngine.exe  describe-bot  "https://github.com/Viir/bots/blob/c4911ff9a0c3a279209e31a61b63bfa736c8f3c5/implement/applications/eve-online/eve-online-mining-bot"
 ```
 
 The `describe-bot` command works with any bot source that is supported by the `run-bot` command.

@@ -31,7 +31,7 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 To start the mining bot, you use almost the same command as shown in the guide on the warp-to-0 autopilot bot. The only difference is that to start the mining bot, you supply a different bot source. This is the whole command to run the mining bot:
 
 ```cmd
-botengine  run-bot  https://github.com/Viir/bots/tree/0e9ead6bf75411e7e93f07bfa6eabb28830b35c5/implement/applications/eve-online/eve-online-mining-bot
+botengine  run-bot  https://github.com/Viir/bots/tree/c4911ff9a0c3a279209e31a61b63bfa736c8f3c5/implement/applications/eve-online/eve-online-mining-bot
 ```
 
 In case the bot does not work as expected, the first place to look is in the status message of the bot. Depending on what the bot is seeing and doing at the moment, it can display many different status messages.

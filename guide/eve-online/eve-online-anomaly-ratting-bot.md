@@ -15,7 +15,7 @@ This bot uses the probe scanner to warp to anomalies and kills rats using drones
 + To start the autopilot bot, run the `BotEngine.exe` program with the following command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/9d172423b89829e7c67321a16f1af2771e3b618b/implement/applications/eve-online/eve-online-anomaly-ratting-bot"
+C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/c4911ff9a0c3a279209e31a61b63bfa736c8f3c5/implement/applications/eve-online/eve-online-anomaly-ratting-bot"
 ```
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
 

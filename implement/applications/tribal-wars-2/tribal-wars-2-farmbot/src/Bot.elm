@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-03-17
+{- Tribal Wars 2 farmbot version 2020-03-18
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -58,6 +58,14 @@ defaultBotSettings =
     }
 
 
+parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
+parseBotSettingsNames =
+    [ ( "number-of-farm-cycles", parseBotSettingInt (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles }) )
+    , ( "break-duration", parseBotSettingBreakDurationMinutes )
+    ]
+        |> Dict.fromList
+
+
 farmArmyPresetNamePattern : String
 farmArmyPresetNamePattern =
     "farm"
@@ -101,7 +109,7 @@ readFromGameTimeoutCountThresholdToRestart =
 type alias BotState =
     { timeInMilliseconds : Int
     , settings : BotSettings
-    , lastRequest : Maybe { timeInMilliseconds : Int, decision : DecisionPathNode InFarmCycleResponse }
+    , currentActivity : Maybe { beginTimeInMilliseconds : Int, decision : DecisionPathNode InFarmCycleResponse }
     , lastRunJavascriptResult :
         Maybe
             { timeInMilliseconds : Int
@@ -276,7 +284,7 @@ initState =
     BotFramework.initState
         { timeInMilliseconds = 0
         , settings = defaultBotSettings
-        , lastRequest = Nothing
+        , currentActivity = Nothing
         , lastRunJavascriptResult = Nothing
         , gameRootInformationResult = Nothing
         , ownVillagesDetails = Dict.empty
@@ -324,24 +332,24 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
 
         Ok stateBefore ->
             let
-                maybeWaitForPendingRequestActivityDecision =
-                    case stateBefore.lastRequest of
+                maybeCurrentActivityToWaitFor =
+                    case stateBefore.currentActivity of
                         Nothing ->
                             Nothing
 
-                        Just lastRequest ->
+                        Just currentActivity ->
                             let
                                 pendingRequestTimeInMilliseconds =
                                     case stateBefore.lastRunJavascriptResult of
                                         Nothing ->
-                                            Just lastRequest.timeInMilliseconds
+                                            Just currentActivity.beginTimeInMilliseconds
 
                                         Just lastRunJavascriptResult ->
-                                            if lastRequest.timeInMilliseconds < lastRunJavascriptResult.timeInMilliseconds then
+                                            if currentActivity.beginTimeInMilliseconds < lastRunJavascriptResult.timeInMilliseconds then
                                                 Nothing
 
                                             else
-                                                Just lastRequest.timeInMilliseconds
+                                                Just currentActivity.beginTimeInMilliseconds
 
                                 waitTimeLimits =
                                     [ stateBefore.lastRunJavascriptResult |> Maybe.map (.timeInMilliseconds >> (+) 500)
@@ -350,16 +358,16 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                                         |> List.filterMap identity
                             in
                             if stateBefore.timeInMilliseconds < (waitTimeLimits |> List.maximum |> Maybe.withDefault 0) then
-                                Just lastRequest.decision
+                                Just currentActivity.decision
 
                             else
                                 Nothing
             in
             let
                 ( activityDecision, maybeUpdatedState ) =
-                    case maybeWaitForPendingRequestActivityDecision of
-                        Just waitForPendingRequestActivityDecision ->
-                            ( waitForPendingRequestActivityDecision
+                    case maybeCurrentActivityToWaitFor of
+                        Just currentActivityToWaitFor ->
+                            ( currentActivityToWaitFor
                                 |> continueDecisionTree
                                     (always
                                         (DescribeBranch "Wait for completion of request to framework."
@@ -370,153 +378,12 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                             )
 
                         Nothing ->
-                            let
-                                ( activityDecisionNotWaiting, lastRequest, updatedStateNotWaiting ) =
-                                    case stateBefore.farmState of
-                                        InBreak farmBreak ->
-                                            if stateBefore.settings.numberOfFarmCycles <= (stateBefore.completedFarmCycles |> List.length) then
-                                                ( DescribeBranch
-                                                    -- TODO: This branch should move to where currently switching to break.
-                                                    ("Finished all " ++ (stateBefore.completedFarmCycles |> List.length |> String.fromInt) ++ " farm cycles.")
-                                                    (EndDecisionPath BotFramework.FinishSession)
-                                                , Nothing
-                                                , stateBefore
-                                                )
-
-                                            else
-                                                let
-                                                    minutesSinceLastFarmCycleCompletion =
-                                                        (stateBefore.timeInMilliseconds // 1000 - farmBreak.lastCycleCompletionTime) // 60
-
-                                                    minutesToNextFarmCycleStart =
-                                                        (farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000) // 60
-
-                                                    stateAfterStartingFarmCycle =
-                                                        if minutesToNextFarmCycleStart < 1 then
-                                                            { stateBefore | farmState = InFarmCycle initFarmCycle }
-
-                                                        else
-                                                            stateBefore
-                                                in
-                                                ( DescribeBranch
-                                                    ("Next farm cycle starts in "
-                                                        ++ (minutesToNextFarmCycleStart |> String.fromInt)
-                                                        ++ " minutes. Last cycle completed "
-                                                        ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
-                                                        ++ " minutes ago."
-                                                    )
-                                                    (EndDecisionPath (BotFramework.ContinueSession Nothing))
-                                                , Nothing
-                                                , stateAfterStartingFarmCycle
-                                                )
-
-                                        InFarmCycle farmCycleStateBefore ->
-                                            let
-                                                decisionInFarmCycle =
-                                                    decideInFarmCycle stateBefore farmCycleStateBefore
-
-                                                ( _, decisionInFarmCycleLeaf ) =
-                                                    unpackToDecisionStagesDescriptionsAndLeaf decisionInFarmCycle
-
-                                                ( newLeaf, lastRequestInFarmCycle, updatedStateInFarmCycle ) =
-                                                    case decisionInFarmCycleLeaf of
-                                                        ContinueFarmCycle continueFarmCycleActivity ->
-                                                            let
-                                                                ( maybeRequest, updatedStateFromContinueCycle ) =
-                                                                    case continueFarmCycleActivity of
-                                                                        Nothing ->
-                                                                            ( Nothing, stateBefore )
-
-                                                                        Just activity ->
-                                                                            let
-                                                                                ( javascriptToRun, updatedStateForActivity ) =
-                                                                                    case activity of
-                                                                                        RunJavascript javascript ->
-                                                                                            ( javascript, stateBefore )
-
-                                                                                        ReloadWebPage ->
-                                                                                            ( reloadPageScript
-                                                                                            , { stateBefore
-                                                                                                | lastReloadPageTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
-                                                                                                , reloadPageCount = stateBefore.reloadPageCount + 1
-                                                                                                , readFromGameConsecutiveTimeoutsCount = 0
-                                                                                              }
-                                                                                            )
-                                                                            in
-                                                                            ( Just
-                                                                                (BotFramework.RunJavascriptInCurrentPageRequest
-                                                                                    { javascript = javascriptToRun
-                                                                                    , requestId = "request-id"
-                                                                                    , timeToWaitForCallbackMilliseconds = 1000
-                                                                                    }
-                                                                                )
-                                                                            , updatedStateForActivity
-                                                                            )
-                                                            in
-                                                            ( EndDecisionPath (BotFramework.ContinueSession maybeRequest)
-                                                            , Just
-                                                                { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                                                , decision = decisionInFarmCycle
-                                                                }
-                                                            , updatedStateFromContinueCycle
-                                                            )
-
-                                                        FinishFarmCycle ->
-                                                            let
-                                                                completedFarmCycles =
-                                                                    farmCycleStateBefore :: stateBefore.completedFarmCycles
-
-                                                                currentTimeInSeconds =
-                                                                    stateBefore.timeInMilliseconds // 1000
-
-                                                                breakLengthRange =
-                                                                    (stateBefore.settings.breakDurationMaxMinutes
-                                                                        - stateBefore.settings.breakDurationMinMinutes
-                                                                    )
-                                                                        * 60
-
-                                                                breakLengthRandomComponent =
-                                                                    if breakLengthRange == 0 then
-                                                                        0
-
-                                                                    else
-                                                                        stateBefore.timeInMilliseconds |> modBy breakLengthRange
-
-                                                                breakLength =
-                                                                    (stateBefore.settings.breakDurationMinMinutes * 60) + breakLengthRandomComponent
-
-                                                                nextCycleStartTime =
-                                                                    currentTimeInSeconds + breakLength
-
-                                                                farmState =
-                                                                    InBreak
-                                                                        { lastCycleCompletionTime = currentTimeInSeconds
-                                                                        , nextCycleStartTime = nextCycleStartTime
-                                                                        }
-
-                                                                stateAfterFinishingFarmCycle =
-                                                                    { stateBefore
-                                                                        | farmState = farmState
-                                                                        , completedFarmCycles = completedFarmCycles
-                                                                    }
-                                                            in
-                                                            ( DescribeBranch "There is nothing left to do in this farm cycle."
-                                                                (EndDecisionPath (BotFramework.ContinueSession Nothing))
-                                                            , Nothing
-                                                            , stateAfterFinishingFarmCycle
-                                                            )
-                                            in
-                                            ( decisionInFarmCycle
-                                                |> continueDecisionTree (always newLeaf)
-                                            , lastRequestInFarmCycle
-                                            , updatedStateInFarmCycle
-                                            )
-                            in
-                            ( activityDecisionNotWaiting
-                                |> continueDecisionTree
-                                    (\originalLeaf -> DescribeBranch "Request to framework." (EndDecisionPath originalLeaf))
-                            , Just { updatedStateNotWaiting | lastRequest = lastRequest }
-                            )
+                            decideNextAction { stateBefore | currentActivity = Nothing }
+                                |> Tuple.mapSecond Just
+                                |> Tuple.mapFirst
+                                    (continueDecisionTree
+                                        (\originalLeaf -> DescribeBranch "Request to framework." (EndDecisionPath originalLeaf))
+                                    )
 
                 ( activityDecisionStages, responseToFramework ) =
                     activityDecision
@@ -532,6 +399,149 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
             , response = responseToFramework
             , statusMessage = statusMessageFromState stateBefore ++ "\nCurrent activity:\n" ++ activityDescription
             }
+
+
+decideNextAction : BotState -> ( DecisionPathNode BotResponse, BotState )
+decideNextAction stateBefore =
+    case stateBefore.farmState of
+        InBreak farmBreak ->
+            let
+                minutesSinceLastFarmCycleCompletion =
+                    (stateBefore.timeInMilliseconds // 1000 - farmBreak.lastCycleCompletionTime) // 60
+
+                minutesToNextFarmCycleStart =
+                    (farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000) // 60
+            in
+            if minutesToNextFarmCycleStart < 1 then
+                ( DescribeBranch "Start next farm cycle."
+                    (EndDecisionPath (BotFramework.ContinueSession Nothing))
+                , { stateBefore | farmState = InFarmCycle initFarmCycle }
+                )
+
+            else
+                ( DescribeBranch
+                    ("Next farm cycle starts in "
+                        ++ (minutesToNextFarmCycleStart |> String.fromInt)
+                        ++ " minutes. Last cycle completed "
+                        ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
+                        ++ " minutes ago."
+                    )
+                    (EndDecisionPath (BotFramework.ContinueSession Nothing))
+                , stateBefore
+                )
+
+        InFarmCycle farmCycleState ->
+            let
+                decisionInFarmCycle =
+                    decideInFarmCycle stateBefore farmCycleState
+
+                ( _, decisionInFarmCycleLeaf ) =
+                    unpackToDecisionStagesDescriptionsAndLeaf decisionInFarmCycle
+
+                ( newLeaf, maybeActivityInFarmCycle, updatedStateInFarmCycle ) =
+                    case decisionInFarmCycleLeaf of
+                        ContinueFarmCycle continueFarmCycleActivity ->
+                            let
+                                ( maybeRequest, updatedStateFromContinueCycle ) =
+                                    case continueFarmCycleActivity of
+                                        Nothing ->
+                                            ( Nothing, stateBefore )
+
+                                        Just activity ->
+                                            let
+                                                ( javascriptToRun, updatedStateForActivity ) =
+                                                    case activity of
+                                                        RunJavascript javascript ->
+                                                            ( javascript, stateBefore )
+
+                                                        ReloadWebPage ->
+                                                            ( reloadPageScript
+                                                            , { stateBefore
+                                                                | lastReloadPageTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
+                                                                , reloadPageCount = stateBefore.reloadPageCount + 1
+                                                                , readFromGameConsecutiveTimeoutsCount = 0
+                                                              }
+                                                            )
+                                            in
+                                            ( Just
+                                                (BotFramework.RunJavascriptInCurrentPageRequest
+                                                    { javascript = javascriptToRun
+                                                    , requestId = "request-id"
+                                                    , timeToWaitForCallbackMilliseconds = 1000
+                                                    }
+                                                )
+                                            , updatedStateForActivity
+                                            )
+                            in
+                            ( EndDecisionPath (BotFramework.ContinueSession maybeRequest)
+                            , Just decisionInFarmCycle
+                            , updatedStateFromContinueCycle
+                            )
+
+                        FinishFarmCycle ->
+                            let
+                                completedFarmCycles =
+                                    farmCycleState :: stateBefore.completedFarmCycles
+
+                                currentTimeInSeconds =
+                                    stateBefore.timeInMilliseconds // 1000
+
+                                breakLengthRange =
+                                    (stateBefore.settings.breakDurationMaxMinutes
+                                        - stateBefore.settings.breakDurationMinMinutes
+                                    )
+                                        * 60
+
+                                breakLengthRandomComponent =
+                                    if breakLengthRange == 0 then
+                                        0
+
+                                    else
+                                        stateBefore.timeInMilliseconds |> modBy breakLengthRange
+
+                                breakLength =
+                                    (stateBefore.settings.breakDurationMinMinutes * 60) + breakLengthRandomComponent
+
+                                nextCycleStartTime =
+                                    currentTimeInSeconds + breakLength
+
+                                farmState =
+                                    InBreak
+                                        { lastCycleCompletionTime = currentTimeInSeconds
+                                        , nextCycleStartTime = nextCycleStartTime
+                                        }
+
+                                stateAfterFinishingFarmCycle =
+                                    { stateBefore
+                                        | farmState = farmState
+                                        , completedFarmCycles = completedFarmCycles
+                                    }
+                            in
+                            ( DescribeBranch "There is nothing left to do in this farm cycle."
+                                (if stateBefore.settings.numberOfFarmCycles <= (stateAfterFinishingFarmCycle.completedFarmCycles |> List.length) then
+                                    DescribeBranch
+                                        ("Finished all " ++ (stateAfterFinishingFarmCycle.completedFarmCycles |> List.length |> String.fromInt) ++ " farm cycles.")
+                                        (EndDecisionPath BotFramework.FinishSession)
+
+                                 else
+                                    DescribeBranch "Enter break."
+                                        (EndDecisionPath (BotFramework.ContinueSession Nothing))
+                                )
+                            , Nothing
+                            , stateAfterFinishingFarmCycle
+                            )
+
+                currentActivity =
+                    maybeActivityInFarmCycle
+                        |> Maybe.map
+                            (\activityInFarmCycle ->
+                                { decision = activityInFarmCycle, beginTimeInMilliseconds = stateBefore.timeInMilliseconds }
+                            )
+            in
+            ( decisionInFarmCycle
+                |> continueDecisionTree (always newLeaf)
+            , { updatedStateInFarmCycle | currentActivity = currentActivity }
+            )
 
 
 parseBotSettingInt : (Int -> BotSettings -> BotSettings) -> String -> Result String (BotSettings -> BotSettings)
@@ -599,14 +609,6 @@ parseBotSettingBreakDurationMinutes breakDurationString =
                     _ ->
                         Err "Missing value"
             )
-
-
-parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
-parseBotSettingsNames =
-    [ ( "break-duration", parseBotSettingBreakDurationMinutes )
-    , ( "number-of-farm-cycles", parseBotSettingInt (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles }) )
-    ]
-        |> Dict.fromList
 
 
 integrateWebBrowserBotEvent : BotEvent -> BotState -> Result String BotState

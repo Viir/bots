@@ -3,9 +3,10 @@
    + Read from the game client using Sanderling memory reading and parse the user interface from the memory reading (https://github.com/Arcitectus/Sanderling).
    + Play sounds.
    + Send mouse and keyboard input to the game client.
-   + Transmit the bot configuration from the host.
+   + Forward the app settings from the host.
 
    The framework automatically selects an EVE Online client process and finishes the session when that process disappears.
+   When multiple game clients are open, the framework prioritizes the one with the topmost window. This approach helps users control which game client is picked by an app.
    To use the framework, import this module and use the `initState` and `processEvent` functions.
 -}
 
@@ -22,7 +23,7 @@ module EveOnline.BotFramework exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Common.FNV
 import Dict
 import EveOnline.MemoryReading
@@ -53,7 +54,7 @@ type BotEffect
 
 type alias BotEventContext =
     { timeInMilliseconds : Int
-    , configuration : Maybe String
+    , appSettings : Maybe String
     , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
@@ -64,7 +65,7 @@ type alias StateIncludingFramework botState =
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
     , taskInProgress : Maybe { startTimeInMilliseconds : Int, taskIdString : String, taskDescription : String }
-    , configuration : Maybe String
+    , appSettings : Maybe String
     , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
@@ -124,7 +125,7 @@ initState botState =
     , timeInMilliseconds = 0
     , lastTaskIndex = 0
     , taskInProgress = Nothing
-    , configuration = Nothing
+    , appSettings = Nothing
     , sessionTimeLimitInMilliseconds = Nothing
     }
 
@@ -350,8 +351,8 @@ integrateFromHostEvent fromHostEvent stateBefore =
                     in
                     ( { stateBefore | setup = setupState, taskInProgress = Nothing }, maybeBotEventFromTaskComplete )
 
-                InterfaceToHost.SetBotConfiguration newBotConfiguration ->
-                    ( { stateBefore | configuration = Just newBotConfiguration }, Nothing )
+                InterfaceToHost.SetAppSettings appSettings ->
+                    ( { stateBefore | appSettings = Just appSettings }, Nothing )
 
                 InterfaceToHost.SetSessionTimeLimit sessionTimeLimit ->
                     ( { stateBefore | sessionTimeLimitInMilliseconds = Just sessionTimeLimit.timeInMilliseconds }, Nothing )
@@ -362,7 +363,7 @@ integrateFromHostEvent fromHostEvent stateBefore =
             (\botEvent ->
                 ( botEvent
                 , { timeInMilliseconds = state.timeInMilliseconds
-                  , configuration = state.configuration
+                  , appSettings = state.appSettings
                   , sessionTimeLimitInMilliseconds = state.sessionTimeLimitInMilliseconds
                   }
                 )

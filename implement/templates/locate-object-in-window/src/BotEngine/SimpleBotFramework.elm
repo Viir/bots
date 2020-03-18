@@ -43,7 +43,7 @@ module BotEngine.SimpleBotFramework exposing
     , taskIdFromString
     )
 
-import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import BotEngine.VolatileHostWindowsApi as VolatileHostWindowsApi
 import Dict
 import Json.Decode
@@ -51,7 +51,7 @@ import Json.Decode
 
 type BotEvent
     = ArrivedAtTime { timeInMilliseconds : Int }
-    | SetBotConfiguration String
+    | SetAppSettings String
     | SetSessionTimeLimit { timeInMilliseconds : Int }
     | CompletedTask CompletedTaskStructure
 
@@ -136,7 +136,7 @@ type alias State simpleBotState =
     , lastWindowTitleMeasurement : Maybe { timeInMilliseconds : Int, windowTitle : String }
     , waitingForTaskId : Maybe InterfaceToHost.TaskId
     , error : Maybe String
-    , configuration : Maybe String
+    , settingsString : Maybe String
     , simpleBotInitState : simpleBotState
     , simpleBot : Maybe simpleBotState
     , simpleBotLastResponse : Maybe BotResponse
@@ -169,7 +169,7 @@ initState simpleBotInitState =
     , lastWindowTitleMeasurement = Nothing
     , waitingForTaskId = Nothing
     , error = Nothing
-    , configuration = Nothing
+    , settingsString = Nothing
     , simpleBotInitState = simpleBotInitState
     , simpleBot = Nothing
     , simpleBotLastResponse = Nothing
@@ -219,12 +219,12 @@ processEvent simpleBotProcessEvent event stateBefore =
                                 Nothing ->
                                     let
                                         configurationEvents =
-                                            case state.configuration of
+                                            case state.settingsString of
                                                 Nothing ->
                                                     []
 
-                                                Just configuration ->
-                                                    [ SetBotConfiguration configuration ]
+                                                Just settingsString ->
+                                                    [ SetAppSettings settingsString ]
                                     in
                                     ( stateBefore.simpleBotInitState
                                     , configurationEvents
@@ -262,8 +262,8 @@ processEvent simpleBotProcessEvent event stateBefore =
                                 InterfaceToHost.ArrivedAtTime arrivedAtTime ->
                                     Ok ( [], state.simpleBotTasksInProgress )
 
-                                InterfaceToHost.SetBotConfiguration setBotConfiguration ->
-                                    Ok ( [ SetBotConfiguration setBotConfiguration ], state.simpleBotTasksInProgress )
+                                InterfaceToHost.SetAppSettings settingsString ->
+                                    Ok ( [ SetAppSettings settingsString ], state.simpleBotTasksInProgress )
 
                                 InterfaceToHost.SetSessionTimeLimit setSessionTimeLimit ->
                                     Ok ( [ SetSessionTimeLimit setSessionTimeLimit ], state.simpleBotTasksInProgress )
@@ -610,8 +610,8 @@ integrateEvent event stateBefore =
         InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
             { stateBefore | timeInMilliseconds = timeInMilliseconds }
 
-        InterfaceToHost.SetBotConfiguration configuration ->
-            { stateBefore | configuration = Just configuration }
+        InterfaceToHost.SetAppSettings settingsString ->
+            { stateBefore | settingsString = Just settingsString }
 
         InterfaceToHost.CompletedTask { taskId, taskResult } ->
             case taskResult of

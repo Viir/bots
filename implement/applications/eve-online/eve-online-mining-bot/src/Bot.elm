@@ -1,4 +1,4 @@
-{- Michaels EVE Online mining bot version 2020-03-12
+{- EVE Online mining bot version 2020-03-18
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -26,7 +26,7 @@ module Bot exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Dict
 import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
 import EveOnline.MemoryReading
@@ -52,7 +52,7 @@ defaultBotSettings =
     }
 
 
-{-| Names to support with the `--bot-configuration`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot>
+{-| Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot>
 -}
 parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
 parseBotSettingsNames =
@@ -456,7 +456,7 @@ processEveOnlineBotEvent :
     -> BotState
     -> ( BotState, EveOnline.BotFramework.BotEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
-    case parseSettingsFromString defaultBotSettings (eventContext.configuration |> Maybe.withDefault "") of
+    case parseSettingsFromString defaultBotSettings (eventContext.appSettings |> Maybe.withDefault "") of
         Err parseSettingsError ->
             ( stateBefore
             , EveOnline.BotFramework.FinishSession { statusDescriptionText = "Failed to parse bot settings: " ++ parseSettingsError }

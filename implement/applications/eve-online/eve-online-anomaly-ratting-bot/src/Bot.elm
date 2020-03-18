@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-03-12
+{- EVE Online anomaly ratting bot version 2020-03-18
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -23,7 +23,7 @@ module Bot exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Dict
 import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
 import EveOnline.MemoryReading
@@ -51,7 +51,7 @@ defaultBotSettings =
     }
 
 
-{-| Names to support with the `--bot-configuration`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot>
+{-| Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot>
 -}
 parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
 parseBotSettingsNames =
@@ -508,7 +508,7 @@ processEveOnlineBotEvent :
     -> BotState
     -> ( BotState, EveOnline.BotFramework.BotEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
-    case parseSettingsFromString defaultBotSettings (eventContext.configuration |> Maybe.withDefault "") of
+    case parseSettingsFromString defaultBotSettings (eventContext.appSettings |> Maybe.withDefault "") of
         Err parseSettingsError ->
             ( stateBefore
             , EveOnline.BotFramework.FinishSession { statusDescriptionText = "Failed to parse bot settings: " ++ parseSettingsError }

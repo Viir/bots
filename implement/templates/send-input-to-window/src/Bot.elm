@@ -14,7 +14,7 @@ module Bot exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import BotEngine.SimpleBotFramework as SimpleBotFramework
     exposing
         ( bringWindowToForeground
@@ -129,7 +129,7 @@ integrateEvent event stateBefore =
         SimpleBotFramework.ArrivedAtTime arrivedAtTime ->
             { stateBefore | timeInMilliseconds = arrivedAtTime.timeInMilliseconds }
 
-        SimpleBotFramework.SetBotConfiguration _ ->
+        SimpleBotFramework.SetAppSettings _ ->
             stateBefore
 
         SimpleBotFramework.SetSessionTimeLimit _ ->

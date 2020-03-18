@@ -83,13 +83,13 @@ You can configure two variables:
 Here is an example of applying a configuration for three farm cycles with breaks of 20 to 40 minutes in between:
 
 ```text
---bot-configuration="number-of-farm-cycles = 3, break-duration = 20 - 40"
+--app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
 ```
 
 Add this configuration option into the command used to start the bot:
 
 ```cmd
-botengine  run-bot  --bot-configuration="number-of-farm-cycles = 3, break-duration = 20 - 40"  "https://github.com/Viir/bots/tree/032f0dc8d3d229d8fee1ff2fb787b59ef9880c8e/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
+botengine  run-bot  --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"  "https://github.com/Viir/bots/tree/032f0dc8d3d229d8fee1ff2fb787b59ef9880c8e/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
 ```
 
 When you have configured the bot for multiple farm cycles, it will display this message during the breaks between farm cycles:

@@ -15,13 +15,13 @@ module WebBrowser.BotFramework exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import WebBrowser.VolatileHostInterface as VolatileHostInterface
 import WebBrowser.VolatileHostScript as VolatileHostScript
 
 
 type BotEvent
-    = SetBotConfiguration String
+    = SetAppSettings String
     | ArrivedAtTime { timeInMilliseconds : Int }
     | RunJavascriptInCurrentPageResponse RunJavascriptInCurrentPageResponseStructure
 
@@ -268,9 +268,9 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBefore =
                     in
                     ( { stateBefore | setup = setupState, taskInProgress = Nothing }, maybeBotEventFromTaskComplete )
 
-                InterfaceToHost.SetBotConfiguration newBotConfiguration ->
+                InterfaceToHost.SetAppSettings appSettings ->
                     ( stateBefore
-                    , Just (SetBotConfiguration newBotConfiguration)
+                    , Just (SetAppSettings appSettings)
                     )
 
                 InterfaceToHost.SetSessionTimeLimit _ ->

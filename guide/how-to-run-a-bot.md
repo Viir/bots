@@ -14,7 +14,7 @@ There also exists monitoring software which does not send any input to the game,
 ## Starting a Bot
 
 Download the BotEngine Windows console app from 
-[https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-05-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-05-botengine-console.zip).
+[https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-18-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-18-botengine-console.zip).
 
 Extract this Zip-Archive. This will give you a file named `BotEngine.exe`. To start a bot, call this program with a command like the following:
 
@@ -54,16 +54,18 @@ You can pause bot operation by pressing the `CTRL` + `ALT` keys. To let the bot 
 
 ## Configuring a Bot
 
-Some bots support configuration. When starting a bot from the command line, you can use the `--bot-configuration` parameter to set the bot configuration. The complete command line can then look as follows:
+Some bots offer customization using settings. When starting a bot from the command line, you can use the `--app-settings` parameter to apply settings. The complete command line can then look as follows:
 ```cmd
-C:\path\to\the\botengine.exe  run-bot  --bot-configuration="My bot configuration"  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/templates/remember-bot-configuration"
+C:\path\to\the\botengine.exe  run-bot  --app-settings="My app settings"  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/templates/remember-bot-configuration"
 ```
 
-The supported bot configuration values depend entirely on the bot that you chose. To learn which bot configuration values are supported in your case, look up the description for the bot or contact the developer of the bot. A good place to look for guidance on a specific bot is the `src/Bot.elm` file contained in the directory specified as `bot-source`. Bot authors often write a guide at the beginning of that file, for example in [this EVE Online mining bot](https://github.com/Viir/bots/tree/99f4a388753ad4970d1f10a7276ea004c9d75643/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
+The supported settings depend entirely on the bot that you chose. To learn which settings are supported in your case, read the description for the bot or contact its author.
 
 ## Viewing Bot Description
 
-To learn more about a bot, you can view its description, using the `describe-bot` command:
+Authors often include a human-readable description with the bot code, for example, in [this EVE Online mining bot](https://github.com/Viir/bots/tree/2445085fc42782c1430ade867f773c2eaa71ee9e/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
+
+You can display this description using the `describe-bot` command:
 
 ```cmd
 C:\path\to\the\BotEngine.exe  describe-bot  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot"

@@ -13,7 +13,7 @@ module Bot exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 
 
 type alias State =
@@ -48,7 +48,7 @@ integrateEvent event stateBefore =
         InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
             { stateBefore | timeInMilliseconds = timeInMilliseconds }
 
-        InterfaceToHost.SetBotConfiguration _ ->
+        InterfaceToHost.SetAppSettings _ ->
             stateBefore
 
         InterfaceToHost.CompletedTask _ ->

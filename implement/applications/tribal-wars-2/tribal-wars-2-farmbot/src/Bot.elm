@@ -26,7 +26,7 @@
    + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like '60-120'. I will then pick a random value in this range.
 
    Here is an example of applying a configuration for three farm cycles with breaks of 20 to 40 minutes in between:
-   --bot-configuration="number-of-farm-cycles = 3, break-duration = 20 - 40"
+   --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
 -}
 {-
    bot-catalog-tags:tribal-wars-2,farmbot
@@ -40,7 +40,7 @@ module Bot exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Dict
 import Json.Decode
 import Json.Encode
@@ -614,10 +614,10 @@ parseBotSettingBreakDurationMinutes breakDurationString =
 integrateWebBrowserBotEvent : BotEvent -> BotState -> Result String BotState
 integrateWebBrowserBotEvent event stateBefore =
     case event of
-        BotFramework.SetBotConfiguration configurationString ->
+        BotFramework.SetAppSettings settingsString ->
             let
                 parseSettingsResult =
-                    parseSettingsFromString defaultBotSettings configurationString
+                    parseSettingsFromString defaultBotSettings settingsString
             in
             parseSettingsResult
                 |> Result.map (\newSettings -> { stateBefore | settings = newSettings })

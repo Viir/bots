@@ -120,6 +120,23 @@ botEffectsFromGameClientState parsedUserInterface =
             ( alarmRequests, chatWindowReport )
 
 
+stringLocalUsersFromList : List EveOnline.MemoryReading.ChatUserEntry -> String
+stringLocalUsersFromList users =
+    List.map getUserName
+        |> String.concat
+        |> Maybe.withDefault "bad list"
+
+
+getUserName : EveOnline.MemoryReading.ChatUserEntry -> String
+getUserName user =
+    case user of
+        Nothing ->
+            "sorry no users"
+
+        Just val ->
+            user.name
+
+
 localChatWindowFromUserInterface : ParsedUserInterface -> MaybeVisible EveOnline.MemoryReading.ChatWindow
 localChatWindowFromUserInterface =
     .chatWindowStacks

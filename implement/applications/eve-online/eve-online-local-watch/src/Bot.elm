@@ -104,6 +104,8 @@ botEffectsFromGameClientState parsedUserInterface =
                         ++ " users in the local chat. "
                         ++ (subsetOfUsersWithNoGoodStanding |> List.length |> String.fromInt)
                         ++ " with no good standing."
+                        ++ "\nList of pilot names:\n"
+                        ++ stringLocalUsersFromList localChatWindow.visibleUsers
 
                 alarmRequests =
                     if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then

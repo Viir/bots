@@ -122,19 +122,15 @@ botEffectsFromGameClientState parsedUserInterface =
 
 stringLocalUsersFromList : List EveOnline.MemoryReading.ChatUserEntry -> String
 stringLocalUsersFromList users =
-    List.map getUserName
+    users
+        |> List.map getUserName
         |> String.concat
-        |> Maybe.withDefault "bad list"
 
 
 getUserName : EveOnline.MemoryReading.ChatUserEntry -> String
 getUserName user =
-    case user of
-        Nothing ->
-            "sorry no users"
-
-        Just val ->
-            user.name
+    user.name
+        |> Maybe.withDefault "Failed to read this users name"
 
 
 localChatWindowFromUserInterface : ParsedUserInterface -> MaybeVisible EveOnline.MemoryReading.ChatWindow

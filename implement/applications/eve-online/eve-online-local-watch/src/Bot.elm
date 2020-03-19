@@ -126,7 +126,7 @@ stringLocalUsersFromList : List EveOnline.MemoryReading.ChatUserEntry -> String
 stringLocalUsersFromList users =
     users
         |> List.map getUserName
-        |> String.concat
+        |> String.join ", "
 
 
 getUserName : EveOnline.MemoryReading.ChatUserEntry -> String

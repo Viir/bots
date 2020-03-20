@@ -83,6 +83,7 @@ type alias BotEffectQueue =
 
 type alias SetupState =
     { createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileHostErrorStructure InterfaceToHost.CreateVolatileHostComplete)
+    , requestsToVolatileHostCount : Int
     , lastRequestToVolatileHostResult : Maybe (Result String InterfaceToHost.RequestToVolatileHostComplete)
     , gameClientProcesses : Maybe (List VolatileHostInterface.GameClientProcessSummaryStruct)
     , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
@@ -93,7 +94,11 @@ type alias SetupState =
 
 type SetupTask
     = ContinueSetup SetupState InterfaceToHost.Task String
-    | OperateBot { buildTaskFromBotEffect : BotEffect -> InterfaceToHost.Task, getMemoryReadingTask : InterfaceToHost.Task }
+    | OperateBot
+        { buildTaskFromBotEffect : BotEffect -> InterfaceToHost.Task
+        , getMemoryReadingTask : InterfaceToHost.Task
+        , releaseVolatileHostTask : InterfaceToHost.Task
+        }
     | FrameworkStopSession String
 
 
@@ -103,9 +108,15 @@ type alias ConsoleBeepStructure =
     }
 
 
+volatileHostRecycleInterval : Int
+volatileHostRecycleInterval =
+    400
+
+
 initSetup : SetupState
 initSetup =
     { createVolatileHostResult = Nothing
+    , requestsToVolatileHostCount = 0
     , lastRequestToVolatileHostResult = Nothing
     , gameClientProcesses = Nothing
     , searchUIRootAddressResult = Nothing
@@ -207,127 +218,174 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
             )
 
         OperateBot operateBot ->
-            let
-                botStateBefore =
-                    stateBefore.botState
+            if volatileHostRecycleInterval < stateBefore.setup.requestsToVolatileHostCount then
+                let
+                    taskIndex =
+                        stateBefore.lastTaskIndex + 1
 
-                maybeBotEventResult =
-                    maybeBotEvent
-                        |> Maybe.map
-                            (\( botEvent, botEventContext ) -> botStateBefore.botState |> botProcessEvent botEventContext botEvent)
+                    taskIdString =
+                        "maintain-" ++ (taskIndex |> String.fromInt)
 
-                botStateBeforeProcessEffects =
-                    case maybeBotEventResult of
-                        Nothing ->
-                            stateBefore.botState
+                    setupStateBefore =
+                        stateBefore.setup
 
-                        Just ( newBotState, botEventResponse ) ->
-                            let
-                                effectQueue =
-                                    case botEventResponse of
-                                        FinishSession _ ->
-                                            []
+                    setupState =
+                        { setupStateBefore | createVolatileHostResult = Nothing }
 
-                                        ContinueSession continueSessionResponse ->
-                                            continueSessionResponse.effects
-                                                |> List.map
-                                                    (\botEffect ->
-                                                        { timeInMilliseconds = stateBefore.timeInMilliseconds, effect = botEffect }
-                                                    )
-                            in
-                            { botStateBefore
-                                | botState = newBotState
-                                , lastEvent = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, eventResult = ( newBotState, botEventResponse ) }
-                                , effectQueue = effectQueue
+                    setupTaskDescription =
+                        "Recycle the volatile host after " ++ (setupStateBefore.requestsToVolatileHostCount |> String.fromInt) ++ " requests."
+                in
+                ( { stateBefore
+                    | setup = setupState
+                    , lastTaskIndex = taskIndex
+                    , taskInProgress =
+                        Just
+                            { startTimeInMilliseconds = stateBefore.timeInMilliseconds
+                            , taskIdString = taskIdString
+                            , taskDescription = setupTaskDescription
                             }
-
-                ( botEffectQueue, botEffectTask ) =
-                    case
-                        botStateBeforeProcessEffects.effectQueue
-                            |> dequeueNextEffectFromBotState { currentTimeInMs = stateBefore.timeInMilliseconds }
-                    of
-                        NoEffect ->
-                            ( botStateBeforeProcessEffects.effectQueue, Nothing )
-
-                        ForwardEffect forward ->
-                            ( forward.newQueueState, forward.effect |> operateBot.buildTaskFromBotEffect |> Just )
-
-                botState =
-                    { botStateBeforeProcessEffects | effectQueue = botEffectQueue }
-
-                timeForNextMemoryReadingGeneral =
-                    (stateBefore.setup.lastMemoryReading |> Maybe.map .timeInMilliseconds |> Maybe.withDefault 0) + 10000
-
-                timeForNextMemoryReadingFromBot =
-                    botState.lastEvent
-                        |> Maybe.andThen
-                            (\botLastEvent ->
-                                case botLastEvent.eventResult |> Tuple.second of
-                                    ContinueSession continueSessionResponse ->
-                                        Just (botLastEvent.timeInMilliseconds + continueSessionResponse.millisecondsToNextReadingFromGame)
-
-                                    FinishSession _ ->
-                                        Nothing
-                            )
-                        |> Maybe.withDefault 0
-
-                timeForNextMemoryReading =
-                    min timeForNextMemoryReadingGeneral timeForNextMemoryReadingFromBot
-
-                memoryReadingTasks =
-                    if timeForNextMemoryReading < stateBefore.timeInMilliseconds then
-                        [ operateBot.getMemoryReadingTask ]
-
-                    else
-                        []
-
-                botFinishesSession =
-                    botState.lastEvent
-                        |> Maybe.map
-                            (\botLastEvent ->
-                                case botLastEvent.eventResult |> Tuple.second of
-                                    ContinueSession _ ->
-                                        False
-
-                                    FinishSession _ ->
-                                        True
-                            )
-                        |> Maybe.withDefault False
-
-                ( taskInProgress, startTasks ) =
-                    (botEffectTask |> Maybe.map List.singleton |> Maybe.withDefault [])
-                        ++ memoryReadingTasks
-                        |> List.head
-                        |> Maybe.map
-                            (\task ->
-                                let
-                                    taskIdString =
-                                        "operate-bot"
-                                in
-                                ( Just
-                                    { startTimeInMilliseconds = stateBefore.timeInMilliseconds
-                                    , taskIdString = taskIdString
-                                    , taskDescription = "From bot effect or memory reading."
-                                    }
-                                , [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task } ]
-                                )
-                            )
-                        |> Maybe.withDefault ( stateBefore.taskInProgress, [] )
-
-                state =
-                    { stateBefore | botState = botState, taskInProgress = taskInProgress }
-            in
-            if botFinishesSession then
-                ( state, { statusDescriptionText = "The app finished the session." } |> InterfaceToHost.FinishSession )
-
-            else
-                ( state
-                , { startTasks = startTasks
-                  , statusDescriptionText = "Operate bot."
-                  , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
+                  }
+                , { startTasks =
+                        [ { taskId = InterfaceToHost.taskIdFromString taskIdString
+                          , task = operateBot.releaseVolatileHostTask
+                          }
+                        ]
+                  , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
+                  , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
                   }
                     |> InterfaceToHost.ContinueSession
                 )
+
+            else
+                let
+                    botStateBefore =
+                        stateBefore.botState
+
+                    maybeBotEventResult =
+                        maybeBotEvent
+                            |> Maybe.map
+                                (\( botEvent, botEventContext ) -> botStateBefore.botState |> botProcessEvent botEventContext botEvent)
+
+                    botStateBeforeProcessEffects =
+                        case maybeBotEventResult of
+                            Nothing ->
+                                stateBefore.botState
+
+                            Just ( newBotState, botEventResponse ) ->
+                                let
+                                    effectQueue =
+                                        case botEventResponse of
+                                            FinishSession _ ->
+                                                []
+
+                                            ContinueSession continueSessionResponse ->
+                                                continueSessionResponse.effects
+                                                    |> List.map
+                                                        (\botEffect ->
+                                                            { timeInMilliseconds = stateBefore.timeInMilliseconds, effect = botEffect }
+                                                        )
+                                in
+                                { botStateBefore
+                                    | botState = newBotState
+                                    , lastEvent = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, eventResult = ( newBotState, botEventResponse ) }
+                                    , effectQueue = effectQueue
+                                }
+
+                    ( botEffectQueue, botEffectTask ) =
+                        case
+                            botStateBeforeProcessEffects.effectQueue
+                                |> dequeueNextEffectFromBotState { currentTimeInMs = stateBefore.timeInMilliseconds }
+                        of
+                            NoEffect ->
+                                ( botStateBeforeProcessEffects.effectQueue, Nothing )
+
+                            ForwardEffect forward ->
+                                ( forward.newQueueState, forward.effect |> operateBot.buildTaskFromBotEffect |> Just )
+
+                    botState =
+                        { botStateBeforeProcessEffects | effectQueue = botEffectQueue }
+
+                    timeForNextMemoryReadingGeneral =
+                        (stateBefore.setup.lastMemoryReading |> Maybe.map .timeInMilliseconds |> Maybe.withDefault 0) + 10000
+
+                    timeForNextMemoryReadingFromBot =
+                        botState.lastEvent
+                            |> Maybe.andThen
+                                (\botLastEvent ->
+                                    case botLastEvent.eventResult |> Tuple.second of
+                                        ContinueSession continueSessionResponse ->
+                                            Just (botLastEvent.timeInMilliseconds + continueSessionResponse.millisecondsToNextReadingFromGame)
+
+                                        FinishSession _ ->
+                                            Nothing
+                                )
+                            |> Maybe.withDefault 0
+
+                    timeForNextMemoryReading =
+                        min timeForNextMemoryReadingGeneral timeForNextMemoryReadingFromBot
+
+                    memoryReadingTasks =
+                        if timeForNextMemoryReading < stateBefore.timeInMilliseconds then
+                            [ operateBot.getMemoryReadingTask ]
+
+                        else
+                            []
+
+                    botFinishesSession =
+                        botState.lastEvent
+                            |> Maybe.map
+                                (\botLastEvent ->
+                                    case botLastEvent.eventResult |> Tuple.second of
+                                        ContinueSession _ ->
+                                            False
+
+                                        FinishSession _ ->
+                                            True
+                                )
+                            |> Maybe.withDefault False
+
+                    ( taskInProgress, startTasks ) =
+                        (botEffectTask |> Maybe.map List.singleton |> Maybe.withDefault [])
+                            ++ memoryReadingTasks
+                            |> List.head
+                            |> Maybe.map
+                                (\task ->
+                                    let
+                                        taskIdString =
+                                            "operate-bot"
+                                    in
+                                    ( Just
+                                        { startTimeInMilliseconds = stateBefore.timeInMilliseconds
+                                        , taskIdString = taskIdString
+                                        , taskDescription = "From bot effect or memory reading."
+                                        }
+                                    , [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task } ]
+                                    )
+                                )
+                            |> Maybe.withDefault ( stateBefore.taskInProgress, [] )
+
+                    setupStateBefore =
+                        stateBefore.setup
+
+                    setupState =
+                        { setupStateBefore
+                            | requestsToVolatileHostCount = setupStateBefore.requestsToVolatileHostCount + (startTasks |> List.length)
+                        }
+
+                    state =
+                        { stateBefore | setup = setupState, botState = botState, taskInProgress = taskInProgress }
+                in
+                if botFinishesSession then
+                    ( state, { statusDescriptionText = "The app finished the session." } |> InterfaceToHost.FinishSession )
+
+                else
+                    ( state
+                    , { startTasks = startTasks
+                      , statusDescriptionText = "Operate bot."
+                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
+                      }
+                        |> InterfaceToHost.ContinueSession
+                    )
 
         FrameworkStopSession reason ->
             ( stateBefore
@@ -375,27 +433,25 @@ integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState
 integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
     case taskResult of
         InterfaceToHost.CreateVolatileHostResponse createVolatileHostResult ->
-            ( { setupStateBefore | createVolatileHostResult = Just createVolatileHostResult }, Nothing )
+            ( { setupStateBefore
+                | createVolatileHostResult = Just createVolatileHostResult
+                , requestsToVolatileHostCount = 0
+              }
+            , Nothing
+            )
 
-        InterfaceToHost.RequestToVolatileHostResponse requestToVolatileHostResponse ->
+        InterfaceToHost.RequestToVolatileHostResponse (Err InterfaceToHost.HostNotFound) ->
+            ( { setupStateBefore | createVolatileHostResult = Nothing }, Nothing )
+
+        InterfaceToHost.RequestToVolatileHostResponse (Ok requestResult) ->
             let
                 requestToVolatileHostResult =
-                    requestToVolatileHostResponse
-                        |> Result.mapError
-                            (\error ->
-                                case error of
-                                    InterfaceToHost.HostNotFound ->
-                                        "HostNotFound"
-                            )
-                        |> Result.andThen
-                            (\fromHostResult ->
-                                case fromHostResult.exceptionToString of
-                                    Nothing ->
-                                        Ok fromHostResult
+                    case requestResult.exceptionToString of
+                        Nothing ->
+                            Ok requestResult
 
-                                    Just exception ->
-                                        Err ("Exception from host: " ++ exception)
-                            )
+                        Just exception ->
+                            Err ("Exception from host: " ++ exception)
 
                 maybeResponseFromVolatileHost =
                     requestToVolatileHostResult
@@ -598,6 +654,7 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                                             |> VolatileHostInterface.EffectConsoleBeepSequence
                                                             |> buildTaskFromRequestToVolatileHost
                                         , getMemoryReadingTask = getMemoryReadingRequest |> buildTaskFromRequestToVolatileHost
+                                        , releaseVolatileHostTask = InterfaceToHost.ReleaseVolatileHost { hostId = volatileHostId }
                                         }
 
 

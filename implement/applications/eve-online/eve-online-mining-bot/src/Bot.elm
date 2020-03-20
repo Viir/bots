@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-03-18
+{- EVE Online mining bot version 2020-03-20
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -49,6 +49,7 @@ defaultBotSettings =
     , targetingRange = 10000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 2000
+    , lastDockedStationNameFromInfoPanel = Nothing
     }
 
 
@@ -65,6 +66,9 @@ parseBotSettingsNames =
     , ( "bot-step-delay"
       , parseBotSettingInt (\delay settings -> { settings | botStepDelayMilliseconds = delay })
       )
+    , ( "last-docked-station-name-from-info-panel"
+      , \stationName -> Ok (\settings -> { settings | lastDockedStationNameFromInfoPanel = Just stationName })
+      )
     ]
         |> Dict.fromList
 
@@ -74,6 +78,7 @@ type alias BotSettings =
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
+    , lastDockedStationNameFromInfoPanel : Maybe String
     }
 
 
@@ -192,6 +197,16 @@ decideNextActionWhenDocked parsedUserInterface =
                         )
 
 
+lastDockedStationNameFromInfoPanelFromMemoryOrSettings : BotDecisionContext -> Maybe String
+lastDockedStationNameFromInfoPanelFromMemoryOrSettings context =
+    case context.memory.lastDockedStationNameFromInfoPanel of
+        Just stationName ->
+            Just stationName
+
+        Nothing ->
+            context.settings.lastDockedStationNameFromInfoPanel
+
+
 decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
 decideNextActionWhenInSpace context seeUndockingComplete =
     if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
@@ -217,7 +232,7 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                     Just fillPercent ->
                         if 99 <= fillPercent then
                             DescribeBranch "The ore hold is full enough. Dock to station."
-                                (case context.memory.lastDockedStationNameFromInfoPanel of
+                                (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
                                     Nothing ->
                                         DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
 
@@ -369,7 +384,7 @@ warpToMiningSite parsedUserInterface =
 
 runAway : BotDecisionContext -> DecisionPathNode
 runAway context =
-    case context.memory.lastDockedStationNameFromInfoPanel of
+    case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
         Nothing ->
             dockToRandomStation context.parsedUserInterface
 

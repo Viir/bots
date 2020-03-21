@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-03-18
+{- Tribal Wars 2 farmbot version 2020-03-21
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -73,7 +73,7 @@ farmArmyPresetNamePattern =
 
 restartGameClientInterval : Int
 restartGameClientInterval =
-    60 * 15
+    60 * 30
 
 
 waitDurationAfterReloadWebPage : Int
@@ -116,6 +116,7 @@ type alias BotState =
             , response : BotFramework.RunJavascriptInCurrentPageResponseStructure
             , parseResult : Result Json.Decode.Error RootInformationStructure
             }
+    , lastPageLocation : Maybe String
     , gameRootInformationResult : Maybe { timeInMilliseconds : Int, gameRootInformation : TribalWars2RootInformation }
     , ownVillagesDetails : Dict.Dict Int { timeInMilliseconds : Int, villageDetails : VillageDetails }
     , getArmyPresetsResult : Maybe (List ArmyPreset)
@@ -254,7 +255,7 @@ type alias ContinueFarmCycleStructure =
 
 type ContinueFarmCycleActivity
     = RunJavascript String
-    | ReloadWebPage
+    | RestartWebBrowser
 
 
 type VillageCompletedStructure
@@ -286,6 +287,7 @@ initState =
         , settings = defaultBotSettings
         , currentActivity = Nothing
         , lastRunJavascriptResult = Nothing
+        , lastPageLocation = Nothing
         , gameRootInformationResult = Nothing
         , ownVillagesDetails = Dict.empty
         , getArmyPresetsResult = Nothing
@@ -378,7 +380,9 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                             )
 
                         Nothing ->
-                            decideNextAction { stateBefore | currentActivity = Nothing }
+                            decideNextAction
+                                { lastPageLocation = stateBeforeIntegrateEvent.lastPageLocation }
+                                { stateBefore | currentActivity = Nothing }
                                 |> Tuple.mapSecond Just
                                 |> Tuple.mapFirst
                                     (continueDecisionTree
@@ -401,8 +405,8 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
             }
 
 
-decideNextAction : BotState -> ( DecisionPathNode BotResponse, BotState )
-decideNextAction stateBefore =
+decideNextAction : { lastPageLocation : Maybe String } -> BotState -> ( DecisionPathNode BotResponse, BotState )
+decideNextAction { lastPageLocation } stateBefore =
     case stateBefore.farmState of
         InBreak farmBreak ->
             let
@@ -449,13 +453,19 @@ decideNextAction stateBefore =
 
                                         Just activity ->
                                             let
-                                                ( javascriptToRun, updatedStateForActivity ) =
+                                                ( requestToFramework, updatedStateForActivity ) =
                                                     case activity of
                                                         RunJavascript javascript ->
-                                                            ( javascript, stateBefore )
+                                                            ( BotFramework.RunJavascriptInCurrentPageRequest
+                                                                { javascript = javascript
+                                                                , requestId = "request-id"
+                                                                , timeToWaitForCallbackMilliseconds = 1000
+                                                                }
+                                                            , stateBefore
+                                                            )
 
-                                                        ReloadWebPage ->
-                                                            ( reloadPageScript
+                                                        RestartWebBrowser ->
+                                                            ( BotFramework.RestartWebBrowser { pageGoToUrl = lastPageLocation }
                                                             , { stateBefore
                                                                 | lastReloadPageTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
                                                                 , reloadPageCount = stateBefore.reloadPageCount + 1
@@ -463,13 +473,7 @@ decideNextAction stateBefore =
                                                               }
                                                             )
                                             in
-                                            ( Just
-                                                (BotFramework.RunJavascriptInCurrentPageRequest
-                                                    { javascript = javascriptToRun
-                                                    , requestId = "request-id"
-                                                    , timeToWaitForCallbackMilliseconds = 1000
-                                                    }
-                                                )
+                                            ( Just requestToFramework
                                             , updatedStateForActivity
                                             )
                             in
@@ -638,6 +642,14 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
             runJavascriptInCurrentPageResponse.directReturnValueAsString
                 |> Json.Decode.decodeString decodeRootInformation
 
+        lastPageLocation =
+            case parseAsRootInfoResult of
+                Ok parseAsRootInfoSuccess ->
+                    Just parseAsRootInfoSuccess.location
+
+                _ ->
+                    stateBefore.lastPageLocation
+
         stateAfterIntegrateResponse =
             { stateBefore
                 | lastRunJavascriptResult =
@@ -646,6 +658,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                         , response = runJavascriptInCurrentPageResponse
                         , parseResult = parseAsRootInfoResult
                         }
+                , lastPageLocation = lastPageLocation
             }
 
         parseResult =
@@ -774,7 +787,7 @@ decideInFarmCycle botState farmCycleState =
                 Just reasonToRestartGameClient ->
                     DescribeBranch
                         ("Restart the game client (" ++ reasonToRestartGameClient ++ ").")
-                        (EndDecisionPath (ContinueFarmCycle (Just ReloadWebPage)))
+                        (EndDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
 
                 Nothing ->
                     let

@@ -40,6 +40,7 @@ type BotResponse
 
 type BotRequest
     = RunJavascriptInCurrentPageRequest RunJavascriptInCurrentPageRequestStructure
+    | RestartWebBrowser { pageGoToUrl : Maybe String }
 
 
 type alias RunJavascriptInCurrentPageRequestStructure =
@@ -57,6 +58,7 @@ type alias RunJavascriptInCurrentPageResponseStructure =
 
 type alias StateIncludingSetup botState =
     { setup : SetupState
+    , pendingRequestToRestartWebBrowser : Maybe { pageGoToUrl : Maybe String }
     , botState : BotState botState
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
@@ -80,7 +82,7 @@ type alias SetupState =
 
 type SetupTask
     = ContinueSetup SetupState InterfaceToHost.Task String
-    | OperateBot { taskFromBotRequest : BotRequest -> InterfaceToHost.Task }
+    | OperateBot { taskFromBotRequestRunJavascript : RunJavascriptInCurrentPageRequestStructure -> InterfaceToHost.Task }
     | FailSetup String
 
 
@@ -95,6 +97,7 @@ initSetup =
 initState : botState -> StateIncludingSetup botState
 initState botState =
     { setup = initSetup
+    , pendingRequestToRestartWebBrowser = Nothing
     , botState =
         { botState = botState
         , lastProcessEventResult = Nothing
@@ -173,7 +176,11 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
 
 processEventNotWaitingForTask : StateIncludingSetup botState -> ( StateIncludingSetup botState, InterfaceToHost.BotResponse )
 processEventNotWaitingForTask stateBefore =
-    case stateBefore.setup |> getNextSetupTask of
+    case
+        stateBefore.setup
+            |> getNextSetupTask
+                { pageGoToUrl = stateBefore.pendingRequestToRestartWebBrowser |> Maybe.andThen .pageGoToUrl }
+    of
         ContinueSetup setupState setupTask setupTaskDescription ->
             let
                 taskIndex =
@@ -201,9 +208,6 @@ processEventNotWaitingForTask stateBefore =
 
         OperateBot operateBot ->
             let
-                taskId =
-                    "operate-bot"
-
                 botStateBefore =
                     stateBefore.botState
 
@@ -211,22 +215,61 @@ processEventNotWaitingForTask stateBefore =
                     case botStateBefore.remainingBotRequests of
                         botRequest :: remainingBotRequests ->
                             let
-                                taskFromBotRequest =
-                                    botRequest |> operateBot.taskFromBotRequest
+                                ( stateUpdatedForBotRequest, tasksFromBotRequest ) =
+                                    case botRequest of
+                                        RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest ->
+                                            ( stateBefore
+                                            , [ runJavascriptInCurrentPageRequest |> operateBot.taskFromBotRequestRunJavascript ]
+                                            )
+
+                                        RestartWebBrowser restartWebBrowser ->
+                                            let
+                                                releaseVolatileHostTasks =
+                                                    case stateBefore.setup.createVolatileHostResult of
+                                                        Just (Ok createVolatileHostSuccess) ->
+                                                            [ InterfaceToHost.ReleaseVolatileHost { hostId = createVolatileHostSuccess.hostId } ]
+
+                                                        _ ->
+                                                            []
+                                            in
+                                            ( { stateBefore
+                                                | pendingRequestToRestartWebBrowser = Just restartWebBrowser
+                                                , setup = initSetup
+                                              }
+                                            , releaseVolatileHostTasks
+                                            )
 
                                 botState =
                                     { botStateBefore | remainingBotRequests = remainingBotRequests }
+
+                                tasksWithIds =
+                                    tasksFromBotRequest
+                                        |> List.indexedMap
+                                            (\taskIndex task ->
+                                                let
+                                                    taskIdString =
+                                                        "operate-bot-" ++ (taskIndex |> String.fromInt)
+                                                in
+                                                ( { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task }, taskIdString )
+                                            )
+
+                                taskInProgress =
+                                    tasksWithIds
+                                        |> List.reverse
+                                        |> List.head
+                                        |> Maybe.map
+                                            (\( _, taskIdString ) ->
+                                                { startTimeInMilliseconds = stateBefore.timeInMilliseconds
+                                                , taskIdString = taskIdString
+                                                , taskDescription = "Task from bot request."
+                                                }
+                                            )
                             in
-                            ( { stateBefore
-                                | taskInProgress =
-                                    Just
-                                        { startTimeInMilliseconds = stateBefore.timeInMilliseconds
-                                        , taskIdString = taskId
-                                        , taskDescription = "Task from bot request."
-                                        }
+                            ( { stateUpdatedForBotRequest
+                                | taskInProgress = taskInProgress
                                 , botState = botState
                               }
-                            , [ { taskId = InterfaceToHost.taskIdFromString taskId, task = taskFromBotRequest } ]
+                            , tasksWithIds |> List.map Tuple.first
                             )
 
                         _ ->
@@ -265,8 +308,24 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBefore =
                         ( setupState, maybeBotEventFromTaskComplete ) =
                             stateBefore.setup
                                 |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
+
+                        webBrowserStartedInThisUpdate =
+                            not stateBefore.setup.webBrowserStarted && setupState.webBrowserStarted
+
+                        pendingRequestToRestartWebBrowser =
+                            if webBrowserStartedInThisUpdate then
+                                Nothing
+
+                            else
+                                stateBefore.pendingRequestToRestartWebBrowser
                     in
-                    ( { stateBefore | setup = setupState, taskInProgress = Nothing }, maybeBotEventFromTaskComplete )
+                    ( { stateBefore
+                        | setup = setupState
+                        , taskInProgress = Nothing
+                        , pendingRequestToRestartWebBrowser = pendingRequestToRestartWebBrowser
+                      }
+                    , maybeBotEventFromTaskComplete
+                    )
 
                 InterfaceToHost.SetAppSettings appSettings ->
                     ( stateBefore
@@ -371,8 +430,8 @@ integrateResponseFromVolatileHost ( time, response ) stateBefore =
             ( stateBefore, Just botEvent )
 
 
-getNextSetupTask : SetupState -> SetupTask
-getNextSetupTask stateBefore =
+getNextSetupTask : { pageGoToUrl : Maybe String } -> SetupState -> SetupTask
+getNextSetupTask startWebBrowserParameters stateBefore =
     case stateBefore.createVolatileHostResult of
         Nothing ->
             ContinueSetup
@@ -384,29 +443,29 @@ getNextSetupTask stateBefore =
             FailSetup ("Set up the volatile host failed with exception: " ++ error.exceptionToString)
 
         Just (Ok createVolatileHostComplete) ->
-            getSetupTaskWhenVolatileHostSetupCompleted stateBefore createVolatileHostComplete.hostId
+            getSetupTaskWhenVolatileHostSetupCompleted startWebBrowserParameters stateBefore createVolatileHostComplete.hostId
 
 
-getSetupTaskWhenVolatileHostSetupCompleted : SetupState -> InterfaceToHost.VolatileHostId -> SetupTask
-getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
+getSetupTaskWhenVolatileHostSetupCompleted : { pageGoToUrl : Maybe String } -> SetupState -> InterfaceToHost.VolatileHostId -> SetupTask
+getSetupTaskWhenVolatileHostSetupCompleted { pageGoToUrl } stateBefore volatileHostId =
     if stateBefore.webBrowserStarted |> not then
         ContinueSetup stateBefore
             (InterfaceToHost.RequestToVolatileHost
                 { hostId = volatileHostId
-                , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost VolatileHostInterface.StartWebBrowserRequest
+                , request =
+                    VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
+                        (VolatileHostInterface.StartWebBrowserRequest { pageGoToUrl = pageGoToUrl })
                 }
             )
             "Starting the web browser. This can take a while because I might need to download the web browser software first."
 
     else
         OperateBot
-            { taskFromBotRequest =
-                \request ->
+            { taskFromBotRequestRunJavascript =
+                \runJavascriptInCurrentPageRequest ->
                     let
                         requestToVolatileHost =
-                            case request of
-                                RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest ->
-                                    VolatileHostInterface.RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest
+                            VolatileHostInterface.RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest
                     in
                     InterfaceToHost.RequestToVolatileHost
                         { hostId = volatileHostId

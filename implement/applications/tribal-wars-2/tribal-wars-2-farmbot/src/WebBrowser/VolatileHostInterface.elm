@@ -11,7 +11,7 @@ import Json.Encode
 
 
 type RequestToVolatileHost
-    = StartWebBrowserRequest
+    = StartWebBrowserRequest { pageGoToUrl : Maybe String }
     | RunJavascriptInCurrentPageRequest RunJavascriptInCurrentPageRequestStructure
 
 
@@ -50,8 +50,16 @@ decodeResponseFromVolatileHost =
 encodeRequestToVolatileHost : RequestToVolatileHost -> Json.Encode.Value
 encodeRequestToVolatileHost request =
     case request of
-        StartWebBrowserRequest ->
-            Json.Encode.object [ ( "StartWebBrowserRequest", Json.Encode.object [] ) ]
+        StartWebBrowserRequest startWebBrowserRequest ->
+            Json.Encode.object
+                [ ( "StartWebBrowserRequest"
+                  , Json.Encode.object
+                        [ ( "pageGoToUrl"
+                          , startWebBrowserRequest.pageGoToUrl |> Maybe.map Json.Encode.string |> Maybe.withDefault Json.Encode.null
+                          )
+                        ]
+                  )
+                ]
 
         RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest ->
             Json.Encode.object [ ( "RunJavascriptInCurrentPageRequest", runJavascriptInCurrentPageRequest |> encodeRunJavascriptInCurrentPageRequest ) ]

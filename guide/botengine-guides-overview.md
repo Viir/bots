@@ -1,9 +1,11 @@
 
 ## Guides
 
-+ [Developing Bots for EVE Online](https://github.com/Viir/bots/blob/master/guide/eve-online/developing-bots-for-eve-online.md): Learn how to use the framework behind the most advanced EVE Online bots.
++ [Developing for EVE Online](https://github.com/Viir/bots/blob/master/guide/eve-online/developing-bots-for-eve-online.md): Learn how to use the framework behind the most advanced EVE Online bots and intel tools.
 
 + [Parsed User Interface of the EVE Online Game Client](https://github.com/Viir/bots/blob/master/guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md): Find things faster in the EVE Online game client user interface.
+
++ [Walkthrough, Programming]: How to add a setting to a botengine app: [https://www.youtube.com/watch?v=A-tbRE9S2ss](https://www.youtube.com/watch?v=A-tbRE9S2ss)
 
 ## Examples
 

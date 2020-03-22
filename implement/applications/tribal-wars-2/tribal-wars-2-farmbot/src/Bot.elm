@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-03-21
+{- Tribal Wars 2 farmbot version 2020-03-22
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -20,10 +20,11 @@
    ## Configuration Settings
 
    All settings are optional; you only need it in case the defaults don't fit your use-case.
-   You can adjust two settings:
+   You can adjust three settings:
 
    + 'number-of-farm-cycles' : Number of farm cycles before the bot stops completely. The default is 1.
    + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like '60-120'. I will then pick a random value in this range.
+   + 'farm-barb-min-points': Minimum points of barbarian villages to attack.
 
    Here is an example of applying a configuration for three farm cycles with breaks of 20 to 40 minutes in between:
    --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
@@ -55,6 +56,7 @@ defaultBotSettings =
     { numberOfFarmCycles = 1
     , breakDurationMinMinutes = 90
     , breakDurationMaxMinutes = 120
+    , farmBarbarianVillageMinimumPoints = Nothing
     }
 
 
@@ -62,6 +64,7 @@ parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -
 parseBotSettingsNames =
     [ ( "number-of-farm-cycles", parseBotSettingInt (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles }) )
     , ( "break-duration", parseBotSettingBreakDurationMinutes )
+    , ( "farm-barb-min-points", parseBotSettingInt (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }) )
     ]
         |> Dict.fromList
 
@@ -137,6 +140,7 @@ type alias BotSettings =
     { numberOfFarmCycles : Int
     , breakDurationMinMinutes : Int
     , breakDurationMaxMinutes : Int
+    , farmBarbarianVillageMinimumPoints : Maybe Int
     }
 
 
@@ -222,6 +226,7 @@ type VillageByCoordinatesResult
 type alias VillageByCoordinatesDetails =
     { villageId : Int
     , affiliation : VillageByCoordinatesAffiliation
+    , points : Maybe Int
     }
 
 
@@ -1128,7 +1133,7 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
                                                 False
 
                                             VillageThere village ->
-                                                village.affiliation == AffiliationBarbarian
+                                                village |> villageMatchesSettingsForFarm botState.settings
                         )
                     >> List.head
 
@@ -1170,6 +1175,24 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
             |> Maybe.map ContinueWithThisVillage
             |> Maybe.withDefault (CompletedThisVillage AllFarmsInSearchedAreaAlreadyAttackedInThisCycle)
             |> EndDecisionPath
+
+
+villageMatchesSettingsForFarm : BotSettings -> VillageByCoordinatesDetails -> Bool
+villageMatchesSettingsForFarm settings village =
+    village.affiliation
+        == AffiliationBarbarian
+        && (settings.farmBarbarianVillageMinimumPoints
+                |> Maybe.map
+                    (\farmBarbarianVillageMinimumPoints ->
+                        case village.points of
+                            Nothing ->
+                                False
+
+                            Just villagePoints ->
+                                farmBarbarianVillageMinimumPoints <= villagePoints
+                    )
+                |> Maybe.withDefault True
+           )
 
 
 pickBestMatchingArmyPresetForVillage :
@@ -1274,11 +1297,6 @@ squareDistanceBetweenCoordinates coordsA coordsB =
             coordsA.y - coordsB.y
     in
     distX * distX + distY * distY
-
-
-reloadPageScript : String
-reloadPageScript =
-    """window.location.reload()"""
 
 
 readRootInformationScript : String
@@ -1489,9 +1507,12 @@ decodeVillageByCoordinatesResult =
         ]
 
 
+{-| 2020-03-22 There are also villages without 'points':
+{ "x": 597, "y": 545, "name": "Freund einladen", "id": -2, "affiliation": "other" }
+-}
 decodeVillageByCoordinatesDetails : Json.Decode.Decoder VillageByCoordinatesDetails
 decodeVillageByCoordinatesDetails =
-    Json.Decode.map2 VillageByCoordinatesDetails
+    Json.Decode.map3 VillageByCoordinatesDetails
         (Json.Decode.field "id" Json.Decode.int)
         (Json.Decode.field "affiliation" Json.Decode.string
             |> Json.Decode.map
@@ -1504,6 +1525,7 @@ decodeVillageByCoordinatesDetails =
                             AffiliationOther
                 )
         )
+        (Json.Decode.maybe (Json.Decode.field "points" Json.Decode.int))
 
 
 getPresetsScript : String
@@ -1646,14 +1668,31 @@ statusMessageFromState state =
                     )
                 |> Dict.fromList
 
+        barbarianVillages =
+            villagesByCoordinates |> Dict.filter (\_ village -> village.affiliation == AffiliationBarbarian)
+
+        villagesMatchingSettingsForFarm =
+            villagesByCoordinates
+                |> Dict.filter (\_ village -> village |> villageMatchesSettingsForFarm state.settings)
+
+        numberOfVillagesAvoidedBySettings =
+            (barbarianVillages |> Dict.size) - (villagesMatchingSettingsForFarm |> Dict.size)
+
         coordinatesChecksReport =
             "Checked "
                 ++ (state.coordinatesLastCheck |> Dict.size |> String.fromInt)
                 ++ " coordinates and found "
                 ++ (villagesByCoordinates |> Dict.size |> String.fromInt)
                 ++ " villages, "
-                ++ (villagesByCoordinates |> Dict.filter (\_ village -> village.affiliation == AffiliationBarbarian) |> Dict.size |> String.fromInt)
-                ++ " of wich are barbarian villages."
+                ++ (barbarianVillages |> Dict.size |> String.fromInt)
+                ++ " of wich are barbarian villages"
+                ++ (if numberOfVillagesAvoidedBySettings < 1 then
+                        ""
+
+                    else
+                        " (" ++ (numberOfVillagesAvoidedBySettings |> String.fromInt) ++ " avoided by current settings)"
+                   )
+                ++ "."
 
         sentAttacks =
             countSentAttacks state

@@ -278,7 +278,7 @@ processEventNotWaitingForTask stateBefore =
             ( state
             , { startTasks = startTasks
               , statusDescriptionText = "Operate bot."
-              , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
+              , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
               }
                 |> InterfaceToHost.ContinueSession
             )

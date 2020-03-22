@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-03-22
+{- Tribal Wars 2 farmbot version 2020-03-22 🎉
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -79,6 +79,11 @@ restartGameClientInterval =
     60 * 30
 
 
+gameRootInformationQueryInterval : Int
+gameRootInformationQueryInterval =
+    20
+
+
 waitDurationAfterReloadWebPage : Int
 waitDurationAfterReloadWebPage =
     15
@@ -91,12 +96,12 @@ numberOfAttacksLimitPerVillage =
 
 ownVillageInfoMaxAge : Int
 ownVillageInfoMaxAge =
-    120
+    240
 
 
 selectedVillageInfoMaxAge : Int
 selectedVillageInfoMaxAge =
-    15
+    20
 
 
 searchFarmsRadiusAroundOwnVillage : Int
@@ -359,7 +364,7 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                                                 Just currentActivity.beginTimeInMilliseconds
 
                                 waitTimeLimits =
-                                    [ stateBefore.lastRunJavascriptResult |> Maybe.map (.timeInMilliseconds >> (+) 500)
+                                    [ stateBefore.lastRunJavascriptResult |> Maybe.map (.timeInMilliseconds >> (+) 300)
                                     , pendingRequestTimeInMilliseconds |> Maybe.map ((+) 3000)
                                     ]
                                         |> List.filterMap identity
@@ -464,7 +469,7 @@ decideNextAction { lastPageLocation } stateBefore =
                                                             ( BotFramework.RunJavascriptInCurrentPageRequest
                                                                 { javascript = javascript
                                                                 , requestId = "request-id"
-                                                                , timeToWaitForCallbackMilliseconds = 1000
+                                                                , timeToWaitForCallbackMilliseconds = 800
                                                                 }
                                                             , stateBefore
                                                             )
@@ -821,7 +826,7 @@ decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState =
                         let
                             updateTimeMinimumMilli =
                                 (botState.lastActivatedVillageTimeInMilliseconds |> Maybe.withDefault 0)
-                                    |> max (botState.timeInMilliseconds - 15000)
+                                    |> max (botState.timeInMilliseconds - gameRootInformationQueryInterval * 1000)
                         in
                         if gameRootInformationResult.timeInMilliseconds <= updateTimeMinimumMilli then
                             Nothing

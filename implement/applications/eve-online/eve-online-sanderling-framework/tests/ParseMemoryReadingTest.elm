@@ -22,6 +22,9 @@ overview_entry_distance_text_to_meter =
 
     -- 2020-03-12 from TheRealManiac (https://forum.botengine.org/t/last-version-of-mining-bot/3149)
     , ( "6.621 m  ", Ok 6621 )
+
+    -- 2020-03-22 from istu233 at https://forum.botengine.org/t/mining-bot-problem/3169
+    , ( "2 980 m", Ok 2980 )
     ]
         |> List.map
             (\( displayText, expectedResult ) ->

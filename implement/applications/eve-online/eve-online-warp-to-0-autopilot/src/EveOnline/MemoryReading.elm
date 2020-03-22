@@ -888,7 +888,7 @@ parseOverviewWindowEntry entriesHeaders overviewEntryNode =
 
 parseOverviewEntryDistanceInMetersFromText : String -> Result String Int
 parseOverviewEntryDistanceInMetersFromText distanceDisplayTextBeforeTrim =
-    case "^[\\d\\,\\.]+(?=\\s*m)" |> Regex.fromString of
+    case "^[\\d\\,\\.\\s]+(?=\\s*m)" |> Regex.fromString of
         Nothing ->
             Err "Regex code error"
 

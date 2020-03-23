@@ -1,6 +1,6 @@
 module ParseMemoryReadingTest exposing (allTests)
 
-import EveOnline.MemoryReading exposing (MaybeVisible(..))
+import EveOnline.ParseUserInterface exposing (MaybeVisible(..))
 import Expect
 import Test exposing (..)
 
@@ -31,7 +31,7 @@ overview_entry_distance_text_to_meter =
                 test displayText <|
                     \_ ->
                         displayText
-                            |> EveOnline.MemoryReading.parseOverviewEntryDistanceInMetersFromText
+                            |> EveOnline.ParseUserInterface.parseOverviewEntryDistanceInMetersFromText
                             |> Expect.equal expectedResult
             )
         |> describe "Overview entry distance text"
@@ -59,7 +59,7 @@ inventory_capacity_gauge_text =
                 test text <|
                     \_ ->
                         text
-                            |> EveOnline.MemoryReading.parseInventoryCapacityGaugeText
+                            |> EveOnline.ParseUserInterface.parseInventoryCapacityGaugeText
                             |> Expect.equal expectedResult
             )
         |> describe "Inventory capacity gauge text"

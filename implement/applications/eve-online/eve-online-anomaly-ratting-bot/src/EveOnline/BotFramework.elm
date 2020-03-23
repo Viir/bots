@@ -27,12 +27,13 @@ import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Common.FNV
 import Dict
 import EveOnline.MemoryReading
+import EveOnline.ParseUserInterface
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
 
 
 type BotEvent
-    = MemoryReadingCompleted EveOnline.MemoryReading.ParsedUserInterface
+    = MemoryReadingCompleted EveOnline.ParseUserInterface.ParsedUserInterface
 
 
 type BotEventResponse
@@ -523,7 +524,7 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
                                 maybeParsedMemoryReading =
                                     completedMemoryReading.serialRepresentationJson
                                         |> Maybe.andThen (EveOnline.MemoryReading.decodeMemoryReadingFromString >> Result.toMaybe)
-                                        |> Maybe.map (EveOnline.MemoryReading.parseUITreeWithDisplayRegionFromUITree >> EveOnline.MemoryReading.parseUserInterfaceFromUITree)
+                                        |> Maybe.map (EveOnline.ParseUserInterface.parseUITreeWithDisplayRegionFromUITree >> EveOnline.ParseUserInterface.parseUserInterfaceFromUITree)
                             in
                             maybeParsedMemoryReading
                                 |> Maybe.map MemoryReadingCompleted
@@ -764,7 +765,7 @@ statusReportFromState state =
         |> String.join "\n"
 
 
-getEntropyIntFromUserInterface : EveOnline.MemoryReading.ParsedUserInterface -> Int
+getEntropyIntFromUserInterface : EveOnline.ParseUserInterface.ParsedUserInterface -> Int
 getEntropyIntFromUserInterface parsedUserInterface =
     let
         entropyFromString =
@@ -793,14 +794,14 @@ getEntropyIntFromUserInterface parsedUserInterface =
 
         fromOverview =
             parsedUserInterface.overviewWindow
-                |> EveOnline.MemoryReading.maybeNothingFromCanNotSeeIt
+                |> EveOnline.ParseUserInterface.maybeNothingFromCanNotSeeIt
                 |> Maybe.map .entries
                 |> Maybe.withDefault []
                 |> List.concatMap entropyFromOverviewEntry
 
         fromProbeScanner =
             parsedUserInterface.probeScannerWindow
-                |> EveOnline.MemoryReading.maybeNothingFromCanNotSeeIt
+                |> EveOnline.ParseUserInterface.maybeNothingFromCanNotSeeIt
                 |> Maybe.map .scanResults
                 |> Maybe.withDefault []
                 |> List.concatMap entropyFromProbeScanResult

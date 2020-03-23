@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-03-22
+{- EVE Online anomaly ratting bot version 2020-03-23
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -26,7 +26,7 @@ module Bot exposing
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Dict
 import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
-import EveOnline.MemoryReading
+import EveOnline.ParseUserInterface
     exposing
         ( MaybeVisible(..)
         , OverviewWindowEntry
@@ -37,7 +37,6 @@ import EveOnline.MemoryReading
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
-import EveOnline.ParseUserInterface
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
 import Result.Extra
 import Set
@@ -70,7 +69,7 @@ type alias BotSettings =
 
 
 type alias UIElement =
-    EveOnline.MemoryReading.UITreeNodeWithDisplayRegion
+    EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
 
 
 type alias TreeLeafAct =
@@ -115,7 +114,7 @@ type alias State =
     EveOnline.BotFramework.StateIncludingFramework BotState
 
 
-probeScanResultsRepresentsMatchingAnomaly : EveOnline.MemoryReading.ProbeScanResult -> Bool
+probeScanResultsRepresentsMatchingAnomaly : EveOnline.ParseUserInterface.ProbeScanResult -> Bool
 probeScanResultsRepresentsMatchingAnomaly =
     .textsLeftToRight >> List.any (String.toLower >> String.contains "combat")
 
@@ -296,7 +295,7 @@ enterAnomaly parsedUserInterface =
 
 ensureShipIsOrbiting : ShipUI -> OverviewWindowEntry -> Maybe DecisionPathNode
 ensureShipIsOrbiting shipUI overviewEntryToOrbit =
-    if (shipUI.indication |> maybeVisibleAndThen .maneuverType) == CanSee EveOnline.MemoryReading.ManeuverOrbit then
+    if (shipUI.indication |> maybeVisibleAndThen .maneuverType) == CanSee EveOnline.ParseUserInterface.ManeuverOrbit then
         Nothing
 
     else
@@ -331,7 +330,7 @@ launchAndEngageDrones parsedUserInterface =
                         let
                             idlingDrones =
                                 droneGroupInLocalSpace.drones
-                                    |> List.filter (.uiNode >> .uiNode >> EveOnline.MemoryReading.getAllContainedDisplayTexts >> List.any (String.toLower >> String.contains "idle"))
+                                    |> List.filter (.uiNode >> .uiNode >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts >> List.any (String.toLower >> String.contains "idle"))
 
                             dronesInBayQuantity =
                                 droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
@@ -454,15 +453,15 @@ lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
 
 
 type alias SeeUndockingComplete =
-    { shipUI : EveOnline.MemoryReading.ShipUI
+    { shipUI : EveOnline.ParseUserInterface.ShipUI
     , shipModulesRows : EveOnline.ParseUserInterface.ShipUIModulesGroupedIntoRows
-    , overviewWindow : EveOnline.MemoryReading.OverviewWindow
+    , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
     }
 
 
 branchDependingOnDockedOrInSpace :
     DecisionPathNode
-    -> (EveOnline.MemoryReading.ShipUI -> Maybe DecisionPathNode)
+    -> (EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode)
     -> (SeeUndockingComplete -> DecisionPathNode)
     -> ParsedUserInterface
     -> DecisionPathNode
@@ -620,14 +619,14 @@ describeUserInterfaceForMonitoring parsedUserInterface =
     [ describeShip ] ++ combatInfoLines ++ [ describeDrones ] |> String.join " "
 
 
-allOverviewEntriesToAttack : ParsedUserInterface -> Maybe (List EveOnline.MemoryReading.OverviewWindowEntry)
+allOverviewEntriesToAttack : ParsedUserInterface -> Maybe (List EveOnline.ParseUserInterface.OverviewWindowEntry)
 allOverviewEntriesToAttack =
     .overviewWindow
         >> maybeNothingFromCanNotSeeIt
         >> Maybe.map (.entries >> List.filter shouldAttackOverviewEntry)
 
 
-overviewEntryIsAlreadyTargetedOrTargeting : EveOnline.MemoryReading.OverviewWindowEntry -> Bool
+overviewEntryIsAlreadyTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
 overviewEntryIsAlreadyTargetedOrTargeting =
     .namesUnderSpaceObjectIcon
         >> Set.intersect ([ "targetedByMeIndicator", "targeting" ] |> Set.fromList)
@@ -635,18 +634,18 @@ overviewEntryIsAlreadyTargetedOrTargeting =
         >> not
 
 
-overviewEntryIsActiveTarget : EveOnline.MemoryReading.OverviewWindowEntry -> Bool
+overviewEntryIsActiveTarget : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
 overviewEntryIsActiveTarget =
     .namesUnderSpaceObjectIcon
         >> Set.member "myActiveTargetIndicator"
 
 
-shouldAttackOverviewEntry : EveOnline.MemoryReading.OverviewWindowEntry -> Bool
+shouldAttackOverviewEntry : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
 shouldAttackOverviewEntry =
     iconSpriteHasColorOfRat
 
 
-iconSpriteHasColorOfRat : EveOnline.MemoryReading.OverviewWindowEntry -> Bool
+iconSpriteHasColorOfRat : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
 iconSpriteHasColorOfRat =
     .iconSpriteColorPercent
         >> Maybe.map
@@ -708,7 +707,7 @@ shipUIModulesToActivateAlways =
 If there are multiple such entries, these are sorted by the length of their text, minus whitespaces in the beginning and the end.
 The one with the shortest text is returned.
 -}
-menuEntryContainingTextIgnoringCase : String -> EveOnline.MemoryReading.ContextMenu -> Maybe EveOnline.MemoryReading.ContextMenuEntry
+menuEntryContainingTextIgnoringCase : String -> EveOnline.ParseUserInterface.ContextMenu -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry
 menuEntryContainingTextIgnoringCase textToSearch =
     .entries
         >> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
@@ -716,7 +715,7 @@ menuEntryContainingTextIgnoringCase textToSearch =
         >> List.head
 
 
-lastContextMenuOrSubmenu : ParsedUserInterface -> Maybe EveOnline.MemoryReading.ContextMenu
+lastContextMenuOrSubmenu : ParsedUserInterface -> Maybe EveOnline.ParseUserInterface.ContextMenu
 lastContextMenuOrSubmenu =
     .contextMenus >> List.head
 
@@ -726,14 +725,14 @@ clickOnUIElement mouseButton uiElement =
     effectMouseClickAtLocation mouseButton (uiElement.totalDisplayRegion |> centerFromDisplayRegion)
 
 
-isShipWarpingOrJumping : EveOnline.MemoryReading.ShipUI -> Bool
+isShipWarpingOrJumping : EveOnline.ParseUserInterface.ShipUI -> Bool
 isShipWarpingOrJumping =
     .indication
         >> maybeNothingFromCanNotSeeIt
         >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
         >> Maybe.map
             (\maneuverType ->
-                [ EveOnline.MemoryReading.ManeuverWarp, EveOnline.MemoryReading.ManeuverJump ]
+                [ EveOnline.ParseUserInterface.ManeuverWarp, EveOnline.ParseUserInterface.ManeuverJump ]
                     |> List.member maneuverType
             )
         -- If the ship is just floating in space, there might be no indication displayed.

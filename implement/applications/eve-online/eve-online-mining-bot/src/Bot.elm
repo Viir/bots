@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-03-22 🎉
+{- EVE Online mining bot version 2020-03-23
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -29,7 +29,7 @@ module Bot exposing
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Dict
 import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
-import EveOnline.MemoryReading
+import EveOnline.ParseUserInterface
     exposing
         ( MaybeVisible(..)
         , OverviewWindowEntry
@@ -38,7 +38,6 @@ import EveOnline.MemoryReading
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
-import EveOnline.ParseUserInterface
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
 import Result.Extra
 
@@ -103,7 +102,7 @@ type alias BotDecisionContext =
 
 
 type alias UIElement =
-    EveOnline.MemoryReading.UITreeNodeWithDisplayRegion
+    EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
 
 
 type alias TreeLeafAct =
@@ -339,7 +338,7 @@ dockToStationMatchingNameSeenInInfoPanel { stationNameFromInfoPanel } =
 
 
 dockToStationUsingSurroundingsButtonMenu :
-    ( String, List EveOnline.MemoryReading.ContextMenuEntry -> Maybe EveOnline.MemoryReading.ContextMenuEntry )
+    ( String, List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry )
     -> ParsedUserInterface
     -> DecisionPathNode
 dockToStationUsingSurroundingsButtonMenu ( describeChooseStation, chooseStationMenuEntry ) =
@@ -410,15 +409,15 @@ dockToRandomStation parsedUserInterface =
 
 
 type alias SeeUndockingComplete =
-    { shipUI : EveOnline.MemoryReading.ShipUI
+    { shipUI : EveOnline.ParseUserInterface.ShipUI
     , shipModulesRows : EveOnline.ParseUserInterface.ShipUIModulesGroupedIntoRows
-    , overviewWindow : EveOnline.MemoryReading.OverviewWindow
+    , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
     }
 
 
 branchDependingOnDockedOrInSpace :
     DecisionPathNode
-    -> (EveOnline.MemoryReading.ShipUI -> Maybe DecisionPathNode)
+    -> (EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode)
     -> (SeeUndockingComplete -> DecisionPathNode)
     -> ParsedUserInterface
     -> DecisionPathNode
@@ -628,7 +627,7 @@ activeShipUiElementFromInventoryWindow =
 If there are multiple such entries, these are sorted by the length of their text, minus whitespaces in the beginning and the end.
 The one with the shortest text is returned.
 -}
-menuEntryContainingTextIgnoringCase : String -> EveOnline.MemoryReading.ContextMenu -> Maybe EveOnline.MemoryReading.ContextMenuEntry
+menuEntryContainingTextIgnoringCase : String -> EveOnline.ParseUserInterface.ContextMenu -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry
 menuEntryContainingTextIgnoringCase textToSearch =
     .entries
         >> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
@@ -638,13 +637,13 @@ menuEntryContainingTextIgnoringCase textToSearch =
 
 {-| The names are at least sometimes displayed different: 'Moon 7' can become 'M7'
 -}
-menuEntryMatchesStationNameFromLocationInfoPanel : String -> EveOnline.MemoryReading.ContextMenuEntry -> Bool
+menuEntryMatchesStationNameFromLocationInfoPanel : String -> EveOnline.ParseUserInterface.ContextMenuEntry -> Bool
 menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel menuEntry =
     (stationNameFromInfoPanel |> String.toLower |> String.replace "moon " "m")
         == (menuEntry.text |> String.trim |> String.toLower)
 
 
-lastContextMenuOrSubmenu : ParsedUserInterface -> Maybe EveOnline.MemoryReading.ContextMenu
+lastContextMenuOrSubmenu : ParsedUserInterface -> Maybe EveOnline.ParseUserInterface.ContextMenu
 lastContextMenuOrSubmenu =
     .contextMenus >> List.head
 
@@ -689,10 +688,10 @@ inventoryWindowSelectedContainerFirstItem =
         >> Maybe.map
             (\itemsView ->
                 case itemsView of
-                    EveOnline.MemoryReading.InventoryItemsListView { items } ->
+                    EveOnline.ParseUserInterface.InventoryItemsListView { items } ->
                         items
 
-                    EveOnline.MemoryReading.InventoryItemsNotListView { items } ->
+                    EveOnline.ParseUserInterface.InventoryItemsNotListView { items } ->
                         items
             )
         >> Maybe.andThen List.head
@@ -722,14 +721,14 @@ clickLocationOnInventoryShipEntry uiElement =
     }
 
 
-isShipWarpingOrJumping : EveOnline.MemoryReading.ShipUI -> Bool
+isShipWarpingOrJumping : EveOnline.ParseUserInterface.ShipUI -> Bool
 isShipWarpingOrJumping =
     .indication
         >> maybeNothingFromCanNotSeeIt
         >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
         >> Maybe.map
             (\maneuverType ->
-                [ EveOnline.MemoryReading.ManeuverWarp, EveOnline.MemoryReading.ManeuverJump ]
+                [ EveOnline.ParseUserInterface.ManeuverWarp, EveOnline.ParseUserInterface.ManeuverJump ]
                     |> List.member maneuverType
             )
         -- If the ship is just floating in space, there might be no indication displayed.

@@ -8,7 +8,7 @@ The tool copies the memory contents of a chosen Windows process (such as a game 
 
 **Steps to collect a sample:**
 
-+ Download and unpack the zip-archive from [https://botengine.blob.core.windows.net/blob-library/by-name/2020-01-04.read-memory-64-bit.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-01-04.read-memory-64-bit.zip)
++ Download and unpack the zip-archive from [https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-10-read-memory-64.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-10-read-memory-64.zip)
 + Find the game client in the Windows Task Manager.
 + Make sure the name of the game client displayed in the Windows Task Manager does not contain `(32 bit)`.
 + Read the process ID of the game client process in the `PID` column in the Task Manager.

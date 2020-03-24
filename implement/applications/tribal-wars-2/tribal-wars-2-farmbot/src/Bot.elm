@@ -47,7 +47,6 @@ import Json.Decode
 import Json.Encode
 import List.Extra
 import Result.Extra
-import Set
 import WebBrowser.BotFramework as BotFramework exposing (BotEvent, BotResponse)
 
 
@@ -138,7 +137,7 @@ type alias BotState =
     , lastActivatedVillageTimeInMilliseconds : Maybe Int
     , lastReloadPageTimeInSeconds : Maybe Int
     , reloadPageCount : Int
-    , completedFarmCycles : List FarmCycleState
+    , completedFarmCycles : List FarmCycleConclusion
     , parseResponseError : Maybe Json.Decode.Error
     }
 
@@ -156,8 +155,16 @@ type alias FarmCycleState =
     }
 
 
+type alias FarmCycleConclusion =
+    { beginTime : Int
+    , completionTime : Int
+    , attacksCount : Int
+    , villagesResults : Dict.Dict Int VillageCompletedStructure
+    }
+
+
 type FarmState
-    = InFarmCycle FarmCycleState
+    = InFarmCycle { beginTime : Int } FarmCycleState
     | InBreak { lastCycleCompletionTime : Int, nextCycleStartTime : Int }
 
 
@@ -258,7 +265,7 @@ type alias VillageCoordinates =
 
 type InFarmCycleResponse
     = ContinueFarmCycle ContinueFarmCycleStructure
-    | FinishFarmCycle
+    | FinishFarmCycle { villagesResults : Dict.Dict Int VillageCompletedStructure }
 
 
 type alias ContinueFarmCycleStructure =
@@ -317,7 +324,7 @@ initState =
         , lastJumpToCoordinates = Nothing
         , coordinatesLastCheck = Dict.empty
         , readFromGameConsecutiveTimeoutsCount = 0
-        , farmState = InFarmCycle initFarmCycle
+        , farmState = InFarmCycle { beginTime = 0 } initFarmCycle
         , lastAttackTimeInMilliseconds = Nothing
         , lastActivatedVillageTimeInMilliseconds = Nothing
         , lastReloadPageTimeInSeconds = Nothing
@@ -451,7 +458,7 @@ decideNextAction { lastPageLocation } stateBefore =
             if minutesToNextFarmCycleStart < 1 then
                 ( DescribeBranch "Start next farm cycle."
                     (EndDecisionPath (BotFramework.ContinueSession Nothing))
-                , { stateBefore | farmState = InFarmCycle initFarmCycle }
+                , { stateBefore | farmState = InFarmCycle { beginTime = stateBefore.timeInMilliseconds // 1000 } initFarmCycle }
                 )
 
             else
@@ -466,7 +473,7 @@ decideNextAction { lastPageLocation } stateBefore =
                 , stateBefore
                 )
 
-        InFarmCycle farmCycleState ->
+        InFarmCycle farmCycleBegin farmCycleState ->
             let
                 decisionInFarmCycle =
                     decideInFarmCycle stateBefore farmCycleState
@@ -532,10 +539,15 @@ decideNextAction { lastPageLocation } stateBefore =
                             , updatedStateFromContinueCycle
                             )
 
-                        FinishFarmCycle ->
+                        FinishFarmCycle { villagesResults } ->
                             let
                                 completedFarmCycles =
-                                    farmCycleState :: stateBefore.completedFarmCycles
+                                    { beginTime = farmCycleBegin.beginTime
+                                    , completionTime = stateBefore.timeInMilliseconds // 1000
+                                    , attacksCount = farmCycleState.sentAttackByCoordinates |> Dict.size
+                                    , villagesResults = villagesResults
+                                    }
+                                        :: stateBefore.completedFarmCycles
 
                                 currentTimeInSeconds =
                                     stateBefore.timeInMilliseconds // 1000
@@ -801,7 +813,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                     let
                         updatedFarmState =
                             case stateAfterParseSuccess.farmState of
-                                InFarmCycle currentFarmCycleBefore ->
+                                InFarmCycle farmCycleBegin currentFarmCycleBefore ->
                                     let
                                         sentAttackByCoordinates =
                                             currentFarmCycleBefore.sentAttackByCoordinates
@@ -811,11 +823,10 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                                                     )
                                                     ()
                                     in
-                                    { currentFarmCycleBefore
-                                        | sentAttackByCoordinates = sentAttackByCoordinates
-                                    }
-                                        |> InFarmCycle
-                                        |> Just
+                                    Just
+                                        (InFarmCycle farmCycleBegin
+                                            { currentFarmCycleBefore | sentAttackByCoordinates = sentAttackByCoordinates }
+                                        )
 
                                 InBreak _ ->
                                     Nothing
@@ -949,9 +960,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                 |> Maybe.withDefault "No details yet for this village."
 
         describeSelectedVillage =
-            "Found "
-                ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt)
-                ++ " own villages. Currently selected is "
+            "Currently selected village is "
                 ++ (gameRootInformation.selectedVillageId |> String.fromInt)
                 ++ " ("
                 ++ describeSelectedVillageDetails
@@ -992,30 +1001,15 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                     )
                         )
 
-                CompletedThisVillage completion ->
-                    let
-                        describeCompletion =
-                            case completion of
-                                NoMatchingArmyPresetEnabledForThisVillage ->
-                                    "No matching preset for this village."
-
-                                NotEnoughUnits ->
-                                    "Not enough units."
-
-                                ExhaustedAttackLimit ->
-                                    "Exhausted the attack limit."
-
-                                AllFarmsInSearchedAreaAlreadyAttackedInThisCycle ->
-                                    "All farms in the search area have already been attacked in this farm cycle."
-                    in
+                CompletedThisVillage currentVillageCompletion ->
                     DescribeBranch
-                        ("Current village is completed (" ++ describeCompletion ++ ").")
+                        ("Current village is completed ("
+                            ++ (describeVillageCompletion currentVillageCompletion).decisionBranch
+                            ++ ")."
+                        )
                         (let
                             otherVillagesWithDetails =
                                 gameRootInformation.readyVillages
-                                    |> Set.fromList
-                                    |> Set.remove gameRootInformation.selectedVillageId
-                                    |> Set.toList
                                     |> List.filterMap
                                         (\otherVillageId ->
                                             sufficientyFreshOwnVillagesDetails
@@ -1025,27 +1019,54 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                                         ( otherVillageId, otherVillageDetailsResponse.villageDetails )
                                                     )
                                         )
+                                    |> Dict.fromList
+                                    |> Dict.remove gameRootInformation.selectedVillageId
+
+                            otherVillagesDetailsAndDecisions =
+                                otherVillagesWithDetails
+                                    |> Dict.map
+                                        (\otherVillageId otherVillageDetails ->
+                                            ( otherVillageDetails
+                                            , decideNextActionForVillage botState farmCycleState ( otherVillageId, otherVillageDetails )
+                                            )
+                                        )
 
                             otherVillagesWithAvailableAction =
-                                otherVillagesWithDetails
+                                otherVillagesDetailsAndDecisions
+                                    |> Dict.toList
                                     |> List.filter
-                                        (decideNextActionForVillage botState farmCycleState
-                                            >> (\otherVillageDecisionPath ->
-                                                    case otherVillageDecisionPath |> unpackToDecisionStagesDescriptionsAndLeaf |> Tuple.second of
-                                                        CompletedThisVillage _ ->
-                                                            False
+                                        (\( _, ( _, otherVillageDecisionPath ) ) ->
+                                            case otherVillageDecisionPath |> unpackToDecisionStagesDescriptionsAndLeaf |> Tuple.second of
+                                                CompletedThisVillage _ ->
+                                                    False
 
-                                                        ContinueWithThisVillage _ ->
-                                                            True
-                                               )
+                                                ContinueWithThisVillage _ ->
+                                                    True
                                         )
                          in
                          case otherVillagesWithAvailableAction |> List.head of
                             Nothing ->
-                                DescribeBranch "All villages completed."
-                                    (EndDecisionPath FinishFarmCycle)
+                                let
+                                    villagesResults =
+                                        otherVillagesDetailsAndDecisions
+                                            |> Dict.map (always Tuple.second)
+                                            |> Dict.toList
+                                            |> List.filterMap
+                                                (\( otherVillageId, otherVillageDecisionPath ) ->
+                                                    case otherVillageDecisionPath |> unpackToDecisionStagesDescriptionsAndLeaf |> Tuple.second of
+                                                        CompletedThisVillage otherVillageCompletion ->
+                                                            Just ( otherVillageId, otherVillageCompletion )
 
-                            Just ( villageToActivateId, villageToActivateDetails ) ->
+                                                        ContinueWithThisVillage _ ->
+                                                            Nothing
+                                                )
+                                            |> Dict.fromList
+                                            |> Dict.insert gameRootInformation.selectedVillageId currentVillageCompletion
+                                in
+                                DescribeBranch "All villages completed."
+                                    (EndDecisionPath (FinishFarmCycle { villagesResults = villagesResults }))
+
+                            Just ( villageToActivateId, ( villageToActivateDetails, _ ) ) ->
                                 DescribeBranch
                                     ("Switch to village " ++ (villageToActivateId |> String.fromInt) ++ " at " ++ (villageToActivateDetails.coordinates |> villageCoordinatesDisplayText) ++ ".")
                                     (EndDecisionPath
@@ -1102,6 +1123,22 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                     ( gameRootInformation.selectedVillageId, selectedVillageDetails )
                                     |> continueDecisionTree continueFromDecisionInVillage
                 )
+
+
+describeVillageCompletion : VillageCompletedStructure -> { decisionBranch : String, cycleStatsGroup : String }
+describeVillageCompletion villageCompletion =
+    case villageCompletion of
+        NoMatchingArmyPresetEnabledForThisVillage ->
+            { decisionBranch = "No matching preset for this village.", cycleStatsGroup = "No preset" }
+
+        NotEnoughUnits ->
+            { decisionBranch = "Not enough units.", cycleStatsGroup = "Out of units" }
+
+        ExhaustedAttackLimit ->
+            { decisionBranch = "Exhausted the attack limit.", cycleStatsGroup = "Attack limit" }
+
+        AllFarmsInSearchedAreaAlreadyAttackedInThisCycle ->
+            { decisionBranch = "All farms in the search area have already been attacked in this farm cycle.", cycleStatsGroup = "Out of farms" }
 
 
 lastReloadPageAgeInSecondsFromState : BotState -> Maybe Int
@@ -1783,16 +1820,27 @@ statusMessageFromState state =
                             ", " ++ (inCurrentCycle |> String.fromInt) ++ " in the current cycle."
 
                 completedFarmCyclesReportLines =
-                    case state.completedFarmCycles of
-                        [] ->
+                    case state.completedFarmCycles |> List.head of
+                        Nothing ->
                             []
 
-                        completedFarmCycles ->
+                        Just lastCompletedFarmCycle ->
+                            let
+                                completionAgeInMinutes =
+                                    (state.timeInMilliseconds // 1000 - lastCompletedFarmCycle.completionTime) // 60
+
+                                farmCycleConclusionDescription =
+                                    describeFarmCycleConclusion lastCompletedFarmCycle
+                            in
                             [ "Completed "
-                                ++ (completedFarmCycles |> List.length |> String.fromInt)
-                                ++ " of "
-                                ++ (state.settings.numberOfFarmCycles |> String.fromInt)
-                                ++ " farm cycles."
+                                ++ (state.completedFarmCycles |> List.length |> String.fromInt)
+                                ++ ". farm cycle "
+                                ++ (completionAgeInMinutes |> String.fromInt)
+                                ++ " minutes ago with "
+                                ++ farmCycleConclusionDescription.villagesReport
+                                ++ " "
+                                ++ farmCycleConclusionDescription.attacksReport
+                            , "---"
                             ]
 
                 sentAttacksReport =
@@ -1813,10 +1861,10 @@ statusMessageFromState state =
                                         ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt)
                                         ++ " own villages."
                             in
-                            [ [ ownVillagesReport ]
-                            , completedFarmCyclesReportLines
+                            [ completedFarmCyclesReportLines
                             , [ sentAttacksReport ]
                             , [ coordinatesChecksReport ]
+                            , [ ownVillagesReport ]
                             ]
                                 |> List.concat
                                 |> String.join "\n"
@@ -1865,6 +1913,56 @@ statusMessageFromState state =
                 |> String.join "\n"
 
 
+describeFarmCycleConclusion : FarmCycleConclusion -> { villagesReport : String, attacksReport : String }
+describeFarmCycleConclusion conclusion =
+    let
+        countVillagesForResultKind villageResultKind =
+            conclusion.villagesResults
+                |> Dict.values
+                |> List.filter ((==) villageResultKind)
+                |> List.length
+
+        villagesResultsReport =
+            [ NoMatchingArmyPresetEnabledForThisVillage
+            , ExhaustedAttackLimit
+            , NotEnoughUnits
+            , AllFarmsInSearchedAreaAlreadyAttackedInThisCycle
+            ]
+                |> List.filterMap
+                    (\villageResultKind ->
+                        let
+                            villagesWithThisResult =
+                                countVillagesForResultKind villageResultKind
+                        in
+                        if villagesWithThisResult < 1 then
+                            Nothing
+
+                        else
+                            Just
+                                ((describeVillageCompletion villageResultKind).cycleStatsGroup
+                                    ++ ": "
+                                    ++ (villagesWithThisResult |> String.fromInt)
+                                )
+                    )
+                |> String.join ", "
+
+        durationInMinutes =
+            (conclusion.completionTime - conclusion.beginTime) // 60
+    in
+    { villagesReport =
+        (conclusion.villagesResults |> Dict.size |> String.fromInt)
+            ++ " villages ("
+            ++ villagesResultsReport
+            ++ ")."
+    , attacksReport =
+        "Sent "
+            ++ (conclusion.attacksCount |> String.fromInt)
+            ++ " attacks in "
+            ++ (durationInMinutes |> String.fromInt)
+            ++ " minutes."
+    }
+
+
 countSentAttacks : BotState -> { inSession : Int, inCurrentCycle : Maybe Int }
 countSentAttacks state =
     let
@@ -1872,11 +1970,11 @@ countSentAttacks state =
             .sentAttackByCoordinates >> Dict.size
 
         attackSentInEarlierCycles =
-            state.completedFarmCycles |> List.map countInFarmCycle |> List.sum
+            state.completedFarmCycles |> List.map .attacksCount |> List.sum
 
         inCurrentCycle =
             case state.farmState of
-                InFarmCycle farmCycle ->
+                InFarmCycle _ farmCycle ->
                     Just (farmCycle |> countInFarmCycle)
 
                 InBreak _ ->

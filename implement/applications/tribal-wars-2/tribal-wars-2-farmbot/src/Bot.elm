@@ -855,20 +855,7 @@ decideInFarmCycle botState farmCycleState =
                                 (EndDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
 
                         Nothing ->
-                            let
-                                waitAfterJumpedToCoordinates =
-                                    botState.lastJumpToCoordinates
-                                        |> Maybe.map
-                                            (\lastJumpToCoordinates -> botState.timeInMilliseconds - lastJumpToCoordinates.timeInMilliseconds < 1100)
-                                        |> Maybe.withDefault False
-                            in
-                            if waitAfterJumpedToCoordinates then
-                                DescribeBranch
-                                    "Waiting after jumping to village."
-                                    (EndDecisionPath (ContinueFarmCycle Nothing))
-
-                            else
-                                decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState
+                            decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState
 
 
 decideInFarmCycleWhenNotWaitingGlobally : BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse

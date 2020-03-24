@@ -169,7 +169,7 @@ type ResponseFromBrowser
     | VillageByCoordinatesResponse VillageByCoordinatesResponseStructure
     | GetPresetsResponse (List ArmyPreset)
     | ActivatedVillageResponse
-    | SendFirstPresetAsAttackToCoordinatesResponse SendFirstPresetAsAttackToCoordinatesResponseStructure
+    | SendPresetAttackToCoordinatesResponse SendPresetAttackToCoordinatesResponseStructure
 
 
 type alias RootInformationStructure =
@@ -196,7 +196,7 @@ type alias VillageByCoordinatesResponseStructure =
     }
 
 
-type alias SendFirstPresetAsAttackToCoordinatesResponseStructure =
+type alias SendPresetAttackToCoordinatesResponseStructure =
     { villageCoordinates : VillageCoordinates
     }
 
@@ -749,7 +749,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                                         , readFromGameConsecutiveTimeoutsCount = 0
                                     }
 
-                SendFirstPresetAsAttackToCoordinatesResponse sendFirstPresetAsAttackToCoordinatesResponse ->
+                SendPresetAttackToCoordinatesResponse sendPresetAttackToCoordinatesResponse ->
                     let
                         updatedFarmState =
                             case stateAfterParseSuccess.farmState of
@@ -758,8 +758,8 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                                         sentAttackByCoordinates =
                                             currentFarmCycleBefore.sentAttackByCoordinates
                                                 |> Dict.insert
-                                                    ( sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.x
-                                                    , sendFirstPresetAsAttackToCoordinatesResponse.villageCoordinates.y
+                                                    ( sendPresetAttackToCoordinatesResponse.villageCoordinates.x
+                                                    , sendPresetAttackToCoordinatesResponse.villageCoordinates.y
                                                     )
                                                     ()
                                     in
@@ -943,7 +943,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                         (ContinueFarmCycle
                                             (Just
                                                 (RunJavascript
-                                                    (startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId = armyPreset.id })
+                                                    (startSendPresetAttackToCoordinatesScript coordinates { presetId = armyPreset.id })
                                                 )
                                             )
                                         )
@@ -1335,7 +1335,7 @@ decodeResponseFromBrowser =
         , decodeVillageByCoordinatesResponse |> Json.Decode.map VillageByCoordinatesResponse
         , decodeGetPresetsResponse |> Json.Decode.map GetPresetsResponse
         , decodeActivatedVillageResponse |> Json.Decode.map (always ActivatedVillageResponse)
-        , decodeSendFirstPresetAsAttackToCoordinatesResponse |> Json.Decode.map SendFirstPresetAsAttackToCoordinatesResponse
+        , decodeSendPresetAttackToCoordinatesResponse |> Json.Decode.map SendPresetAttackToCoordinatesResponse
         ]
 
 
@@ -1560,8 +1560,8 @@ decodePreset =
         (Json.Decode.field "assigned_villages" (Json.Decode.list Json.Decode.int))
 
 
-startSendFirstPresetAsAttackToCoordinatesScript : { x : Int, y : Int } -> { presetId : Int } -> String
-startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId } =
+startSendPresetAttackToCoordinatesScript : { x : Int, y : Int } -> { presetId : Int } -> String
+startSendPresetAttackToCoordinatesScript coordinates { presetId } =
     let
         argumentJson =
             [ ( "coordinates", coordinates |> jsonEncodeCoordinates )
@@ -1571,7 +1571,7 @@ startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId } =
                 |> Json.Encode.encode 0
     in
     """
-(function sendFirstPresetAsAttackToCoordinates(argument) {
+(function sendPresetAttackToCoordinates(argument) {
     coordinates = argument.coordinates;
     presetId = argument.presetId;
 
@@ -1586,12 +1586,12 @@ startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId } =
         type = 'attack';
 
         socketService.emit(routeProvider.GET_ATTACKING_FACTOR, {
-            'target_id'\t\t: targetVillageId
+            'target_id' : targetVillageId
         }, function(data) {
             var targetData = {
-                'id'\t\t\t\t: targetVillageId,
-                'attackProtection'\t: data.attack_protection,
-                'barbarianVillage'\t: data.owner_id === null
+                'id' : targetVillageId,
+                'attackProtection' : data.attack_protection,
+                'barbarianVillage' : data.owner_id === null
             };
 
             mapService.updateVillageOwner(targetData.id, data.owner_id);
@@ -1620,14 +1620,14 @@ startSendFirstPresetAsAttackToCoordinatesScript coordinates { presetId } =
 })(""" ++ argumentJson ++ ")"
 
 
-decodeSendFirstPresetAsAttackToCoordinatesResponse : Json.Decode.Decoder SendFirstPresetAsAttackToCoordinatesResponseStructure
-decodeSendFirstPresetAsAttackToCoordinatesResponse =
+decodeSendPresetAttackToCoordinatesResponse : Json.Decode.Decoder SendPresetAttackToCoordinatesResponseStructure
+decodeSendPresetAttackToCoordinatesResponse =
     Json.Decode.field "startedSendPresetAttackByCoordinates"
         (Json.Decode.map2 VillageCoordinates
             (Json.Decode.field "x" Json.Decode.int)
             (Json.Decode.field "y" Json.Decode.int)
         )
-        |> Json.Decode.map SendFirstPresetAsAttackToCoordinatesResponseStructure
+        |> Json.Decode.map SendPresetAttackToCoordinatesResponseStructure
 
 
 villageMenuActivateVillageScript : String

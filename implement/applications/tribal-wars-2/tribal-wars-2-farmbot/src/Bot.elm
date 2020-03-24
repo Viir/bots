@@ -264,8 +264,17 @@ type alias ContinueFarmCycleStructure =
 
 
 type ContinueFarmCycleActivity
-    = RunJavascript String
+    = RequestToPage RequestToPageStructure
     | RestartWebBrowser
+
+
+type RequestToPageStructure
+    = ReadRootInformationRequest
+    | ReadSelectedCharacterVillageDetailsRequest { villageId : Int }
+    | ReadArmyPresets
+    | VillageByCoordinatesRequest { coordinates : VillageCoordinates, jumpToVillage : Bool }
+    | SendPresetAttackToCoordinatesRequest { coordinates : VillageCoordinates, presetId : Int }
+    | VillageMenuActivateVillageRequest
 
 
 type VillageCompletedStructure
@@ -465,11 +474,20 @@ decideNextAction { lastPageLocation } stateBefore =
                                             let
                                                 ( requestToFramework, updatedStateForActivity ) =
                                                     case activity of
-                                                        RunJavascript javascript ->
+                                                        RequestToPage requestToPage ->
+                                                            let
+                                                                requestComponents =
+                                                                    componentsForRequestToPage requestToPage
+                                                            in
                                                             ( BotFramework.RunJavascriptInCurrentPageRequest
-                                                                { javascript = javascript
+                                                                { javascript = requestComponents.javascript
                                                                 , requestId = "request-id"
-                                                                , timeToWaitForCallbackMilliseconds = 800
+                                                                , timeToWaitForCallbackMilliseconds =
+                                                                    if requestComponents.usesCallback then
+                                                                        800
+
+                                                                    else
+                                                                        0
                                                                 }
                                                             , stateBefore
                                                             )
@@ -839,7 +857,7 @@ decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState =
         Nothing ->
             DescribeBranch
                 "Game root information is not recent enough."
-                (EndDecisionPath (ContinueFarmCycle (Just (RunJavascript readRootInformationScript))))
+                (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
 
         Just gameRootInformation ->
             decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInformation
@@ -923,18 +941,18 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                         ("Search for village at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
                         (EndDecisionPath
                             (ContinueFarmCycle
-                                (Just (RunJavascript (startVillageByCoordinatesScript coordinates { jumpToVillage = False })))
+                                (Just (RequestToPage (VillageByCoordinatesRequest { coordinates = coordinates, jumpToVillage = False })))
                             )
                         )
 
                 ContinueWithThisVillage (AttackAtCoordinates armyPreset coordinates) ->
                     DescribeBranch
                         ("Farm at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
-                        (case scriptToJumpToVillageIfNotYetDone botState coordinates of
-                            Just jumpToVillageScript ->
+                        (case requestToJumpToVillageIfNotYetDone botState coordinates of
+                            Just jumpToVillageRequest ->
                                 DescribeBranch
                                     ("Jump to village at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
-                                    (EndDecisionPath (ContinueFarmCycle (Just (RunJavascript jumpToVillageScript))))
+                                    (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage jumpToVillageRequest))))
 
                             Nothing ->
                                 DescribeBranch
@@ -942,8 +960,8 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                     (EndDecisionPath
                                         (ContinueFarmCycle
                                             (Just
-                                                (RunJavascript
-                                                    (startSendPresetAttackToCoordinatesScript coordinates { presetId = armyPreset.id })
+                                                (RequestToPage
+                                                    (SendPresetAttackToCoordinatesRequest { coordinates = coordinates, presetId = armyPreset.id })
                                                 )
                                             )
                                         )
@@ -1009,9 +1027,9 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                     (EndDecisionPath
                                         (ContinueFarmCycle
                                             (Just
-                                                (RunJavascript
-                                                    (scriptToJumpToVillageIfNotYetDone botState villageToActivateDetails.coordinates
-                                                        |> Maybe.withDefault villageMenuActivateVillageScript
+                                                (RequestToPage
+                                                    (requestToJumpToVillageIfNotYetDone botState villageToActivateDetails.coordinates
+                                                        |> Maybe.withDefault VillageMenuActivateVillageRequest
                                                     )
                                                 )
                                             )
@@ -1025,7 +1043,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                 ("Read status of own village " ++ (ownVillageNeedingDetailsUpdate |> String.fromInt) ++ ".")
                 (EndDecisionPath
                     (ContinueFarmCycle
-                        (Just (RunJavascript (readSelectedCharacterVillageDetailsScript ownVillageNeedingDetailsUpdate)))
+                        (Just (RequestToPage (ReadSelectedCharacterVillageDetailsRequest { villageId = ownVillageNeedingDetailsUpdate })))
                     )
                 )
 
@@ -1037,7 +1055,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                             ("Read status of current selected village (" ++ (gameRootInformation.selectedVillageId |> String.fromInt) ++ ")")
                             (EndDecisionPath
                                 (ContinueFarmCycle
-                                    (Just (RunJavascript (readSelectedCharacterVillageDetailsScript gameRootInformation.selectedVillageId)))
+                                    (Just (RequestToPage (ReadSelectedCharacterVillageDetailsRequest { villageId = gameRootInformation.selectedVillageId })))
                                 )
                             )
 
@@ -1051,7 +1069,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                 -}
                                 DescribeBranch
                                     "Did not find any army presets. Maybe loading is not completed yet. Load army presets."
-                                    (EndDecisionPath (ContinueFarmCycle (Just (RunJavascript getPresetsScript))))
+                                    (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadArmyPresets))))
 
                             _ ->
                                 decideNextActionForVillage
@@ -1068,8 +1086,8 @@ lastReloadPageAgeInSecondsFromState state =
         |> Maybe.map (\lastReloadPageTimeInSeconds -> state.timeInMilliseconds // 1000 - lastReloadPageTimeInSeconds)
 
 
-scriptToJumpToVillageIfNotYetDone : BotState -> VillageCoordinates -> Maybe String
-scriptToJumpToVillageIfNotYetDone state coordinates =
+requestToJumpToVillageIfNotYetDone : BotState -> VillageCoordinates -> Maybe RequestToPageStructure
+requestToJumpToVillageIfNotYetDone state coordinates =
     let
         needToJumpThere =
             case state.lastJumpToCoordinates of
@@ -1084,7 +1102,7 @@ scriptToJumpToVillageIfNotYetDone state coordinates =
                         - 7000
     in
     if needToJumpThere then
-        Just (startVillageByCoordinatesScript coordinates { jumpToVillage = True })
+        Just (VillageByCoordinatesRequest { coordinates = coordinates, jumpToVillage = True })
 
     else
         Nothing
@@ -1302,6 +1320,28 @@ squareDistanceBetweenCoordinates coordsA coordsB =
             coordsA.y - coordsB.y
     in
     distX * distX + distY * distY
+
+
+componentsForRequestToPage : RequestToPageStructure -> { javascript : String, usesCallback : Bool }
+componentsForRequestToPage requestToPage =
+    case requestToPage of
+        ReadRootInformationRequest ->
+            { javascript = readRootInformationScript, usesCallback = False }
+
+        ReadSelectedCharacterVillageDetailsRequest { villageId } ->
+            { javascript = readSelectedCharacterVillageDetailsScript villageId, usesCallback = False }
+
+        ReadArmyPresets ->
+            { javascript = getPresetsScript, usesCallback = False }
+
+        VillageByCoordinatesRequest { coordinates, jumpToVillage } ->
+            { javascript = startVillageByCoordinatesScript coordinates { jumpToVillage = jumpToVillage }, usesCallback = True }
+
+        SendPresetAttackToCoordinatesRequest { coordinates, presetId } ->
+            { javascript = startSendPresetAttackToCoordinatesScript coordinates { presetId = presetId }, usesCallback = False }
+
+        VillageMenuActivateVillageRequest ->
+            { javascript = villageMenuActivateVillageScript, usesCallback = False }
 
 
 readRootInformationScript : String

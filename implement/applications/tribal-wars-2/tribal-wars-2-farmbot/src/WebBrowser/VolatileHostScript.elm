@@ -58,6 +58,8 @@ class Request
 
     public class RunJavascriptInCurrentPageRequestStructure
     {
+        public string requestId;
+
         public string javascript;
 
         public int timeToWaitForCallbackMilliseconds;
@@ -77,6 +79,8 @@ class Response
 
     public class RunJavascriptInCurrentPageResponseStructure
     {
+        public string requestId;
+
         public string directReturnValueAsString;
 
         public string callbackReturnValueAsString;
@@ -171,6 +175,7 @@ async System.Threading.Tasks.Task<Response.RunJavascriptInCurrentPageResponseStr
 
     return new Response.RunJavascriptInCurrentPageResponseStructure
     {
+        requestId = request.requestId,
         directReturnValueAsString = directReturnValueAsString,
         callbackReturnValueAsString = callbackReturnValue,
     };

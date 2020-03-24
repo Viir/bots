@@ -51,7 +51,8 @@ type alias RunJavascriptInCurrentPageRequestStructure =
 
 
 type alias RunJavascriptInCurrentPageResponseStructure =
-    { directReturnValueAsString : String
+    { requestId : String
+    , directReturnValueAsString : String
     , callbackReturnValueAsString : Maybe String
     }
 

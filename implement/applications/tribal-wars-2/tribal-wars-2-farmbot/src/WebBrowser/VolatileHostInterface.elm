@@ -28,7 +28,8 @@ type ResponseFromVolatileHost
 
 
 type alias RunJavascriptInCurrentPageResponseStructure =
-    { directReturnValueAsString : String
+    { requestId : String
+    , directReturnValueAsString : String
     , callbackReturnValueAsString : Maybe String
     }
 
@@ -76,7 +77,8 @@ encodeRunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest =
 
 decodeRunJavascriptInCurrentPageResponse : Json.Decode.Decoder RunJavascriptInCurrentPageResponseStructure
 decodeRunJavascriptInCurrentPageResponse =
-    Json.Decode.map2 RunJavascriptInCurrentPageResponseStructure
+    Json.Decode.map3 RunJavascriptInCurrentPageResponseStructure
+        (Json.Decode.field "requestId" Json.Decode.string)
         (Json.Decode.field "directReturnValueAsString" Json.Decode.string)
         (Json.Decode.Extra.optionalField "callbackReturnValueAsString" Json.Decode.string)
 

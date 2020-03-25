@@ -475,14 +475,14 @@ getSetupTaskWhenVolatileHostSetupCompleted { pageGoToUrl } stateBefore volatileH
             }
 
 
-runScriptResultDisplayString : Result String (Maybe String) -> String
+runScriptResultDisplayString : Result String (Maybe String) -> { string : String, isErr : Bool }
 runScriptResultDisplayString result =
     case result of
         Err error ->
-            "Error: " ++ error
+            { string = "Error: " ++ error, isErr = True }
 
         Ok successResult ->
-            "Success: " ++ (successResult |> Maybe.withDefault "null")
+            { string = "Success: " ++ (successResult |> Maybe.withDefault "null"), isErr = False }
 
 
 statusReportFromState : StateIncludingSetup s -> String
@@ -490,7 +490,22 @@ statusReportFromState state =
     let
         lastScriptRunResult =
             "Last script run result is: "
-                ++ (state.setup.lastRunScriptResult |> Maybe.map (runScriptResultDisplayString >> stringEllipsis 540 "....") |> Maybe.withDefault "Nothing")
+                ++ (state.setup.lastRunScriptResult
+                        |> Maybe.map runScriptResultDisplayString
+                        |> Maybe.map
+                            (\resultDisplayInfo ->
+                                resultDisplayInfo.string
+                                    |> stringEllipsis
+                                        (if resultDisplayInfo.isErr then
+                                            640
+
+                                         else
+                                            140
+                                        )
+                                        "...."
+                            )
+                        |> Maybe.withDefault "Nothing"
+                   )
     in
     [ state.botState.lastProcessEventResult |> Maybe.map .statusMessage |> Maybe.withDefault ""
     , "--------"

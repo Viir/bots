@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-03-24
+{- Tribal Wars 2 farmbot version 2020-03-25
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -409,12 +409,7 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                     case maybeCurrentActivityToWaitFor of
                         Just currentActivityToWaitFor ->
                             ( currentActivityToWaitFor
-                                |> continueDecisionTree
-                                    (always
-                                        (DescribeBranch "Wait for completion of request to framework."
-                                            (EndDecisionPath (BotFramework.ContinueSession Nothing))
-                                        )
-                                    )
+                                |> continueDecisionTree (always (EndDecisionPath (BotFramework.ContinueSession Nothing)))
                             , Nothing
                             )
 
@@ -423,10 +418,6 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                                 { lastPageLocation = stateBeforeIntegrateEvent.lastPageLocation }
                                 { stateBefore | currentActivity = Nothing }
                                 |> Tuple.mapSecond Just
-                                |> Tuple.mapFirst
-                                    (continueDecisionTree
-                                        (\originalLeaf -> DescribeBranch "Request to framework." (EndDecisionPath originalLeaf))
-                                    )
 
                 ( activityDecisionStages, responseToFramework ) =
                     activityDecision
@@ -437,10 +428,13 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                         |> List.indexedMap
                             (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
                         |> String.join "\n"
+
+                newState =
+                    maybeUpdatedState |> Maybe.withDefault stateBefore
             in
-            { newState = maybeUpdatedState |> Maybe.withDefault stateBefore
+            { newState = newState
             , response = responseToFramework
-            , statusMessage = statusMessageFromState stateBefore ++ "\nCurrent activity:\n" ++ activityDescription
+            , statusMessage = statusMessageFromState newState ++ "\nCurrent activity:\n" ++ activityDescription
             }
 
 
@@ -583,10 +577,10 @@ decideNextAction { lastPageLocation } stateBefore =
                                         , completedFarmCycles = completedFarmCycles
                                     }
                             in
-                            ( DescribeBranch "There is nothing left to do in this farm cycle."
+                            ( DescribeBranch "Finish farm cycle."
                                 (if stateBefore.settings.numberOfFarmCycles <= (stateAfterFinishingFarmCycle.completedFarmCycles |> List.length) then
                                     DescribeBranch
-                                        ("Finished all " ++ (stateAfterFinishingFarmCycle.completedFarmCycles |> List.length |> String.fromInt) ++ " farm cycles.")
+                                        ("Finish session because I finished all " ++ (stateAfterFinishingFarmCycle.completedFarmCycles |> List.length |> String.fromInt) ++ " configured farm cycles.")
                                         (EndDecisionPath BotFramework.FinishSession)
 
                                  else
@@ -892,7 +886,7 @@ decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState =
         Nothing ->
             DescribeBranch
                 "Game root information is not recent enough."
-                (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
+                (DescribeBranch "Read root info." (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest)))))
 
         Just gameRootInformation ->
             decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInformation
@@ -1113,8 +1107,11 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                    -- TODO: Add timeout for getting presets.
                                 -}
                                 DescribeBranch
-                                    "Did not find any army presets. Maybe loading is not completed yet. Load army presets."
-                                    (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadArmyPresets))))
+                                    "Did not find any army presets. Maybe loading is not completed yet."
+                                    (DescribeBranch
+                                        "Read army presets."
+                                        (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadArmyPresets))))
+                                    )
 
                             _ ->
                                 decideNextActionForVillage
@@ -1833,8 +1830,8 @@ statusMessageFromState state =
                                     describeFarmCycleConclusion lastCompletedFarmCycle
                             in
                             [ "Completed "
-                                ++ (state.completedFarmCycles |> List.length |> String.fromInt)
-                                ++ ". farm cycle "
+                                ++ (state.completedFarmCycles |> List.length |> describeOrdinalNumber)
+                                ++ " farm cycle "
                                 ++ (completionAgeInMinutes |> String.fromInt)
                                 ++ " minutes ago with "
                                 ++ farmCycleConclusionDescription.villagesReport
@@ -1861,13 +1858,7 @@ statusMessageFromState state =
                                         ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt)
                                         ++ " own villages."
                             in
-                            [ completedFarmCyclesReportLines
-                            , [ sentAttacksReport ]
-                            , [ coordinatesChecksReport ]
-                            , [ ownVillagesReport ]
-                            ]
-                                |> List.concat
-                                |> String.join "\n"
+                            ownVillagesReport
 
                 parseResponseErrorReport =
                     case state.parseResponseError of
@@ -1898,7 +1889,10 @@ statusMessageFromState state =
                         |> Maybe.withDefault []
 
                 allReportLines =
-                    [ [ inGameReport ]
+                    [ completedFarmCyclesReportLines
+                    , [ sentAttacksReport ]
+                    , [ coordinatesChecksReport ]
+                    , [ inGameReport ]
                     , reloadReportLines
                     , [ parseResponseErrorReport ]
                     , if enableDebugInspection then
@@ -1911,6 +1905,18 @@ statusMessageFromState state =
             in
             allReportLines
                 |> String.join "\n"
+
+
+describeOrdinalNumber : Int -> String
+describeOrdinalNumber number =
+    [ ( 1, "first" )
+    , ( 2, "second" )
+    , ( 3, "third" )
+    , ( 4, "fourth" )
+    ]
+        |> Dict.fromList
+        |> Dict.get number
+        |> Maybe.withDefault ((number |> String.fromInt) ++ "th")
 
 
 describeFarmCycleConclusion : FarmCycleConclusion -> { villagesReport : String, attacksReport : String }

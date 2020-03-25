@@ -8,12 +8,14 @@ It automatically detects barbarian villages, available troops and configured arm
 ### Easy to Configure
 
 + Automatically reads the required information from the game: Locations of farms, available units, army presets, current attacks per village, etc.
-+ You can use the in-game army presets to configure which villages should attack and which units to use.
++ Use the in-game army presets to configure which villages should attack and which units to use.
 
 ### Efficient
 
 + Supports multiple army presets per village to make the best use of your troops.
 + Takes into account the limit of 50 attacks per village.
++ Fast enough to send 800 attacks per hour.
++ Option to avoid barbarian villages under a certain amount of points.
 
 ### Safe
 
@@ -23,7 +25,7 @@ It automatically detects barbarian villages, available troops and configured arm
 
 ## Starting the Farmbot
 
-To start the farmbot, download the script from [https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-18-run-app-B9F13A7357-tribal-wars-2-farmbot.bat](https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-18-run-app-B9F13A7357-tribal-wars-2-farmbot.bat) and then run it.
+To start the farmbot, download the script from [https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-25-run-app-00736DF1E9-tribal-wars-2-farmbot.bat](https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-25-run-app-00736DF1E9-tribal-wars-2-farmbot.bat) and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at [https://to.botengine.org/failed-run-bot-did-not-find-botengine-program](https://to.botengine.org/failed-run-bot-did-not-find-botengine-program)
 
@@ -42,6 +44,12 @@ Then the browsers address bar will probably show an URL like https://es.tribalwa
 Now the bot will probably display a message like this:
 
 > Found no army presets matching the filter 'farm'.
+
+Or, in case your account has no army presets configured at all, it shows this message:
+
+> Did not find any army presets. Maybe loading is not completed yet.
+
+In any case, we need to configure at least one army preset before the bot can start farming.
 
 ### Configuring Army Presets
 
@@ -62,23 +70,34 @@ You can use the in-game user interface to configure an army preset and enable it
 Besides the army presets, no configuration is required.
 The bot searches for barbarian villages and then attacks them using the matching presets. You can also see it jumping to the barbarian villages on the map.
 
-In the console window, it displays the number of sent attacks and other information:
+In the console window, you can read about the number of sent attacks and what the bot is currently doing:
 
-> Found 3 own villages. Currently selected is 871 (482|523 'Segundo pueblo de skal'. Last update 6 s ago. 179 available units. Best matching army preset for this village is 'farm beta'. 49 outgoing commands.)  
-> Sent 129 attacks in this session, 129 in the current cycle.  
-> Checked 1413 coordinates and found 364 villages, 129 of wich are barbarian villages. 
+```text
+[...]
+Sent 129 attacks in this session, 129 in the current cycle.
+Checked 1413 coordinates and found 364 villages, 129 of wich are barbarian villages.
+Found 3 own villages.
+
+Current activity:  
++ Currently selected village is 871 (482|523 'Segundo pueblo de skal'. Last update 6 s ago. 537 available units. 11 outgoing commands.)
+++ Best matching army preset for this village is 'farm beta'.
++++ Farm at 567|524.
+++++ Send attack using preset 'Farm 1'.
+[...]
+```
 
 When all your villages are out of units or at the attack limit, the bot stops with this message:
 
-> Finished all 1 farm cycles.
+> Finish session because I finished all 1 configured farm cycles.
 
-## Configuration Options
+## Configuration Settings
 
-All configuration is optional; you only need it in case the defaults don't fit your use-case.
-You can configure two variables:
+All settings are optional; you only need it in case the defaults don't fit your use-case.
+You can adjust three settings:
 
-+ `number-of-farm-cycles` : Number of farm cycles before the bot stops completely. The default is 1.
-+ `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like '60-120'. It will then pick a random value in this range.
++ 'number-of-farm-cycles' : Number of farm cycles before the bot stops completely. The default is 1.
++ 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like '60-120'. I will then pick a random value in this range.
++ 'farm-barb-min-points': Minimum points of barbarian villages to attack.
 
 Here is an example of applying a configuration for three farm cycles with breaks of 20 to 40 minutes in between:
 
@@ -112,7 +131,7 @@ To make it remember the farm locations, configure more farm cycles. The bot reme
 
 ### How much time does this bot need to send all attacks on my account?
 
-Sending one attack takes less than seven seconds. So the bot can cover 500 farms per hour. The first farm cycle per session is a special case: For the first cycle, it needs additional time to find the farm villages. The game limits us to 50 concurrent attacks per village, and the bot switches to the next village when the currently selected village hits that limit. One farm cycle is complete when all your villages are at the limit, either because of the attack limit or because no matching units are remaining.
+Sending one attack takes less than four seconds. The bot can cover 800 farms per hour. The first farm cycle per session is a special case: For the first cycle, it needs additional time to find the farm villages. The game limits us to 50 concurrent attacks per village, and the bot switches to the next village when the currently selected village hits that limit. One farm cycle is complete when all your villages are at the limit, either because of the attack limit or because no matching units are remaining.
 
 
 ## Getting Help

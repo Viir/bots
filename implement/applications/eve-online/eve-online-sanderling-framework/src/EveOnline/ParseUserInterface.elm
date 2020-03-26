@@ -3,6 +3,7 @@ module EveOnline.ParseUserInterface exposing (..)
 import Dict
 import EveOnline.MemoryReading
 import Json.Decode
+import Maybe.Extra
 import Regex
 import Set
 
@@ -81,6 +82,8 @@ type alias ShipUI =
     , indication : MaybeVisible ShipUIIndication
     , modules : List ShipUIModule
     , hitpointsPercent : Hitpoints
+    , capacitor : MaybeVisible ShipUICapacitor
+    , offensiveBuffButtonNames : List String
     }
 
 
@@ -95,6 +98,19 @@ type alias ShipUIModule =
     , slotUINode : UITreeNodeWithDisplayRegion
     , isActive : Maybe Bool
     , isHiliteVisible : Bool
+    }
+
+
+type alias ShipUICapacitor =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , pmarks : List ShipUICapacitorPmark
+    , levelFromPmarksPercent : Maybe Int
+    }
+
+
+type alias ShipUICapacitorPmark =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , colorPercent : Maybe ColorComponents
     }
 
 
@@ -154,11 +170,14 @@ type alias OverviewWindowEntry =
     { uiNode : UITreeNodeWithDisplayRegion
     , textsLeftToRight : List String
     , cellsTexts : Dict.Dict String String
+    , objectDistance : Maybe String
     , objectDistanceInMeters : Result String Int
     , objectName : Maybe String
     , objectType : Maybe String
     , iconSpriteColorPercent : Maybe ColorComponents
     , namesUnderSpaceObjectIcon : Set.Set String
+    , bgColorFillsPercent : List ColorComponents
+    , rightAlignedIconsHints : List String
     }
 
 
@@ -232,6 +251,7 @@ type alias StationWindow =
 type alias InventoryWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , leftTreeEntries : List InventoryWindowLeftTreeEntry
+    , subCaptionLabelText : Maybe String
     , selectedContainerCapacityGauge : Maybe (Result String InventoryWindowCapacityGauge)
     , selectedContainerInventory : Maybe Inventory
     , buttonToSwitchToListView : Maybe UITreeNodeWithDisplayRegion
@@ -251,8 +271,14 @@ type InventoryItemsView
 
 type alias InventoryWindowLeftTreeEntry =
     { uiNode : UITreeNodeWithDisplayRegion
+    , toggleBtn : Maybe UITreeNodeWithDisplayRegion
     , text : String
+    , children : List InventoryWindowLeftTreeEntryChild
     }
+
+
+type InventoryWindowLeftTreeEntryChild
+    = InventoryWindowLeftTreeEntryChild InventoryWindowLeftTreeEntry
 
 
 type alias InventoryWindowCapacityGauge =
@@ -325,16 +351,10 @@ type MaybeVisible feature
 
 groupShipUIModulesIntoRows : ShipUI -> Maybe ShipUIModulesGroupedIntoRows
 groupShipUIModulesIntoRows shipUI =
-    let
-        maybeCapacitorUINode =
-            shipUI.uiNode
-                |> listDescendantsWithDisplayRegion
-                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "CapacitorContainer")
-                |> List.head
-    in
-    maybeCapacitorUINode
+    shipUI.capacitor
+        |> maybeNothingFromCanNotSeeIt
         |> Maybe.map
-            (\capacitorUINode ->
+            (\capacitor ->
                 let
                     verticalDistanceThreshold =
                         20
@@ -343,7 +363,7 @@ groupShipUIModulesIntoRows shipUI =
                         uiNode.totalDisplayRegion.y + uiNode.totalDisplayRegion.height // 2
 
                     capacitorVerticalCenter =
-                        verticalCenterOfUINode capacitorUINode
+                        verticalCenterOfUINode capacitor.uiNode
                 in
                 shipUI.modules
                     |> List.foldr
@@ -661,6 +681,18 @@ parseShipUIFromUITreeRoot uiTreeRoot =
 
                         _ ->
                             Nothing
+
+                maybeCapacitorUINode =
+                    shipUINode
+                        |> listDescendantsWithDisplayRegion
+                        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "CapacitorContainer")
+                        |> List.head
+
+                offensiveBuffButtonNames =
+                    shipUINode
+                        |> listDescendantsWithDisplayRegion
+                        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "OffensiveBuffButton")
+                        |> List.filterMap (.uiNode >> getNameFromDictEntries)
             in
             maybeHitpointsPercent
                 |> Maybe.map
@@ -669,9 +701,47 @@ parseShipUIFromUITreeRoot uiTreeRoot =
                         , indication = indication
                         , modules = modules
                         , hitpointsPercent = hitpointsPercent
+                        , capacitor = maybeCapacitorUINode |> Maybe.map parseShipUICapacitorFromUINode |> canNotSeeItFromMaybeNothing
+                        , offensiveBuffButtonNames = offensiveBuffButtonNames
                         }
                     )
                 |> canNotSeeItFromMaybeNothing
+
+
+parseShipUICapacitorFromUINode : UITreeNodeWithDisplayRegion -> ShipUICapacitor
+parseShipUICapacitorFromUINode capacitorUINode =
+    let
+        pmarks =
+            capacitorUINode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> Maybe.map ((==) "pmark") >> Maybe.withDefault False)
+                |> List.map
+                    (\pmarkUINode ->
+                        { uiNode = pmarkUINode
+                        , colorPercent = pmarkUINode.uiNode |> getColorPercentFromDictEntries
+                        }
+                    )
+
+        maybePmarksFills =
+            pmarks
+                |> List.map (.colorPercent >> Maybe.map (\colorPercent -> colorPercent.a < 20))
+                |> Maybe.Extra.combine
+
+        levelFromPmarksPercent =
+            maybePmarksFills
+                |> Maybe.andThen
+                    (\pmarksFills ->
+                        if (pmarksFills |> List.length) < 1 then
+                            Nothing
+
+                        else
+                            Just (((pmarksFills |> List.filter identity |> List.length) * 100) // (pmarksFills |> List.length))
+                    )
+    in
+    { uiNode = capacitorUINode
+    , pmarks = pmarks
+    , levelFromPmarksPercent = levelFromPmarksPercent
+    }
 
 
 parseTargetsFromUITreeRoot : UITreeNodeWithDisplayRegion -> List Target
@@ -811,9 +881,12 @@ parseOverviewWindowEntry entriesHeaders overviewEntryNode =
                     )
                 |> Dict.fromList
 
-        objectDistanceInMeters =
+        objectDistance =
             cellsTexts
                 |> Dict.get "Distance"
+
+        objectDistanceInMeters =
+            objectDistance
                 |> Maybe.map parseOverviewEntryDistanceInMetersFromText
                 |> Maybe.withDefault (Err "Did not find the 'Distance' cell text.")
 
@@ -837,15 +910,32 @@ parseOverviewWindowEntry entriesHeaders overviewEntryNode =
                 |> Maybe.withDefault []
                 |> List.filterMap getNameFromDictEntries
                 |> Set.fromList
+
+        bgColorFillsPercent =
+            overviewEntryNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Fill")
+                |> List.filter (.uiNode >> getNameFromDictEntries >> Maybe.map ((==) "bgColor") >> Maybe.withDefault False)
+                |> List.filterMap (\fillUiNode -> fillUiNode.uiNode |> getColorPercentFromDictEntries)
+
+        rightAlignedIconsHints =
+            overviewEntryNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> Maybe.map ((==) "rightAlignedIconContainer") >> Maybe.withDefault False)
+                |> List.concatMap listDescendantsWithDisplayRegion
+                |> List.filterMap (.uiNode >> getHintTextFromDictEntries)
     in
     { uiNode = overviewEntryNode
     , textsLeftToRight = textsLeftToRight
     , cellsTexts = cellsTexts
+    , objectDistance = objectDistance
     , objectDistanceInMeters = objectDistanceInMeters
     , objectName = cellsTexts |> Dict.get "Name"
     , objectType = cellsTexts |> Dict.get "Type"
     , iconSpriteColorPercent = iconSpriteColorPercent
     , namesUnderSpaceObjectIcon = namesUnderSpaceObjectIcon
+    , bgColorFillsPercent = bgColorFillsPercent
+    , rightAlignedIconsHints = rightAlignedIconsHints
     }
 
 
@@ -1151,28 +1241,11 @@ parseInventoryWindow windowUiNode =
                 |> List.head
                 |> Maybe.map parseInventoryCapacityGaugeText
 
-        leftTreeEntries =
-            windowUiNode
-                |> listDescendantsWithDisplayRegion
-                |> List.filter (.uiNode >> .pythonObjectTypeName >> String.startsWith "TreeViewEntry")
-                |> List.map
-                    (\treeEntryNode ->
-                        let
-                            displayTextsWithRegion =
-                                treeEntryNode
-                                    |> getAllContainedDisplayTextsWithRegion
+        leftTreeEntriesRootNodes =
+            windowUiNode |> getContainedTreeViewEntryRootNodes
 
-                            text =
-                                displayTextsWithRegion
-                                    |> List.sortBy (\( _, textNode ) -> textNode.totalDisplayRegion.x + textNode.totalDisplayRegion.y)
-                                    |> List.head
-                                    |> Maybe.map Tuple.first
-                                    |> Maybe.withDefault ""
-                        in
-                        { uiNode = treeEntryNode
-                        , text = text
-                        }
-                    )
+        leftTreeEntries =
+            leftTreeEntriesRootNodes |> List.map parseInventoryWindowTreeViewEntry
 
         rightContainerNode =
             windowUiNode
@@ -1182,6 +1255,14 @@ parseInventoryWindow windowUiNode =
                         (uiNode.uiNode.pythonObjectTypeName == "Container")
                             && (uiNode.uiNode |> getNameFromDictEntries |> Maybe.map (String.contains "right") |> Maybe.withDefault False)
                     )
+                |> List.head
+
+        subCaptionLabelText =
+            rightContainerNode
+                |> Maybe.map listDescendantsWithDisplayRegion
+                |> Maybe.withDefault []
+                |> List.filter (.uiNode >> getNameFromDictEntries >> Maybe.map (String.startsWith "subCaptionLabel") >> Maybe.withDefault False)
+                |> List.concatMap (.uiNode >> getAllContainedDisplayTexts)
                 |> List.head
 
         maybeSelectedContainerInventoryNode =
@@ -1235,10 +1316,74 @@ parseInventoryWindow windowUiNode =
     in
     { uiNode = windowUiNode
     , leftTreeEntries = leftTreeEntries
+    , subCaptionLabelText = subCaptionLabelText
     , selectedContainerCapacityGauge = selectedContainerCapacityGauge
     , selectedContainerInventory = selectedContainerInventory
     , buttonToSwitchToListView = buttonToSwitchToListView
     }
+
+
+getContainedTreeViewEntryRootNodes : UITreeNodeWithDisplayRegion -> List UITreeNodeWithDisplayRegion
+getContainedTreeViewEntryRootNodes parentNode =
+    let
+        leftTreeEntriesAllNodes =
+            parentNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> String.startsWith "TreeViewEntry")
+
+        isContainedInTreeEntry candidate =
+            leftTreeEntriesAllNodes
+                |> List.concatMap listDescendantsWithDisplayRegion
+                |> List.member candidate
+    in
+    leftTreeEntriesAllNodes
+        |> List.filter (isContainedInTreeEntry >> not)
+
+
+parseInventoryWindowTreeViewEntry : UITreeNodeWithDisplayRegion -> InventoryWindowLeftTreeEntry
+parseInventoryWindowTreeViewEntry treeEntryNode =
+    let
+        topContNode =
+            treeEntryNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> Maybe.map (String.startsWith "topCont_") >> Maybe.withDefault False)
+                |> List.sortBy (.totalDisplayRegion >> .y)
+                |> List.head
+
+        toggleBtn =
+            topContNode
+                |> Maybe.map listDescendantsWithDisplayRegion
+                |> Maybe.withDefault []
+                |> List.filter (.uiNode >> getNameFromDictEntries >> Maybe.map ((==) "toggleBtn") >> Maybe.withDefault False)
+                |> List.head
+
+        text =
+            topContNode
+                |> Maybe.map getAllContainedDisplayTextsWithRegion
+                |> Maybe.withDefault []
+                |> List.sortBy (Tuple.second >> .totalDisplayRegion >> .y)
+                |> List.head
+                |> Maybe.map Tuple.first
+                |> Maybe.withDefault ""
+
+        childrenNodes =
+            treeEntryNode |> getContainedTreeViewEntryRootNodes
+
+        children =
+            childrenNodes |> List.map (parseInventoryWindowTreeViewEntry >> InventoryWindowLeftTreeEntryChild)
+    in
+    { uiNode = treeEntryNode
+    , toggleBtn = toggleBtn
+    , text = text
+    , children = children
+    }
+
+
+unwrapInventoryWindowLeftTreeEntryChild : InventoryWindowLeftTreeEntryChild -> InventoryWindowLeftTreeEntry
+unwrapInventoryWindowLeftTreeEntryChild child =
+    case child of
+        InventoryWindowLeftTreeEntryChild unpacked ->
+            unpacked
 
 
 parseInventoryCapacityGaugeText : String -> Result String InventoryWindowCapacityGauge

@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-03-27
+{- EVE Online anomaly ratting bot version 2020-03-27 🎉
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -73,8 +73,8 @@ type alias UIElement =
 
 
 type alias TreeLeafAct =
-    { firstAction : VolatileHostInterface.EffectOnWindowStructure
-    , followingSteps : List ( String, ParsedUserInterface -> Maybe VolatileHostInterface.EffectOnWindowStructure )
+    { actionsForCurrentReading : ( String, List VolatileHostInterface.EffectOnWindowStructure )
+    , actionsForFollowingReadings : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
     }
 
 
@@ -92,7 +92,7 @@ type alias BotState =
     { programState :
         Maybe
             { originalDecision : DecisionPathNode
-            , remainingActions : List ( String, ParsedUserInterface -> Maybe VolatileHostInterface.EffectOnWindowStructure )
+            , remainingActions : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
             }
     , botMemory : BotMemory
     }
@@ -138,11 +138,12 @@ decideNextActionWhenInSpace context seeUndockingComplete =
     else
         case context.parsedUserInterface |> shipUIModulesToActivateAlways |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
             Just inactiveModule ->
-                DescribeBranch "I see an inactive module in the middle row. Click on it to activate."
+                DescribeBranch "I see an inactive module in the middle row. Activate the module."
                     (EndDecisionPath
                         (Act
-                            { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                            , followingSteps = []
+                            { actionsForCurrentReading =
+                                ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
+                            , actionsForFollowingReadings = []
                             }
                         )
                     )
@@ -181,15 +182,18 @@ combat context seeUndockingComplete continueIfCombatComplete =
                     DescribeBranch "I see a target to unlock."
                         (EndDecisionPath
                             (Act
-                                { firstAction =
-                                    targetToUnlock.barAndImageCont
-                                        |> Maybe.withDefault targetToUnlock.uiNode
-                                        |> clickOnUIElement MouseButtonRight
-                                , followingSteps =
+                                { actionsForCurrentReading =
+                                    ( "Rightclick on the target."
+                                    , [ targetToUnlock.barAndImageCont
+                                            |> Maybe.withDefault targetToUnlock.uiNode
+                                            |> clickOnUIElement MouseButtonRight
+                                      ]
+                                    )
+                                , actionsForFollowingReadings =
                                     [ ( "Click menu entry 'unlock'."
                                       , lastContextMenuOrSubmenu
                                             >> Maybe.andThen (menuEntryContainingTextIgnoringCase "unlock")
-                                            >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                            >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
                                       )
                                     ]
                                 }
@@ -242,11 +246,14 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             )
 
                                     Just inactiveModule ->
-                                        DescribeBranch "I see an inactive module to activate on targets. Click on it to activate."
+                                        DescribeBranch "I see an inactive module to activate on targets. Activate it."
                                             (EndDecisionPath
                                                 (Act
-                                                    { firstAction = inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                                                    , followingSteps = []
+                                                    { actionsForCurrentReading =
+                                                        ( "Click on the module."
+                                                        , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                                        )
+                                                    , actionsForFollowingReadings = []
                                                     }
                                                 )
                                             )
@@ -277,17 +284,20 @@ enterAnomaly parsedUserInterface =
                     DescribeBranch "Warp to anomaly."
                         (EndDecisionPath
                             (Act
-                                { firstAction = anomalyScanResult.uiNode |> clickOnUIElement MouseButtonRight
-                                , followingSteps =
+                                { actionsForCurrentReading =
+                                    ( "Rightclick on the scan result."
+                                    , [ anomalyScanResult.uiNode |> clickOnUIElement MouseButtonRight ]
+                                    )
+                                , actionsForFollowingReadings =
                                     [ ( "Click menu entry 'Warp to Within'"
                                       , lastContextMenuOrSubmenu
                                             >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Within")
-                                            >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                            >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
                                       )
                                     , ( "Click menu entry 'Within 0 m'"
                                       , lastContextMenuOrSubmenu
                                             >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Within 0 m")
-                                            >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                            >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
                                       )
                                     ]
                                 }
@@ -305,11 +315,14 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
             (DescribeBranch "Overview entry is in range. Lock target."
                 (EndDecisionPath
                     (Act
-                        { firstAction = overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
-                        , followingSteps =
-                            [ ( "Use keyboard key 'W' to begin orbit. Key down.", always (VolatileHostInterface.KeyDown keyCodeLetterW |> Just) )
-                            , ( "Use keyboard key 'W' to begin orbit. Key up.", always (VolatileHostInterface.KeyUp keyCodeLetterW |> Just) )
-                            ]
+                        { actionsForCurrentReading =
+                            ( "Click on the overview entry and press the 'W' key."
+                            , [ overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
+                              , VolatileHostInterface.KeyDown keyCodeLetterW
+                              , VolatileHostInterface.KeyUp keyCodeLetterW
+                              ]
+                            )
+                        , actionsForFollowingReadings = []
                         }
                     )
                 )
@@ -345,12 +358,15 @@ launchAndEngageDrones parsedUserInterface =
                                 (DescribeBranch "Engage idling drone(s)"
                                     (EndDecisionPath
                                         (Act
-                                            { firstAction = droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight
-                                            , followingSteps =
+                                            { actionsForCurrentReading =
+                                                ( "Rightclick on the drones group."
+                                                , [ droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight ]
+                                                )
+                                            , actionsForFollowingReadings =
                                                 [ ( "Click menu entry 'engage target'."
                                                   , lastContextMenuOrSubmenu
                                                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "engage target")
-                                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
                                                   )
                                                 ]
                                             }
@@ -363,12 +379,15 @@ launchAndEngageDrones parsedUserInterface =
                                 (DescribeBranch "Launch drones"
                                     (EndDecisionPath
                                         (Act
-                                            { firstAction = droneGroupInBay.header.uiNode |> clickOnUIElement MouseButtonRight
-                                            , followingSteps =
+                                            { actionsForCurrentReading =
+                                                ( "Right click on the drones group."
+                                                , [ droneGroupInBay.header.uiNode |> clickOnUIElement MouseButtonRight ]
+                                                )
+                                            , actionsForFollowingReadings =
                                                 [ ( "Click menu entry 'Launch drone'."
                                                   , lastContextMenuOrSubmenu
                                                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Launch drone")
-                                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
                                                   )
                                                 ]
                                             }
@@ -396,12 +415,15 @@ returnDronesToBay parsedUserInterface =
                         (DescribeBranch "I see there are drones in local space. Return those to bay."
                             (EndDecisionPath
                                 (Act
-                                    { firstAction = droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight
-                                    , followingSteps =
+                                    { actionsForCurrentReading =
+                                        ( "Rightclick on the drones group."
+                                        , [ droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight ]
+                                        )
+                                    , actionsForFollowingReadings =
                                         [ ( "Click menu entry 'Return to drone bay'."
                                           , lastContextMenuOrSubmenu
                                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Return to drone bay")
-                                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
                                           )
                                         ]
                                     }
@@ -421,37 +443,45 @@ lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
             if distanceInMeters <= rangeInMeters then
                 DescribeBranch "Object is in range. Lock target."
                     (EndDecisionPath
-                        (Act
-                            { firstAction = overviewEntry.uiNode |> clickOnUIElement MouseButtonRight
-                            , followingSteps =
-                                [ ( "Click menu entry 'lock'."
-                                  , lastContextMenuOrSubmenu
-                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
-                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                                  )
-                                ]
-                            }
+                        (actStartingWithRightClickOnOverviewEntry overviewEntry
+                            [ ( "Click menu entry 'lock'."
+                              , lastContextMenuOrSubmenu
+                                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
+                                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                              )
+                            ]
                         )
                     )
 
             else
                 DescribeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
                     (EndDecisionPath
-                        (Act
-                            { firstAction = overviewEntry.uiNode |> clickOnUIElement MouseButtonRight
-                            , followingSteps =
-                                [ ( "Click menu entry 'approach'."
-                                  , lastContextMenuOrSubmenu
-                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
-                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
-                                  )
-                                ]
-                            }
+                        (actStartingWithRightClickOnOverviewEntry overviewEntry
+                            [ ( "Click menu entry 'approach'."
+                              , lastContextMenuOrSubmenu
+                                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
+                                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                              )
+                            ]
                         )
                     )
 
         Err error ->
             DescribeBranch ("Failed to read the distance: " ++ error) (EndDecisionPath Wait)
+
+
+actStartingWithRightClickOnOverviewEntry :
+    OverviewWindowEntry
+    -> List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+    -> EndDecisionPathStructure
+actStartingWithRightClickOnOverviewEntry overviewEntry actionsForFollowingReadings =
+    Act
+        { actionsForCurrentReading =
+            ( "Right click on overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'."
+            , [ overviewEntry.uiNode |> clickOnUIElement MouseButtonRight ]
+            )
+        , actionsForFollowingReadings = actionsForFollowingReadings
+        }
 
 
 type alias SeeUndockingComplete =
@@ -543,7 +573,10 @@ processEveOnlineBotEventWithSettings botSettings event stateBefore =
                                     []
 
                                 Act act ->
-                                    ( "", always (Just act.firstAction) ) :: act.followingSteps
+                                    ( act.actionsForCurrentReading |> Tuple.first
+                                    , always (act.actionsForCurrentReading |> Tuple.second |> Just)
+                                    )
+                                        :: act.actionsForFollowingReadings
                     in
                     { originalDecision = originalDecision, remainingActions = originalRemainingActions }
 
@@ -572,9 +605,9 @@ processEveOnlineBotEventWithSettings botSettings event stateBefore =
                                 Nothing ->
                                     ( "Failed step: " ++ nextActionDescription, [], Nothing )
 
-                                Just effect ->
+                                Just effects ->
                                     ( nextActionDescription
-                                    , [ effect ]
+                                    , effects
                                     , Just { programStateToContinue | remainingActions = remainingActions }
                                     )
 

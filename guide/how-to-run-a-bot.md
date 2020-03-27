@@ -63,12 +63,12 @@ The supported settings depend entirely on the bot that you chose. To learn which
 
 ## Viewing Bot Description
 
-Authors often include a human-readable description with the bot code, for example, in [this EVE Online mining bot](https://github.com/Viir/bots/blob/c4911ff9a0c3a279209e31a61b63bfa736c8f3c5/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
+Authors often include a human-readable description with the bot code, for example, in [this EVE Online mining bot](https://github.com/Viir/bots/tree/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
 
 You can display this description using the `describe-bot` command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  describe-bot  "https://github.com/Viir/bots/blob/c4911ff9a0c3a279209e31a61b63bfa736c8f3c5/implement/applications/eve-online/eve-online-mining-bot"
+C:\path\to\the\BotEngine.exe  describe-bot  "https://github.com/Viir/bots/tree/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-mining-bot"
 ```
 
 The `describe-bot` command works with any bot source that is supported by the `run-bot` command.

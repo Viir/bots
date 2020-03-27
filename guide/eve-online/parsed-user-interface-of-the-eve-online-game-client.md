@@ -4,7 +4,7 @@ The parsed user interface is a common way to access parts of the user interface 
 
 The UI tree in the EVE Online client can contain thousands of nodes and tens of thousands of individual properties. Because of this large amount of data, navigating in there can be time-consuming. To make this easier, this library filters and transforms the memory reading result into a form that contains less redundant information and uses names more closely related to the experience of players; for example, the overview window or ship modules.
 
-In the program code, we find the implementation in the module [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/fb373441327098a136bacf61a09001fc72c565dc/implement/applications/eve-online/eve-online-mining-bot/src/EveOnline/ParseUserInterface.elm).
+In the program code, we find the implementation in the module [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/tree/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-mining-bot/src/EveOnline/ParseUserInterface.elm).
 
 Years of feedback from developers have shaped this library to contain shortcuts to the often used UI elements. Let's look at the root type to get a general idea of what we can find there:
 
@@ -58,7 +58,7 @@ type alias ShipUIModulesGroupedIntoRows =
 
 ![Ship UI modules grouped into rows](./image/2020-03-11-eve-online-ship-ui-module-rows-names.png)
 
-The [mining bot example project](https://github.com/Viir/bots/blob/fb373441327098a136bacf61a09001fc72c565dc/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm) also uses modules this way.
+The [mining bot example project](https://github.com/Viir/bots/tree/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm) also uses modules this way.
 
 ## Inventory Window
 
@@ -68,4 +68,4 @@ To work with items in the inventory, use the property `selectedContainerInventor
 
 Are looking for an item with a specific name? You could use the filtering function in the game client, but there is an easier way: Using the function `getAllContainedDisplayTexts` on the inventory item, you can filter the list of items immediately.
 
-As you can also see in the screenshot of the live inspector, we get the used, selected, and maximum capacity of the selected container with the property `selectedContainerCapacityGauge`. You can compare the `used` and `maximum` values to see if the container is (almost) full. The [mining bot does this](https://github.com/Viir/bots/blob/fb373441327098a136bacf61a09001fc72c565dc/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm#L672-L679) on the ore hold to know when to travel to the unload location.
+As you can also see in the screenshot of the live inspector, we get the used, selected, and maximum capacity of the selected container with the property `selectedContainerCapacityGauge`. You can compare the `used` and `maximum` values to see if the container is (almost) full. The [mining bot does this](https://github.com/Viir/bots/blob/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm#L773-L780) on the ore hold to know when to travel to the unload location.

@@ -1,5 +1,6 @@
-{- EVE Online Intel Bot - Local Watch Script
-   This bot watches local and plays an alarm sound when a pilot with bad standing appears.
+{- EVE Online Intel Bot - Local Watch Script - Nevrosix adaption to alert on warp disrupt
+   2020-03-26 Nevrosix #9603:
+   > can you help me adapt the local watch bot to alert when I am ward disrupted?
 -}
 {-
    bot-catalog-tags:eve-online,intel,local-watch
@@ -19,13 +20,7 @@ import EveOnline.ParseUserInterface
     exposing
         ( MaybeVisible(..)
         , ParsedUserInterface
-        , canNotSeeItFromMaybeNothing
         )
-
-
-goodStandingPatterns : List String
-goodStandingPatterns =
-    [ "good standing", "excellent standing", "is in your" ]
 
 
 {-| To support the feature that finishes the session some time of inactivity, it needs to remember the time of the last activity.
@@ -71,45 +66,29 @@ processEveOnlineBotEvent eventContext event stateBefore =
 
 botEffectsFromGameClientState : ParsedUserInterface -> ( List BotEffect, String )
 botEffectsFromGameClientState parsedUserInterface =
-    case parsedUserInterface |> localChatWindowFromUserInterface of
+    case parsedUserInterface.shipUI of
         CanNotSeeIt ->
             ( [ EveOnline.BotFramework.EffectConsoleBeepSequence
-                    [ { frequency = 700, durationInMs = 100 }
-                    , { frequency = 0, durationInMs = 100 }
-                    , { frequency = 700, durationInMs = 100 }
-                    , { frequency = 400, durationInMs = 100 }
+                    [ { frequency = 700, durationInMs = 300 }
+                    , { frequency = 0, durationInMs = 300 }
+                    , { frequency = 700, durationInMs = 300 }
+                    , { frequency = 400, durationInMs = 300 }
                     ]
               ]
-            , "I don't see the local chat window."
+            , "I don't see the ship UI."
             )
 
-        CanSee localChatWindow ->
+        CanSee shipUI ->
             let
-                chatUserHasGoodStanding chatUser =
-                    goodStandingPatterns
-                        |> List.any
-                            (\goodStandingPattern ->
-                                chatUser.standingIconHint
-                                    |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
-                                    |> Maybe.withDefault False
-                            )
-
-                subsetOfUsersWithNoGoodStanding =
-                    localChatWindow.visibleUsers
-                        |> List.filter (chatUserHasGoodStanding >> not)
-
-                chatWindowReport =
-                    "I see "
-                        ++ (localChatWindow.visibleUsers |> List.length |> String.fromInt)
-                        ++ " users in the local chat. "
-                        ++ (subsetOfUsersWithNoGoodStanding |> List.length |> String.fromInt)
-                        ++ " with no good standing."
+                shipUIReport =
+                    "shipUI.offensiveBuffButtonNames: "
+                        ++ (shipUI.offensiveBuffButtonNames |> String.join ", ")
 
                 alarmRequests =
-                    if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                    if shipUI.offensiveBuffButtonNames |> List.member "warpScrambler" then
                         [ EveOnline.BotFramework.EffectConsoleBeepSequence
-                            [ { frequency = 700, durationInMs = 100 }
-                            , { frequency = 0, durationInMs = 100 }
+                            [ { frequency = 700, durationInMs = 300 }
+                            , { frequency = 0, durationInMs = 300 }
                             , { frequency = 700, durationInMs = 500 }
                             ]
                         ]
@@ -117,13 +96,4 @@ botEffectsFromGameClientState parsedUserInterface =
                     else
                         []
             in
-            ( alarmRequests, chatWindowReport )
-
-
-localChatWindowFromUserInterface : ParsedUserInterface -> MaybeVisible EveOnline.ParseUserInterface.ChatWindow
-localChatWindowFromUserInterface =
-    .chatWindowStacks
-        >> List.filterMap .chatWindow
-        >> List.filter (.name >> Maybe.map (String.endsWith "_local") >> Maybe.withDefault False)
-        >> List.head
-        >> canNotSeeItFromMaybeNothing
+            ( alarmRequests, shipUIReport )

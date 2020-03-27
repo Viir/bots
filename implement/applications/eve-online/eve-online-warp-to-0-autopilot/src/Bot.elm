@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2020-02-23
+{- EVE Online Warp-to-0 auto-pilot version 2020-03-26
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
    Before starting the bot, set the in-game autopilot route and make sure the autopilot is expanded, so that the route is visible.
    Make sure you are undocked before starting the bot because the bot does not undock.
@@ -15,9 +15,9 @@ module Bot exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import EveOnline.BotFramework exposing (BotEffect(..))
-import EveOnline.MemoryReading
+import EveOnline.ParseUserInterface
     exposing
         ( InfoPanelRouteRouteElementMarker
         , MaybeVisible(..)
@@ -182,7 +182,7 @@ isShipWarpingOrJumping =
         >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
         >> Maybe.map
             (\maneuverType ->
-                [ EveOnline.MemoryReading.ManeuverWarp, EveOnline.MemoryReading.ManeuverJump ]
+                [ EveOnline.ParseUserInterface.ManeuverWarp, EveOnline.ParseUserInterface.ManeuverJump ]
                     |> List.member maneuverType
             )
         -- If the ship is just floating in space, there might be no indication displayed.

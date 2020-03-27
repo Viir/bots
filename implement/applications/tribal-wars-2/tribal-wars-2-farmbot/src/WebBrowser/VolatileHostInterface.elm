@@ -11,7 +11,7 @@ import Json.Encode
 
 
 type RequestToVolatileHost
-    = StartWebBrowserRequest
+    = StartWebBrowserRequest { pageGoToUrl : Maybe String }
     | RunJavascriptInCurrentPageRequest RunJavascriptInCurrentPageRequestStructure
 
 
@@ -28,7 +28,8 @@ type ResponseFromVolatileHost
 
 
 type alias RunJavascriptInCurrentPageResponseStructure =
-    { directReturnValueAsString : String
+    { requestId : String
+    , directReturnValueAsString : String
     , callbackReturnValueAsString : Maybe String
     }
 
@@ -50,8 +51,16 @@ decodeResponseFromVolatileHost =
 encodeRequestToVolatileHost : RequestToVolatileHost -> Json.Encode.Value
 encodeRequestToVolatileHost request =
     case request of
-        StartWebBrowserRequest ->
-            Json.Encode.object [ ( "StartWebBrowserRequest", Json.Encode.object [] ) ]
+        StartWebBrowserRequest startWebBrowserRequest ->
+            Json.Encode.object
+                [ ( "StartWebBrowserRequest"
+                  , Json.Encode.object
+                        [ ( "pageGoToUrl"
+                          , startWebBrowserRequest.pageGoToUrl |> Maybe.map Json.Encode.string |> Maybe.withDefault Json.Encode.null
+                          )
+                        ]
+                  )
+                ]
 
         RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest ->
             Json.Encode.object [ ( "RunJavascriptInCurrentPageRequest", runJavascriptInCurrentPageRequest |> encodeRunJavascriptInCurrentPageRequest ) ]
@@ -68,7 +77,8 @@ encodeRunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest =
 
 decodeRunJavascriptInCurrentPageResponse : Json.Decode.Decoder RunJavascriptInCurrentPageResponseStructure
 decodeRunJavascriptInCurrentPageResponse =
-    Json.Decode.map2 RunJavascriptInCurrentPageResponseStructure
+    Json.Decode.map3 RunJavascriptInCurrentPageResponseStructure
+        (Json.Decode.field "requestId" Json.Decode.string)
         (Json.Decode.field "directReturnValueAsString" Json.Decode.string)
         (Json.Decode.Extra.optionalField "callbackReturnValueAsString" Json.Decode.string)
 

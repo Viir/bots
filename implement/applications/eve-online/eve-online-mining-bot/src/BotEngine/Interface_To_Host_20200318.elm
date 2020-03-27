@@ -3,7 +3,7 @@
 -}
 
 
-module BotEngine.Interface_To_Host_20200213 exposing
+module BotEngine.Interface_To_Host_20200318 exposing
     ( BotEvent(..)
     , BotResponse(..)
     , CreateVolatileHostComplete
@@ -28,7 +28,7 @@ import Json.Encode
 
 type BotEvent
     = ArrivedAtTime { timeInMilliseconds : Int }
-    | SetBotConfiguration String
+    | SetAppSettings String
     | CompletedTask CompletedTaskStructure
     | SetSessionTimeLimit { timeInMilliseconds : Int }
 
@@ -157,8 +157,12 @@ decodeBotEvent =
     Json.Decode.oneOf
         [ Json.Decode.field "ArrivedAtTime" jsonDecodeRecordTimeInMilliseconds
             |> Json.Decode.map ArrivedAtTime
+        , Json.Decode.field "SetAppSettings" Json.Decode.string
+            |> Json.Decode.map SetAppSettings
+
+        -- 2020-03-18 Maintain backwards compatibility: Map from 'SetBotConfiguration' to 'SetAppSettings'.
         , Json.Decode.field "SetBotConfiguration" Json.Decode.string
-            |> Json.Decode.map SetBotConfiguration
+            |> Json.Decode.map SetAppSettings
         , Json.Decode.field "CompletedTask" decodeCompletedTaskStructure
             |> Json.Decode.map CompletedTask
         , Json.Decode.field "SetSessionTimeLimit" jsonDecodeRecordTimeInMilliseconds

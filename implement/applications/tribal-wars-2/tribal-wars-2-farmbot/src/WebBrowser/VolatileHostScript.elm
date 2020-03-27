@@ -1,4 +1,4 @@
-module WebBrowser.VolatileHostScript exposing ( setupScript )
+module WebBrowser.VolatileHostScript exposing (setupScript)
 
 
 setupScript : String
@@ -54,13 +54,20 @@ class Request
 {
     public RunJavascriptInCurrentPageRequestStructure RunJavascriptInCurrentPageRequest;
 
-    public object StartWebBrowserRequest;
+    public StartWebBrowserRequestStructure StartWebBrowserRequest;
 
     public class RunJavascriptInCurrentPageRequestStructure
     {
+        public string requestId;
+
         public string javascript;
 
         public int timeToWaitForCallbackMilliseconds;
+    }
+
+    public class StartWebBrowserRequestStructure
+    {
+        public string pageGoToUrl;
     }
 }
 
@@ -72,6 +79,8 @@ class Response
 
     public class RunJavascriptInCurrentPageResponseStructure
     {
+        public string requestId;
+
         public string directReturnValueAsString;
 
         public string callbackReturnValueAsString;
@@ -93,7 +102,7 @@ Response request(Request request)
     {
         KillPreviousWebBrowserProcesses();
 
-        StartBrowser().Wait();
+        StartBrowser(request.StartWebBrowserRequest.pageGoToUrl).Wait();
 
         return new Response
         {
@@ -120,7 +129,7 @@ PuppeteerSharp.Page browserPage;
 
 Action<string> callbackFromBrowserDelegate;
 
-async System.Threading.Tasks.Task StartBrowser()
+async System.Threading.Tasks.Task StartBrowser(string pageGoToUrl)
 {
     await new PuppeteerSharp.BrowserFetcher().DownloadAsync(PuppeteerSharp.BrowserFetcher.DefaultRevision);
     browser = await PuppeteerSharp.Puppeteer.LaunchAsync(new PuppeteerSharp.LaunchOptions
@@ -138,6 +147,11 @@ async System.Threading.Tasks.Task StartBrowser()
         callbackFromBrowserDelegate?.Invoke(returnValue);
         return 0;
     });
+
+    if(0 < pageGoToUrl?.Length)
+    {
+        await browserPage.GoToAsync(pageGoToUrl);
+    }
 }
 
 async System.Threading.Tasks.Task<Response.RunJavascriptInCurrentPageResponseStructure> RunJavascriptInCurrentPage(
@@ -161,6 +175,7 @@ async System.Threading.Tasks.Task<Response.RunJavascriptInCurrentPageResponseStr
 
     return new Response.RunJavascriptInCurrentPageResponseStructure
     {
+        requestId = request.requestId,
         directReturnValueAsString = directReturnValueAsString,
         callbackReturnValueAsString = callbackReturnValue,
     };
@@ -207,7 +222,7 @@ string SerializeToJsonForBot<T>(T value) =>
             //  Bot code does not expect properties with null values, see https://github.com/Viir/bots/blob/880d745b0aa8408a4417575d54ecf1f513e7aef4/explore/2019-05-14.eve-online-bot-framework/src/Sanderling_Interface_20190514.elm
             NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore,
 
-            //	https://stackoverflow.com/questions/7397207/json-net-error-self-referencing-loop-detected-for-type/18223985#18223985
+            // https://stackoverflow.com/questions/7397207/json-net-error-self-referencing-loop-detected-for-type/18223985#18223985
             ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore,
         });
 

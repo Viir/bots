@@ -1,10 +1,10 @@
 {- This is a template to test functions to locate objects in images.
 
    To use this template, use it like a bot and run it using the `run-bot` command.
-   Specify the path to the file to load the image from using the `--bot-configuration` parameter.
+   Specify the path to the file to load the image from using the `--app-settings` parameter.
 
    To test an image search function, replace the function `image_shows_object_at_origin` below with your search function.
-   The framework calls this function for every pixel in the image specified with the `--bot-configuration`, and keeps a list of locations where `image_shows_object_at_origin` returned `True`.
+   The framework calls this function for every pixel in the image specified with the `--app-settings`, and keeps a list of locations where `image_shows_object_at_origin` returned `True`.
    After running this search, it displays a list of these matching locations as the status message from the bot, so you see it in the console output.
 
    For an example of such an image search function, you can look at the example included below as `image_shows_object_at_origin`.
@@ -26,7 +26,7 @@ module Bot exposing
     )
 
 import Base64.Decode
-import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue)
 import Dict
 import Json.Decode
@@ -195,11 +195,11 @@ processEvent eventAtTime stateBefore =
 integrateEvent : InterfaceToHost.BotEvent -> State -> State
 integrateEvent event stateBefore =
     case event of
-        InterfaceToHost.ArrivedAtTime configuration ->
+        InterfaceToHost.ArrivedAtTime _ ->
             stateBefore
 
-        InterfaceToHost.SetBotConfiguration configuration ->
-            { stateBefore | imageFileName = Just configuration }
+        InterfaceToHost.SetAppSettings settingsString ->
+            { stateBefore | imageFileName = Just settingsString }
 
         InterfaceToHost.CompletedTask { taskId, taskResult } ->
             case taskResult of

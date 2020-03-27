@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-03-27
+{- EVE Online mining bot version 2020-03-27 🎉
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -124,8 +124,8 @@ type DecisionPathNode
 type alias BotState =
     { programState :
         Maybe
-            { decision : DecisionPathNode
-            , lastStepIndexInSequence : Int
+            { originalDecision : DecisionPathNode
+            , remainingActions : List ( String, ParsedUserInterface -> Maybe VolatileHostInterface.EffectOnWindowStructure )
             }
     , botMemory : BotMemory
     }
@@ -561,50 +561,58 @@ processEveOnlineBotEventWithSettings botSettings event stateBefore =
                 botMemory =
                     stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory parsedUserInterface
 
-                programStateBefore =
-                    stateBefore.programState
-                        |> Maybe.withDefault
-                            { decision =
-                                decideNextAction
-                                    { settings = botSettings, memory = botMemory, parsedUserInterface = parsedUserInterface }
-                            , lastStepIndexInSequence = 0
-                            }
+                programStateIfEvalDecisionTreeNew =
+                    let
+                        originalDecision =
+                            decideNextAction
+                                { settings = botSettings, memory = botMemory, parsedUserInterface = parsedUserInterface }
 
-                ( decisionStagesDescriptions, decisionLeaf ) =
-                    unpackToDecisionStagesDescriptionsAndLeaf programStateBefore.decision
+                        originalRemainingActions =
+                            case unpackToDecisionStagesDescriptionsAndLeaf originalDecision |> Tuple.second of
+                                Wait ->
+                                    []
+
+                                Act act ->
+                                    ( "", always (Just act.firstAction) ) :: act.followingSteps
+                    in
+                    { originalDecision = originalDecision, remainingActions = originalRemainingActions }
+
+                programStateToContinue =
+                    stateBefore.programState
+                        |> Maybe.andThen
+                            (\previousProgramState ->
+                                if 0 < (previousProgramState.remainingActions |> List.length) then
+                                    Just previousProgramState
+
+                                else
+                                    Nothing
+                            )
+                        |> Maybe.withDefault programStateIfEvalDecisionTreeNew
+
+                ( originalDecisionStagesDescriptions, _ ) =
+                    unpackToDecisionStagesDescriptionsAndLeaf programStateToContinue.originalDecision
 
                 ( currentStepDescription, effectsOnGameClientWindow, programState ) =
-                    case decisionLeaf of
-                        Wait ->
+                    case programStateToContinue.remainingActions of
+                        [] ->
                             ( "Wait", [], Nothing )
 
-                        Act act ->
-                            let
-                                programStateAdvancedToNextStep =
-                                    { programStateBefore
-                                        | lastStepIndexInSequence = programStateBefore.lastStepIndexInSequence + 1
-                                    }
-
-                                stepsIncludingFirstAction =
-                                    ( "", always (Just act.firstAction) ) :: act.followingSteps
-                            in
-                            case stepsIncludingFirstAction |> List.drop programStateBefore.lastStepIndexInSequence |> List.head of
+                        ( nextActionDescription, nextActionEffectFromUserInterface ) :: remainingActions ->
+                            case parsedUserInterface |> nextActionEffectFromUserInterface of
                                 Nothing ->
-                                    ( "Completed sequence.", [], Nothing )
+                                    ( "Failed step: " ++ nextActionDescription, [], Nothing )
 
-                                Just ( stepDescription, effectOnGameClientWindowFromUserInterface ) ->
-                                    case parsedUserInterface |> effectOnGameClientWindowFromUserInterface of
-                                        Nothing ->
-                                            ( "Failed step: " ++ stepDescription, [], Nothing )
-
-                                        Just effect ->
-                                            ( stepDescription, [ effect ], Just programStateAdvancedToNextStep )
+                                Just effect ->
+                                    ( nextActionDescription
+                                    , [ effect ]
+                                    , Just { programStateToContinue | remainingActions = remainingActions }
+                                    )
 
                 effectsRequests =
                     effectsOnGameClientWindow |> List.map EveOnline.BotFramework.EffectOnGameClientWindow
 
                 describeActivity =
-                    (decisionStagesDescriptions ++ [ currentStepDescription ])
+                    (originalDecisionStagesDescriptions ++ [ currentStepDescription ])
                         |> List.indexedMap
                             (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
                         |> String.join "\n"

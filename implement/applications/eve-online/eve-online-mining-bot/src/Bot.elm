@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-03-26
+{- EVE Online mining bot version 2020-03-27
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -7,7 +7,7 @@
    + Set the UI language to English.
    + In Overview window, make asteroids visible.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
-   + Setup inventory window so that 'Ore Hold' is always selected.
+   + Open one inventory window.
    + In the ship UI, arrange the modules:
      + Place all mining modules (to activate on targets) in the top row.
      + Place modules that should always be active in the middle row.
@@ -140,7 +140,9 @@ type alias State =
 decideNextAction : BotDecisionContext -> DecisionPathNode
 decideNextAction context =
     branchDependingOnDockedOrInSpace
-        (DescribeBranch "I see no ship UI, assume we are docked." (decideNextActionWhenDocked context.parsedUserInterface))
+        (DescribeBranch "I see no ship UI, assume we are docked."
+            (ensureOreHoldIsSelected context.parsedUserInterface (decideNextActionWhenDocked context.parsedUserInterface))
+        )
         (\shipUI ->
             if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
                 Just
@@ -152,7 +154,10 @@ decideNextAction context =
             else
                 Nothing
         )
-        (decideNextActionWhenInSpace context)
+        (\seeUndockingComplete ->
+            DescribeBranch "I see we are in space, undocking complete."
+                (ensureOreHoldIsSelected context.parsedUserInterface (decideNextActionWhenInSpace context seeUndockingComplete))
+        )
         context.parsedUserInterface
 
 
@@ -166,7 +171,7 @@ decideNextActionWhenDocked parsedUserInterface =
             case parsedUserInterface |> inventoryWindowSelectedContainerFirstItem of
                 Nothing ->
                     DescribeBranch "I see no item in the ore hold. Time to undock."
-                        (case parsedUserInterface |> activeShipUiElementFromInventoryWindow of
+                        (case parsedUserInterface |> activeShipTreeEntryFromInventoryWindows |> Maybe.map .uiNode of
                             Nothing ->
                                 EndDecisionPath Wait
 
@@ -286,6 +291,62 @@ ensureIsAtMiningSiteAndTargetAsteroid context =
             DescribeBranch
                 ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
                 (lockTargetFromOverviewEntryAndEnsureIsInRange (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
+
+
+ensureOreHoldIsSelected : ParsedUserInterface -> DecisionPathNode -> DecisionPathNode
+ensureOreHoldIsSelected parsedUserInterface continueIfIsSelected =
+    case parsedUserInterface.inventoryWindows |> List.head of
+        Nothing ->
+            DescribeBranch "I do not see an inventory window. Please open an inventory window." (EndDecisionPath Wait)
+
+        Just inventoryWindow ->
+            if inventoryWindow.subCaptionLabelText |> Maybe.map (String.toLower >> String.contains "ore hold") |> Maybe.withDefault False then
+                continueIfIsSelected
+
+            else
+                DescribeBranch
+                    "Ore hold is not selected. Select the ore hold."
+                    (case inventoryWindow |> activeShipTreeEntryFromInventoryWindow of
+                        Nothing ->
+                            DescribeBranch "I do not see the active ship in the inventory." (EndDecisionPath Wait)
+
+                        Just activeShipTreeEntry ->
+                            let
+                                maybeOreHoldTreeEntry =
+                                    activeShipTreeEntry.children
+                                        |> List.map EveOnline.ParseUserInterface.unwrapInventoryWindowLeftTreeEntryChild
+                                        |> List.filter (.text >> String.toLower >> String.contains "ore hold")
+                                        |> List.head
+                            in
+                            case maybeOreHoldTreeEntry of
+                                Nothing ->
+                                    DescribeBranch "I do not see the ore hold under the active ship in the inventory."
+                                        (case activeShipTreeEntry.toggleBtn of
+                                            Nothing ->
+                                                DescribeBranch "I do not see the toggle button to expand the active ship tree entry."
+                                                    (EndDecisionPath Wait)
+
+                                            Just toggleBtn ->
+                                                DescribeBranch "Click the toggle button to expand."
+                                                    (EndDecisionPath
+                                                        (Act
+                                                            { firstAction = toggleBtn |> clickOnUIElement MouseButtonLeft
+                                                            , followingSteps = []
+                                                            }
+                                                        )
+                                                    )
+                                        )
+
+                                Just oreHoldTreeEntry ->
+                                    DescribeBranch "Click the tree entry representing the ore hold."
+                                        (EndDecisionPath
+                                            (Act
+                                                { firstAction = oreHoldTreeEntry.uiNode |> clickOnUIElement MouseButtonLeft
+                                                , followingSteps = []
+                                                }
+                                            )
+                                        )
+                    )
 
 
 lockTargetFromOverviewEntryAndEnsureIsInRange : Int -> OverviewWindowEntry -> DecisionPathNode
@@ -424,7 +485,7 @@ branchDependingOnDockedOrInSpace :
 branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUndockingComplete parsedUserInterface =
     case parsedUserInterface.shipUI of
         CanNotSeeIt ->
-            DescribeBranch "I see no ship UI, assume we are docked." branchIfDocked
+            branchIfDocked
 
         CanSee shipUI ->
             branchIfCanSeeShipUI shipUI
@@ -439,8 +500,8 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
                                     DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
 
                                 CanSee overviewWindow ->
-                                    DescribeBranch "I see we are in space."
-                                        (branchIfUndockingComplete { shipUI = shipUI, shipModulesRows = shipModulesRows, overviewWindow = overviewWindow })
+                                    branchIfUndockingComplete
+                                        { shipUI = shipUI, shipModulesRows = shipModulesRows, overviewWindow = overviewWindow }
                     )
 
 
@@ -613,14 +674,19 @@ unpackToDecisionStagesDescriptionsAndLeaf node =
             ( branchDescription :: childDecisionsDescriptions, leaf )
 
 
-activeShipUiElementFromInventoryWindow : ParsedUserInterface -> Maybe UIElement
-activeShipUiElementFromInventoryWindow =
+activeShipTreeEntryFromInventoryWindows : ParsedUserInterface -> Maybe EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry
+activeShipTreeEntryFromInventoryWindows =
     .inventoryWindows
         >> List.head
-        >> Maybe.map .leftTreeEntries
+        >> Maybe.andThen activeShipTreeEntryFromInventoryWindow
+
+
+activeShipTreeEntryFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry
+activeShipTreeEntryFromInventoryWindow =
+    .leftTreeEntries
         -- Assume upmost entry is active ship.
-        >> Maybe.andThen (List.sortBy (.uiNode >> .totalDisplayRegion >> .y) >> List.head)
-        >> Maybe.map .uiNode
+        >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
+        >> List.head
 
 
 {-| Returns the menu entry containing the string from the parameter `textToSearch`.

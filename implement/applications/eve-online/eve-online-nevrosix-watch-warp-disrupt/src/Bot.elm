@@ -13,9 +13,9 @@ module Bot exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200213 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import EveOnline.BotFramework exposing (BotEffect(..))
-import EveOnline.MemoryReading
+import EveOnline.ParseUserInterface
     exposing
         ( MaybeVisible(..)
         , ParsedUserInterface
@@ -120,7 +120,7 @@ botEffectsFromGameClientState parsedUserInterface =
             ( alarmRequests, chatWindowReport )
 
 
-localChatWindowFromUserInterface : ParsedUserInterface -> MaybeVisible EveOnline.MemoryReading.ChatWindow
+localChatWindowFromUserInterface : ParsedUserInterface -> MaybeVisible EveOnline.ParseUserInterface.ChatWindow
 localChatWindowFromUserInterface =
     .chatWindowStacks
         >> List.filterMap .chatWindow

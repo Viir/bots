@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-03-28
+{- EVE Online anomaly ratting bot version 2020-03-28 - coldtea
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -44,7 +44,8 @@ import Set
 
 defaultBotSettings : BotSettings
 defaultBotSettings =
-    { maxTargetCount = 3
+    { anomalyName = ""
+    , maxTargetCount = 3
     , botStepDelayMilliseconds = 1300
     }
 
@@ -53,7 +54,10 @@ defaultBotSettings =
 -}
 parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
 parseBotSettingsNames =
-    [ ( "bot-step-delay"
+    [ ( "anomaly-name"
+      , \anomalyName -> Ok (\settings -> { settings | anomalyName = anomalyName })
+      )
+    , ( "bot-step-delay"
       , parseBotSettingInt (\delay settings -> { settings | botStepDelayMilliseconds = delay })
       )
     ]
@@ -61,7 +65,8 @@ parseBotSettingsNames =
 
 
 type alias BotSettings =
-    { maxTargetCount : Int
+    { anomalyName : String
+    , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
 
@@ -112,9 +117,20 @@ type alias State =
     EveOnline.BotFramework.StateIncludingFramework BotState
 
 
-probeScanResultsRepresentsMatchingAnomaly : EveOnline.ParseUserInterface.ProbeScanResult -> Bool
-probeScanResultsRepresentsMatchingAnomaly =
-    .textsLeftToRight >> List.any (String.toLower >> String.contains "combat")
+probeScanResultsRepresentsMatchingAnomaly : BotSettings -> EveOnline.ParseUserInterface.ProbeScanResult -> Bool
+probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
+    let
+        anyContainedTextMatches predicate =
+            probeScanResult.textsLeftToRight |> List.any predicate
+
+        isCombatAnomaly =
+            anyContainedTextMatches (String.toLower >> String.contains "combat")
+
+        matchesName =
+            (settings.anomalyName |> String.isEmpty)
+                || anyContainedTextMatches (String.toLower >> String.contains (settings.anomalyName |> String.toLower))
+    in
+    isCombatAnomaly && matchesName
 
 
 decideNextAction : BotDecisionContext -> DecisionPathNode
@@ -147,7 +163,7 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                 combat context seeUndockingComplete enterAnomaly
 
 
-combat : BotDecisionContext -> SeeUndockingComplete -> (ParsedUserInterface -> DecisionPathNode) -> DecisionPathNode
+combat : BotDecisionContext -> SeeUndockingComplete -> (BotDecisionContext -> DecisionPathNode) -> DecisionPathNode
 combat context seeUndockingComplete continueIfCombatComplete =
     let
         overviewEntriesToAttack =
@@ -205,7 +221,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             (if overviewEntriesToAttack |> List.isEmpty then
                                                 returnDronesToBay context.parsedUserInterface
                                                     |> Maybe.withDefault
-                                                        (DescribeBranch "No drones to return." (continueIfCombatComplete context.parsedUserInterface))
+                                                        (DescribeBranch "No drones to return." (continueIfCombatComplete context))
 
                                              else
                                                 DescribeBranch "Wait for target locking to complete." (EndDecisionPath Wait)
@@ -255,18 +271,19 @@ combat context seeUndockingComplete continueIfCombatComplete =
         |> Maybe.withDefault decisionIfAlreadyOrbiting
 
 
-enterAnomaly : ParsedUserInterface -> DecisionPathNode
-enterAnomaly parsedUserInterface =
-    case parsedUserInterface.probeScannerWindow of
+enterAnomaly : BotDecisionContext -> DecisionPathNode
+enterAnomaly context =
+    case context.parsedUserInterface.probeScannerWindow of
         CanNotSeeIt ->
             DescribeBranch "Can not see the probe scanner window." (EndDecisionPath Wait)
 
         CanSee probeScannerWindow ->
             let
                 matchingScanResults =
-                    probeScannerWindow.scanResults |> List.filter probeScanResultsRepresentsMatchingAnomaly
+                    probeScannerWindow.scanResults
+                        |> List.filter (probeScanResultsRepresentsMatchingAnomaly context.settings)
             in
-            case matchingScanResults |> listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface) of
+            case matchingScanResults |> listElementAtWrappedIndex (getEntropyIntFromUserInterface context.parsedUserInterface) of
                 Nothing ->
                     DescribeBranch
                         ("I see " ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt) ++ " scan results, and no matching anomaly.")

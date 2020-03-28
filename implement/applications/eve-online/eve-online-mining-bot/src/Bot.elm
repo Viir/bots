@@ -106,8 +106,8 @@ type alias UIElement =
 
 
 type alias TreeLeafAct =
-    { actionsForCurrentReading : ( String, List VolatileHostInterface.EffectOnWindowStructure )
-    , actionsForFollowingReadings : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+    { actionsAlreadyDecided : ( String, List VolatileHostInterface.EffectOnWindowStructure )
+    , actionsDependingOnNewReadings : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
     }
 
 
@@ -184,14 +184,14 @@ dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
                             Just activeShipEntry ->
                                 EndDecisionPath
                                     (Act
-                                        { actionsForCurrentReading =
+                                        { actionsAlreadyDecided =
                                             ( "Rightclick on the ship in the inventory window."
                                             , [ activeShipEntry
                                                     |> clickLocationOnInventoryShipEntry
                                                     |> effectMouseClickAtLocation MouseButtonRight
                                               ]
                                             )
-                                        , actionsForFollowingReadings =
+                                        , actionsDependingOnNewReadings =
                                             [ ( "Click menu entry 'undock'."
                                               , lastContextMenuOrSubmenu
                                                     >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Undock")
@@ -205,18 +205,15 @@ dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
                 Just itemInInventory ->
                     DescribeBranch "I see at least one item in the ore hold. Move this to the item hangar."
                         (EndDecisionPath
-                            (Act
-                                { actionsForCurrentReading =
-                                    ( "Drag and drop."
-                                    , [ VolatileHostInterface.SimpleDragAndDrop
-                                            { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
-                                            , endLocation = itemHangar.totalDisplayRegion |> centerFromDisplayRegion
-                                            , mouseButton = MouseButtonLeft
-                                            }
-                                      ]
-                                    )
-                                , actionsForFollowingReadings = []
-                                }
+                            (actWithoutFurtherReadings
+                                ( "Drag and drop."
+                                , [ VolatileHostInterface.SimpleDragAndDrop
+                                        { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
+                                        , endLocation = itemHangar.totalDisplayRegion |> centerFromDisplayRegion
+                                        , mouseButton = MouseButtonLeft
+                                        }
+                                  ]
+                                )
                             )
                         )
 
@@ -241,11 +238,8 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
             Just inactiveModule ->
                 DescribeBranch "I see an inactive module in the middle row. Activate it."
                     (EndDecisionPath
-                        (Act
-                            { actionsForCurrentReading =
-                                ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
-                            , actionsForFollowingReadings = []
-                            }
+                        (actWithoutFurtherReadings
+                            ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
                         )
                     )
 
@@ -283,13 +277,10 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                                 Just inactiveModule ->
                                                     DescribeBranch "I see an inactive mining module. Activate it."
                                                         (EndDecisionPath
-                                                            (Act
-                                                                { actionsForCurrentReading =
-                                                                    ( "Click on the module."
-                                                                    , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
-                                                                    )
-                                                                , actionsForFollowingReadings = []
-                                                                }
+                                                            (actWithoutFurtherReadings
+                                                                ( "Click on the module."
+                                                                , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                                                )
                                                             )
                                                         )
                                             )
@@ -345,25 +336,19 @@ ensureOreHoldIsSelectedInInventoryWindow parsedUserInterface continueWithInvento
 
                                                 Just toggleBtn ->
                                                     EndDecisionPath
-                                                        (Act
-                                                            { actionsForCurrentReading =
-                                                                ( "Click the toggle button to expand."
-                                                                , [ toggleBtn |> clickOnUIElement MouseButtonLeft ]
-                                                                )
-                                                            , actionsForFollowingReadings = []
-                                                            }
+                                                        (actWithoutFurtherReadings
+                                                            ( "Click the toggle button to expand."
+                                                            , [ toggleBtn |> clickOnUIElement MouseButtonLeft ]
+                                                            )
                                                         )
                                             )
 
                                     Just oreHoldTreeEntry ->
                                         EndDecisionPath
-                                            (Act
-                                                { actionsForCurrentReading =
-                                                    ( "Click the tree entry representing the ore hold."
-                                                    , [ oreHoldTreeEntry.uiNode |> clickOnUIElement MouseButtonLeft ]
-                                                    )
-                                                , actionsForFollowingReadings = []
-                                                }
+                                            (actWithoutFurtherReadings
+                                                ( "Click the tree entry representing the ore hold."
+                                                , [ oreHoldTreeEntry.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                                )
                                             )
                         )
 
@@ -483,17 +468,22 @@ dockToRandomStation parsedUserInterface =
         parsedUserInterface
 
 
+actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
+actWithoutFurtherReadings actionsAlreadyDecided =
+    Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
+
+
 actStartingWithRightClickOnOverviewEntry :
     OverviewWindowEntry
     -> List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
     -> EndDecisionPathStructure
-actStartingWithRightClickOnOverviewEntry overviewEntry actionsForFollowingReadings =
+actStartingWithRightClickOnOverviewEntry overviewEntry actionsDependingOnNewReadings =
     Act
-        { actionsForCurrentReading =
-            ( "Right click on overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'."
+        { actionsAlreadyDecided =
+            ( "Rightclick on overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'."
             , [ overviewEntry.uiNode |> clickOnUIElement MouseButtonRight ]
             )
-        , actionsForFollowingReadings = actionsForFollowingReadings
+        , actionsDependingOnNewReadings = actionsDependingOnNewReadings
         }
 
 
@@ -534,7 +524,7 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
 
 
 useContextMenuOnListSurroundingsButton : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) ) -> ParsedUserInterface -> DecisionPathNode
-useContextMenuOnListSurroundingsButton actionsForFollowingReadings parsedUserInterface =
+useContextMenuOnListSurroundingsButton actionsDependingOnNewReadings parsedUserInterface =
     case parsedUserInterface.infoPanelLocationInfo of
         CanNotSeeIt ->
             DescribeBranch "I cannot see the location info panel." (EndDecisionPath Wait)
@@ -542,11 +532,11 @@ useContextMenuOnListSurroundingsButton actionsForFollowingReadings parsedUserInt
         CanSee infoPanelLocationInfo ->
             EndDecisionPath
                 (Act
-                    { actionsForCurrentReading =
+                    { actionsAlreadyDecided =
                         ( "Click on surroundings button."
                         , [ infoPanelLocationInfo.listSurroundingsButton |> clickOnUIElement MouseButtonLeft ]
                         )
-                    , actionsForFollowingReadings = actionsForFollowingReadings
+                    , actionsDependingOnNewReadings = actionsDependingOnNewReadings
                     }
                 )
 
@@ -604,10 +594,8 @@ processEveOnlineBotEventWithSettings botSettings event stateBefore =
                                     []
 
                                 Act act ->
-                                    ( act.actionsForCurrentReading |> Tuple.first
-                                    , always (act.actionsForCurrentReading |> Tuple.second |> Just)
-                                    )
-                                        :: act.actionsForFollowingReadings
+                                    (act.actionsAlreadyDecided |> Tuple.mapSecond (Just >> always))
+                                        :: act.actionsDependingOnNewReadings
                     in
                     { originalDecision = originalDecision, remainingActions = originalRemainingActions }
 

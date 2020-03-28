@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-03-27 🎉
+{- EVE Online anomaly ratting bot version 2020-03-28
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -73,8 +73,8 @@ type alias UIElement =
 
 
 type alias TreeLeafAct =
-    { actionsForCurrentReading : ( String, List VolatileHostInterface.EffectOnWindowStructure )
-    , actionsForFollowingReadings : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+    { actionsAlreadyDecided : ( String, List VolatileHostInterface.EffectOnWindowStructure )
+    , actionsDependingOnNewReadings : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
     }
 
 
@@ -140,11 +140,8 @@ decideNextActionWhenInSpace context seeUndockingComplete =
             Just inactiveModule ->
                 DescribeBranch "I see an inactive module in the middle row. Activate the module."
                     (EndDecisionPath
-                        (Act
-                            { actionsForCurrentReading =
-                                ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
-                            , actionsForFollowingReadings = []
-                            }
+                        (actWithoutFurtherReadings
+                            ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
                         )
                     )
 
@@ -182,14 +179,14 @@ combat context seeUndockingComplete continueIfCombatComplete =
                     DescribeBranch "I see a target to unlock."
                         (EndDecisionPath
                             (Act
-                                { actionsForCurrentReading =
+                                { actionsAlreadyDecided =
                                     ( "Rightclick on the target."
                                     , [ targetToUnlock.barAndImageCont
                                             |> Maybe.withDefault targetToUnlock.uiNode
                                             |> clickOnUIElement MouseButtonRight
                                       ]
                                     )
-                                , actionsForFollowingReadings =
+                                , actionsDependingOnNewReadings =
                                     [ ( "Click menu entry 'unlock'."
                                       , lastContextMenuOrSubmenu
                                             >> Maybe.andThen (menuEntryContainingTextIgnoringCase "unlock")
@@ -248,13 +245,10 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                     Just inactiveModule ->
                                         DescribeBranch "I see an inactive module to activate on targets. Activate it."
                                             (EndDecisionPath
-                                                (Act
-                                                    { actionsForCurrentReading =
-                                                        ( "Click on the module."
-                                                        , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
-                                                        )
-                                                    , actionsForFollowingReadings = []
-                                                    }
+                                                (actWithoutFurtherReadings
+                                                    ( "Click on the module."
+                                                    , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                                    )
                                                 )
                                             )
                                 )
@@ -284,11 +278,11 @@ enterAnomaly parsedUserInterface =
                     DescribeBranch "Warp to anomaly."
                         (EndDecisionPath
                             (Act
-                                { actionsForCurrentReading =
+                                { actionsAlreadyDecided =
                                     ( "Rightclick on the scan result."
                                     , [ anomalyScanResult.uiNode |> clickOnUIElement MouseButtonRight ]
                                     )
-                                , actionsForFollowingReadings =
+                                , actionsDependingOnNewReadings =
                                     [ ( "Click menu entry 'Warp to Within'"
                                       , lastContextMenuOrSubmenu
                                             >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Within")
@@ -314,16 +308,13 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
         Just
             (DescribeBranch "Overview entry is in range. Lock target."
                 (EndDecisionPath
-                    (Act
-                        { actionsForCurrentReading =
-                            ( "Click on the overview entry and press the 'W' key."
-                            , [ overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
-                              , VolatileHostInterface.KeyDown keyCodeLetterW
-                              , VolatileHostInterface.KeyUp keyCodeLetterW
-                              ]
-                            )
-                        , actionsForFollowingReadings = []
-                        }
+                    (actWithoutFurtherReadings
+                        ( "Click on the overview entry and press the 'W' key."
+                        , [ overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
+                          , VolatileHostInterface.KeyDown keyCodeLetterW
+                          , VolatileHostInterface.KeyUp keyCodeLetterW
+                          ]
+                        )
                     )
                 )
             )
@@ -358,11 +349,11 @@ launchAndEngageDrones parsedUserInterface =
                                 (DescribeBranch "Engage idling drone(s)"
                                     (EndDecisionPath
                                         (Act
-                                            { actionsForCurrentReading =
+                                            { actionsAlreadyDecided =
                                                 ( "Rightclick on the drones group."
                                                 , [ droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight ]
                                                 )
-                                            , actionsForFollowingReadings =
+                                            , actionsDependingOnNewReadings =
                                                 [ ( "Click menu entry 'engage target'."
                                                   , lastContextMenuOrSubmenu
                                                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "engage target")
@@ -379,11 +370,11 @@ launchAndEngageDrones parsedUserInterface =
                                 (DescribeBranch "Launch drones"
                                     (EndDecisionPath
                                         (Act
-                                            { actionsForCurrentReading =
+                                            { actionsAlreadyDecided =
                                                 ( "Right click on the drones group."
                                                 , [ droneGroupInBay.header.uiNode |> clickOnUIElement MouseButtonRight ]
                                                 )
-                                            , actionsForFollowingReadings =
+                                            , actionsDependingOnNewReadings =
                                                 [ ( "Click menu entry 'Launch drone'."
                                                   , lastContextMenuOrSubmenu
                                                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Launch drone")
@@ -415,11 +406,11 @@ returnDronesToBay parsedUserInterface =
                         (DescribeBranch "I see there are drones in local space. Return those to bay."
                             (EndDecisionPath
                                 (Act
-                                    { actionsForCurrentReading =
+                                    { actionsAlreadyDecided =
                                         ( "Rightclick on the drones group."
                                         , [ droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight ]
                                         )
-                                    , actionsForFollowingReadings =
+                                    , actionsDependingOnNewReadings =
                                         [ ( "Click menu entry 'Return to drone bay'."
                                           , lastContextMenuOrSubmenu
                                                 >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Return to drone bay")
@@ -470,17 +461,22 @@ lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
             DescribeBranch ("Failed to read the distance: " ++ error) (EndDecisionPath Wait)
 
 
+actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
+actWithoutFurtherReadings actionsAlreadyDecided =
+    Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
+
+
 actStartingWithRightClickOnOverviewEntry :
     OverviewWindowEntry
     -> List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
     -> EndDecisionPathStructure
-actStartingWithRightClickOnOverviewEntry overviewEntry actionsForFollowingReadings =
+actStartingWithRightClickOnOverviewEntry overviewEntry actionsDependingOnNewReadings =
     Act
-        { actionsForCurrentReading =
-            ( "Right click on overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'."
+        { actionsAlreadyDecided =
+            ( "Rightclick on overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'."
             , [ overviewEntry.uiNode |> clickOnUIElement MouseButtonRight ]
             )
-        , actionsForFollowingReadings = actionsForFollowingReadings
+        , actionsDependingOnNewReadings = actionsDependingOnNewReadings
         }
 
 
@@ -573,10 +569,8 @@ processEveOnlineBotEventWithSettings botSettings event stateBefore =
                                     []
 
                                 Act act ->
-                                    ( act.actionsForCurrentReading |> Tuple.first
-                                    , always (act.actionsForCurrentReading |> Tuple.second |> Just)
-                                    )
-                                        :: act.actionsForFollowingReadings
+                                    (act.actionsAlreadyDecided |> Tuple.mapSecond (Just >> always))
+                                        :: act.actionsDependingOnNewReadings
                     in
                     { originalDecision = originalDecision, remainingActions = originalRemainingActions }
 

@@ -44,8 +44,7 @@ import Set
 
 defaultBotSettings : BotSettings
 defaultBotSettings =
-    { attackMaxRange = 18000
-    , maxTargetCount = 3
+    { maxTargetCount = 3
     , botStepDelayMilliseconds = 1300
     }
 
@@ -62,8 +61,7 @@ parseBotSettingsNames =
 
 
 type alias BotSettings =
-    { attackMaxRange : Int
-    , maxTargetCount : Int
+    { maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
 
@@ -215,7 +213,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
 
                                     nextOverviewEntryToLock :: _ ->
                                         DescribeBranch "I see an overview entry to lock."
-                                            (lockTargetFromOverviewEntryAndEnsureIsInRange context.settings.attackMaxRange nextOverviewEntryToLock)
+                                            (lockTargetFromOverviewEntry nextOverviewEntryToLock)
                                 )
 
                         Just _ ->
@@ -237,7 +235,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
 
                                                                 nextOverviewEntryToLock :: _ ->
                                                                     DescribeBranch "Lock more targets."
-                                                                        (lockTargetFromOverviewEntryAndEnsureIsInRange context.settings.attackMaxRange nextOverviewEntryToLock)
+                                                                        (lockTargetFromOverviewEntry nextOverviewEntryToLock)
                                                         )
                                                     )
                                             )
@@ -427,38 +425,19 @@ returnDronesToBay parsedUserInterface =
             )
 
 
-lockTargetFromOverviewEntryAndEnsureIsInRange : Int -> OverviewWindowEntry -> DecisionPathNode
-lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
-    case overviewEntry.objectDistanceInMeters of
-        Ok distanceInMeters ->
-            if distanceInMeters <= rangeInMeters then
-                DescribeBranch "Object is in range. Lock target."
-                    (EndDecisionPath
-                        (actStartingWithRightClickOnOverviewEntry overviewEntry
-                            [ ( "Click menu entry 'lock'."
-                              , lastContextMenuOrSubmenu
-                                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
-                                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-                              )
-                            ]
-                        )
-                    )
-
-            else
-                DescribeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
-                    (EndDecisionPath
-                        (actStartingWithRightClickOnOverviewEntry overviewEntry
-                            [ ( "Click menu entry 'approach'."
-                              , lastContextMenuOrSubmenu
-                                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
-                                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-                              )
-                            ]
-                        )
-                    )
-
-        Err error ->
-            DescribeBranch ("Failed to read the distance: " ++ error) (EndDecisionPath Wait)
+lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
+lockTargetFromOverviewEntry overviewEntry =
+    DescribeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
+        (EndDecisionPath
+            (actStartingWithRightClickOnOverviewEntry overviewEntry
+                [ ( "Click menu entry 'lock'."
+                  , lastContextMenuOrSubmenu
+                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
+                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                  )
+                ]
+            )
+        )
 
 
 actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure

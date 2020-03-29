@@ -19,14 +19,14 @@
 
    ## Configuration Settings
 
-   All settings are optional; you only need it in case the defaults don't fit your use-case.
+   All settings are optional; you only need them in case the defaults don't fit your use-case.
    You can adjust three settings:
 
-   + 'number-of-farm-cycles' : Number of farm cycles before the bot stops completely. The default is 1.
-   + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like '60-120'. I will then pick a random value in this range.
+   + 'number-of-farm-cycles' : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
+   + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
    + 'farm-barb-min-points': Minimum points of barbarian villages to attack.
 
-   Here is an example of applying a configuration for three farm cycles with breaks of 20 to 40 minutes in between:
+   Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
    --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
 -}
 {-

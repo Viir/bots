@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-03-28
+{- EVE Online mining bot version 2020-03-31
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -91,6 +91,8 @@ type alias BotSettings =
 
 type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
+    , timesUnloaded : Int
+    , lastUsedCapacityInOreHold : Maybe Int
     }
 
 
@@ -545,7 +547,11 @@ initState : State
 initState =
     EveOnline.BotFramework.initState
         { programState = Nothing
-        , botMemory = { lastDockedStationNameFromInfoPanel = Nothing }
+        , botMemory =
+            { lastDockedStationNameFromInfoPanel = Nothing
+            , timesUnloaded = 0
+            , lastUsedCapacityInOreHold = Nothing
+            }
         }
 
 
@@ -640,7 +646,7 @@ processEveOnlineBotEventWithSettings botSettings event stateBefore =
                         |> String.join "\n"
 
                 statusMessage =
-                    [ parsedUserInterface |> describeUserInterfaceForMonitoring, describeActivity ]
+                    [ describeStateForMonitoring parsedUserInterface botMemory, describeActivity ]
                         |> String.join "\n"
             in
             ( { stateBefore | botMemory = botMemory, programState = programState }
@@ -652,9 +658,12 @@ processEveOnlineBotEventWithSettings botSettings event stateBefore =
             )
 
 
-describeUserInterfaceForMonitoring : ParsedUserInterface -> String
-describeUserInterfaceForMonitoring parsedUserInterface =
+describeStateForMonitoring : ParsedUserInterface -> BotMemory -> String
+describeStateForMonitoring parsedUserInterface botMemory =
     let
+        describePerformance =
+            "Times Unloaded: " ++ (botMemory.timesUnloaded |> String.fromInt)
+
         describeShip =
             case parsedUserInterface.shipUI of
                 CanSee shipUI ->
@@ -678,7 +687,10 @@ describeUserInterfaceForMonitoring parsedUserInterface =
                    )
                 ++ "%."
     in
-    [ describeShip, describeOreHold ] |> String.join " "
+    [ describePerformance
+    , [ describeShip, describeOreHold ] |> String.join " "
+    ]
+        |> String.join "\n"
 
 
 integrateCurrentReadingsIntoBotMemory : ParsedUserInterface -> BotMemory -> BotMemory
@@ -689,11 +701,37 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
                 |> maybeVisibleAndThen .expandedContent
                 |> maybeNothingFromCanNotSeeIt
                 |> Maybe.andThen .currentStationName
+
+        lastUsedCapacityInOreHold =
+            currentReading
+                |> inventoryWindowWithOreHoldSelectedFromUserInterface
+                |> Maybe.andThen .selectedContainerCapacityGauge
+                |> Maybe.andThen Result.toMaybe
+                |> Maybe.map .used
+
+        completedUnloadSincePreviousReading =
+            case botMemoryBefore.lastUsedCapacityInOreHold of
+                Nothing ->
+                    False
+
+                Just previousUsedCapacityInOreHold ->
+                    lastUsedCapacityInOreHold == Just 0 && 0 < previousUsedCapacityInOreHold
+
+        timesUnloaded =
+            botMemoryBefore.timesUnloaded
+                + (if completedUnloadSincePreviousReading then
+                    1
+
+                   else
+                    0
+                  )
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
             |> List.filterMap identity
             |> List.head
+    , timesUnloaded = timesUnloaded
+    , lastUsedCapacityInOreHold = lastUsedCapacityInOreHold
     }
 
 

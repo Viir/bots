@@ -9,9 +9,9 @@
 
 + [Walkthrough, Programming]: How to add a setting to a botengine app: [https://youtu.be/A-tbRE9S2ss](https://youtu.be/A-tbRE9S2ss)
 
-## Examples
+## App Examples
 
-Wondering what outcome you can expect from following the guides? Below is a list of example bots developed using the same approach. You can test them for free:
+Wondering what outcome you can expect from following the guides? Below is a list of example apps. You can test them for free:
 
 + [EVE Online mining bot](https://github.com/Viir/bots/blob/master/guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md)
 

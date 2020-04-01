@@ -5,7 +5,9 @@
 
 + [Parsed User Interface of the EVE Online Game Client](https://github.com/Viir/bots/blob/master/guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md): Find things faster in the EVE Online game client user interface.
 
-+ [Walkthrough, Programming]: How to add a setting to a botengine app: [https://www.youtube.com/watch?v=A-tbRE9S2ss](https://www.youtube.com/watch?v=A-tbRE9S2ss)
++ [Walkthrough, Programming]: Adding a counter to an EVE Online bot: [https://youtu.be/HLerePMeD3w](https://youtu.be/HLerePMeD3w)
+
++ [Walkthrough, Programming]: How to add a setting to a botengine app: [https://youtu.be/A-tbRE9S2ss](https://youtu.be/A-tbRE9S2ss)
 
 ## Examples
 

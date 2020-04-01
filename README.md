@@ -10,7 +10,9 @@ What is more exciting than playing video games? - Building an AI that plays vide
 
 + Find things faster in the EVE Online game client user interface: [./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md](./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md)
 
-+ [Walkthrough, Programming]: How to add a setting to a botengine app: [https://www.youtube.com/watch?v=A-tbRE9S2ss](https://www.youtube.com/watch?v=A-tbRE9S2ss)
++ [Walkthrough, Programming]: Adding a counter to an EVE Online bot: [https://youtu.be/HLerePMeD3w](https://youtu.be/HLerePMeD3w)
+
++ [Walkthrough, Programming]: How to add a setting to a botengine app: [https://youtu.be/A-tbRE9S2ss](https://youtu.be/A-tbRE9S2ss)
 
 + How to collect samples for 64-bit memory reading development: [./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md](./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md)
 

@@ -141,7 +141,7 @@ type alias State =
 -}
 decideNextAction : BotDecisionContext -> DecisionPathNode
 decideNextAction context =
-    ensureInfoPanelLocationInfoIsVisible context.parsedUserInterface
+    ensureInfoPanelLocationInfoIsExpanded context.parsedUserInterface
         |> Maybe.withDefault
             (branchDependingOnDockedOrInSpace
                 (DescribeBranch "I see no ship UI, assume we are docked."
@@ -172,8 +172,8 @@ decideNextAction context =
             )
 
 
-ensureInfoPanelLocationInfoIsVisible : EveOnline.ParseUserInterface.ParsedUserInterface -> Maybe DecisionPathNode
-ensureInfoPanelLocationInfoIsVisible gameUserInterface =
+ensureInfoPanelLocationInfoIsExpanded : EveOnline.ParseUserInterface.ParsedUserInterface -> Maybe DecisionPathNode
+ensureInfoPanelLocationInfoIsExpanded gameUserInterface =
     case gameUserInterface.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
         CanNotSeeIt ->
             Just
@@ -192,8 +192,26 @@ ensureInfoPanelLocationInfoIsVisible gameUserInterface =
                     )
                 )
 
-        CanSee _ ->
-            Nothing
+        CanSee infoPanelLocationInfo ->
+            if 35 < infoPanelLocationInfo.uiNode.totalDisplayRegion.height then
+                Nothing
+
+            else
+                Just
+                    (DescribeBranch "Location info panel seems collapsed."
+                        (EndDecisionPath
+                            (actWithoutFurtherReadings
+                                ( "Click to expand the info panel."
+                                , [ effectMouseClickAtLocation
+                                        MouseButtonLeft
+                                        { x = infoPanelLocationInfo.uiNode.totalDisplayRegion.x + 8
+                                        , y = infoPanelLocationInfo.uiNode.totalDisplayRegion.y + 8
+                                        }
+                                  ]
+                                )
+                            )
+                        )
+                    )
 
 
 dockedWithOreHoldSelected : EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode

@@ -678,7 +678,7 @@ describeStateForMonitoring parsedUserInterface botMemory =
         describeShip =
             case parsedUserInterface.shipUI of
                 CanSee shipUI ->
-                    "I am in space, shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
+                    "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
 
                 CanNotSeeIt ->
                     case
@@ -705,7 +705,7 @@ describeStateForMonitoring parsedUserInterface botMemory =
                 ++ "%."
     in
     [ describePerformance
-    , [ describeShip, describeOreHold ] |> String.join " "
+    , [ describeOreHold, describeShip ] |> String.join " "
     ]
         |> String.join "\n"
 

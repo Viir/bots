@@ -692,7 +692,8 @@ integrateCurrentReadingsIntoBotMemory : ParsedUserInterface -> BotMemory -> BotM
 integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
     let
         currentStationNameFromInfoPanel =
-            currentReading.infoPanelLocationInfo
+            currentReading.infoPanelContainer
+                |> maybeVisibleAndThen .infoPanelLocationInfo
                 |> maybeVisibleAndThen .expandedContent
                 |> maybeNothingFromCanNotSeeIt
                 |> Maybe.andThen .currentStationName

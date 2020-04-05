@@ -538,7 +538,7 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
 
 useContextMenuOnListSurroundingsButton : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) ) -> ParsedUserInterface -> DecisionPathNode
 useContextMenuOnListSurroundingsButton actionsDependingOnNewReadings parsedUserInterface =
-    case parsedUserInterface.infoPanelLocationInfo of
+    case parsedUserInterface.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
         CanNotSeeIt ->
             DescribeBranch "I cannot see the location info panel." (EndDecisionPath Wait)
 
@@ -681,7 +681,13 @@ describeStateForMonitoring parsedUserInterface botMemory =
                     "I am in space, shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
 
                 CanNotSeeIt ->
-                    case parsedUserInterface.infoPanelLocationInfo |> maybeVisibleAndThen .expandedContent |> maybeNothingFromCanNotSeeIt |> Maybe.andThen .currentStationName of
+                    case
+                        parsedUserInterface.infoPanelContainer
+                            |> maybeVisibleAndThen .infoPanelLocationInfo
+                            |> maybeVisibleAndThen .expandedContent
+                            |> maybeNothingFromCanNotSeeIt
+                            |> Maybe.andThen .currentStationName
+                    of
                         Just stationName ->
                             "I am docked at '" ++ stationName ++ "'."
 
@@ -708,7 +714,8 @@ integrateCurrentReadingsIntoBotMemory : ParsedUserInterface -> BotMemory -> BotM
 integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
     let
         currentStationNameFromInfoPanel =
-            currentReading.infoPanelLocationInfo
+            currentReading.infoPanelContainer
+                |> maybeVisibleAndThen .infoPanelLocationInfo
                 |> maybeVisibleAndThen .expandedContent
                 |> maybeNothingFromCanNotSeeIt
                 |> Maybe.andThen .currentStationName

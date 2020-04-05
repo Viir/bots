@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-03-28 - coldtea
+{- EVE Online anomaly ratting bot version 2020-04-05
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -173,7 +173,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
 
         overviewEntriesToLock =
             overviewEntriesToAttack
-                |> List.filter (overviewEntryIsAlreadyTargetedOrTargeting >> not)
+                |> List.filter (overviewEntryIsTargetedOrTargeting >> not)
 
         targetsToUnlock =
             if overviewEntriesToAttack |> List.any overviewEntryIsActiveTarget then
@@ -447,9 +447,9 @@ lockTargetFromOverviewEntry overviewEntry =
     DescribeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
         (EndDecisionPath
             (actStartingWithRightClickOnOverviewEntry overviewEntry
-                [ ( "Click menu entry 'lock'."
+                [ ( "Click menu entry 'Lock target'."
                   , lastContextMenuOrSubmenu
-                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
+                        >> Maybe.andThen (menuEntryWithTextEqualsIgnoringCase "Lock target")
                         >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
                   )
                 ]
@@ -659,8 +659,8 @@ allOverviewEntriesToAttack =
         >> Maybe.map (.entries >> List.filter shouldAttackOverviewEntry)
 
 
-overviewEntryIsAlreadyTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
-overviewEntryIsAlreadyTargetedOrTargeting =
+overviewEntryIsTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
+overviewEntryIsTargetedOrTargeting =
     .namesUnderSpaceObjectIcon
         >> Set.intersect ([ "targetedByMeIndicator", "targeting" ] |> Set.fromList)
         >> Set.isEmpty
@@ -745,6 +745,13 @@ menuEntryContainingTextIgnoringCase textToSearch =
     .entries
         >> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
         >> List.sortBy (.text >> String.trim >> String.length)
+        >> List.head
+
+
+menuEntryWithTextEqualsIgnoringCase : String -> EveOnline.ParseUserInterface.ContextMenu -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry
+menuEntryWithTextEqualsIgnoringCase textToSearch =
+    .entries
+        >> List.filter (.text >> String.toLower >> (==) (textToSearch |> String.toLower))
         >> List.head
 
 

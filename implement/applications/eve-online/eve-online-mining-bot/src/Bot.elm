@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-03-31
+{- EVE Online mining bot version 2020-04-05
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -40,6 +40,7 @@ import EveOnline.ParseUserInterface
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
 import Result.Extra
+import Set
 
 
 {-| Sources for the defaults:
@@ -360,17 +361,12 @@ lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
     case overviewEntry.objectDistanceInMeters of
         Ok distanceInMeters ->
             if distanceInMeters <= rangeInMeters then
-                DescribeBranch "Object is in range. Lock target."
-                    (EndDecisionPath
-                        (actStartingWithRightClickOnOverviewEntry overviewEntry
-                            [ ( "Click menu entry 'lock'."
-                              , lastContextMenuOrSubmenu
-                                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "lock")
-                                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-                              )
-                            ]
-                        )
-                    )
+                if overviewEntryIsTargetedOrTargeting overviewEntry then
+                    DescribeBranch "Wait for target locking to complete." (EndDecisionPath Wait)
+
+                else
+                    DescribeBranch "Object is in range. Lock target."
+                        (lockTargetFromOverviewEntry overviewEntry)
 
             else
                 DescribeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
@@ -388,6 +384,21 @@ lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
 
         Err error ->
             DescribeBranch ("Failed to read the distance: " ++ error) (EndDecisionPath Wait)
+
+
+lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
+lockTargetFromOverviewEntry overviewEntry =
+    DescribeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
+        (EndDecisionPath
+            (actStartingWithRightClickOnOverviewEntry overviewEntry
+                [ ( "Click menu entry 'Lock target'."
+                  , lastContextMenuOrSubmenu
+                        >> Maybe.andThen (menuEntryWithTextEqualsIgnoringCase "Lock target")
+                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                  )
+                ]
+            )
+        )
 
 
 dockToStationMatchingNameSeenInInfoPanel : { stationNameFromInfoPanel : String } -> ParsedUserInterface -> DecisionPathNode
@@ -769,6 +780,13 @@ menuEntryContainingTextIgnoringCase textToSearch =
         >> List.head
 
 
+menuEntryWithTextEqualsIgnoringCase : String -> EveOnline.ParseUserInterface.ContextMenu -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry
+menuEntryWithTextEqualsIgnoringCase textToSearch =
+    .entries
+        >> List.filter (.text >> String.toLower >> (==) (textToSearch |> String.toLower))
+        >> List.head
+
+
 {-| The names are at least sometimes displayed different: 'Moon 7' can become 'M7'
 -}
 menuEntryMatchesStationNameFromLocationInfoPanel : String -> EveOnline.ParseUserInterface.ContextMenuEntry -> Bool
@@ -801,6 +819,14 @@ overviewWindowEntryRepresentsAnAsteroid : OverviewWindowEntry -> Bool
 overviewWindowEntryRepresentsAnAsteroid entry =
     (entry.textsLeftToRight |> List.any (String.toLower >> String.contains "asteroid"))
         && (entry.textsLeftToRight |> List.any (String.toLower >> String.contains "belt") |> not)
+
+
+overviewEntryIsTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
+overviewEntryIsTargetedOrTargeting =
+    .namesUnderSpaceObjectIcon
+        >> Set.intersect ([ "targetedByMeIndicator", "targeting" ] |> Set.fromList)
+        >> Set.isEmpty
+        >> not
 
 
 capacityGaugeUsedPercent : EveOnline.ParseUserInterface.InventoryWindow -> Maybe Int

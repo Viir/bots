@@ -2,7 +2,6 @@
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
-   + Enable the info panel 'System info'.
    + Undock, open probe scanner, overview window and drones window.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + In the ship UI, arrange the modules:

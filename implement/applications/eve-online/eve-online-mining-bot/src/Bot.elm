@@ -12,7 +12,6 @@
      + Place all mining modules (to activate on targets) in the top row.
      + Place modules that should always be active in the middle row.
      + Hide passive modules by disabling the check-box `Display Passive Modules`.
-   + Enable the info panel 'System info'.
 -}
 {-
    bot-catalog-tags:eve-online,mining
@@ -142,32 +141,59 @@ type alias State =
 -}
 decideNextAction : BotDecisionContext -> DecisionPathNode
 decideNextAction context =
-    branchDependingOnDockedOrInSpace
-        (DescribeBranch "I see no ship UI, assume we are docked."
-            (ensureOreHoldIsSelectedInInventoryWindow
-                context.parsedUserInterface
-                dockedWithOreHoldSelected
-            )
-        )
-        (\shipUI ->
-            if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
-                Just
-                    (DescribeBranch
-                        ("Shield hitpoints are below " ++ (context.settings.runAwayShieldHitpointsThresholdPercent |> String.fromInt) ++ "% , run away.")
-                        (runAway context)
+    ensureInfoPanelLocationInfoIsVisible context.parsedUserInterface
+        |> Maybe.withDefault
+            (branchDependingOnDockedOrInSpace
+                (DescribeBranch "I see no ship UI, assume we are docked."
+                    (ensureOreHoldIsSelectedInInventoryWindow
+                        context.parsedUserInterface
+                        dockedWithOreHoldSelected
                     )
-
-            else
-                Nothing
-        )
-        (\seeUndockingComplete ->
-            DescribeBranch "I see we are in space, undocking complete."
-                (ensureOreHoldIsSelectedInInventoryWindow
-                    context.parsedUserInterface
-                    (inSpaceWithOreHoldSelected context seeUndockingComplete)
                 )
-        )
-        context.parsedUserInterface
+                (\shipUI ->
+                    if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
+                        Just
+                            (DescribeBranch
+                                ("Shield hitpoints are below " ++ (context.settings.runAwayShieldHitpointsThresholdPercent |> String.fromInt) ++ "% , run away.")
+                                (runAway context)
+                            )
+
+                    else
+                        Nothing
+                )
+                (\seeUndockingComplete ->
+                    DescribeBranch "I see we are in space, undocking complete."
+                        (ensureOreHoldIsSelectedInInventoryWindow
+                            context.parsedUserInterface
+                            (inSpaceWithOreHoldSelected context seeUndockingComplete)
+                        )
+                )
+                context.parsedUserInterface
+            )
+
+
+ensureInfoPanelLocationInfoIsVisible : EveOnline.ParseUserInterface.ParsedUserInterface -> Maybe DecisionPathNode
+ensureInfoPanelLocationInfoIsVisible gameUserInterface =
+    case gameUserInterface.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
+        CanNotSeeIt ->
+            Just
+                (DescribeBranch "I cannot see the location info panel. Enable the info panel."
+                    (case gameUserInterface.infoPanelContainer |> maybeVisibleAndThen .icons |> maybeVisibleAndThen .locationInfo of
+                        CanNotSeeIt ->
+                            DescribeBranch "I cannot see the icon for the location info panel." (EndDecisionPath Wait)
+
+                        CanSee iconLocationInfoPanel ->
+                            EndDecisionPath
+                                (actWithoutFurtherReadings
+                                    ( "Click on the icon to enable the info panel."
+                                    , [ iconLocationInfoPanel |> clickOnUIElement MouseButtonLeft ]
+                                    )
+                                )
+                    )
+                )
+
+        CanSee _ ->
+            Nothing
 
 
 dockedWithOreHoldSelected : EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode

@@ -93,6 +93,13 @@ type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
     , timesUnloaded : Int
     , lastUsedCapacityInOreHold : Maybe Int
+    , shipModules : ShipModulesMemory
+    }
+
+
+type alias ShipModulesMemory =
+    { tooltipFromModuleButton : Dict.Dict String EveOnline.ParseUserInterface.ModuleButtonTooltip
+    , lastReadingTooltip : MaybeVisible EveOnline.ParseUserInterface.ModuleButtonTooltip
     }
 
 
@@ -319,7 +326,10 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                             (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                                 -- TODO: Check previous memory reading too for module activity.
                                                 Nothing ->
-                                                    DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
+                                                    DescribeBranch "All mining laser modules are active."
+                                                        (readShipUIModuleButtonTooltips context
+                                                            |> Maybe.withDefault (EndDecisionPath Wait)
+                                                        )
 
                                                 Just inactiveModule ->
                                                     DescribeBranch "I see an inactive mining module. Activate it."
@@ -530,6 +540,31 @@ actWithoutFurtherReadings actionsAlreadyDecided =
     Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
 
 
+readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
+readShipUIModuleButtonTooltips context =
+    context.parsedUserInterface.shipUI
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filter
+            (\moduleButton ->
+                (context.memory.shipModules.tooltipFromModuleButton |> Dict.get (moduleButton |> getModuleButtonIdentifierInMemory))
+                    == Nothing
+            )
+        |> List.head
+        |> Maybe.map
+            (\moduleButtonWithoutMemoryOfTooltip ->
+                EndDecisionPath
+                    (actWithoutFurtherReadings
+                        ( "Read tooltip for module button"
+                        , [ VolatileHostInterface.MouseMoveTo
+                                { location = moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion }
+                          ]
+                        )
+                    )
+            )
+
+
 actStartingWithRightClickOnOverviewEntry :
     OverviewWindowEntry
     -> List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
@@ -600,8 +635,16 @@ initState =
             { lastDockedStationNameFromInfoPanel = Nothing
             , timesUnloaded = 0
             , lastUsedCapacityInOreHold = Nothing
+            , shipModules = initShipModulesMemory
             }
         }
+
+
+initShipModulesMemory : ShipModulesMemory
+initShipModulesMemory =
+    { tooltipFromModuleButton = Dict.empty
+    , lastReadingTooltip = CanNotSeeIt
+    }
 
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
@@ -788,6 +831,65 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
             |> List.head
     , timesUnloaded = timesUnloaded
     , lastUsedCapacityInOreHold = lastUsedCapacityInOreHold
+    , shipModules = botMemoryBefore.shipModules |> integrateCurrentReadingsIntoShipModulesMemory currentReading
+    }
+
+
+getModuleButtonIdentifierInMemory : EveOnline.ParseUserInterface.ShipUIModuleButton -> String
+getModuleButtonIdentifierInMemory =
+    .uiNode >> .uiNode >> .pythonObjectAddress
+
+
+integrateCurrentReadingsIntoShipModulesMemory : ParsedUserInterface -> ShipModulesMemory -> ShipModulesMemory
+integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
+    let
+        getTooltipDataForEqualityComparison tooltip =
+            tooltip.uiNode
+                |> EveOnline.ParseUserInterface.getAllContainedDisplayTextsWithRegion
+                |> List.map (Tuple.mapSecond .totalDisplayRegion)
+
+        {- To ensure robustness, we store a new tooltip only when the display texts match in two consecutive readings from the game client. -}
+        tooltipAvailableToStore =
+            case ( memoryBefore.lastReadingTooltip, currentReading.moduleButtonTooltip ) of
+                ( CanSee previousTooltip, CanSee currentTooltip ) ->
+                    if getTooltipDataForEqualityComparison previousTooltip == getTooltipDataForEqualityComparison currentTooltip then
+                        Just currentTooltip
+
+                    else
+                        Nothing
+
+                _ ->
+                    Nothing
+
+        visibleModuleButtons =
+            currentReading.shipUI
+                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.map .moduleButtons
+                |> Maybe.withDefault []
+
+        visibleModuleButtonsIds =
+            visibleModuleButtons |> List.map getModuleButtonIdentifierInMemory
+
+        maybeModuleButtonWithHighlight =
+            visibleModuleButtons
+                |> List.filter .isHiliteVisible
+                |> List.head
+
+        tooltipFromModuleButtonAddition =
+            case ( tooltipAvailableToStore, maybeModuleButtonWithHighlight ) of
+                ( Just tooltip, Just moduleButtonWithHighlight ) ->
+                    Dict.insert (moduleButtonWithHighlight |> getModuleButtonIdentifierInMemory) tooltip
+
+                _ ->
+                    identity
+
+        tooltipFromModuleButton =
+            memoryBefore.tooltipFromModuleButton
+                |> tooltipFromModuleButtonAddition
+                |> Dict.filter (\moduleButtonId _ -> visibleModuleButtonsIds |> List.member moduleButtonId)
+    in
+    { tooltipFromModuleButton = tooltipFromModuleButton
+    , lastReadingTooltip = currentReading.moduleButtonTooltip
     }
 
 

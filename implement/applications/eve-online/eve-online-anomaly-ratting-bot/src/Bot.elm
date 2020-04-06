@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-04-05
+{- EVE Online anomaly ratting bot version 2020-04-06
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -31,7 +31,7 @@ import EveOnline.ParseUserInterface
         , OverviewWindowEntry
         , ParsedUserInterface
         , ShipUI
-        , ShipUIModule
+        , ShipUIModuleButton
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
@@ -149,7 +149,7 @@ decideNextActionWhenInSpace context seeUndockingComplete =
         DescribeBranch "I see we are warping." (EndDecisionPath Wait)
 
     else
-        case context.parsedUserInterface |> shipUIModulesToActivateAlways |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+        case seeUndockingComplete |> shipUIModulesToActivateAlways |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
             Just inactiveModule ->
                 DescribeBranch "I see an inactive module in the middle row. Activate the module."
                     (EndDecisionPath
@@ -233,7 +233,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
 
                         Just _ ->
                             DescribeBranch "I see a locked target."
-                                (case context.parsedUserInterface |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                (case seeUndockingComplete |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                     -- TODO: Check previous memory reading too for module activity.
                                     Nothing ->
                                         DescribeBranch "All attack modules are active."
@@ -477,7 +477,6 @@ actStartingWithRightClickOnOverviewEntry overviewEntry actionsDependingOnNewRead
 
 type alias SeeUndockingComplete =
     { shipUI : EveOnline.ParseUserInterface.ShipUI
-    , shipModulesRows : EveOnline.ParseUserInterface.ShipUIModulesGroupedIntoRows
     , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
     }
 
@@ -496,18 +495,13 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
         CanSee shipUI ->
             branchIfCanSeeShipUI shipUI
                 |> Maybe.withDefault
-                    (case shipUI |> EveOnline.ParseUserInterface.groupShipUIModulesIntoRows of
-                        Nothing ->
-                            DescribeBranch "Failed to group the ship UI modules into rows." (EndDecisionPath Wait)
+                    (case parsedUserInterface.overviewWindow of
+                        CanNotSeeIt ->
+                            DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
 
-                        Just shipModulesRows ->
-                            case parsedUserInterface.overviewWindow of
-                                CanNotSeeIt ->
-                                    DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
-
-                                CanSee overviewWindow ->
-                                    branchIfUndockingComplete
-                                        { shipUI = shipUI, shipModulesRows = shipModulesRows, overviewWindow = overviewWindow }
+                        CanSee overviewWindow ->
+                            branchIfUndockingComplete
+                                { shipUI = shipUI, overviewWindow = overviewWindow }
                     )
 
 
@@ -718,22 +712,14 @@ unpackToDecisionStagesDescriptionsAndLeaf node =
             ( branchDescription :: childDecisionsDescriptions, leaf )
 
 
-shipUIModulesToActivateOnTarget : ParsedUserInterface -> List ShipUIModule
+shipUIModulesToActivateOnTarget : SeeUndockingComplete -> List ShipUIModuleButton
 shipUIModulesToActivateOnTarget =
-    .shipUI
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen EveOnline.ParseUserInterface.groupShipUIModulesIntoRows
-        >> Maybe.map .top
-        >> Maybe.withDefault []
+    .shipUI >> .moduleButtonsRows >> .top
 
 
-shipUIModulesToActivateAlways : ParsedUserInterface -> List ShipUIModule
+shipUIModulesToActivateAlways : SeeUndockingComplete -> List ShipUIModuleButton
 shipUIModulesToActivateAlways =
-    .shipUI
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen EveOnline.ParseUserInterface.groupShipUIModulesIntoRows
-        >> Maybe.map .middle
-        >> Maybe.withDefault []
+    .shipUI >> .moduleButtonsRows >> .middle
 
 
 {-| Returns the menu entry containing the string from the parameter `textToSearch`.

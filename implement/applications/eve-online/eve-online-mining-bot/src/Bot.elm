@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-04-05
+{- EVE Online mining bot version 2020-04-06
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -281,7 +281,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
         DescribeBranch "I see we are warping." (EndDecisionPath Wait)
 
     else
-        case seeUndockingComplete.shipModulesRows.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+        case seeUndockingComplete.shipUI.moduleButtonsRows.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
             Just inactiveModule ->
                 DescribeBranch "I see an inactive module in the middle row. Activate it."
                     (EndDecisionPath
@@ -316,7 +316,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
 
                                     Just _ ->
                                         DescribeBranch "I see a locked target."
-                                            (case seeUndockingComplete.shipModulesRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                            (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                                 -- TODO: Check previous memory reading too for module activity.
                                                 Nothing ->
                                                     DescribeBranch "All mining laser modules are active." (EndDecisionPath Wait)
@@ -546,7 +546,6 @@ actStartingWithRightClickOnOverviewEntry overviewEntry actionsDependingOnNewRead
 
 type alias SeeUndockingComplete =
     { shipUI : EveOnline.ParseUserInterface.ShipUI
-    , shipModulesRows : EveOnline.ParseUserInterface.ShipUIModulesGroupedIntoRows
     , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
     }
 
@@ -565,18 +564,13 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
         CanSee shipUI ->
             branchIfCanSeeShipUI shipUI
                 |> Maybe.withDefault
-                    (case shipUI |> EveOnline.ParseUserInterface.groupShipUIModulesIntoRows of
-                        Nothing ->
-                            DescribeBranch "Failed to group the ship UI modules into rows." (EndDecisionPath Wait)
+                    (case parsedUserInterface.overviewWindow of
+                        CanNotSeeIt ->
+                            DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
 
-                        Just shipModulesRows ->
-                            case parsedUserInterface.overviewWindow of
-                                CanNotSeeIt ->
-                                    DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
-
-                                CanSee overviewWindow ->
-                                    branchIfUndockingComplete
-                                        { shipUI = shipUI, shipModulesRows = shipModulesRows, overviewWindow = overviewWindow }
+                        CanSee overviewWindow ->
+                            branchIfUndockingComplete
+                                { shipUI = shipUI, overviewWindow = overviewWindow }
                     )
 
 

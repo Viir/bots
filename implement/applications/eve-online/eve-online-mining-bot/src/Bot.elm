@@ -78,7 +78,7 @@ parseBotSettingsNames =
       , \stationName -> Ok (\settings -> { settings | lastDockedStationNameFromInfoPanel = Just stationName })
       )
     , ( "ore-hold-max-percent"
-      , parseBotSettingInt (\threshold settings -> { settings | oreHoldMaxPercent = threshold })
+      , parseBotSettingInt (\percent settings -> { settings | oreHoldMaxPercent = percent })
       )
     ]
         |> Dict.fromList

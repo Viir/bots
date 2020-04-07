@@ -90,6 +90,7 @@ type alias BotSettings =
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
     , lastDockedStationNameFromInfoPanel : Maybe String
+    , oreHoldMaxPercent : Int
     }
 
 

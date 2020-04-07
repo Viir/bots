@@ -54,6 +54,7 @@ defaultBotSettings =
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 2000
     , lastDockedStationNameFromInfoPanel = Nothing
+    , oreHoldMaxPercent = 99
     }
 
 
@@ -75,6 +76,9 @@ parseBotSettingsNames =
       )
     , ( "last-docked-station-name-from-info-panel"
       , \stationName -> Ok (\settings -> { settings | lastDockedStationNameFromInfoPanel = Just stationName })
+      )
+    , ( "ore-hold-max-percent"
+      , parseBotSettingInt (\threshold settings -> { settings | oreHoldMaxPercent = threshold })
       )
     ]
         |> Dict.fromList
@@ -303,8 +307,8 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                         DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
                     Just fillPercent ->
-                        if 80 <= fillPercent then
-                            DescribeBranch "The ore hold is over 80 percent. Dock to station."
+                        if oreHoldMaxPercent <= fillPercent then
+                            DescribeBranch "The ore hold is over " ++ (oreHoldMaxPercent |> String.fromInt) ++ "percent. Dock to station."
                                 (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
                                     Nothing ->
                                         DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)

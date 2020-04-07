@@ -308,8 +308,8 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                         DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
                     Just fillPercent ->
-                        if oreHoldMaxPercent <= fillPercent then
-                            DescribeBranch "The ore hold is over " ++ (oreHoldMaxPercent |> String.fromInt) ++ "percent. Dock to station."
+                        if context.settings.oreHoldMaxPercent <= fillPercent then
+                            DescribeBranch "The ore hold is over " ++ (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "percent. Dock to station."
                                 (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
                                     Nothing ->
                                         DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)

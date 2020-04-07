@@ -309,7 +309,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
 
                     Just fillPercent ->
                         if context.settings.oreHoldMaxPercent <= fillPercent then
-                            DescribeBranch ("The ore hold is over " ++ (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "percent. Dock to station.")
+                            DescribeBranch ("The ore hold is over " ++ (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "%. Dock to station.")
                                 (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
                                     Nothing ->
                                         DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
@@ -321,7 +321,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                 )
 
                         else
-                            DescribeBranch "The ore hold is not full enough yet. Get more ore."
+                            DescribeBranch ("The ore hold is not over  " ++ (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "% yet. Get more ore.")
                                 (case context.parsedUserInterface.targets |> List.head of
                                     Nothing ->
                                         DescribeBranch "I see no locked target." (ensureIsAtMiningSiteAndTargetAsteroid context)

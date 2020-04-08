@@ -54,6 +54,7 @@ defaultBotSettings =
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 2000
     , lastDockedStationNameFromInfoPanel = Nothing
+    , oreHoldMaxPercent = 99
     }
 
 
@@ -76,6 +77,9 @@ parseBotSettingsNames =
     , ( "last-docked-station-name-from-info-panel"
       , \stationName -> Ok (\settings -> { settings | lastDockedStationNameFromInfoPanel = Just stationName })
       )
+    , ( "ore-hold-max-percent"
+      , parseBotSettingInt (\percent settings -> { settings | oreHoldMaxPercent = percent })
+      )
     ]
         |> Dict.fromList
 
@@ -86,6 +90,7 @@ type alias BotSettings =
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
     , lastDockedStationNameFromInfoPanel : Maybe String
+    , oreHoldMaxPercent : Int
     }
 
 
@@ -303,8 +308,8 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                         DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
                     Just fillPercent ->
-                        if 99 <= fillPercent then
-                            DescribeBranch "The ore hold is full enough. Dock to station."
+                        if context.settings.oreHoldMaxPercent <= fillPercent then
+                            DescribeBranch ("The ore hold is over" ++ (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "%. Dock to station.")
                                 (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
                                     Nothing ->
                                         DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
@@ -316,7 +321,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                 )
 
                         else
-                            DescribeBranch "The ore hold is not full enough yet. Get more ore."
+                            DescribeBranch ("The ore hold is not over  " ++ (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "% yet. Get more ore.")
                                 (case context.parsedUserInterface.targets |> List.head of
                                     Nothing ->
                                         DescribeBranch "I see no locked target." (ensureIsAtMiningSiteAndTargetAsteroid context)

@@ -153,7 +153,7 @@ type alias State =
 -}
 decideNextAction : BotDecisionContext -> DecisionPathNode
 decideNextAction context =
-    ensureInfoPanelLocationInfoIsExpanded context.parsedUserInterface
+    generalSetupInUserInterface context.parsedUserInterface
         |> Maybe.withDefault
             (branchDependingOnDockedOrInSpace
                 (DescribeBranch "I see no ship UI, assume we are docked."
@@ -181,6 +181,46 @@ decideNextAction context =
                         )
                 )
                 context.parsedUserInterface
+            )
+
+
+generalSetupInUserInterface : EveOnline.ParseUserInterface.ParsedUserInterface -> Maybe DecisionPathNode
+generalSetupInUserInterface gameUserInterface =
+    [ closeMessageBox, ensureInfoPanelLocationInfoIsExpanded ]
+        |> List.filterMap
+            (\maybeSetupDecisionFromGameReading ->
+                maybeSetupDecisionFromGameReading gameUserInterface
+            )
+        |> List.head
+
+
+closeMessageBox : EveOnline.ParseUserInterface.ParsedUserInterface -> Maybe DecisionPathNode
+closeMessageBox gameUserInterface =
+    gameUserInterface.messageBoxes
+        |> List.head
+        |> Maybe.map
+            (\messageBox ->
+                DescribeBranch "I see a message box to close."
+                    (let
+                        buttonCanBeUsedToClose =
+                            .mainText
+                                >> Maybe.map (String.trim >> String.toLower >> (\buttonText -> [ "close", "ok" ] |> List.member buttonText))
+                                >> Maybe.withDefault False
+                     in
+                     case messageBox.buttons |> List.filter buttonCanBeUsedToClose |> List.head of
+                        Nothing ->
+                            DescribeBranch "I see no way to close this message box." (EndDecisionPath Wait)
+
+                        Just buttonToUse ->
+                            DescribeBranch ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
+                                (EndDecisionPath
+                                    (actWithoutFurtherReadings
+                                        ( "Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'."
+                                        , [ buttonToUse.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                        )
+                                    )
+                                )
+                    )
             )
 
 

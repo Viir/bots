@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-04-06
+{- EVE Online mining bot version 2020-04-08
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -308,8 +308,12 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                         DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
                     Just fillPercent ->
+                        let
+                            describeThresholdToUnload =
+                                (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "%"
+                        in
                         if context.settings.oreHoldMaxPercent <= fillPercent then
-                            DescribeBranch ("The ore hold is over" ++ (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "%. Dock to station.")
+                            DescribeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
                                 (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
                                     Nothing ->
                                         DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
@@ -321,7 +325,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                 )
 
                         else
-                            DescribeBranch ("The ore hold is not over  " ++ (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "% yet. Get more ore.")
+                            DescribeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
                                 (case context.parsedUserInterface.targets |> List.head of
                                     Nothing ->
                                         DescribeBranch "I see no locked target." (ensureIsAtMiningSiteAndTargetAsteroid context)

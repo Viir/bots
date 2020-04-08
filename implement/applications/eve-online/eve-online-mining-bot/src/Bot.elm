@@ -97,6 +97,7 @@ type alias BotSettings =
 type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
     , timesUnloaded : Int
+    , volumeUnloadedCubicMeters : Int
     , lastUsedCapacityInOreHold : Maybe Int
     , shipModules : ShipModulesMemory
     }
@@ -683,6 +684,7 @@ initState =
         , botMemory =
             { lastDockedStationNameFromInfoPanel = Nothing
             , timesUnloaded = 0
+            , volumeUnloadedCubicMeters = 0
             , lastUsedCapacityInOreHold = Nothing
             , shipModules = initShipModulesMemory
             }
@@ -802,8 +804,12 @@ processEveOnlineBotEventWithSettings botSettings event stateBefore =
 describeStateForMonitoring : ParsedUserInterface -> BotMemory -> String
 describeStateForMonitoring parsedUserInterface botMemory =
     let
-        describePerformance =
-            "Times Unloaded: " ++ (botMemory.timesUnloaded |> String.fromInt)
+        describeSessionPerformance =
+            [ ( "times unloaded", botMemory.timesUnloaded )
+            , ( "volume unloaded / m³", botMemory.volumeUnloadedCubicMeters )
+            ]
+                |> List.map (\( metric, amount ) -> metric ++ ": " ++ (amount |> String.fromInt))
+                |> String.join ", "
 
         describeShip =
             case parsedUserInterface.shipUI of
@@ -833,9 +839,13 @@ describeStateForMonitoring parsedUserInterface botMemory =
                         |> Maybe.withDefault "Unknown"
                    )
                 ++ "%."
+
+        describeCurrentReading =
+            [ describeOreHold, describeShip ] |> String.join " "
     in
-    [ describePerformance
-    , [ describeOreHold, describeShip ] |> String.join " "
+    [ "Session performance: " ++ describeSessionPerformance
+    , "---"
+    , "Current reading: " ++ describeCurrentReading
     ]
         |> String.join "\n"
 
@@ -865,6 +875,19 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
                 Just previousUsedCapacityInOreHold ->
                     lastUsedCapacityInOreHold == Just 0 && 0 < previousUsedCapacityInOreHold
 
+        volumeUnloadedSincePreviousReading =
+            case botMemoryBefore.lastUsedCapacityInOreHold of
+                Nothing ->
+                    0
+
+                Just previousUsedCapacityInOreHold ->
+                    case lastUsedCapacityInOreHold of
+                        Nothing ->
+                            0
+
+                        Just currentUsedCapacityInOreHold ->
+                            previousUsedCapacityInOreHold - currentUsedCapacityInOreHold
+
         timesUnloaded =
             botMemoryBefore.timesUnloaded
                 + (if completedUnloadSincePreviousReading then
@@ -873,12 +896,16 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
                    else
                     0
                   )
+
+        volumeUnloadedCubicMeters =
+            botMemoryBefore.volumeUnloadedCubicMeters + volumeUnloadedSincePreviousReading
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
             |> List.filterMap identity
             |> List.head
     , timesUnloaded = timesUnloaded
+    , volumeUnloadedCubicMeters = volumeUnloadedCubicMeters
     , lastUsedCapacityInOreHold = lastUsedCapacityInOreHold
     , shipModules = botMemoryBefore.shipModules |> integrateCurrentReadingsIntoShipModulesMemory currentReading
     }

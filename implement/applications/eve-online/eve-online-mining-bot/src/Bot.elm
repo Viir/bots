@@ -213,12 +213,10 @@ closeMessageBox gameUserInterface =
                             DescribeBranch "I see no way to close this message box." (EndDecisionPath Wait)
 
                         Just buttonToUse ->
-                            DescribeBranch ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
-                                (EndDecisionPath
-                                    (actWithoutFurtherReadings
-                                        ( "Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'."
-                                        , [ buttonToUse.uiNode |> clickOnUIElement MouseButtonLeft ]
-                                        )
+                            EndDecisionPath
+                                (actWithoutFurtherReadings
+                                    ( "Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'."
+                                    , [ buttonToUse.uiNode |> clickOnUIElement MouseButtonLeft ]
                                     )
                                 )
                     )

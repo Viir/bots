@@ -370,26 +370,70 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                         DescribeBranch "I see no locked target." (ensureIsAtMiningSiteAndTargetAsteroid context)
 
                                     Just _ ->
-                                        DescribeBranch "I see a locked target."
-                                            (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                                -- TODO: Check previous memory reading too for module activity.
-                                                Nothing ->
-                                                    DescribeBranch "All mining laser modules are active."
-                                                        (readShipUIModuleButtonTooltips context
-                                                            |> Maybe.withDefault (EndDecisionPath Wait)
-                                                        )
-
-                                                Just inactiveModule ->
-                                                    DescribeBranch "I see an inactive mining module. Activate it."
-                                                        (EndDecisionPath
-                                                            (actWithoutFurtherReadings
-                                                                ( "Click on the module."
-                                                                , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                        {- Depending on the UI configuration, the game client might automatically target rats.
+                                           To avoid these targets interfering with mining, unlock them here.
+                                        -}
+                                        unlockTargetsNotForMining context
+                                            |> Maybe.withDefault
+                                                (DescribeBranch "I see a locked target."
+                                                    (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                        -- TODO: Check previous memory reading too for module activity.
+                                                        Nothing ->
+                                                            DescribeBranch "All mining laser modules are active."
+                                                                (readShipUIModuleButtonTooltips context
+                                                                    |> Maybe.withDefault (EndDecisionPath Wait)
                                                                 )
-                                                            )
-                                                        )
-                                            )
+
+                                                        Just inactiveModule ->
+                                                            DescribeBranch "I see an inactive mining module. Activate it."
+                                                                (EndDecisionPath
+                                                                    (actWithoutFurtherReadings
+                                                                        ( "Click on the module."
+                                                                        , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                                                        )
+                                                                    )
+                                                                )
+                                                    )
+                                                )
                                 )
+
+
+unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode
+unlockTargetsNotForMining context =
+    let
+        targetsToUnlock =
+            context.parsedUserInterface.targets
+                |> List.filter (.textsTopToBottom >> List.any (String.toLower >> String.contains "asteroid") >> not)
+    in
+    targetsToUnlock
+        |> List.head
+        |> Maybe.map
+            (\targetToUnlock ->
+                DescribeBranch
+                    ("I see a target not for mining: '"
+                        ++ (targetToUnlock.textsTopToBottom |> String.join " ")
+                        ++ "'. Unlock this target."
+                    )
+                    (EndDecisionPath
+                        (Act
+                            { actionsAlreadyDecided =
+                                ( "Rightclick on the target."
+                                , [ targetToUnlock.barAndImageCont
+                                        |> Maybe.withDefault targetToUnlock.uiNode
+                                        |> clickOnUIElement MouseButtonRight
+                                  ]
+                                )
+                            , actionsDependingOnNewReadings =
+                                [ ( "Click menu entry 'unlock'."
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "unlock")
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                                  )
+                                ]
+                            }
+                        )
+                    )
+            )
 
 
 ensureIsAtMiningSiteAndTargetAsteroid : BotDecisionContext -> DecisionPathNode

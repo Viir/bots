@@ -177,12 +177,26 @@ decideNextAction context =
 
 runAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
 runAwayIfHitpointsAreTooLow context shipUI =
-    if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
-        Just
-            (DescribeBranch
-                ("Shield hitpoints are below " ++ (context.settings.runAwayShieldHitpointsThresholdPercent |> String.fromInt) ++ "% , run away.")
+    let
+        returnDronesShieldHitpointsThresholdPercent =
+            context.settings.runAwayShieldHitpointsThresholdPercent - 5
+
+        runAwayWithDescription =
+            DescribeBranch
+                ("Shield hitpoints are at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%. Run away.")
                 (runAway context)
-            )
+    in
+    if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
+        Just runAwayWithDescription
+
+    else if shipUI.hitpointsPercent.shield < returnDronesShieldHitpointsThresholdPercent then
+        returnDronesToBay context.parsedUserInterface
+            |> Maybe.map
+                (DescribeBranch
+                    ("Shield hitpoints are below " ++ (returnDronesShieldHitpointsThresholdPercent |> String.fromInt) ++ "%. Return drones.")
+                )
+            |> Maybe.withDefault runAwayWithDescription
+            |> Just
 
     else
         Nothing

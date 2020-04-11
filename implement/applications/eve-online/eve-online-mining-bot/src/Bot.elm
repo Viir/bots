@@ -675,6 +675,39 @@ launchDrones parsedUserInterface =
             )
 
 
+returnDronesToBay : ParsedUserInterface -> Maybe DecisionPathNode
+returnDronesToBay parsedUserInterface =
+    parsedUserInterface.dronesWindow
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.andThen .droneGroupInLocalSpace
+        |> Maybe.andThen
+            (\droneGroupInLocalSpace ->
+                if 0 < (droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0) then
+                    Just
+                        (DescribeBranch "I see there are drones in local space. Return those to bay."
+                            (EndDecisionPath
+                                (Act
+                                    { actionsAlreadyDecided =
+                                        ( "Rightclick on the drones group."
+                                        , [ droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight ]
+                                        )
+                                    , actionsDependingOnNewReadings =
+                                        [ ( "Click menu entry 'Return to drone bay'."
+                                          , lastContextMenuOrSubmenu
+                                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Return to drone bay")
+                                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                                          )
+                                        ]
+                                    }
+                                )
+                            )
+                        )
+
+                else
+                    Nothing
+            )
+
+
 actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
 actWithoutFurtherReadings actionsAlreadyDecided =
     Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }

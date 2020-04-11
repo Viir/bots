@@ -367,7 +367,8 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                             DescribeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
                                 (case context.parsedUserInterface.targets |> List.head of
                                     Nothing ->
-                                        DescribeBranch "I see no locked target." (ensureIsAtMiningSiteAndTargetAsteroid context)
+                                        DescribeBranch "I see no locked target."
+                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
 
                                     Just _ ->
                                         {- Depending on the UI configuration, the game client might automatically target rats.
@@ -436,17 +437,20 @@ unlockTargetsNotForMining context =
             )
 
 
-ensureIsAtMiningSiteAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
-ensureIsAtMiningSiteAndTargetAsteroid context =
+travelToMiningSiteAndLaunchDronesAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
+travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
     case context.parsedUserInterface |> topmostAsteroidFromOverviewWindow of
         Nothing ->
             DescribeBranch "I see no asteroid in the overview. Warp to mining site."
                 (warpToMiningSite context.parsedUserInterface)
 
         Just asteroidInOverview ->
-            DescribeBranch
-                ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                (lockTargetFromOverviewEntryAndEnsureIsInRange (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
+            launchDrones context.parsedUserInterface
+                |> Maybe.withDefault
+                    (DescribeBranch
+                        ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                        (lockTargetFromOverviewEntryAndEnsureIsInRange (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
+                    )
 
 
 ensureOreHoldIsSelectedInInventoryWindow : ParsedUserInterface -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode

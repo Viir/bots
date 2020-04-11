@@ -627,8 +627,8 @@ dockToRandomStation parsedUserInterface =
         parsedUserInterface
 
 
-launchAndEngageDrones : ParsedUserInterface -> Maybe DecisionPathNode
-launchAndEngageDrones parsedUserInterface =
+launchDrones : ParsedUserInterface -> Maybe DecisionPathNode
+launchDrones parsedUserInterface =
     parsedUserInterface.dronesWindow
         |> maybeNothingFromCanNotSeeIt
         |> Maybe.andThen
@@ -636,38 +636,13 @@ launchAndEngageDrones parsedUserInterface =
                 case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
                     ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
                         let
-                            idlingDrones =
-                                droneGroupInLocalSpace.drones
-                                    |> List.filter (.uiNode >> .uiNode >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts >> List.any (String.toLower >> String.contains "idle"))
-
                             dronesInBayQuantity =
                                 droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
 
                             dronesInLocalSpaceQuantity =
                                 droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
                         in
-                        if 0 < (idlingDrones |> List.length) then
-                            Just
-                                (DescribeBranch "Engage idling drone(s)"
-                                    (EndDecisionPath
-                                        (Act
-                                            { actionsAlreadyDecided =
-                                                ( "Rightclick on the drones group."
-                                                , [ droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight ]
-                                                )
-                                            , actionsDependingOnNewReadings =
-                                                [ ( "Click menu entry 'engage target'."
-                                                  , lastContextMenuOrSubmenu
-                                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "engage target")
-                                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-                                                  )
-                                                ]
-                                            }
-                                        )
-                                    )
-                                )
-
-                        else if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
+                        if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
                             Just
                                 (DescribeBranch "Launch drones"
                                     (EndDecisionPath

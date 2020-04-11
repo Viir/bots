@@ -352,16 +352,19 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                 (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "%"
                         in
                         if context.settings.oreHoldMaxPercent <= fillPercent then
-                            DescribeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
-                                (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
-                                    Nothing ->
-                                        DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
+                            returnDronesToBay context.parsedUserInterface
+                                |> Maybe.withDefault
+                                    (DescribeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
+                                        (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
+                                            Nothing ->
+                                                DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
 
-                                    Just lastDockedStationNameFromInfoPanel ->
-                                        dockToStationMatchingNameSeenInInfoPanel
-                                            { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
-                                            context.parsedUserInterface
-                                )
+                                            Just lastDockedStationNameFromInfoPanel ->
+                                                dockToStationMatchingNameSeenInInfoPanel
+                                                    { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
+                                                    context.parsedUserInterface
+                                        )
+                                    )
 
                         else
                             DescribeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")

@@ -163,17 +163,7 @@ decideNextAction context =
                         dockedWithOreHoldSelected
                     )
                 )
-                (\shipUI ->
-                    if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
-                        Just
-                            (DescribeBranch
-                                ("Shield hitpoints are below " ++ (context.settings.runAwayShieldHitpointsThresholdPercent |> String.fromInt) ++ "% , run away.")
-                                (runAway context)
-                            )
-
-                    else
-                        Nothing
-                )
+                (runAwayIfHitpointsAreTooLow context)
                 (\seeUndockingComplete ->
                     DescribeBranch "I see we are in space, undocking complete."
                         (ensureOreHoldIsSelectedInInventoryWindow
@@ -183,6 +173,19 @@ decideNextAction context =
                 )
                 context.parsedUserInterface
             )
+
+
+runAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
+runAwayIfHitpointsAreTooLow context shipUI =
+    if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
+        Just
+            (DescribeBranch
+                ("Shield hitpoints are below " ++ (context.settings.runAwayShieldHitpointsThresholdPercent |> String.fromInt) ++ "% , run away.")
+                (runAway context)
+            )
+
+    else
+        Nothing
 
 
 generalSetupInUserInterface : EveOnline.ParseUserInterface.ParsedUserInterface -> Maybe DecisionPathNode

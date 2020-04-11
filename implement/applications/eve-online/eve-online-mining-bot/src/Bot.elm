@@ -163,7 +163,7 @@ decideNextAction context =
                         dockedWithOreHoldSelected
                     )
                 )
-                (runAwayIfHitpointsAreTooLow context)
+                (returnDronesAndRunAwayIfHitpointsAreTooLow context)
                 (\seeUndockingComplete ->
                     DescribeBranch "I see we are in space, undocking complete."
                         (ensureOreHoldIsSelectedInInventoryWindow
@@ -175,8 +175,8 @@ decideNextAction context =
             )
 
 
-runAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
-runAwayIfHitpointsAreTooLow context shipUI =
+returnDronesAndRunAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
+returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
     let
         returnDronesShieldHitpointsThresholdPercent =
             context.settings.runAwayShieldHitpointsThresholdPercent - 5

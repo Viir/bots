@@ -974,6 +974,18 @@ describeStateForMonitoring parsedUserInterface botMemory =
                         Nothing ->
                             "I cannot see if I am docked or in space. Please set up game client first."
 
+        describeDrones =
+            case parsedUserInterface.dronesWindow of
+                CanNotSeeIt ->
+                    "Can not see drone window."
+
+                CanSee dronesWindow ->
+                    "Can see the drones window: In bay: "
+                        ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                        ++ ", in local space: "
+                        ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                        ++ "."
+
         describeOreHold =
             "Ore hold filled "
                 ++ (parsedUserInterface
@@ -985,7 +997,7 @@ describeStateForMonitoring parsedUserInterface botMemory =
                 ++ "%."
 
         describeCurrentReading =
-            [ describeOreHold, describeShip ] |> String.join " "
+            [ describeOreHold, describeShip, describeDrones ] |> String.join " "
     in
     [ "Session performance: " ++ describeSessionPerformance
     , "---"

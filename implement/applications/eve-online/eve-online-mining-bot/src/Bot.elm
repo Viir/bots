@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-04-11
+{- EVE Online mining bot version 2020-04-12
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -370,9 +370,9 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                 (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "%"
                         in
                         if context.settings.oreHoldMaxPercent <= fillPercent then
-                            returnDronesToBay context.parsedUserInterface
-                                |> Maybe.withDefault
-                                    (DescribeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
+                            DescribeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
+                                (returnDronesToBay context.parsedUserInterface
+                                    |> Maybe.withDefault
                                         (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
                                             Nothing ->
                                                 DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
@@ -382,7 +382,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                                     { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
                                                     context.parsedUserInterface
                                         )
-                                    )
+                                )
 
                         else
                             DescribeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")

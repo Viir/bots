@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2020-04-06
+{- EVE Online Warp-to-0 auto-pilot version 2020-04-06 - slowed down for qmail: Adapted to observation from https://forum.botengine.org/t/warp-to-0-autopilot-bot-clicks-not-working/3223
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
    Before starting the bot, set the in-game autopilot route and make sure the autopilot is expanded, so that the route is visible.
    Make sure you are undocked before starting the bot because the bot does not undock.
@@ -67,12 +67,12 @@ processEveOnlineBotEvent eventContext event stateBefore =
                 ( effects, statusMessage ) =
                     botEffectsFromGameClientState parsedUserInterface
 
-                ( lastActivityTime, millisecondsToNextReadingFromGame ) =
+                lastActivityTime =
                     if effects |> List.isEmpty then
-                        ( stateBefore.lastActivityTime, 4000 )
+                        stateBefore.lastActivityTime
 
                     else
-                        ( eventContext.timeInMilliseconds // 1000, 2000 )
+                        eventContext.timeInMilliseconds // 1000
             in
             if 60 * finishSessionAfterInactivityMinutes < eventContext.timeInMilliseconds // 1000 - lastActivityTime then
                 ( stateBefore
@@ -88,7 +88,9 @@ processEveOnlineBotEvent eventContext event stateBefore =
                 ( { stateBefore | lastActivityTime = lastActivityTime }
                 , EveOnline.BotFramework.ContinueSession
                     { effects = effects
-                    , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
+
+                    -- slowed down for qmail: Adapted to observation from https://forum.botengine.org/t/warp-to-0-autopilot-bot-clicks-not-working/3223
+                    , millisecondsToNextReadingFromGame = 4000
                     , statusDescriptionText = statusMessage
                     }
                 )

@@ -95,6 +95,7 @@ type alias ShipUIModuleButton =
     , slotUINode : UITreeNodeWithDisplayRegion
     , isActive : Maybe Bool
     , isHiliteVisible : Bool
+    , rampRotationMilli : Maybe Int
     }
 
 
@@ -183,6 +184,8 @@ type alias Target =
     , barAndImageCont : Maybe UITreeNodeWithDisplayRegion
     , textsTopToBottom : List String
     , isActiveTarget : Bool
+    , assignedContainerNode : Maybe UITreeNodeWithDisplayRegion
+    , assignedIcons : List UITreeNodeWithDisplayRegion
     }
 
 
@@ -746,21 +749,8 @@ parseShipUIFromUITreeRoot uiTreeRoot =
                                             |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "ModuleButton")
                                             |> List.head
                                             |> Maybe.map
-                                                (\moduleNode ->
-                                                    { uiNode = moduleNode
-                                                    , slotUINode = slotNode
-                                                    , isActive =
-                                                        moduleNode.uiNode.dictEntriesOfInterest
-                                                            |> Dict.get "ramp_active"
-                                                            |> Maybe.andThen (Json.Decode.decodeValue Json.Decode.bool >> Result.toMaybe)
-                                                    , isHiliteVisible =
-                                                        slotNode
-                                                            |> listDescendantsWithDisplayRegion
-                                                            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Sprite")
-                                                            |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "hilite"))
-                                                            |> List.isEmpty
-                                                            |> not
-                                                    }
+                                                (\moduleButtonNode ->
+                                                    parseShipUIModuleButton { slotNode = slotNode, moduleButtonNode = moduleButtonNode }
                                                 )
                                     )
 
@@ -800,6 +790,48 @@ parseShipUIFromUITreeRoot uiTreeRoot =
                                 }
                             )
                         |> canNotSeeItFromMaybeNothing
+
+
+parseShipUIModuleButton : { slotNode : UITreeNodeWithDisplayRegion, moduleButtonNode : UITreeNodeWithDisplayRegion } -> ShipUIModuleButton
+parseShipUIModuleButton { slotNode, moduleButtonNode } =
+    let
+        rotationFloatFromRampName rampName =
+            slotNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just rampName))
+                |> List.filterMap (.uiNode >> getRotationFloatFromDictEntries)
+                |> List.head
+
+        rampRotationMilli =
+            case ( rotationFloatFromRampName "leftRamp", rotationFloatFromRampName "rightRamp" ) of
+                ( Just leftRampRotationFloat, Just rightRampRotationFloat ) ->
+                    if
+                        (leftRampRotationFloat < 0 || pi * 2.01 < leftRampRotationFloat)
+                            || (rightRampRotationFloat < 0 || pi * 2.01 < rightRampRotationFloat)
+                    then
+                        Nothing
+
+                    else
+                        Just (max 0 (min 1000 (round (1000 - ((leftRampRotationFloat + rightRampRotationFloat) * 500) / pi))))
+
+                _ ->
+                    Nothing
+    in
+    { uiNode = moduleButtonNode
+    , slotUINode = slotNode
+    , isActive =
+        moduleButtonNode.uiNode.dictEntriesOfInterest
+            |> Dict.get "ramp_active"
+            |> Maybe.andThen (Json.Decode.decodeValue Json.Decode.bool >> Result.toMaybe)
+    , isHiliteVisible =
+        slotNode
+            |> listDescendantsWithDisplayRegion
+            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Sprite")
+            |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "hilite"))
+            |> List.isEmpty
+            |> not
+    , rampRotationMilli = rampRotationMilli
+    }
 
 
 parseShipUICapacitorFromUINode : UITreeNodeWithDisplayRegion -> ShipUICapacitor
@@ -894,11 +926,26 @@ parseTarget targetNode =
             targetNode.uiNode
                 |> EveOnline.MemoryReading.listDescendantsInUITreeNode
                 |> List.any (.pythonObjectTypeName >> (==) "ActiveTargetOnBracket")
+
+        assignedContainerNode =
+            targetNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> Maybe.map (String.toLower >> String.contains "assigned") >> Maybe.withDefault False)
+                |> List.sortBy (.totalDisplayRegion >> .width)
+                |> List.head
+
+        assignedIcons =
+            assignedContainerNode
+                |> Maybe.map listDescendantsWithDisplayRegion
+                |> Maybe.withDefault []
+                |> List.filter (\uiNode -> [ "Sprite", "Icon" ] |> List.member uiNode.uiNode.pythonObjectTypeName)
     in
     { uiNode = targetNode
     , barAndImageCont = barAndImageCont
     , textsTopToBottom = textsTopToBottom
     , isActiveTarget = isActiveTarget
+    , assignedContainerNode = assignedContainerNode
+    , assignedIcons = assignedIcons
     }
 
 
@@ -1953,6 +2000,13 @@ jsonDecodeColorPercent =
         (Json.Decode.field "rPercent" jsonDecodeIntFromString)
         (Json.Decode.field "gPercent" jsonDecodeIntFromString)
         (Json.Decode.field "bPercent" jsonDecodeIntFromString)
+
+
+getRotationFloatFromDictEntries : EveOnline.MemoryReading.UITreeNode -> Maybe Float
+getRotationFloatFromDictEntries =
+    .dictEntriesOfInterest
+        >> Dict.get "_rotation"
+        >> Maybe.andThen (Json.Decode.decodeValue Json.Decode.float >> Result.toMaybe)
 
 
 jsonDecodeIntFromString : Json.Decode.Decoder Int

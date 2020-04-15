@@ -706,7 +706,10 @@ returnDronesToBay parsedUserInterface =
         |> Maybe.andThen .droneGroupInLocalSpace
         |> Maybe.andThen
             (\droneGroupInLocalSpace ->
-                if 0 < (droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0) then
+                if (droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0) < 1 then
+                    Nothing
+
+                else
                     Just
                         (DescribeBranch "I see there are drones in local space. Return those to bay."
                             (EndDecisionPath
@@ -726,9 +729,6 @@ returnDronesToBay parsedUserInterface =
                                 )
                             )
                         )
-
-                else
-                    Nothing
             )
 
 

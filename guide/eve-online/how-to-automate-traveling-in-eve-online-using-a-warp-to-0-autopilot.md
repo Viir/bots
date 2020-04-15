@@ -29,6 +29,8 @@ Also, this bot does not undock, so we need to undock our ship manually for the b
 
 As soon as we undock, the bot will start to send mouse clicks to the game client to initiate warp and jump maneuvers.
 
+The bot only works when the UI language is set to English. The bot reads the text in menu entries to decide where to click, and it only knows the English translations.
+
 Alright, I think that is all there is to know about the basic autopilot bot. If you have questions about this bot or are searching for other bots, don't hesitate to ask on the [BotEngine forum](https://forum.botengine.org/).
 
 (This guide is based on the more general guide at [/guide/how-to-run-a-bot.md](./../how-to-run-a-bot.md))

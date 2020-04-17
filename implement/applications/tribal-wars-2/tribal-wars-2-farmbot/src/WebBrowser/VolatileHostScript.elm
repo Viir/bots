@@ -100,7 +100,8 @@ Response request(Request request)
 {
     if (request.StartWebBrowserRequest != null)
     {
-        KillPreviousWebBrowserProcesses();
+        // Adapt for scenario shared by Caleb at https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/3038/66?u=viir
+        // KillPreviousWebBrowserProcesses();
 
         StartBrowser(request.StartWebBrowserRequest.pageGoToUrl).Wait();
 

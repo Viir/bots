@@ -1,4 +1,5 @@
-{- Tribal Wars 2 farmbot version 2020-04-15
+{- Tribal Wars 2 farmbot version 2020-04-15 - 2020-04-17 Caleb - multiple tabs
+   Adapted for scenario shared by Caleb at https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/3038/66?u=viir
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.

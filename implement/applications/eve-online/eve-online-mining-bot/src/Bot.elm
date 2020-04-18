@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-04-06
+{- EVE Online mining bot version 2020-04-18
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -12,6 +12,7 @@
      + Place all mining modules (to activate on targets) in the top row.
      + Place modules that should always be active in the middle row.
      + Hide passive modules by disabling the check-box `Display Passive Modules`.
+   + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
 -}
 {-
    bot-catalog-tags:eve-online,mining
@@ -97,6 +98,7 @@ type alias BotSettings =
 type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
     , timesUnloaded : Int
+    , volumeUnloadedCubicMeters : Int
     , lastUsedCapacityInOreHold : Maybe Int
     , shipModules : ShipModulesMemory
     }
@@ -153,7 +155,7 @@ type alias State =
 -}
 decideNextAction : BotDecisionContext -> DecisionPathNode
 decideNextAction context =
-    ensureInfoPanelLocationInfoIsExpanded context.parsedUserInterface
+    generalSetupInUserInterface context.parsedUserInterface
         |> Maybe.withDefault
             (branchDependingOnDockedOrInSpace
                 (DescribeBranch "I see no ship UI, assume we are docked."
@@ -162,17 +164,7 @@ decideNextAction context =
                         dockedWithOreHoldSelected
                     )
                 )
-                (\shipUI ->
-                    if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
-                        Just
-                            (DescribeBranch
-                                ("Shield hitpoints are below " ++ (context.settings.runAwayShieldHitpointsThresholdPercent |> String.fromInt) ++ "% , run away.")
-                                (runAway context)
-                            )
-
-                    else
-                        Nothing
-                )
+                (returnDronesAndRunAwayIfHitpointsAreTooLow context)
                 (\seeUndockingComplete ->
                     DescribeBranch "I see we are in space, undocking complete."
                         (ensureOreHoldIsSelectedInInventoryWindow
@@ -181,6 +173,71 @@ decideNextAction context =
                         )
                 )
                 context.parsedUserInterface
+            )
+
+
+returnDronesAndRunAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
+returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
+    let
+        returnDronesShieldHitpointsThresholdPercent =
+            context.settings.runAwayShieldHitpointsThresholdPercent - 5
+
+        runAwayWithDescription =
+            DescribeBranch
+                ("Shield hitpoints are at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%. Run away.")
+                (runAway context)
+    in
+    if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
+        Just runAwayWithDescription
+
+    else if shipUI.hitpointsPercent.shield < returnDronesShieldHitpointsThresholdPercent then
+        returnDronesToBay context.parsedUserInterface
+            |> Maybe.map
+                (DescribeBranch
+                    ("Shield hitpoints are below " ++ (returnDronesShieldHitpointsThresholdPercent |> String.fromInt) ++ "%. Return drones.")
+                )
+            |> Maybe.withDefault runAwayWithDescription
+            |> Just
+
+    else
+        Nothing
+
+
+generalSetupInUserInterface : EveOnline.ParseUserInterface.ParsedUserInterface -> Maybe DecisionPathNode
+generalSetupInUserInterface gameUserInterface =
+    [ closeMessageBox, ensureInfoPanelLocationInfoIsExpanded ]
+        |> List.filterMap
+            (\maybeSetupDecisionFromGameReading ->
+                maybeSetupDecisionFromGameReading gameUserInterface
+            )
+        |> List.head
+
+
+closeMessageBox : EveOnline.ParseUserInterface.ParsedUserInterface -> Maybe DecisionPathNode
+closeMessageBox gameUserInterface =
+    gameUserInterface.messageBoxes
+        |> List.head
+        |> Maybe.map
+            (\messageBox ->
+                DescribeBranch "I see a message box to close."
+                    (let
+                        buttonCanBeUsedToClose =
+                            .mainText
+                                >> Maybe.map (String.trim >> String.toLower >> (\buttonText -> [ "close", "ok" ] |> List.member buttonText))
+                                >> Maybe.withDefault False
+                     in
+                     case messageBox.buttons |> List.filter buttonCanBeUsedToClose |> List.head of
+                        Nothing ->
+                            DescribeBranch "I see no way to close this message box." (EndDecisionPath Wait)
+
+                        Just buttonToUse ->
+                            EndDecisionPath
+                                (actWithoutFurtherReadings
+                                    ( "Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'."
+                                    , [ buttonToUse.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                    )
+                                )
+                    )
             )
 
 
@@ -308,58 +365,116 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                         DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
                     Just fillPercent ->
+                        let
+                            describeThresholdToUnload =
+                                (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "%"
+                        in
                         if context.settings.oreHoldMaxPercent <= fillPercent then
-                            DescribeBranch ("The ore hold is over" ++ (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "%. Dock to station.")
-                                (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
-                                    Nothing ->
-                                        DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
+                            DescribeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
+                                (returnDronesToBay context.parsedUserInterface
+                                    |> Maybe.withDefault
+                                        (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
+                                            Nothing ->
+                                                DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
 
-                                    Just lastDockedStationNameFromInfoPanel ->
-                                        dockToStationMatchingNameSeenInInfoPanel
-                                            { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
-                                            context.parsedUserInterface
+                                            Just lastDockedStationNameFromInfoPanel ->
+                                                dockToStationMatchingNameSeenInInfoPanel
+                                                    { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
+                                                    context.parsedUserInterface
+                                        )
                                 )
 
                         else
-                            DescribeBranch ("The ore hold is not over  " ++ (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "% yet. Get more ore.")
+                            DescribeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
                                 (case context.parsedUserInterface.targets |> List.head of
                                     Nothing ->
-                                        DescribeBranch "I see no locked target." (ensureIsAtMiningSiteAndTargetAsteroid context)
+                                        DescribeBranch "I see no locked target."
+                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
 
                                     Just _ ->
-                                        DescribeBranch "I see a locked target."
-                                            (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                                -- TODO: Check previous memory reading too for module activity.
-                                                Nothing ->
-                                                    DescribeBranch "All mining laser modules are active."
-                                                        (readShipUIModuleButtonTooltips context
-                                                            |> Maybe.withDefault (EndDecisionPath Wait)
-                                                        )
-
-                                                Just inactiveModule ->
-                                                    DescribeBranch "I see an inactive mining module. Activate it."
-                                                        (EndDecisionPath
-                                                            (actWithoutFurtherReadings
-                                                                ( "Click on the module."
-                                                                , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                        {- Depending on the UI configuration, the game client might automatically target rats.
+                                           To avoid these targets interfering with mining, unlock them here.
+                                        -}
+                                        unlockTargetsNotForMining context
+                                            |> Maybe.withDefault
+                                                (DescribeBranch "I see a locked target."
+                                                    (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                        -- TODO: Check previous memory reading too for module activity.
+                                                        Nothing ->
+                                                            DescribeBranch "All mining laser modules are active."
+                                                                (readShipUIModuleButtonTooltips context
+                                                                    |> Maybe.withDefault (EndDecisionPath Wait)
                                                                 )
-                                                            )
-                                                        )
-                                            )
+
+                                                        Just inactiveModule ->
+                                                            DescribeBranch "I see an inactive mining module. Activate it."
+                                                                (EndDecisionPath
+                                                                    (actWithoutFurtherReadings
+                                                                        ( "Click on the module."
+                                                                        , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                                                        )
+                                                                    )
+                                                                )
+                                                    )
+                                                )
                                 )
 
 
-ensureIsAtMiningSiteAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
-ensureIsAtMiningSiteAndTargetAsteroid context =
+unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode
+unlockTargetsNotForMining context =
+    let
+        targetsToUnlock =
+            context.parsedUserInterface.targets
+                |> List.filter (.textsTopToBottom >> List.any (String.toLower >> String.contains "asteroid") >> not)
+    in
+    targetsToUnlock
+        |> List.head
+        |> Maybe.map
+            (\targetToUnlock ->
+                DescribeBranch
+                    ("I see a target not for mining: '"
+                        ++ (targetToUnlock.textsTopToBottom |> String.join " ")
+                        ++ "'. Unlock this target."
+                    )
+                    (EndDecisionPath
+                        (Act
+                            { actionsAlreadyDecided =
+                                ( "Rightclick on the target."
+                                , [ targetToUnlock.barAndImageCont
+                                        |> Maybe.withDefault targetToUnlock.uiNode
+                                        |> clickOnUIElement MouseButtonRight
+                                  ]
+                                )
+                            , actionsDependingOnNewReadings =
+                                [ ( "Click menu entry 'unlock'."
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "unlock")
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                                  )
+                                ]
+                            }
+                        )
+                    )
+            )
+
+
+travelToMiningSiteAndLaunchDronesAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
+travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
     case context.parsedUserInterface |> topmostAsteroidFromOverviewWindow of
         Nothing ->
             DescribeBranch "I see no asteroid in the overview. Warp to mining site."
-                (warpToMiningSite context.parsedUserInterface)
+                (returnDronesToBay context.parsedUserInterface
+                    |> Maybe.withDefault
+                        (warpToMiningSite context.parsedUserInterface)
+                )
 
         Just asteroidInOverview ->
-            DescribeBranch
-                ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                (lockTargetFromOverviewEntryAndEnsureIsInRange (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
+            launchDrones context.parsedUserInterface
+                |> Maybe.withDefault
+                    (DescribeBranch
+                        ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                        (lockTargetFromOverviewEntryAndEnsureIsInRange (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
+                    )
 
 
 ensureOreHoldIsSelectedInInventoryWindow : ParsedUserInterface -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode
@@ -540,6 +655,83 @@ dockToRandomStation parsedUserInterface =
         parsedUserInterface
 
 
+launchDrones : ParsedUserInterface -> Maybe DecisionPathNode
+launchDrones parsedUserInterface =
+    parsedUserInterface.dronesWindow
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.andThen
+            (\dronesWindow ->
+                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
+                    ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
+                        let
+                            dronesInBayQuantity =
+                                droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
+
+                            dronesInLocalSpaceQuantity =
+                                droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
+                        in
+                        if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
+                            Just
+                                (DescribeBranch "Launch drones"
+                                    (EndDecisionPath
+                                        (Act
+                                            { actionsAlreadyDecided =
+                                                ( "Right click on the drones group."
+                                                , [ droneGroupInBay.header.uiNode |> clickOnUIElement MouseButtonRight ]
+                                                )
+                                            , actionsDependingOnNewReadings =
+                                                [ ( "Click menu entry 'Launch drone'."
+                                                  , lastContextMenuOrSubmenu
+                                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Launch drone")
+                                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                                                  )
+                                                ]
+                                            }
+                                        )
+                                    )
+                                )
+
+                        else
+                            Nothing
+
+                    _ ->
+                        Nothing
+            )
+
+
+returnDronesToBay : ParsedUserInterface -> Maybe DecisionPathNode
+returnDronesToBay parsedUserInterface =
+    parsedUserInterface.dronesWindow
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.andThen .droneGroupInLocalSpace
+        |> Maybe.andThen
+            (\droneGroupInLocalSpace ->
+                if (droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0) < 1 then
+                    Nothing
+
+                else
+                    Just
+                        (DescribeBranch "I see there are drones in local space. Return those to bay."
+                            (EndDecisionPath
+                                (Act
+                                    { actionsAlreadyDecided =
+                                        ( "Rightclick on the drones group."
+                                        , [ droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight ]
+                                        )
+                                    , actionsDependingOnNewReadings =
+                                        [ ( "Click menu entry 'Return to drone bay'."
+                                          , lastContextMenuOrSubmenu
+                                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Return to drone bay")
+                                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                                          )
+                                        ]
+                                    }
+                                )
+                            )
+                        )
+            )
+
+
 actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
 actWithoutFurtherReadings actionsAlreadyDecided =
     Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
@@ -639,6 +831,7 @@ initState =
         , botMemory =
             { lastDockedStationNameFromInfoPanel = Nothing
             , timesUnloaded = 0
+            , volumeUnloadedCubicMeters = 0
             , lastUsedCapacityInOreHold = Nothing
             , shipModules = initShipModulesMemory
             }
@@ -758,8 +951,12 @@ processEveOnlineBotEventWithSettings botSettings event stateBefore =
 describeStateForMonitoring : ParsedUserInterface -> BotMemory -> String
 describeStateForMonitoring parsedUserInterface botMemory =
     let
-        describePerformance =
-            "Times Unloaded: " ++ (botMemory.timesUnloaded |> String.fromInt)
+        describeSessionPerformance =
+            [ ( "times unloaded", botMemory.timesUnloaded )
+            , ( "volume unloaded / m³", botMemory.volumeUnloadedCubicMeters )
+            ]
+                |> List.map (\( metric, amount ) -> metric ++ ": " ++ (amount |> String.fromInt))
+                |> String.join ", "
 
         describeShip =
             case parsedUserInterface.shipUI of
@@ -780,6 +977,18 @@ describeStateForMonitoring parsedUserInterface botMemory =
                         Nothing ->
                             "I cannot see if I am docked or in space. Please set up game client first."
 
+        describeDrones =
+            case parsedUserInterface.dronesWindow of
+                CanNotSeeIt ->
+                    "Can not see drone window."
+
+                CanSee dronesWindow ->
+                    "Can see the drones window: In bay: "
+                        ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                        ++ ", in local space: "
+                        ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                        ++ "."
+
         describeOreHold =
             "Ore hold filled "
                 ++ (parsedUserInterface
@@ -789,9 +998,13 @@ describeStateForMonitoring parsedUserInterface botMemory =
                         |> Maybe.withDefault "Unknown"
                    )
                 ++ "%."
+
+        describeCurrentReading =
+            [ describeOreHold, describeShip, describeDrones ] |> String.join " "
     in
-    [ describePerformance
-    , [ describeOreHold, describeShip ] |> String.join " "
+    [ "Session performance: " ++ describeSessionPerformance
+    , "---"
+    , "Current reading: " ++ describeCurrentReading
     ]
         |> String.join "\n"
 
@@ -821,6 +1034,20 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
                 Just previousUsedCapacityInOreHold ->
                     lastUsedCapacityInOreHold == Just 0 && 0 < previousUsedCapacityInOreHold
 
+        volumeUnloadedSincePreviousReading =
+            case botMemoryBefore.lastUsedCapacityInOreHold of
+                Nothing ->
+                    0
+
+                Just previousUsedCapacityInOreHold ->
+                    case lastUsedCapacityInOreHold of
+                        Nothing ->
+                            0
+
+                        Just currentUsedCapacityInOreHold ->
+                            -- During mining, when new ore appears in the inventory, this difference is negative.
+                            max 0 (previousUsedCapacityInOreHold - currentUsedCapacityInOreHold)
+
         timesUnloaded =
             botMemoryBefore.timesUnloaded
                 + (if completedUnloadSincePreviousReading then
@@ -829,12 +1056,16 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
                    else
                     0
                   )
+
+        volumeUnloadedCubicMeters =
+            botMemoryBefore.volumeUnloadedCubicMeters + volumeUnloadedSincePreviousReading
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
             |> List.filterMap identity
             |> List.head
     , timesUnloaded = timesUnloaded
+    , volumeUnloadedCubicMeters = volumeUnloadedCubicMeters
     , lastUsedCapacityInOreHold = lastUsedCapacityInOreHold
     , shipModules = botMemoryBefore.shipModules |> integrateCurrentReadingsIntoShipModulesMemory currentReading
     }

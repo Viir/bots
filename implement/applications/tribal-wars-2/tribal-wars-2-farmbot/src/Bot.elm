@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-03-25
+{- Tribal Wars 2 farmbot version 2020-04-15
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -20,11 +20,12 @@
    ## Configuration Settings
 
    All settings are optional; you only need them in case the defaults don't fit your use-case.
-   You can adjust three settings:
+   You can adjust four settings:
 
    + 'number-of-farm-cycles' : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
    + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
    + 'farm-barb-min-points': Minimum points of barbarian villages to attack.
+   + 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
 
    Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
    --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
@@ -56,6 +57,7 @@ defaultBotSettings =
     , breakDurationMinMinutes = 90
     , breakDurationMaxMinutes = 120
     , farmBarbarianVillageMinimumPoints = Nothing
+    , farmBarbarianVillageMaximumDistance = 50
     }
 
 
@@ -64,6 +66,7 @@ parseBotSettingsNames =
     [ ( "number-of-farm-cycles", parseBotSettingInt (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles }) )
     , ( "break-duration", parseBotSettingBreakDurationMinutes )
     , ( "farm-barb-min-points", parseBotSettingInt (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }) )
+    , ( "farm-barb-max-distance", parseBotSettingInt (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance }) )
     ]
         |> Dict.fromList
 
@@ -103,11 +106,6 @@ selectedVillageInfoMaxAge =
     20
 
 
-searchFarmsRadiusAroundOwnVillage : Int
-searchFarmsRadiusAroundOwnVillage =
-    50
-
-
 readFromGameTimeoutCountThresholdToRestart : Int
 readFromGameTimeoutCountThresholdToRestart =
     5
@@ -139,6 +137,7 @@ type alias BotState =
     , reloadPageCount : Int
     , completedFarmCycles : List FarmCycleConclusion
     , parseResponseError : Maybe Json.Decode.Error
+    , cache_relativeCoordinatesToSearchForFarmsPartitions : List (List VillageCoordinates)
     }
 
 
@@ -147,6 +146,7 @@ type alias BotSettings =
     , breakDurationMinMinutes : Int
     , breakDurationMaxMinutes : Int
     , farmBarbarianVillageMinimumPoints : Maybe Int
+    , farmBarbarianVillageMaximumDistance : Int
     }
 
 
@@ -331,6 +331,7 @@ initState =
         , reloadPageCount = 0
         , completedFarmCycles = []
         , parseResponseError = Nothing
+        , cache_relativeCoordinatesToSearchForFarmsPartitions = []
         }
 
 
@@ -608,7 +609,7 @@ parseBotSettingInt : (Int -> BotSettings -> BotSettings) -> String -> Result Str
 parseBotSettingInt integrateInt argumentAsString =
     case argumentAsString |> String.toInt of
         Nothing ->
-            Err ("Failed to parse '" ++ argumentAsString ++ "' as integer.")
+            Err ("Failed to parse '" ++ argumentAsString ++ "' as a whole number (integer).")
 
         Just int ->
             Ok (integrateInt int)
@@ -680,7 +681,14 @@ integrateWebBrowserBotEvent event stateBefore =
                     parseSettingsFromString defaultBotSettings settingsString
             in
             parseSettingsResult
-                |> Result.map (\newSettings -> { stateBefore | settings = newSettings })
+                |> Result.map
+                    (\newSettings ->
+                        { stateBefore
+                            | settings = newSettings
+                            , cache_relativeCoordinatesToSearchForFarmsPartitions =
+                                relativeCoordinatesToSearchForFarmsPartitions newSettings
+                        }
+                    )
                 |> Result.mapError (\parseError -> "Failed to parse bot settings: " ++ parseError)
 
         BotFramework.ArrivedAtTime { timeInMilliseconds } ->
@@ -1223,7 +1231,7 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
                    Adapt to limitations of the current Elm runtime:
                    Process the coordinates in partitions to reduce computations of results we will not use anyway. In the end, we only take the first element, but the current runtime performs a more eager evaluation.
                 -}
-                relativeCoordinatesToSearchForFarmsPartitions
+                botState.cache_relativeCoordinatesToSearchForFarmsPartitions
                     |> List.foldl
                         (\coordinatesPartition result ->
                             if result /= Nothing then
@@ -1338,15 +1346,15 @@ pickBestMatchingArmyPresetForVillage presets ( villageId, villageDetails ) conti
                                     (continueWithArmyPreset bestMatchingPreset)
 
 
-relativeCoordinatesToSearchForFarms : List VillageCoordinates
-relativeCoordinatesToSearchForFarms =
-    coordinatesInCircleOrderedByDistance searchFarmsRadiusAroundOwnVillage
+relativeCoordinatesToSearchForFarms : BotSettings -> List VillageCoordinates
+relativeCoordinatesToSearchForFarms botSettings =
+    coordinatesInCircleOrderedByDistance botSettings.farmBarbarianVillageMaximumDistance
 
 
-relativeCoordinatesToSearchForFarmsPartitions : List (List VillageCoordinates)
+relativeCoordinatesToSearchForFarmsPartitions : BotSettings -> List (List VillageCoordinates)
 relativeCoordinatesToSearchForFarmsPartitions =
     relativeCoordinatesToSearchForFarms
-        |> List.Extra.greedyGroupsOf 400
+        >> List.Extra.greedyGroupsOf 400
 
 
 coordinatesInCircleOrderedByDistance : Int -> List VillageCoordinates

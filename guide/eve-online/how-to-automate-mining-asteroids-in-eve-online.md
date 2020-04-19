@@ -10,6 +10,9 @@ Before going into the setup, a quick overview of this bot and what it does:
 + Mines from asteroids.
 + When the ore hold is full, warps and docks to a station to unload the ore into the item hangar. (It remembers the station in which it was last docked, and docks again at the same station.)
 + Runs away if shield hitpoints drop too low (The default threshold is 50%).
++ Uses drones to defend against rats if available.
++ Displays statistics such as the total volume of unloaded ore, so that you can easily track performance.
++ Closes message boxes that could pop up sometimes during gameplay.
 
 If you haven't yet, follow the [guide on using a warp-to-0 autopilot bot](./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md), because it covers the details of setting up and using an EVE Online bot:
 https://github.com/Viir/bots/blob/master/guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md
@@ -26,12 +29,12 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
     + Place all mining modules (to activate on targets) in the top row.
     + Place modules that should always be active in the middle row.
     + Hide passive modules by disabling the check-box `Display Passive Modules`.
-+ Enable the info panel 'System info'.
++ If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
 
 To start the mining bot, you use almost the same command as shown in the guide on the warp-to-0 autopilot bot. The only difference is that to start the mining bot, you supply a different bot source. This is the whole command to run the mining bot:
 
 ```cmd
-botengine  run-bot  https://github.com/Viir/bots/tree/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-mining-bot
+botengine  run-bot  https://github.com/Viir/bots/tree/f509334861949dca1e061281a3ebb81dbc6adbdc/implement/applications/eve-online/eve-online-mining-bot
 ```
 
 In case the bot does not work as expected, the first place to look is in the status message of the bot. Depending on what the bot is seeing and doing at the moment, it can display many different status messages.
@@ -42,5 +45,11 @@ For example, if you disable the location ('System info') info panel in the EVE O
 As soon as you enable this info panel again, the bot will also continue working.
 
 The bot repeats the cycle of mining and unloading until you tell it to pause (`CTRL`+`ALT` keys) or stop it.
+
+To give an overview of the performance of the bot, it displays statistics like this:
+
+> Session performance: times unloaded: 13, volume unloaded / m³: 351706
+
+If you want to learn how this bot or other apps for EVE Online are developed, have a look at the directory of development guides at https://to.botengine.org/guide/overview
 
 In case I forgot to add something here or you have any questions, don't hesitate to ask on the [BotEngine forum](https://forum.botengine.org/).

@@ -397,7 +397,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                         -}
                                         unlockTargetsNotForMining context
                                             |> Maybe.withDefault
-                                                (DescribeBranch "I see a locked target."
+                                                (DescribeBranch ("I see " ++ (context.parsedUserInterface.targets |> List.length |> String.fromInt) ++ " locked target (s).")
                                                     (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                                         -- TODO: Check previous memory reading too for module activity.
                                                         Nothing ->

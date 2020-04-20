@@ -565,27 +565,18 @@ lockTargetFromOverviewEntryAndEnsureIsInRange parsedUserInterface rangeInMeters 
         Err error ->
             DescribeBranch ("Failed to read the distance: " ++ error) (EndDecisionPath Wait)
 
-{- original isShipApproachinf function:
+
 isShipApproaching : ParsedUserInterface -> Bool
 isShipApproaching =
     .shipUI
         >> maybeNothingFromCanNotSeeIt
         >> Maybe.andThen (.indication >> maybeNothingFromCanNotSeeIt)
         >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
-        >> Maybe.map ((==) EveOnline.MemoryReading.ManeuverApproach)
+        >> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverApproach)
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
--}
-isShipApproaching : ParsedUserInterface -> Bool
-isShipApproaching =
-    .shipUI
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen (.indication >> maybeNothingFromCanNotSeeIt)
-        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
-        >> Maybe.map ((==) EveOnline.ParseUserInterface.parseShipUIIndication)-- Must check if EveOnline.ParseUserInterface.ShipManeuverType is ManeuverApproach
-        -- If the ship is just floating in space, there might be no indication displayed.
-        >> Maybe.withDefault False
-        
+
+
 lockTargetFromOverviewEntryAndStopShip : OverviewWindowEntry -> DecisionPathNode
 lockTargetFromOverviewEntryAndStopShip overviewEntry =
     DescribeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")

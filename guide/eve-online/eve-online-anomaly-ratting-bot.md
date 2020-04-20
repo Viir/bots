@@ -10,7 +10,7 @@ This bot uses the probe scanner to warp to anomalies and kills rats using drones
 ## Starting the Bot
 
 + Download the BotEngine Windows console app from 
-[https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-18-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-18-botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
+[https://botengine.blob.core.windows.net/blob-library/by-name/2020-04-20-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-04-20-botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
 + Start the EVE Online client and log in to the game.
 + To start the autopilot bot, run the `BotEngine.exe` program with the following command:
 

@@ -83,12 +83,12 @@ When running a bot, you can choose to start it in an online bot session. Online 
 + Organize and keep track of your operations and experiments: Easily see which bots you already tested and when you used them the last time.
 + Longer bot running time: Run a bot continuously in one session for up to 72 hours.
 
-To see a list of your most recent online bot sessions, log in at https://app.botengine.org
+To see a list of your most recent online bot sessions, log in at https://reactor.botengine.org
 
 Below is a screenshot of the website you can use to view your online bot sessions and monitor your bots:
 ![monitor your bots using online bot sessions](./image/2019-12-11.online-bot-session.png)
 
-Online bot sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://app.botengine.org/billing/add-credits](https://app.botengine.org/billing/add-credits)
+Online bot sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
 
 For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
 
@@ -107,7 +107,7 @@ If you have not set up your system for online sessions, the engine then stops wi
 Error: You used the '--online-session' option, but I did not find a stored default online session key. Use the 'online-session-key  store-default-key' command to store a key.
 ```
 
-To get your key, go to https://app.botengine.org and log in to your account. After logging in, you see a section titled `Online session keys`. In this section, there is an entry for a key, containing a button labeled `Show key`. Clicking this button reveals your key. Please don't share this key with anyone, and don't post it on the forum.
+To get your key, go to https://reactor.botengine.org and log in to your account. After logging in, you see a section titled `Online session keys`. In this section, there is an entry for a key, containing a button labeled `Show key`. Clicking this button reveals your key. Please don't share this key with anyone, and don't post it on the forum.
 
 Besides the key itself, clicking the `Show key` button also reveals the complete command you can use to store the key on your system:
 
@@ -123,7 +123,7 @@ I stored this as the default key. You can now use it with the 'run-bot' command 
 
 Now you can use the `run-bot` command again to start the online session.
 
-After the online session is started, you can also see it at https://app.botengine.org/ under `Most recent bot sessions`:
+After the online session is started, you can also see it at https://reactor.botengine.org/ under `Most recent bot sessions`:
 
 ![List of most recent bot sessions](./image/2020-03-18-botengine-most-recent-sessions.png)
 

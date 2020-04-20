@@ -37,7 +37,7 @@ What is more exciting than playing video games? - Building an AI that plays vide
   + Program code: [./implement/applications/tribal-wars-2/tribal-wars-2-farmbot](./implement/applications/tribal-wars-2/tribal-wars-2-farmbot)
 
 
-More links to program codes are listed at [https://botcatalog.org](https://botcatalog.org)
+More links to program codes are listed at [https://catalog.botengine.org](https://catalog.botengine.org)
 
 ## Exploration
 

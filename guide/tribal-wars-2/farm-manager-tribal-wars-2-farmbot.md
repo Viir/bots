@@ -25,7 +25,7 @@ It automatically detects barbarian villages, available troops and configured arm
 
 ## Starting the Farmbot
 
-To start the farmbot, download the script from [https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-25-run-app-00736DF1E9-tribal-wars-2-farmbot.bat](https://botengine.blob.core.windows.net/blob-library/by-name/2020-03-25-run-app-00736DF1E9-tribal-wars-2-farmbot.bat) and then run it.
+To start the farmbot, download the script from [https://botengine.blob.core.windows.net/blob-library/by-name/2020-04-20-run-app-EE4C5C3690-tribal-wars-2-farmbot.bat](https://botengine.blob.core.windows.net/blob-library/by-name/2020-04-20-run-app-EE4C5C3690-tribal-wars-2-farmbot.bat) and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at [https://to.botengine.org/failed-run-bot-did-not-find-botengine-program](https://to.botengine.org/failed-run-bot-did-not-find-botengine-program)
 
@@ -93,18 +93,19 @@ When all your villages are out of units or at the attack limit, the bot stops wi
 ## Configuration Settings
 
 All settings are optional; you only need them in case the defaults don't fit your use-case.
-You can adjust three settings:
+You can adjust four settings:
 
 + 'number-of-farm-cycles' : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
 + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
 + 'farm-barb-min-points': Minimum points of barbarian villages to attack.
++ 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
 
 To use settings, run the bot using the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
 
 To run the bot with default settings, you would use this command:
 
 ```cmd
-botengine  run-bot  "https://github.com/Viir/bots/tree/ed9cd75aa0e0c11090a2ce2af1d69b3ea3ca153f/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
+botengine  run-bot  "https://github.com/Viir/bots/tree/281cba0b07103872f45f64c1b6924da62fe1d81f/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
 ```
 
 ![Command to start Tribal Wars 2 Farmbot without settings](./image/2020-03-29-run-bot-tribal-wars-2-without-settings-cmd.png)
@@ -119,7 +120,7 @@ Here is an example of `app-settings` for three farm cycles with breaks of 20 to 
 To apply these settings to the bot, add them into the `run-bot` command used to start the bot:
 
 ```cmd
-botengine  run-bot  --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"  "https://github.com/Viir/bots/tree/ed9cd75aa0e0c11090a2ce2af1d69b3ea3ca153f/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
+botengine  run-bot  --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"  "https://github.com/Viir/bots/tree/281cba0b07103872f45f64c1b6924da62fe1d81f/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
 ```
 
 ![Command to start Tribal Wars 2 Farmbot with settings](./image/2020-03-29-run-bot-tribal-wars-2-with-settings-cmd.png)

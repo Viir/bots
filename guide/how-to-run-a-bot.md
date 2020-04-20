@@ -125,7 +125,7 @@ Now you can use the `run-bot` command again to start the online session.
 
 After the online session is started, you can also see it at https://reactor.botengine.org/ under `Most recent bot sessions`:
 
-![List of most recent bot sessions](./image/2020-03-18-botengine-most-recent-sessions.png)
+![List of most recent bot sessions](./image/2020-04-20-botengine-reactor-recent-online-sessions.png)
 
 
 Clicking on the session ID brings you to the details view of the session, where you can also see the status reported by the bot.

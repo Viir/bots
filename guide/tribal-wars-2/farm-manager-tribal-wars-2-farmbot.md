@@ -100,30 +100,27 @@ You can adjust four settings:
 + 'farm-barb-min-points': Minimum points of barbarian villages to attack.
 + 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
 
-To use settings, run the bot using the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
+To configure settings, open the configuration page at https://catalog.botengine.org/EE4C5C3690A3CD5307A7815821CF1CFA205D60BD0BC414452E15F97818EE84F5 in a web browser.
 
-To run the bot with default settings, you would use this command:
+On this page, scroll down to the button `Configure app`.
 
-```cmd
-botengine  run-bot  "https://github.com/Viir/bots/tree/281cba0b07103872f45f64c1b6924da62fe1d81f/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
-```
+![Button to enter configuration](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-button.png)
 
-![Command to start Tribal Wars 2 Farmbot without settings](./image/2020-03-29-run-bot-tribal-wars-2-without-settings-cmd.png)
+Click this button to navigate into the configuration interface:
 
-To run the bot with different settings, expand that command by adding the `--app-settings` argument.
+![Input fields for configuration](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-form.png)
+
+Here we have multiple input fields, but to use any of the bot settings mentioned above, we only need the input field right of the `--app-settings` label.
+
 Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
 
 ```text
---app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
+number-of-farm-cycles = 3, break-duration = 20 - 40
 ```
 
-To apply these settings to the bot, add them into the `run-bot` command used to start the bot:
+![Input fields for configuration with app-settings](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-form-with-settings.png)
 
-```cmd
-botengine  run-bot  --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"  "https://github.com/Viir/bots/tree/281cba0b07103872f45f64c1b6924da62fe1d81f/implement/applications/tribal-wars-2/tribal-wars-2-farmbot"
-```
-
-![Command to start Tribal Wars 2 Farmbot with settings](./image/2020-03-29-run-bot-tribal-wars-2-with-settings-cmd.png)
+Use the button `Download script with this command line to run the app` to download a script to run the bot with the entered settings.
 
 When you have applied settings for multiple farm cycles, the bot displays this message during the breaks between farm cycles:
 

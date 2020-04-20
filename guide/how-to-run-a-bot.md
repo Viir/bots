@@ -43,14 +43,14 @@ Most of the time, you don't need to watch this. After all, that is the point of 
 But in case a bot gets stuck, you want to take a look at this status display. Among general information from the engine, this display can also contain information as coded by the bot author. This way, the bot can tell about the goal of its current actions or inform you about problems. For example, this [warp to 0 auto-pilot bot](https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot) shows diverse messages to inform you what it is doing at the moment. When you run this bot, the console window might show a text like the following:
 
 ```
-Bot is running. Press CTRL + ALT keys to pause the bot.
+Bot is running. Press SHIFT + CTRL + ALT keys to pause the bot
 Last bot event was 1 seconds ago at 15-09-48.781.
 Status message from bot:
 
 I see no route in the info panel. I will start when a route is set.
 ```
 
-You can pause bot operation by pressing the `CTRL` + `ALT` keys. To let the bot continue, focus the console window and press the enter key. The key combination `CTRL` + `C` stops the bot and the botengine process.
+You can pause bot operation by pressing the `SHIFT` + `CTRL` + `ALT` keys. To let the bot continue, focus the console window and press the enter key. The key combination `CTRL` + `C` stops the bot and the botengine process.
 
 ## Configuring a Bot
 

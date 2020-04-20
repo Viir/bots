@@ -44,7 +44,7 @@ For example, if you disable the location ('System info') info panel in the EVE O
 
 As soon as you enable this info panel again, the bot will also continue working.
 
-The bot repeats the cycle of mining and unloading until you tell it to pause (`CTRL`+`ALT` keys) or stop it.
+The bot repeats the cycle of mining and unloading until you tell it to pause (`SHIFT` + `CTRL`+`ALT` keys) or stop it.
 
 To give an overview of the performance of the bot, it displays statistics like this:
 

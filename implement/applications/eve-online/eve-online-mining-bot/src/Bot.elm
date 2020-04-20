@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-04-18
+{- EVE Online mining bot version 2020-04-18 - 2020-04-19 Couladin Stop Ship
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -473,7 +473,7 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
                 |> Maybe.withDefault
                     (DescribeBranch
                         ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                        (lockTargetFromOverviewEntryAndEnsureIsInRange (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
+                        (lockTargetFromOverviewEntryAndEnsureIsInRange context.parsedUserInterface (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
                     )
 
 
@@ -530,8 +530,8 @@ ensureOreHoldIsSelectedInInventoryWindow parsedUserInterface continueWithInvento
                         )
 
 
-lockTargetFromOverviewEntryAndEnsureIsInRange : Int -> OverviewWindowEntry -> DecisionPathNode
-lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
+lockTargetFromOverviewEntryAndEnsureIsInRange : ParsedUserInterface -> Int -> OverviewWindowEntry -> DecisionPathNode
+lockTargetFromOverviewEntryAndEnsureIsInRange parsedUserInterface rangeInMeters overviewEntry =
     case overviewEntry.objectDistanceInMeters of
         Ok distanceInMeters ->
             if distanceInMeters <= rangeInMeters then
@@ -540,10 +540,15 @@ lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
 
                 else
                     DescribeBranch "Object is in range. Lock target."
-                        (lockTargetFromOverviewEntry overviewEntry)
+                        (lockTargetFromOverviewEntryAndStopShip overviewEntry)
 
             else
-                DescribeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
+                DescribeBranch "Asteroid is not in range. Approach."
+                    (if ParsedUserInterface |> isShipApproaching then
+                        DescribeBranch "record the approach click, and send the bot in a wait loop" (EndDecisionPath Wait)
+
+                     else
+                        DescribeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
                     (EndDecisionPath
                         (actStartingWithRightClickOnOverviewEntry
                             overviewEntry
@@ -555,20 +560,50 @@ lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
                             ]
                         )
                     )
+                    )
 
         Err error ->
             DescribeBranch ("Failed to read the distance: " ++ error) (EndDecisionPath Wait)
 
-
-lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
-lockTargetFromOverviewEntry overviewEntry =
+{- original isShipApproachinf function:
+isShipApproaching : ParsedUserInterface -> Bool
+isShipApproaching =
+    .shipUI
+        >> maybeNothingFromCanNotSeeIt
+        >> Maybe.andThen (.indication >> maybeNothingFromCanNotSeeIt)
+        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
+        >> Maybe.map ((==) EveOnline.MemoryReading.ManeuverApproach)
+        -- If the ship is just floating in space, there might be no indication displayed.
+        >> Maybe.withDefault False
+-}
+isShipApproaching : ParsedUserInterface -> Bool
+isShipApproaching =
+    .shipUI
+        >> maybeNothingFromCanNotSeeIt
+        >> Maybe.andThen (.indication >> maybeNothingFromCanNotSeeIt)
+        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
+        >> Maybe.map ((==) EveOnline.ParseUserInterface.parseShipUIIndication)-- Must check if EveOnline.ParseUserInterface.ShipManeuverType is ManeuverApproach
+        -- If the ship is just floating in space, there might be no indication displayed.
+        >> Maybe.withDefault False
+        
+lockTargetFromOverviewEntryAndStopShip : OverviewWindowEntry -> DecisionPathNode
+lockTargetFromOverviewEntryAndStopShip overviewEntry =
     DescribeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
         (EndDecisionPath
             (actStartingWithRightClickOnOverviewEntry overviewEntry
-                [ ( "Click menu entry 'Lock target'."
+                [ ( "Click menu entry 'Lock target'. Then press CTRL and SPACE keys."
                   , lastContextMenuOrSubmenu
                         >> Maybe.andThen (menuEntryWithTextEqualsIgnoringCase "Lock target")
-                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft)
+                        >> Maybe.map
+                            (\partToClickOnTheMenuEntry ->
+                                [ partToClickOnTheMenuEntry
+                                , VolatileHostInterface.KeyDown VolatileHostInterface.VK_CONTROL
+                                , VolatileHostInterface.KeyDown (VolatileHostInterface.VirtualKeyCodeFromInt 0x20)
+                                , VolatileHostInterface.KeyUp (VolatileHostInterface.VirtualKeyCodeFromInt 0x20)
+                                , VolatileHostInterface.KeyUp VolatileHostInterface.VK_CONTROL
+                                ]
+                            )
                   )
                 ]
             )

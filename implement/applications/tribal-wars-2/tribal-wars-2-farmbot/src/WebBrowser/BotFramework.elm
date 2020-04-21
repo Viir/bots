@@ -455,7 +455,9 @@ getSetupTaskWhenVolatileHostSetupCompleted { pageGoToUrl } stateBefore volatileH
                 { hostId = volatileHostId
                 , request =
                     VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                        (VolatileHostInterface.StartWebBrowserRequest { pageGoToUrl = pageGoToUrl })
+                        (VolatileHostInterface.StartWebBrowserRequest
+                            { pageGoToUrl = pageGoToUrl, userProfileId = "default", remoteDebuggingPort = 13485 }
+                        )
                 }
             )
             "Starting the web browser. This can take a while because I might need to download the web browser software first."

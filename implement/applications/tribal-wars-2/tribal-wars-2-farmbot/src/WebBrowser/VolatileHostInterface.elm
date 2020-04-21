@@ -11,7 +11,7 @@ import Json.Encode
 
 
 type RequestToVolatileHost
-    = StartWebBrowserRequest { pageGoToUrl : Maybe String }
+    = StartWebBrowserRequest { pageGoToUrl : Maybe String, userProfileId : String, remoteDebuggingPort : Int }
     | RunJavascriptInCurrentPageRequest RunJavascriptInCurrentPageRequestStructure
 
 
@@ -57,6 +57,12 @@ encodeRequestToVolatileHost request =
                   , Json.Encode.object
                         [ ( "pageGoToUrl"
                           , startWebBrowserRequest.pageGoToUrl |> Maybe.map Json.Encode.string |> Maybe.withDefault Json.Encode.null
+                          )
+                        , ( "userProfileId"
+                          , startWebBrowserRequest.userProfileId |> Json.Encode.string
+                          )
+                        , ( "remoteDebuggingPort"
+                          , startWebBrowserRequest.remoteDebuggingPort |> Json.Encode.int
                           )
                         ]
                   )

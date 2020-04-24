@@ -56,6 +56,8 @@ defaultBotSettings =
     , botStepDelayMilliseconds = 2000
     , lastDockedStationNameFromInfoPanel = Nothing
     , oreHoldMaxPercent = 99
+    , maxNumTargets = 1
+    , maxEnergyPercent = 100
     }
 
 
@@ -81,6 +83,12 @@ parseBotSettingsNames =
     , ( "ore-hold-max-percent"
       , parseBotSettingInt (\percent settings -> { settings | oreHoldMaxPercent = percent })
       )
+    , ( "max-num-targets"
+      , parseBotSettingInt (\target settings -> { settings | maxNumTargets = target })
+      )
+    , ( "max-energy-percent"
+      , parseBotSettingInt (\percent settings -> { settings | maxEnergyPercent = percent })
+      )
     ]
         |> Dict.fromList
 
@@ -92,6 +100,8 @@ type alias BotSettings =
     , botStepDelayMilliseconds : Int
     , lastDockedStationNameFromInfoPanel : Maybe String
     , oreHoldMaxPercent : Int
+    , maxNumTargets : Int
+    , maxEnergyPercent : Int
     }
 
 
@@ -400,12 +410,6 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                                 (DescribeBranch ("I see " ++ (context.parsedUserInterface.targets |> List.length |> String.fromInt) ++ " locked target (s).")
                                                     (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                                         -- TODO: Check previous memory reading too for module activity.
-                                                        Nothing ->
-                                                            DescribeBranch "All mining laser modules are active."
-                                                                (readShipUIModuleButtonTooltips context
-                                                                    |> Maybe.withDefault (EndDecisionPath Wait)
-                                                                )
-
                                                         Just inactiveModule ->
                                                             DescribeBranch "I see an inactive mining module. Activate it."
                                                                 (EndDecisionPath
@@ -414,6 +418,38 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                                                         , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
                                                                         )
                                                                     )
+                                                                )
+                                                        Nothing ->
+                                                            DescribeBranch "All mining laser modules are active."
+                                                                (readShipUIModuleButtonTooltips context
+                                                                    |> Maybe.withDefault 
+                                                                    
+                                                                        (DescribeBranch " Checking Energy levels for short cycling"
+                                                                            (if context.settings.maxEnergyPercent <= (seeUndockingComplete.shipUI.capacitor.levelFromPmarksPercent |> Maybe.withDefault 100) then 
+                                                                               DescribeBranch "Deactivating one mining module"
+                                                                                    (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.sortBy (.rampRotationMilli) |> List.head of
+                                                                                        Just inactiveModule ->
+                                                                                            DescribeBranch ("I see an active mining module. Deactivate it." ++ (inactiveModule.rampRotationMilli |> Maybe.withDefault 321 |> String.fromInt) )
+                                                                                            (EndDecisionPath
+                                                                                                (actWithoutFurtherReadings
+                                                                                                    ( "Click on the module."
+                                                                                                    , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                                                                                    )
+                                                                                                )
+                                                                                            )
+                                                                                        Nothing ->
+                                                                                            DescribeBranch "I should never get here" (EndDecisionPath Wait))
+                                                                                
+                                                                               else                                                                                                                                                             
+                                                                                    DescribeBranch "Not enough energy to short cycle"
+                                                                                        (readShipUIModuleButtonTooltips context
+                                                                                            |> Maybe.withDefault (EndDecisionPath Wait)
+                                                                                        )
+
+                                                                                
+                                                                            )
+                                                                        )
+
                                                                 )
                                                     )
                                                 )

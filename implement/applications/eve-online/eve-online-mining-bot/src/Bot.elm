@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-04-23
+{- EVE Online mining bot version 2020-04-26
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -50,7 +50,7 @@ import Set
 -}
 defaultBotSettings : BotSettings
 defaultBotSettings =
-    { runAwayShieldHitpointsThresholdPercent = 50
+    { runAwayShieldHitpointsThresholdPercent = 70
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 2000

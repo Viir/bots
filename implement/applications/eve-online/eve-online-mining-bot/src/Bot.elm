@@ -347,7 +347,8 @@ lastDockedStationNameFromInfoPanelFromMemoryOrSettings context =
 inSpaceWithOreHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
 inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHoldSelected =
     if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
-        DescribeBranch "I see we are warping." (EndDecisionPath Wait)
+        DescribeBranch "I see we are warping."
+            (returnDronesToBay context.parsedUserInterface |> Maybe.withDefault (EndDecisionPath Wait))
 
     else
         case seeUndockingComplete.shipUI.moduleButtonsRows.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of

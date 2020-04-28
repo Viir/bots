@@ -1,22 +1,10 @@
-{- EVE Online mining bot version 2020-04-26
+{- WIP 🚧 - EVE Online Cerberus jetcan collection bot version 2020-04-28
 
-   The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
-   It remembers the station in which it was last docked, and docks again at the same station.
-
-   Setup instructions for the EVE Online client:
-   + Set the UI language to English.
-   + In Overview window, make asteroids visible.
-   + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
-   + Open one inventory window.
-   + In the ship UI, arrange the modules:
-     + Place all mining modules (to activate on targets) in the top row.
-     + Place modules that should always be active in the middle row.
-     + Hide passive modules by disabling the check-box `Display Passive Modules`.
-   + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
+   Work in progress 🚧 Direction: As described by Foivos Saropoulos aka Cerberus at https://forum.botengine.org/t/eve-jetcan-collection/3231/3?u=viir
 -}
 {-
-   bot-catalog-tags:eve-online,mining
-   authors-forum-usernames:viir
+   bot-catalog-tags:eve-online,mining,jetcan
+   authors-forum-usernames:viir,cerberus
 -}
 
 

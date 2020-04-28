@@ -10,7 +10,7 @@ Fortunately, this process can be automated using a bot. The bot we are using her
 + To start the autopilot bot, run the `BotEngine.exe` program with the following command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/cbd803d5bb2fd49de2ef892bb7da964f9791c4f5/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
 

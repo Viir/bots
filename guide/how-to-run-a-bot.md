@@ -19,7 +19,7 @@ Download the BotEngine Windows console app from
 Extract this Zip-Archive. This will give you a file named `BotEngine.exe`. To start a bot, call this program with a command like the following:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/cbd803d5bb2fd49de2ef892bb7da964f9791c4f5/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
@@ -31,7 +31,7 @@ The engine then loads the bot from the specified location and runs it until you 
 The `bot-source` parameter at the end of the command tells the engine where to load the bot code from. It can point to different kinds of sources:
 
 + A directory on the local file system. Example: `C:\directory-containing-bot-code`.
-+ A directory in a repository on [Github](https://github.com). Example: `https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot`
++ A directory in a repository on [Github](https://github.com). Example: `https://github.com/Viir/bots/tree/cbd803d5bb2fd49de2ef892bb7da964f9791c4f5/implement/applications/eve-online/eve-online-warp-to-0-autopilot`
 
 Developers use Github to collaborate and share code. Using the local file system as the source can be more convenient when you make changes to the bot code which you only want to test yourself.
 
@@ -40,7 +40,7 @@ Developers use Github to collaborate and share code. Using the local file system
 While a bot is running, the engine displays status information in the console window. This display is updated as the bot continues operating.
 Most of the time, you don't need to watch this. After all, that is the point of automation right?
 
-But in case a bot gets stuck, you want to take a look at this status display. Among general information from the engine, this display can also contain information as coded by the bot author. This way, the bot can tell about the goal of its current actions or inform you about problems. For example, this [warp to 0 auto-pilot bot](https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot) shows diverse messages to inform you what it is doing at the moment. When you run this bot, the console window might show a text like the following:
+But in case a bot gets stuck, you want to take a look at this status display. Among general information from the engine, this display can also contain information as coded by the bot author. This way, the bot can tell about the goal of its current actions or inform you about problems. For example, this [warp to 0 auto-pilot bot](https://github.com/Viir/bots/tree/cbd803d5bb2fd49de2ef892bb7da964f9791c4f5/implement/applications/eve-online/eve-online-warp-to-0-autopilot) shows diverse messages to inform you what it is doing at the moment. When you run this bot, the console window might show a text like the following:
 
 ```
 Bot is running. Press SHIFT + CTRL + ALT keys to pause the bot

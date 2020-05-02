@@ -40,7 +40,6 @@ defaultBotSettings : BotSettings
 defaultBotSettings =
     { runAwayShieldHitpointsThresholdPercent = 70
     , targetingRange = 8000
-    , miningModuleRange = 5000
     , botStepDelayMilliseconds = 2000
     , lastDockedStationNameFromInfoPanel = Nothing
     , oreHoldMaxPercent = 99
@@ -56,9 +55,6 @@ parseBotSettingsNames =
       )
     , ( "targeting-range"
       , parseBotSettingInt (\range settings -> { settings | targetingRange = range })
-      )
-    , ( "mining-module-range"
-      , parseBotSettingInt (\range settings -> { settings | miningModuleRange = range })
       )
     , ( "bot-step-delay"
       , parseBotSettingInt (\delay settings -> { settings | botStepDelayMilliseconds = delay })
@@ -76,7 +72,6 @@ parseBotSettingsNames =
 type alias BotSettings =
     { runAwayShieldHitpointsThresholdPercent : Int
     , targetingRange : Int
-    , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
     , lastDockedStationNameFromInfoPanel : Maybe String
     , oreHoldMaxPercent : Int
@@ -327,71 +322,44 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
             (EndDecisionPath Wait)
 
     else
-        case seeUndockingComplete.shipUI.moduleButtonsRows.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-            Just inactiveModule ->
-                DescribeBranch "I see an inactive module in the middle row. Activate it."
-                    (EndDecisionPath
-                        (actWithoutFurtherReadings
-                            ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
-                        )
-                    )
-
+        case inventoryWindowWithOreHoldSelected |> capacityGaugeUsedPercent of
             Nothing ->
-                case inventoryWindowWithOreHoldSelected |> capacityGaugeUsedPercent of
-                    Nothing ->
-                        DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
+                DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
 
-                    Just fillPercent ->
-                        let
-                            describeThresholdToUnload =
-                                (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "%"
-                        in
-                        if context.settings.oreHoldMaxPercent <= fillPercent then
-                            DescribeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
-                                (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
-                                    Nothing ->
-                                        DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
+            Just fillPercent ->
+                let
+                    describeThresholdToUnload =
+                        (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "%"
+                in
+                if context.settings.oreHoldMaxPercent <= fillPercent then
+                    DescribeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
+                        (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
+                            Nothing ->
+                                DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
 
-                                    Just lastDockedStationNameFromInfoPanel ->
-                                        dockToStationMatchingNameSeenInInfoPanel
-                                            { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
-                                            context.parsedUserInterface
-                                )
+                            Just lastDockedStationNameFromInfoPanel ->
+                                dockToStationMatchingNameSeenInInfoPanel
+                                    { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
+                                    context.parsedUserInterface
+                        )
 
-                        else
-                            DescribeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
-                                (case context.parsedUserInterface.targets |> List.head of
-                                    Nothing ->
-                                        DescribeBranch "I see no locked target."
-                                            (travelToMiningSiteAndTargetAsteroid context)
+                else
+                    DescribeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
+                        (case context.parsedUserInterface.targets |> List.head of
+                            Nothing ->
+                                DescribeBranch "I see no locked target."
+                                    (travelToMiningSiteAndTargetAsteroid context)
 
-                                    Just _ ->
-                                        {- Depending on the UI configuration, the game client might automatically target rats.
-                                           To avoid these targets interfering with mining, unlock them here.
-                                        -}
-                                        unlockTargetsNotForMining context
-                                            |> Maybe.withDefault
-                                                (DescribeBranch "I see a locked target."
-                                                    (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                                        -- TODO: Check previous memory reading too for module activity.
-                                                        Nothing ->
-                                                            DescribeBranch "All mining laser modules are active."
-                                                                (readShipUIModuleButtonTooltips context
-                                                                    |> Maybe.withDefault (EndDecisionPath Wait)
-                                                                )
-
-                                                        Just inactiveModule ->
-                                                            DescribeBranch "I see an inactive mining module. Activate it."
-                                                                (EndDecisionPath
-                                                                    (actWithoutFurtherReadings
-                                                                        ( "Click on the module."
-                                                                        , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
-                                                                        )
-                                                                    )
-                                                                )
-                                                    )
-                                                )
-                                )
+                            Just _ ->
+                                {- Depending on the UI configuration, the game client might automatically target rats.
+                                   To avoid these targets interfering with mining, unlock them here.
+                                -}
+                                unlockTargetsNotForMining context
+                                    |> Maybe.withDefault
+                                        (DescribeBranch "I see a locked target."
+                                            (EndDecisionPath Wait)
+                                        )
+                        )
 
 
 unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode
@@ -442,7 +410,7 @@ travelToMiningSiteAndTargetAsteroid context =
         Just asteroidInOverview ->
             DescribeBranch
                 ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                (lockTargetFromOverviewEntryAndEnsureIsInRange (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
+                (lockTargetFromOverviewEntry asteroidInOverview)
 
 
 ensureOreHoldIsSelectedInInventoryWindow : ParsedUserInterface -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode
@@ -496,36 +464,6 @@ ensureOreHoldIsSelectedInInventoryWindow parsedUserInterface continueWithInvento
                                                 )
                                             )
                         )
-
-
-lockTargetFromOverviewEntryAndEnsureIsInRange : Int -> OverviewWindowEntry -> DecisionPathNode
-lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
-    case overviewEntry.objectDistanceInMeters of
-        Ok distanceInMeters ->
-            if distanceInMeters <= rangeInMeters then
-                if overviewEntryIsTargetedOrTargeting overviewEntry then
-                    DescribeBranch "Wait for target locking to complete." (EndDecisionPath Wait)
-
-                else
-                    DescribeBranch "Object is in range. Lock target."
-                        (lockTargetFromOverviewEntry overviewEntry)
-
-            else
-                DescribeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
-                    (EndDecisionPath
-                        (actStartingWithRightClickOnOverviewEntry
-                            overviewEntry
-                            [ ( "Click menu entry 'approach'."
-                              , lastContextMenuOrSubmenu
-                                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
-                                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-                              )
-                            ]
-                        )
-                    )
-
-        Err error ->
-            DescribeBranch ("Failed to read the distance: " ++ error) (EndDecisionPath Wait)
 
 
 lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
@@ -626,31 +564,6 @@ dockToRandomStation parsedUserInterface =
 actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
 actWithoutFurtherReadings actionsAlreadyDecided =
     Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
-
-
-readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
-readShipUIModuleButtonTooltips context =
-    context.parsedUserInterface.shipUI
-        |> maybeNothingFromCanNotSeeIt
-        |> Maybe.map .moduleButtons
-        |> Maybe.withDefault []
-        |> List.filter
-            (\moduleButton ->
-                (context.memory.shipModules.tooltipFromModuleButton |> Dict.get (moduleButton |> getModuleButtonIdentifierInMemory))
-                    == Nothing
-            )
-        |> List.head
-        |> Maybe.map
-            (\moduleButtonWithoutMemoryOfTooltip ->
-                EndDecisionPath
-                    (actWithoutFurtherReadings
-                        ( "Read tooltip for module button"
-                        , [ VolatileHostInterface.MouseMoveTo
-                                { location = moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion }
-                          ]
-                        )
-                    )
-            )
 
 
 actStartingWithRightClickOnOverviewEntry :

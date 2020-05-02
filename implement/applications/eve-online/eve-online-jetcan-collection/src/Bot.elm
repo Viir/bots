@@ -348,7 +348,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                         (case context.parsedUserInterface.targets |> List.head of
                             Nothing ->
                                 DescribeBranch "I see no locked target."
-                                    (travelToMiningSiteAndTargetAsteroid context)
+                                    (travelToFleetMemberAndTargetJetcan context)
 
                             Just _ ->
                                 {- Depending on the UI configuration, the game client might automatically target rats.
@@ -400,17 +400,25 @@ unlockTargetsNotForMining context =
             )
 
 
-travelToMiningSiteAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
-travelToMiningSiteAndTargetAsteroid context =
-    case context.parsedUserInterface |> topmostAsteroidFromOverviewWindow of
+travelToFleetMemberAndTargetJetcan : BotDecisionContext -> DecisionPathNode
+travelToFleetMemberAndTargetJetcan context =
+    {- Cerberus overview config only shows jetcans:
+       ('point mouse on overview panel (i have set one that show only cans) on the first available can')
+       (https://forum.botengine.org/t/eve-jetcan-collection/3231/5?u=viir)
+    -}
+    case
+        context.parsedUserInterface.overviewWindow
+            |> maybeNothingFromCanNotSeeIt
+            |> Maybe.andThen (.entries >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y) >> List.head)
+    of
         Nothing ->
-            DescribeBranch "I see no asteroid in the overview. Warp to mining site."
-                (warpToMiningSite context.parsedUserInterface)
+            DescribeBranch "I see no jetcan in the overview. Warp to fleet member."
+                (warpToFleetMember context.parsedUserInterface)
 
-        Just asteroidInOverview ->
+        Just jetcanInOverview ->
             DescribeBranch
-                ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                (lockTargetFromOverviewEntry asteroidInOverview)
+                ("Choosing jetcan '" ++ (jetcanInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                (lockTargetFromOverviewEntry jetcanInOverview)
 
 
 ensureOreHoldIsSelectedInInventoryWindow : ParsedUserInterface -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode
@@ -514,32 +522,42 @@ dockToStationUsingSurroundingsButtonMenu ( describeChooseStation, chooseStationM
         ]
 
 
-warpToMiningSite : ParsedUserInterface -> DecisionPathNode
-warpToMiningSite parsedUserInterface =
-    parsedUserInterface
-        |> useContextMenuOnListSurroundingsButton
-            [ ( "Click on menu entry 'asteroid belts'."
-              , lastContextMenuOrSubmenu
-                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "asteroid belts")
-                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-              )
-            , ( "Click on one of the menu entries."
-              , lastContextMenuOrSubmenu
-                    >> Maybe.andThen
-                        (.entries >> listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface))
-                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-              )
-            , ( "Click menu entry 'Warp to Within'"
-              , lastContextMenuOrSubmenu
-                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Warp to Within")
-                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-              )
-            , ( "Click menu entry 'Within 0 m'"
-              , lastContextMenuOrSubmenu
-                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Within 0 m")
-                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-              )
-            ]
+warpToFleetMember : ParsedUserInterface -> DecisionPathNode
+warpToFleetMember parsedUserInterface =
+    case parsedUserInterface.chatWindowStacks |> List.head |> Maybe.andThen .chatWindow of
+        Nothing ->
+            DescribeBranch "I don't see a chat window. Make the fleet chat visible." (EndDecisionPath Wait)
+
+        Just chatWindow ->
+            case
+                chatWindow.visibleUsers
+                    |> List.filter (.standingIconHint >> Maybe.map (String.toLower >> String.contains "is in your fleet") >> Maybe.withDefault False)
+                    |> List.head
+            of
+                Nothing ->
+                    DescribeBranch "I don't see a chat member which 'is in your fleet'." (EndDecisionPath Wait)
+
+                Just chatMemberInYourFleet ->
+                    EndDecisionPath
+                        (Act
+                            { actionsAlreadyDecided =
+                                ( "Right click on pilot in chat."
+                                , [ chatMemberInYourFleet.uiNode |> clickOnUIElement MouseButtonRight ]
+                                )
+                            , actionsDependingOnNewReadings =
+                                [ ( "Click on menu entry 'warp to member within'."
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "warp to member within")
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                                  )
+                                , ( "Click menu entry 'warp to 0'"
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "warp to 0")
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                                  )
+                                ]
+                            }
+                        )
 
 
 runAway : BotDecisionContext -> DecisionPathNode
@@ -973,27 +991,6 @@ menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel menuEn
 lastContextMenuOrSubmenu : ParsedUserInterface -> Maybe EveOnline.ParseUserInterface.ContextMenu
 lastContextMenuOrSubmenu =
     .contextMenus >> List.head
-
-
-topmostAsteroidFromOverviewWindow : ParsedUserInterface -> Maybe OverviewWindowEntry
-topmostAsteroidFromOverviewWindow =
-    overviewWindowEntriesRepresentingAsteroids
-        >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
-        >> List.head
-
-
-overviewWindowEntriesRepresentingAsteroids : ParsedUserInterface -> List OverviewWindowEntry
-overviewWindowEntriesRepresentingAsteroids =
-    .overviewWindow
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.map (.entries >> List.filter overviewWindowEntryRepresentsAnAsteroid)
-        >> Maybe.withDefault []
-
-
-overviewWindowEntryRepresentsAnAsteroid : OverviewWindowEntry -> Bool
-overviewWindowEntryRepresentsAnAsteroid entry =
-    (entry.textsLeftToRight |> List.any (String.toLower >> String.contains "asteroid"))
-        && (entry.textsLeftToRight |> List.any (String.toLower >> String.contains "belt") |> not)
 
 
 overviewEntryIsTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool

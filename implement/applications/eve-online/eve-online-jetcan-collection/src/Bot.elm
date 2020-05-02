@@ -1,4 +1,4 @@
-{- WIP 🚧 - EVE Online Cerberus jetcan collection bot version 2020-04-28
+{- WIP 🚧 - EVE Online Cerberus jetcan collection bot version 2020-05-02
 
    Work in progress 🚧 Direction: As described by Foivos Saropoulos aka Cerberus at https://forum.botengine.org/t/eve-jetcan-collection/3231/3?u=viir
 -}
@@ -152,7 +152,7 @@ decideNextAction context =
                         dockedWithOreHoldSelected
                     )
                 )
-                (returnDronesAndRunAwayIfHitpointsAreTooLow context)
+                (runAwayIfHitpointsAreTooLow context)
                 (\seeUndockingComplete ->
                     DescribeBranch "I see we are in space, undocking complete."
                         (ensureOreHoldIsSelectedInInventoryWindow
@@ -164,12 +164,9 @@ decideNextAction context =
             )
 
 
-returnDronesAndRunAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
-returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
+runAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
+runAwayIfHitpointsAreTooLow context shipUI =
     let
-        returnDronesShieldHitpointsThresholdPercent =
-            context.settings.runAwayShieldHitpointsThresholdPercent + 5
-
         runAwayWithDescription =
             DescribeBranch
                 ("Shield hitpoints are at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%. Run away.")
@@ -177,15 +174,6 @@ returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
     in
     if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
         Just runAwayWithDescription
-
-    else if shipUI.hitpointsPercent.shield < returnDronesShieldHitpointsThresholdPercent then
-        returnDronesToBay context.parsedUserInterface
-            |> Maybe.map
-                (DescribeBranch
-                    ("Shield hitpoints are below " ++ (returnDronesShieldHitpointsThresholdPercent |> String.fromInt) ++ "%. Return drones.")
-                )
-            |> Maybe.withDefault runAwayWithDescription
-            |> Just
 
     else
         Nothing
@@ -336,7 +324,7 @@ inSpaceWithOreHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOn
 inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHoldSelected =
     if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
         DescribeBranch "I see we are warping."
-            (returnDronesToBay context.parsedUserInterface |> Maybe.withDefault (EndDecisionPath Wait))
+            (EndDecisionPath Wait)
 
     else
         case seeUndockingComplete.shipUI.moduleButtonsRows.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
@@ -360,17 +348,14 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                         in
                         if context.settings.oreHoldMaxPercent <= fillPercent then
                             DescribeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
-                                (returnDronesToBay context.parsedUserInterface
-                                    |> Maybe.withDefault
-                                        (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
-                                            Nothing ->
-                                                DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
+                                (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
+                                    Nothing ->
+                                        DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
 
-                                            Just lastDockedStationNameFromInfoPanel ->
-                                                dockToStationMatchingNameSeenInInfoPanel
-                                                    { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
-                                                    context.parsedUserInterface
-                                        )
+                                    Just lastDockedStationNameFromInfoPanel ->
+                                        dockToStationMatchingNameSeenInInfoPanel
+                                            { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
+                                            context.parsedUserInterface
                                 )
 
                         else
@@ -378,7 +363,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                 (case context.parsedUserInterface.targets |> List.head of
                                     Nothing ->
                                         DescribeBranch "I see no locked target."
-                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
+                                            (travelToMiningSiteAndTargetAsteroid context)
 
                                     Just _ ->
                                         {- Depending on the UI configuration, the game client might automatically target rats.
@@ -447,23 +432,17 @@ unlockTargetsNotForMining context =
             )
 
 
-travelToMiningSiteAndLaunchDronesAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
-travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
+travelToMiningSiteAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
+travelToMiningSiteAndTargetAsteroid context =
     case context.parsedUserInterface |> topmostAsteroidFromOverviewWindow of
         Nothing ->
             DescribeBranch "I see no asteroid in the overview. Warp to mining site."
-                (returnDronesToBay context.parsedUserInterface
-                    |> Maybe.withDefault
-                        (warpToMiningSite context.parsedUserInterface)
-                )
+                (warpToMiningSite context.parsedUserInterface)
 
         Just asteroidInOverview ->
-            launchDrones context.parsedUserInterface
-                |> Maybe.withDefault
-                    (DescribeBranch
-                        ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                        (lockTargetFromOverviewEntryAndEnsureIsInRange (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
-                    )
+            DescribeBranch
+                ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                (lockTargetFromOverviewEntryAndEnsureIsInRange (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
 
 
 ensureOreHoldIsSelectedInInventoryWindow : ParsedUserInterface -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode
@@ -642,83 +621,6 @@ dockToRandomStation parsedUserInterface =
     dockToStationUsingSurroundingsButtonMenu
         ( "Pick random station.", listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface) )
         parsedUserInterface
-
-
-launchDrones : ParsedUserInterface -> Maybe DecisionPathNode
-launchDrones parsedUserInterface =
-    parsedUserInterface.dronesWindow
-        |> maybeNothingFromCanNotSeeIt
-        |> Maybe.andThen
-            (\dronesWindow ->
-                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
-                    ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
-                        let
-                            dronesInBayQuantity =
-                                droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
-
-                            dronesInLocalSpaceQuantity =
-                                droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
-                        in
-                        if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
-                            Just
-                                (DescribeBranch "Launch drones"
-                                    (EndDecisionPath
-                                        (Act
-                                            { actionsAlreadyDecided =
-                                                ( "Right click on the drones group."
-                                                , [ droneGroupInBay.header.uiNode |> clickOnUIElement MouseButtonRight ]
-                                                )
-                                            , actionsDependingOnNewReadings =
-                                                [ ( "Click menu entry 'Launch drone'."
-                                                  , lastContextMenuOrSubmenu
-                                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Launch drone")
-                                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-                                                  )
-                                                ]
-                                            }
-                                        )
-                                    )
-                                )
-
-                        else
-                            Nothing
-
-                    _ ->
-                        Nothing
-            )
-
-
-returnDronesToBay : ParsedUserInterface -> Maybe DecisionPathNode
-returnDronesToBay parsedUserInterface =
-    parsedUserInterface.dronesWindow
-        |> maybeNothingFromCanNotSeeIt
-        |> Maybe.andThen .droneGroupInLocalSpace
-        |> Maybe.andThen
-            (\droneGroupInLocalSpace ->
-                if (droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0) < 1 then
-                    Nothing
-
-                else
-                    Just
-                        (DescribeBranch "I see there are drones in local space. Return those to bay."
-                            (EndDecisionPath
-                                (Act
-                                    { actionsAlreadyDecided =
-                                        ( "Rightclick on the drones group."
-                                        , [ droneGroupInLocalSpace.header.uiNode |> clickOnUIElement MouseButtonRight ]
-                                        )
-                                    , actionsDependingOnNewReadings =
-                                        [ ( "Click menu entry 'Return to drone bay'."
-                                          , lastContextMenuOrSubmenu
-                                                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Return to drone bay")
-                                                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-                                          )
-                                        ]
-                                    }
-                                )
-                            )
-                        )
-            )
 
 
 actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
@@ -966,18 +868,6 @@ describeStateForMonitoring parsedUserInterface botMemory =
                         Nothing ->
                             "I cannot see if I am docked or in space. Please set up game client first."
 
-        describeDrones =
-            case parsedUserInterface.dronesWindow of
-                CanNotSeeIt ->
-                    "Can not see drone window."
-
-                CanSee dronesWindow ->
-                    "Can see the drones window: In bay: "
-                        ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
-                        ++ ", in local space: "
-                        ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
-                        ++ "."
-
         describeOreHold =
             "Ore hold filled "
                 ++ (parsedUserInterface
@@ -989,7 +879,7 @@ describeStateForMonitoring parsedUserInterface botMemory =
                 ++ "%."
 
         describeCurrentReading =
-            [ describeOreHold, describeShip, describeDrones ] |> String.join " "
+            [ describeOreHold, describeShip ] |> String.join " "
     in
     [ "Session performance: " ++ describeSessionPerformance
     , "---"

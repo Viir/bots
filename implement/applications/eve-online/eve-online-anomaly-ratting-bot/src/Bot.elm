@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-04-15
+{- EVE Online anomaly ratting bot version 2020-05-03
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -320,15 +320,13 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
 
     else
         Just
-            (DescribeBranch "Overview entry is in range. Lock target."
-                (EndDecisionPath
-                    (actWithoutFurtherReadings
-                        ( "Click on the overview entry and press the 'W' key."
-                        , [ overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
-                          , VolatileHostInterface.KeyDown keyCodeLetterW
-                          , VolatileHostInterface.KeyUp keyCodeLetterW
-                          ]
-                        )
+            (EndDecisionPath
+                (actWithoutFurtherReadings
+                    ( "Click on the overview entry and press the 'W' key."
+                    , [ overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
+                      , VolatileHostInterface.KeyDown keyCodeLetterW
+                      , VolatileHostInterface.KeyUp keyCodeLetterW
+                      ]
                     )
                 )
             )

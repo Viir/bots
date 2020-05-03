@@ -1,4 +1,4 @@
-{- WIP 🚧 - EVE Online Cerberus jetcan collection bot version 2020-05-02
+{- WIP 🚧 - EVE Online Cerberus jetcan collection bot version 2020-05-03
 
    Work in progress 🚧 Direction: As described by Foivos Saropoulos aka Cerberus at https://forum.botengine.org/t/eve-jetcan-collection/3231/3?u=viir
 -}
@@ -84,7 +84,13 @@ type alias BotMemory =
     , volumeUnloadedCubicMeters : Int
     , lastUsedCapacityInOreHold : Maybe Int
     , shipModules : ShipModulesMemory
+    , warpToFleetMemberProgressSinceUndock : Maybe WarpToFleetMemberStage
     }
+
+
+type WarpToFleetMemberStage
+    = WarpToFleetMemberCompletedMenu
+    | WarpToFleetMemberStartedWarp
 
 
 type alias ShipModulesMemory =
@@ -107,6 +113,7 @@ type alias UIElement =
 type alias TreeLeafAct =
     { actionsAlreadyDecided : ( String, List VolatileHostInterface.EffectOnWindowStructure )
     , actionsDependingOnNewReadings : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+    , rememberWhenCompletedSuccessfully : Maybe (BotMemory -> BotMemory)
     }
 
 
@@ -285,6 +292,7 @@ dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
                                                     >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
                                               )
                                             ]
+                                        , rememberWhenCompletedSuccessfully = Nothing
                                         }
                                     )
                         )
@@ -351,74 +359,40 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                     (travelToFleetMemberAndTargetJetcan context)
 
                             Just _ ->
-                                {- Depending on the UI configuration, the game client might automatically target rats.
-                                   To avoid these targets interfering with mining, unlock them here.
-                                -}
-                                unlockTargetsNotForMining context
-                                    |> Maybe.withDefault
-                                        (DescribeBranch "I see a locked target."
-                                            (EndDecisionPath Wait)
-                                        )
+                                DescribeBranch "I see a locked target."
+                                    (EndDecisionPath Wait)
                         )
-
-
-unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode
-unlockTargetsNotForMining context =
-    let
-        targetsToUnlock =
-            context.parsedUserInterface.targets
-                |> List.filter (.textsTopToBottom >> List.any (String.toLower >> String.contains "asteroid") >> not)
-    in
-    targetsToUnlock
-        |> List.head
-        |> Maybe.map
-            (\targetToUnlock ->
-                DescribeBranch
-                    ("I see a target not for mining: '"
-                        ++ (targetToUnlock.textsTopToBottom |> String.join " ")
-                        ++ "'. Unlock this target."
-                    )
-                    (EndDecisionPath
-                        (Act
-                            { actionsAlreadyDecided =
-                                ( "Rightclick on the target."
-                                , [ targetToUnlock.barAndImageCont
-                                        |> Maybe.withDefault targetToUnlock.uiNode
-                                        |> clickOnUIElement MouseButtonRight
-                                  ]
-                                )
-                            , actionsDependingOnNewReadings =
-                                [ ( "Click menu entry 'unlock'."
-                                  , lastContextMenuOrSubmenu
-                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "unlock")
-                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-                                  )
-                                ]
-                            }
-                        )
-                    )
-            )
 
 
 travelToFleetMemberAndTargetJetcan : BotDecisionContext -> DecisionPathNode
 travelToFleetMemberAndTargetJetcan context =
-    {- Cerberus overview config only shows jetcans:
-       ('point mouse on overview panel (i have set one that show only cans) on the first available can')
-       (https://forum.botengine.org/t/eve-jetcan-collection/3231/5?u=viir)
-    -}
-    case
-        context.parsedUserInterface.overviewWindow
-            |> maybeNothingFromCanNotSeeIt
-            |> Maybe.andThen (.entries >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y) >> List.head)
-    of
+    case context.memory.warpToFleetMemberProgressSinceUndock of
         Nothing ->
-            DescribeBranch "I see no jetcan in the overview. Warp to fleet member."
-                (warpToFleetMember context.parsedUserInterface)
+            warpToFleetMember context.parsedUserInterface
 
-        Just jetcanInOverview ->
-            DescribeBranch
-                ("Choosing jetcan '" ++ (jetcanInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                (lockTargetFromOverviewEntry jetcanInOverview)
+        Just WarpToFleetMemberCompletedMenu ->
+            warpToFleetMember context.parsedUserInterface
+
+        Just WarpToFleetMemberStartedWarp ->
+            {- Cerberus overview config only shows jetcans:
+               ('point mouse on overview panel (i have set one that show only cans) on the first available can')
+               (https://forum.botengine.org/t/eve-jetcan-collection/3231/5?u=viir)
+            -}
+            case
+                context.parsedUserInterface.overviewWindow
+                    |> maybeNothingFromCanNotSeeIt
+                    |> Maybe.andThen (.entries >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y) >> List.head)
+            of
+                Nothing ->
+                    DescribeBranch "I see no jetcan in the overview."
+                        (DescribeBranch "wait for next can (this may be a long period some times above 10 minutes)"
+                            (EndDecisionPath Wait)
+                        )
+
+                Just jetcanInOverview ->
+                    DescribeBranch
+                        ("Choosing jetcan '" ++ (jetcanInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                        (lockTargetFromOverviewEntry jetcanInOverview)
 
 
 ensureOreHoldIsSelectedInInventoryWindow : ParsedUserInterface -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode
@@ -556,8 +530,23 @@ warpToFleetMember parsedUserInterface =
                                         >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
                                   )
                                 ]
+                            , rememberWhenCompletedSuccessfully = Just rememberCompletedWarpToFleetMemberContextMenu
                             }
                         )
+
+
+rememberCompletedWarpToFleetMemberContextMenu : BotMemory -> BotMemory
+rememberCompletedWarpToFleetMemberContextMenu botMemoryBefore =
+    let
+        warpToFleetMemberProgressSinceUndock =
+            case botMemoryBefore.warpToFleetMemberProgressSinceUndock of
+                Nothing ->
+                    Just WarpToFleetMemberCompletedMenu
+
+                _ ->
+                    botMemoryBefore.warpToFleetMemberProgressSinceUndock
+    in
+    { botMemoryBefore | warpToFleetMemberProgressSinceUndock = warpToFleetMemberProgressSinceUndock }
 
 
 runAway : BotDecisionContext -> DecisionPathNode
@@ -581,7 +570,11 @@ dockToRandomStation parsedUserInterface =
 
 actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
 actWithoutFurtherReadings actionsAlreadyDecided =
-    Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
+    Act
+        { actionsAlreadyDecided = actionsAlreadyDecided
+        , actionsDependingOnNewReadings = []
+        , rememberWhenCompletedSuccessfully = Nothing
+        }
 
 
 actStartingWithRightClickOnOverviewEntry :
@@ -595,6 +588,7 @@ actStartingWithRightClickOnOverviewEntry overviewEntry actionsDependingOnNewRead
             , [ overviewEntry.uiNode |> clickOnUIElement MouseButtonRight ]
             )
         , actionsDependingOnNewReadings = actionsDependingOnNewReadings
+        , rememberWhenCompletedSuccessfully = Nothing
         }
 
 
@@ -642,6 +636,7 @@ useContextMenuOnListSurroundingsButton actionsDependingOnNewReadings parsedUserI
                         , [ infoPanelLocationInfo.listSurroundingsButton |> clickOnUIElement MouseButtonLeft ]
                         )
                     , actionsDependingOnNewReadings = actionsDependingOnNewReadings
+                    , rememberWhenCompletedSuccessfully = Nothing
                     }
                 )
 
@@ -656,6 +651,7 @@ initState =
             , volumeUnloadedCubicMeters = 0
             , lastUsedCapacityInOreHold = Nothing
             , shipModules = initShipModulesMemory
+            , warpToFleetMemberProgressSinceUndock = Nothing
             }
         }
 
@@ -869,6 +865,21 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
 
         volumeUnloadedCubicMeters =
             botMemoryBefore.volumeUnloadedCubicMeters + volumeUnloadedSincePreviousReading
+
+        warpToFleetMemberProgressSinceUndock =
+            case currentReading.shipUI of
+                CanNotSeeIt ->
+                    Nothing
+
+                CanSee shipUI ->
+                    if
+                        (shipUI |> isShipWarpingOrJumping)
+                            && (botMemoryBefore.warpToFleetMemberProgressSinceUndock == Just WarpToFleetMemberCompletedMenu)
+                    then
+                        Just WarpToFleetMemberStartedWarp
+
+                    else
+                        botMemoryBefore.warpToFleetMemberProgressSinceUndock
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
@@ -878,6 +889,7 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
     , volumeUnloadedCubicMeters = volumeUnloadedCubicMeters
     , lastUsedCapacityInOreHold = lastUsedCapacityInOreHold
     , shipModules = botMemoryBefore.shipModules |> integrateCurrentReadingsIntoShipModulesMemory currentReading
+    , warpToFleetMemberProgressSinceUndock = warpToFleetMemberProgressSinceUndock
     }
 
 

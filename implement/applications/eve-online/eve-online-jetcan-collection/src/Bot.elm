@@ -1,4 +1,4 @@
-{- WIP 🚧 - EVE Online Cerberus jetcan collection bot version 2020-05-03
+{- WIP 🚧 - EVE Online Cerberus jetcan collection bot version 2020-05-04
 
    Work in progress 🚧 Direction: As described by Foivos Saropoulos aka Cerberus at https://forum.botengine.org/t/eve-jetcan-collection/3231/3?u=viir
 -}
@@ -352,20 +352,12 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                         )
 
                 else
-                    DescribeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
-                        (case context.parsedUserInterface.targets |> List.head of
-                            Nothing ->
-                                DescribeBranch "I see no locked target."
-                                    (travelToFleetMemberAndTargetJetcan context)
-
-                            Just _ ->
-                                DescribeBranch "I see a locked target."
-                                    (EndDecisionPath Wait)
-                        )
+                    DescribeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore from jet cans.")
+                        (getMoreOreFromJetCans context seeUndockingComplete)
 
 
-travelToFleetMemberAndTargetJetcan : BotDecisionContext -> DecisionPathNode
-travelToFleetMemberAndTargetJetcan context =
+getMoreOreFromJetCans : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
+getMoreOreFromJetCans context seeUndockingComplete =
     case context.memory.warpToFleetMemberProgressSinceUndock of
         Nothing ->
             warpToFleetMember context.parsedUserInterface
@@ -392,7 +384,60 @@ travelToFleetMemberAndTargetJetcan context =
                 Just jetcanInOverview ->
                     DescribeBranch
                         ("Choosing jetcan '" ++ (jetcanInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                        (lockTargetFromOverviewEntry jetcanInOverview)
+                        (if jetcanInOverview |> overviewEntryIsTargetedOrTargeting then
+                            let
+                                moduleIsActive =
+                                    seeUndockingComplete.shipUI.moduleButtons |> List.any (.isActive >> Maybe.withDefault False)
+
+                                keyDownAndKeyUpOnF5 =
+                                    [ VolatileHostInterface.KeyDown keyCodeF5
+                                    , VolatileHostInterface.KeyUp keyCodeF5
+                                    ]
+                            in
+                            case jetcanInOverview.objectDistanceInMeters of
+                                Err parseDistanceError ->
+                                    DescribeBranch ("Failed to parse distance: " ++ parseDistanceError) (EndDecisionPath Wait)
+
+                                Ok jetcanDistanceInMeters ->
+                                    if jetcanDistanceInMeters < 2000 then
+                                        if moduleIsActive then
+                                            DescribeBranch "Module is active."
+                                                (EndDecisionPath
+                                                    (actWithoutFurtherReadings
+                                                        ( "deactivate module with F5 again", keyDownAndKeyUpOnF5 )
+                                                    )
+                                                )
+
+                                        else
+                                            EndDecisionPath
+                                                (actStartingWithRightClickOnOverviewEntry
+                                                    jetcanInOverview
+                                                    [ ( "left click 'open cargo'"
+                                                      , lastContextMenuOrSubmenu
+                                                            >> Maybe.andThen (menuEntryContainingTextIgnoringCase "open cargo")
+                                                            >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                                                      )
+                                                    ]
+                                                )
+
+                                    else if moduleIsActive then
+                                        DescribeBranch "Module is active."
+                                            (DescribeBranch "wait for can to be within 2000m." (EndDecisionPath Wait))
+
+                                    else
+                                        EndDecisionPath
+                                            (actWithoutFurtherReadings
+                                                ( "enable module with keyboard button F5", keyDownAndKeyUpOnF5 )
+                                            )
+
+                         else
+                            lockTargetFromOverviewEntry jetcanInOverview
+                        )
+
+
+keyCodeF5 : VolatileHostInterface.VirtualKeyCode
+keyCodeF5 =
+    VolatileHostInterface.VirtualKeyCodeFromInt 0x74
 
 
 ensureOreHoldIsSelectedInInventoryWindow : ParsedUserInterface -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode

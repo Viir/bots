@@ -1,6 +1,6 @@
-{- WIP 🚧 - EVE Online Cerberus jetcan collection bot version 2020-05-04
+{- 🚧 EVE Online Cerberus jetcan collection bot version 2020-05-04 📦
 
-   Work in progress 🚧 Direction: As described by Foivos Saropoulos aka Cerberus at https://forum.botengine.org/t/eve-jetcan-collection/3231/3?u=viir
+   As described by Foivos Saropoulos aka Cerberus at https://forum.botengine.org/t/eve-jetcan-collection/3231/3?u=viir
 -}
 {-
    bot-catalog-tags:eve-online,mining,jetcan
@@ -157,9 +157,12 @@ decideNextAction context =
                 (runAwayIfHitpointsAreTooLow context)
                 (\seeUndockingComplete ->
                     DescribeBranch "I see we are in space, undocking complete."
-                        (ensureOreHoldIsSelectedInInventoryWindow
-                            context.parsedUserInterface
-                            (inSpaceWithOreHoldSelected context seeUndockingComplete)
+                        (transferItemsFromCargoContainerToOreHold context
+                            |> Maybe.withDefault
+                                (ensureOreHoldIsSelectedInInventoryWindow
+                                    context.parsedUserInterface
+                                    (inSpaceWithOreHoldSelected context seeUndockingComplete)
+                                )
                         )
                 )
                 context.parsedUserInterface
@@ -311,6 +314,56 @@ dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
                                 )
                             )
                         )
+
+
+transferItemsFromCargoContainerToOreHold : BotDecisionContext -> Maybe DecisionPathNode
+transferItemsFromCargoContainerToOreHold context =
+    case context.parsedUserInterface.inventoryWindows |> List.head of
+        Nothing ->
+            Nothing
+
+        Just inventoryWindow ->
+            if inventoryWindow |> inventoryWindowSelectedContainerIsJetCan |> not then
+                Nothing
+
+            else
+                case inventoryWindow |> selectedContainerFirstItemFromInventoryWindow of
+                    Nothing ->
+                        Nothing
+
+                    Just itemInInventory ->
+                        Just
+                            (DescribeBranch "I see at least one item in the cargo container. Move this to the ore hold."
+                                (case inventoryWindow |> activeShipTreeEntryFromInventoryWindow of
+                                    Nothing ->
+                                        DescribeBranch "I do not see the active ship in the inventory." (EndDecisionPath Wait)
+
+                                    Just activeShipTreeEntry ->
+                                        let
+                                            maybeOreHoldTreeEntry =
+                                                activeShipTreeEntry.children
+                                                    |> List.map EveOnline.ParseUserInterface.unwrapInventoryWindowLeftTreeEntryChild
+                                                    |> List.filter (.text >> String.toLower >> String.contains "ore hold")
+                                                    |> List.head
+                                        in
+                                        case maybeOreHoldTreeEntry of
+                                            Nothing ->
+                                                DescribeBranch "I do not see the ore hold in the inventory." (EndDecisionPath Wait)
+
+                                            Just oreHoldTreeEntry ->
+                                                EndDecisionPath
+                                                    (actWithoutFurtherReadings
+                                                        ( "Drag and drop."
+                                                        , [ VolatileHostInterface.SimpleDragAndDrop
+                                                                { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
+                                                                , endLocation = oreHoldTreeEntry.uiNode.totalDisplayRegion |> centerFromDisplayRegion
+                                                                , mouseButton = MouseButtonLeft
+                                                                }
+                                                          ]
+                                                        )
+                                                    )
+                                )
+                            )
 
 
 lastDockedStationNameFromInfoPanelFromMemoryOrSettings : BotDecisionContext -> Maybe String
@@ -1101,6 +1154,11 @@ inventoryWindowWithOreHoldSelectedFromUserInterface =
 inventoryWindowSelectedContainerIsOreHold : EveOnline.ParseUserInterface.InventoryWindow -> Bool
 inventoryWindowSelectedContainerIsOreHold =
     .subCaptionLabelText >> Maybe.map (String.toLower >> String.contains "ore hold") >> Maybe.withDefault False
+
+
+inventoryWindowSelectedContainerIsJetCan : EveOnline.ParseUserInterface.InventoryWindow -> Bool
+inventoryWindowSelectedContainerIsJetCan =
+    .subCaptionLabelText >> Maybe.map (String.toLower >> String.contains "cargo container") >> Maybe.withDefault False
 
 
 selectedContainerFirstItemFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe UIElement

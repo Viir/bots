@@ -327,7 +327,7 @@ inSpaceWithOreHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOn
 inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHoldSelected =
     if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
         DescribeBranch "I see we are warping."
-            (EndDecisionPath Wait)
+            (readShipUIModuleButtonTooltips context |> Maybe.withDefault (EndDecisionPath Wait))
 
     else
         case inventoryWindowWithOreHoldSelected |> capacityGaugeUsedPercent of
@@ -378,7 +378,7 @@ getMoreOreFromJetCans context seeUndockingComplete =
                 Nothing ->
                     DescribeBranch "I see no jetcan in the overview."
                         (DescribeBranch "wait for next can (this may be a long period some times above 10 minutes)"
-                            (EndDecisionPath Wait)
+                            (readShipUIModuleButtonTooltips context |> Maybe.withDefault (EndDecisionPath Wait))
                         )
 
                 Just jetcanInOverview ->
@@ -994,6 +994,31 @@ integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
     { tooltipFromModuleButton = tooltipFromModuleButton
     , lastReadingTooltip = currentReading.moduleButtonTooltip
     }
+
+
+readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
+readShipUIModuleButtonTooltips context =
+    context.parsedUserInterface.shipUI
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filter
+            (\moduleButton ->
+                (context.memory.shipModules.tooltipFromModuleButton |> Dict.get (moduleButton |> getModuleButtonIdentifierInMemory))
+                    == Nothing
+            )
+        |> List.head
+        |> Maybe.map
+            (\moduleButtonWithoutMemoryOfTooltip ->
+                EndDecisionPath
+                    (actWithoutFurtherReadings
+                        ( "Read tooltip for module button"
+                        , [ VolatileHostInterface.MouseMoveTo
+                                { location = moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion }
+                          ]
+                        )
+                    )
+            )
 
 
 unpackToDecisionStagesDescriptionsAndLeaf : DecisionPathNode -> ( List String, EndDecisionPathStructure )

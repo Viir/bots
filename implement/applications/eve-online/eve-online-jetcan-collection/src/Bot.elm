@@ -1,4 +1,4 @@
-{- 🚧 EVE Online Cerberus jetcan collection bot version 2020-05-04 📦
+{- 🚧 EVE Online Cerberus jetcan collection bot version 2020-05-06 📦
 
    As described by Foivos Saropoulos aka Cerberus at https://forum.botengine.org/t/eve-jetcan-collection/3231/3?u=viir
 -}
@@ -613,16 +613,21 @@ warpToFleetMember parsedUserInterface =
                     EndDecisionPath
                         (Act
                             { actionsAlreadyDecided =
-                                ( "Right click on pilot in chat."
+                                ( "right mouse click on fleet chat the character name."
                                 , [ chatMemberInYourFleet.uiNode |> clickOnUIElement MouseButtonRight ]
                                 )
                             , actionsDependingOnNewReadings =
-                                [ ( "Click on menu entry 'warp to member within'."
+                                [ ( "then point mouse at “Fleet”"
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "fleet")
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                                  )
+                                , ( "point mouse at “warp to member within”"
                                   , lastContextMenuOrSubmenu
                                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "warp to member within")
                                         >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
                                   )
-                                , ( "Click menu entry 'warp to 0'"
+                                , ( "point mouse to “warp to 0”, left mouse click."
                                   , lastContextMenuOrSubmenu
                                         >> Maybe.andThen (menuEntryContainingTextIgnoringCase "warp to 0")
                                         >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)

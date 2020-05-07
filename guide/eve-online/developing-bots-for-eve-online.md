@@ -1,16 +1,16 @@
-# Developing Bots for EVE Online
+# Developing for EVE Online
 
-Do you want to learn how to build a bot or intel tool for EVE Online or customize an existing one? This guide explains the process I use to make these apps.
+Do you want to learn how to build a bot or intel tool for EVE Online or customize an existing one? This guide shows you how I make apps like these.
 
 In part, this is a summary of my ~~failings~~ learnings from development projects. But most importantly, this guide lives from and evolves with your questions, so thank you for the feedback!
 
-Wondering what outcome to expect? Two examples are the [mining bot](https://github.com/Viir/bots/blob/master/guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md) and [warp-to-0 autopilot](https://github.com/Viir/bots/blob/master/guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md).
+Wondering what outcome to expect? Two examples are the [mining bot](https://to.botengine.org/guide/app/eve-online-mining-bot) and [warp-to-0 autopilot](https://to.botengine.org/guide/app/eve-online-autopilot-bot).
 
 ## Scope and Overall Direction
 
-My way of working is just one out of many, reflecting the kinds of projects I work on and my preferences. Important to me are simplicity, sustainability, and robustness. That is why I select methods that are easy to explain and have a low maintenance effort.
+My way of working is just one out of many, reflecting the kinds of projects I work on and my preferences. I select methods that are simple and easy to explain and lead to software with low maintenance costs.
 
-For those who already have some experience in software development, I compiled the following overview of my technical decisions:
+For those who already have some experience in software development, I compiled the following overview of my technical decisions (If you have no experience in programming, this list probably is less interesting, feel free to skip it):
 
 + I do not write into the game client's memory or use injection. These techniques can allow for more direct control of the game. A downside of these methods is they enable CCP to detect the presence of the foreign program. Another reason I don't use injection is the more complex concept makes it harder to learn and maintain implementations. For my projects, I stay close to the user interface and control the game by sending mouse and keyboard input.
 

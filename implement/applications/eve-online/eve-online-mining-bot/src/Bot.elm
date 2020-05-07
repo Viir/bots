@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-04-26
+{- EVE Online mining bot version 2020-05-07
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -148,7 +148,7 @@ type alias BotState =
 
 
 type alias State =
-    EveOnline.BotFramework.StateIncludingFramework BotState
+    EveOnline.BotFramework.StateIncludingFramework BotSettings BotState
 
 
 {-| A first outline of the decision tree for a mining bot came from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
@@ -848,23 +848,19 @@ initShipModulesMemory =
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
-    EveOnline.BotFramework.processEvent processEveOnlineBotEvent
+    EveOnline.BotFramework.processEvent
+        { processEvent = processEveOnlineBotEvent
+        , parseAppSettings = parseSettingsFromString defaultBotSettings
+        }
 
 
 processEveOnlineBotEvent :
-    EveOnline.BotFramework.BotEventContext
+    EveOnline.BotFramework.BotEventContext BotSettings
     -> EveOnline.BotFramework.BotEvent
     -> BotState
     -> ( BotState, EveOnline.BotFramework.BotEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
-    case parseSettingsFromString defaultBotSettings (eventContext.appSettings |> Maybe.withDefault "") of
-        Err parseSettingsError ->
-            ( stateBefore
-            , EveOnline.BotFramework.FinishSession { statusDescriptionText = "Failed to parse bot settings: " ++ parseSettingsError }
-            )
-
-        Ok settings ->
-            processEveOnlineBotEventWithSettings settings event stateBefore
+    processEveOnlineBotEventWithSettings (eventContext.appSettings |> Maybe.withDefault defaultBotSettings) event stateBefore
 
 
 processEveOnlineBotEventWithSettings :

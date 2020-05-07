@@ -3,7 +3,7 @@
    + Read from the game client using Sanderling memory reading and parse the user interface from the memory reading (https://github.com/Arcitectus/Sanderling).
    + Play sounds.
    + Send mouse and keyboard input to the game client.
-   + Forward the app settings from the host.
+   + Parse the app-settings and inform the user about the result.
 
    The framework automatically selects an EVE Online client process and finishes the session when that process disappears.
    When multiple game clients are open, the framework prioritizes the one with the topmost window. This approach helps users control which game client is picked by an app.
@@ -53,20 +53,20 @@ type BotEffect
     | EffectConsoleBeepSequence (List ConsoleBeepStructure)
 
 
-type alias BotEventContext =
+type alias BotEventContext appSettings =
     { timeInMilliseconds : Int
-    , appSettings : Maybe String
+    , appSettings : Maybe appSettings
     , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
 
-type alias StateIncludingFramework botState =
+type alias StateIncludingFramework appSettings botState =
     { setup : SetupState
     , botState : BotAndLastEventState botState
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
     , taskInProgress : Maybe { startTimeInMilliseconds : Int, taskIdString : String, taskDescription : String }
-    , appSettings : Maybe String
+    , appSettings : Maybe appSettings
     , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
@@ -126,7 +126,7 @@ initSetup =
     }
 
 
-initState : botState -> StateIncludingFramework botState
+initState : botState -> StateIncludingFramework appSettings botState
 initState botState =
     { setup = initSetup
     , botState =
@@ -143,19 +143,78 @@ initState botState =
 
 
 processEvent :
-    (BotEventContext -> BotEvent -> botState -> ( botState, BotEventResponse ))
+    { processEvent : BotEventContext appSettings -> BotEvent -> botState -> ( botState, BotEventResponse )
+    , parseAppSettings : String -> Result String appSettings
+    }
     -> InterfaceToHost.BotEvent
-    -> StateIncludingFramework botState
-    -> ( StateIncludingFramework botState, InterfaceToHost.BotResponse )
-processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
+    -> StateIncludingFramework appSettings botState
+    -> ( StateIncludingFramework appSettings botState, InterfaceToHost.BotResponse )
+processEvent appConfiguration fromHostEvent stateBefore =
     let
-        ( stateBefore, maybeBotEvent ) =
-            stateBeforeIntegratingEvent |> integrateFromHostEvent fromHostEvent
+        continueAfterIntegrateEvent =
+            processEventAfterIntegrateEvent { processEvent = appConfiguration.processEvent }
+    in
+    case fromHostEvent of
+        InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
+            continueAfterIntegrateEvent Nothing { stateBefore | timeInMilliseconds = timeInMilliseconds }
 
+        InterfaceToHost.CompletedTask taskComplete ->
+            let
+                ( setupState, maybeBotEventFromTaskComplete ) =
+                    stateBefore.setup
+                        |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
+            in
+            continueAfterIntegrateEvent
+                maybeBotEventFromTaskComplete
+                { stateBefore | setup = setupState, taskInProgress = Nothing }
+
+        InterfaceToHost.SetAppSettings appSettings ->
+            case appConfiguration.parseAppSettings appSettings of
+                Err parseSettingsError ->
+                    ( stateBefore
+                    , InterfaceToHost.FinishSession { statusDescriptionText = "Failed to parse these app-settings: " ++ parseSettingsError }
+                    )
+
+                Ok parsedAppSettings ->
+                    ( { stateBefore | appSettings = Just parsedAppSettings }
+                    , InterfaceToHost.ContinueSession
+                        { statusDescriptionText = "Succeeded parsing these app-settings."
+                        , startTasks = []
+                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
+                        }
+                    )
+
+        InterfaceToHost.SetSessionTimeLimit sessionTimeLimit ->
+            continueAfterIntegrateEvent
+                Nothing
+                { stateBefore | sessionTimeLimitInMilliseconds = Just sessionTimeLimit.timeInMilliseconds }
+
+
+processEventAfterIntegrateEvent :
+    { processEvent : BotEventContext appSettings -> BotEvent -> botState -> ( botState, BotEventResponse )
+    }
+    -> Maybe BotEvent
+    -> StateIncludingFramework appSettings botState
+    -> ( StateIncludingFramework appSettings botState, InterfaceToHost.BotResponse )
+processEventAfterIntegrateEvent appConfiguration maybeBotEvent stateBefore =
+    let
         ( state, responseBeforeAddingStatusMessage ) =
             case stateBefore.taskInProgress of
                 Nothing ->
-                    processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefore
+                    processEventNotWaitingForTaskCompletion
+                        appConfiguration.processEvent
+                        (maybeBotEvent
+                            |> Maybe.map
+                                (\botEvent ->
+                                    ( botEvent
+                                    , { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                      , appSettings = stateBefore.appSettings
+                                      , sessionTimeLimitInMilliseconds = stateBefore.sessionTimeLimitInMilliseconds
+                                      }
+                                    )
+                                )
+                        )
+                        stateBefore
 
                 Just taskInProgress ->
                     ( stateBefore
@@ -187,10 +246,10 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
 
 
 processEventNotWaitingForTaskCompletion :
-    (BotEventContext -> BotEvent -> botState -> ( botState, BotEventResponse ))
-    -> Maybe ( BotEvent, BotEventContext )
-    -> StateIncludingFramework botState
-    -> ( StateIncludingFramework botState, InterfaceToHost.BotResponse )
+    (BotEventContext appSettings -> BotEvent -> botState -> ( botState, BotEventResponse ))
+    -> Maybe ( BotEvent, BotEventContext appSettings )
+    -> StateIncludingFramework appSettings botState
+    -> ( StateIncludingFramework appSettings botState, InterfaceToHost.BotResponse )
 processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefore =
     case stateBefore.setup |> getNextSetupTask of
         ContinueSetup setupState setupTask setupTaskDescription ->
@@ -394,8 +453,12 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
             )
 
 
-integrateFromHostEvent : InterfaceToHost.BotEvent -> StateIncludingFramework a -> ( StateIncludingFramework a, Maybe ( BotEvent, BotEventContext ) )
-integrateFromHostEvent fromHostEvent stateBefore =
+integrateFromHostEvent :
+    (String -> Result String appSettings)
+    -> InterfaceToHost.BotEvent
+    -> StateIncludingFramework appSettings a
+    -> ( StateIncludingFramework appSettings a, Maybe ( BotEvent, BotEventContext appSettings ) )
+integrateFromHostEvent parseAppSettings fromHostEvent stateBefore =
     let
         ( state, maybeBotEvent ) =
             case fromHostEvent of
@@ -411,7 +474,13 @@ integrateFromHostEvent fromHostEvent stateBefore =
                     ( { stateBefore | setup = setupState, taskInProgress = Nothing }, maybeBotEventFromTaskComplete )
 
                 InterfaceToHost.SetAppSettings appSettings ->
-                    ( { stateBefore | appSettings = Just appSettings }, Nothing )
+                    case parseAppSettings appSettings of
+                        Err parseError ->
+                            -- TODO: ! Forward error message and finish session.
+                            ( stateBefore, Nothing )
+
+                        Ok parsedAppSettings ->
+                            ( { stateBefore | appSettings = Just parsedAppSettings }, Nothing )
 
                 InterfaceToHost.SetSessionTimeLimit sessionTimeLimit ->
                     ( { stateBefore | sessionTimeLimitInMilliseconds = Just sessionTimeLimit.timeInMilliseconds }, Nothing )
@@ -696,7 +765,7 @@ requestToVolatileHostResultDisplayString result =
             { string = "Success: " ++ (runInVolatileHostComplete.returnValueToString |> Maybe.withDefault "null"), isErr = False }
 
 
-statusReportFromState : StateIncludingFramework s -> String
+statusReportFromState : StateIncludingFramework appSettings s -> String
 statusReportFromState state =
     let
         fromBot =

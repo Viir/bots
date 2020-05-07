@@ -1,4 +1,4 @@
-# EVE Online anomaly ratting bot
+# EVE Online Anomaly Ratting Bot
 
 This bot uses the probe scanner to warp to anomalies and kills rats using drones and weapon modules. 
 

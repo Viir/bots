@@ -1,4 +1,4 @@
-# How to Automate Mining Asteroids in EVE Online
+# EVE Online Mining Bot
 
 For this guide, I picked a mining bot optimal for beginners, which means easy to set up and use. After several iterations in development, this bot has matured to be robust regarding interruptions and changes in the game environment.
 

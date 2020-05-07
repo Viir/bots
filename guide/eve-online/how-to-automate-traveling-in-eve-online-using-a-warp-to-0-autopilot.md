@@ -1,4 +1,4 @@
-# How to Automate Traveling in EVE Online - Using a Warp-To-0 Autopilot
+# EVE Online Warp-To-0 Autopilot Bot
 
 When playing EVE Online, you might spend significant time traveling between solar systems. This activity is so common that there is even an in-game autopilot to automate this process. But that autopilot has a critical flaw: It is quite inefficient and will cause long travel times. You can travel faster by manually commanding your ship.
 

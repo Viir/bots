@@ -35,7 +35,7 @@ import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseB
 
 finishSessionAfterInactivityMinutes : Int
 finishSessionAfterInactivityMinutes =
-    3
+    4
 
 
 {-| To support the feature that finishes the session some time of inactivity, it needs to remember the time of the last activity.
@@ -71,61 +71,62 @@ processEveOnlineBotEvent eventContext event stateBefore =
     case event of
         EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
             let
-                ( effects, statusMessage ) =
-                    botEffectsFromGameClientState parsedUserInterface
-
-                ( lastActivityTime, millisecondsToNextReadingFromGame ) =
-                    if effects |> List.isEmpty then
-                        ( stateBefore.lastActivityTime, 4000 )
-
-                    else
-                        ( eventContext.timeInMilliseconds // 1000, 2000 )
-            in
-            if 60 * finishSessionAfterInactivityMinutes < eventContext.timeInMilliseconds // 1000 - lastActivityTime then
-                ( stateBefore
-                , EveOnline.BotFramework.FinishSession
-                    { statusDescriptionText =
-                        "I finish this session because there was nothing to do for me in the last "
-                            ++ (finishSessionAfterInactivityMinutes |> String.fromInt)
-                            ++ " minutes."
-                    }
-                )
-
-            else
-                ( { stateBefore | lastActivityTime = lastActivityTime }
-                , EveOnline.BotFramework.ContinueSession
-                    { effects = effects
-                    , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
-                    , statusDescriptionText = statusMessage
-                    }
-                )
-
-
-botEffectsFromGameClientState : ParsedUserInterface -> ( List BotEffect, String )
-botEffectsFromGameClientState parsedUserInterface =
-    case parsedUserInterface |> infoPanelRouteFirstMarkerFromParsedUserInterface of
-        Nothing ->
-            ( []
-            , "I see no route in the info panel. I will start when a route is set."
-            )
-
-        Just infoPanelRouteFirstMarker ->
-            case parsedUserInterface.shipUI of
-                CanNotSeeIt ->
-                    ( []
-                    , "I cannot see if the ship is warping or jumping. I wait for the ship UI to appear on the screen."
+                continueWaiting statusDescriptionText =
+                    ( stateBefore
+                    , EveOnline.BotFramework.ContinueSession
+                        { millisecondsToNextReadingFromGame = 3000
+                        , statusDescriptionText = statusDescriptionText
+                        , effects = []
+                        }
                     )
 
-                CanSee shipUi ->
-                    if shipUi |> isShipWarpingOrJumping then
-                        ( []
-                        , "I see the ship is warping or jumping. I wait until that maneuver ends."
+                continueWithCurrentEffects ( effects, statusDescriptionText ) =
+                    let
+                        lastActivityTime =
+                            if effects |> List.isEmpty then
+                                stateBefore.lastActivityTime
+
+                            else
+                                eventContext.timeInMilliseconds // 1000
+                    in
+                    if 60 * finishSessionAfterInactivityMinutes < eventContext.timeInMilliseconds // 1000 - lastActivityTime then
+                        ( stateBefore
+                        , EveOnline.BotFramework.FinishSession
+                            { statusDescriptionText =
+                                "I finish this session because there was nothing to do for me in the last "
+                                    ++ (finishSessionAfterInactivityMinutes |> String.fromInt)
+                                    ++ " minutes."
+                            }
                         )
 
                     else
-                        botEffectsWhenNotWaitingForShipManeuver
-                            parsedUserInterface
-                            infoPanelRouteFirstMarker
+                        ( { stateBefore | lastActivityTime = lastActivityTime }
+                        , EveOnline.BotFramework.ContinueSession
+                            { millisecondsToNextReadingFromGame = 2000
+                            , effects = effects
+                            , statusDescriptionText = statusDescriptionText
+                            }
+                        )
+            in
+            case parsedUserInterface |> infoPanelRouteFirstMarkerFromParsedUserInterface of
+                Nothing ->
+                    continueWithCurrentEffects
+                        ( [], "I see no route in the info panel. I will start when a route is set." )
+
+                Just infoPanelRouteFirstMarker ->
+                    case parsedUserInterface.shipUI of
+                        CanNotSeeIt ->
+                            continueWithCurrentEffects
+                                ( [], "I do not see the ship UI. Looks like we are docked." )
+
+                        CanSee shipUi ->
+                            if shipUi |> isShipWarpingOrJumping then
+                                continueWaiting
+                                    "I see the ship is warping or jumping. I wait until that maneuver ends."
+
+                            else
+                                continueWithCurrentEffects
+                                    (botEffectsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstMarker)
 
 
 botEffectsWhenNotWaitingForShipManeuver :

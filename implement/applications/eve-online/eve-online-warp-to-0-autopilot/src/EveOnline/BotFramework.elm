@@ -453,52 +453,6 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
             )
 
 
-integrateFromHostEvent :
-    (String -> Result String appSettings)
-    -> InterfaceToHost.BotEvent
-    -> StateIncludingFramework appSettings a
-    -> ( StateIncludingFramework appSettings a, Maybe ( BotEvent, BotEventContext appSettings ) )
-integrateFromHostEvent parseAppSettings fromHostEvent stateBefore =
-    let
-        ( state, maybeBotEvent ) =
-            case fromHostEvent of
-                InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
-                    ( { stateBefore | timeInMilliseconds = timeInMilliseconds }, Nothing )
-
-                InterfaceToHost.CompletedTask taskComplete ->
-                    let
-                        ( setupState, maybeBotEventFromTaskComplete ) =
-                            stateBefore.setup
-                                |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
-                    in
-                    ( { stateBefore | setup = setupState, taskInProgress = Nothing }, maybeBotEventFromTaskComplete )
-
-                InterfaceToHost.SetAppSettings appSettings ->
-                    case parseAppSettings appSettings of
-                        Err parseError ->
-                            -- TODO: ! Forward error message and finish session.
-                            ( stateBefore, Nothing )
-
-                        Ok parsedAppSettings ->
-                            ( { stateBefore | appSettings = Just parsedAppSettings }, Nothing )
-
-                InterfaceToHost.SetSessionTimeLimit sessionTimeLimit ->
-                    ( { stateBefore | sessionTimeLimitInMilliseconds = Just sessionTimeLimit.timeInMilliseconds }, Nothing )
-    in
-    ( state
-    , maybeBotEvent
-        |> Maybe.map
-            (\botEvent ->
-                ( botEvent
-                , { timeInMilliseconds = state.timeInMilliseconds
-                  , appSettings = state.appSettings
-                  , sessionTimeLimitInMilliseconds = state.sessionTimeLimitInMilliseconds
-                  }
-                )
-            )
-    )
-
-
 integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe BotEvent )
 integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
     case taskResult of

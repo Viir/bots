@@ -27,6 +27,7 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import Common.AppSettings as AppSettings
 import Dict
 import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
 import EveOnline.ParseUserInterface
@@ -39,7 +40,6 @@ import EveOnline.ParseUserInterface
         , maybeVisibleAndThen
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
-import Result.Extra
 import Set
 
 
@@ -59,30 +59,32 @@ defaultBotSettings =
     }
 
 
-{-| Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot>
--}
-parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
-parseBotSettingsNames =
-    [ ( "run-away-shield-hitpoints-threshold-percent"
-      , parseBotSettingInt (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
-      )
-    , ( "targeting-range"
-      , parseBotSettingInt (\range settings -> { settings | targetingRange = range })
-      )
-    , ( "mining-module-range"
-      , parseBotSettingInt (\range settings -> { settings | miningModuleRange = range })
-      )
-    , ( "bot-step-delay"
-      , parseBotSettingInt (\delay settings -> { settings | botStepDelayMilliseconds = delay })
-      )
-    , ( "last-docked-station-name-from-info-panel"
-      , \stationName -> Ok (\settings -> { settings | lastDockedStationNameFromInfoPanel = Just stationName })
-      )
-    , ( "ore-hold-max-percent"
-      , parseBotSettingInt (\percent settings -> { settings | oreHoldMaxPercent = percent })
-      )
-    ]
-        |> Dict.fromList
+parseBotSettings : String -> Result String BotSettings
+parseBotSettings =
+    AppSettings.parseSimpleCommaSeparatedList
+        {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
+        ([ ( "run-away-shield-hitpoints-threshold-percent"
+           , AppSettings.ValueTypeInteger (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
+           )
+         , ( "targeting-range"
+           , AppSettings.ValueTypeInteger (\range settings -> { settings | targetingRange = range })
+           )
+         , ( "mining-module-range"
+           , AppSettings.ValueTypeInteger (\range settings -> { settings | miningModuleRange = range })
+           )
+         , ( "bot-step-delay"
+           , AppSettings.ValueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
+           )
+         , ( "last-docked-station-name-from-info-panel"
+           , AppSettings.ValueTypeString (\stationName -> \settings -> { settings | lastDockedStationNameFromInfoPanel = Just stationName })
+           )
+         , ( "ore-hold-max-percent"
+           , AppSettings.ValueTypeInteger (\percent settings -> { settings | oreHoldMaxPercent = percent })
+           )
+         ]
+            |> Dict.fromList
+        )
+        defaultBotSettings
 
 
 type alias BotSettings =
@@ -850,7 +852,7 @@ processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.Bot
 processEvent =
     EveOnline.BotFramework.processEvent
         { processEvent = processEveOnlineBotEvent
-        , parseAppSettings = parseSettingsFromString defaultBotSettings
+        , parseAppSettings = parseBotSettings
         }
 
 
@@ -1289,49 +1291,3 @@ listElementAtWrappedIndex indexToWrap list =
 
     else
         list |> List.drop (indexToWrap |> modBy (list |> List.length)) |> List.head
-
-
-parseBotSettingInt : (Int -> BotSettings -> BotSettings) -> String -> Result String (BotSettings -> BotSettings)
-parseBotSettingInt integrateInt argumentAsString =
-    case argumentAsString |> String.toInt of
-        Nothing ->
-            Err ("Failed to parse '" ++ argumentAsString ++ "' as integer.")
-
-        Just int ->
-            Ok (integrateInt int)
-
-
-parseSettingsFromString : BotSettings -> String -> Result String BotSettings
-parseSettingsFromString settingsBefore settingsString =
-    let
-        assignments =
-            settingsString |> String.split ","
-
-        assignmentFunctionResults =
-            assignments
-                |> List.map String.trim
-                |> List.filter (String.isEmpty >> not)
-                |> List.map
-                    (\assignment ->
-                        case assignment |> String.split "=" |> List.map String.trim of
-                            [ settingName, assignedValue ] ->
-                                case parseBotSettingsNames |> Dict.get settingName of
-                                    Nothing ->
-                                        Err ("Unknown setting name '" ++ settingName ++ "'.")
-
-                                    Just parseFunction ->
-                                        parseFunction assignedValue
-                                            |> Result.mapError (\parseError -> "Failed to parse value for setting '" ++ settingName ++ "': " ++ parseError)
-
-                            _ ->
-                                Err ("Failed to parse assignment '" ++ assignment ++ "'.")
-                    )
-    in
-    assignmentFunctionResults
-        |> Result.Extra.combine
-        |> Result.map
-            (\assignmentFunctions ->
-                assignmentFunctions
-                    |> List.foldl (\assignmentFunction previousSettings -> assignmentFunction previousSettings)
-                        settingsBefore
-            )

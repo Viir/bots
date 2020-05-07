@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-04-15
+{- Tribal Wars 2 farmbot version 2020-05-07
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -43,6 +43,7 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import Common.AppSettings as AppSettings
 import Dict
 import Json.Decode
 import Json.Encode
@@ -61,14 +62,18 @@ defaultBotSettings =
     }
 
 
-parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
-parseBotSettingsNames =
-    [ ( "number-of-farm-cycles", parseBotSettingInt (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles }) )
-    , ( "break-duration", parseBotSettingBreakDurationMinutes )
-    , ( "farm-barb-min-points", parseBotSettingInt (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }) )
-    , ( "farm-barb-max-distance", parseBotSettingInt (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance }) )
-    ]
-        |> Dict.fromList
+parseBotSettings : String -> Result String BotSettings
+parseBotSettings =
+    AppSettings.parseSimpleCommaSeparatedList
+        {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
+        ([ ( "number-of-farm-cycles", AppSettings.ValueTypeInteger (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles }) )
+         , ( "break-duration", AppSettings.ValueTypeCustom parseBotSettingBreakDurationMinutes )
+         , ( "farm-barb-min-points", AppSettings.ValueTypeInteger (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }) )
+         , ( "farm-barb-max-distance", AppSettings.ValueTypeInteger (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance }) )
+         ]
+            |> Dict.fromList
+        )
+        defaultBotSettings
 
 
 farmArmyPresetNamePattern : String
@@ -605,52 +610,6 @@ decideNextAction { lastPageLocation } stateBefore =
             )
 
 
-parseBotSettingInt : (Int -> BotSettings -> BotSettings) -> String -> Result String (BotSettings -> BotSettings)
-parseBotSettingInt integrateInt argumentAsString =
-    case argumentAsString |> String.toInt of
-        Nothing ->
-            Err ("Failed to parse '" ++ argumentAsString ++ "' as a whole number (integer).")
-
-        Just int ->
-            Ok (integrateInt int)
-
-
-parseSettingsFromString : BotSettings -> String -> Result String BotSettings
-parseSettingsFromString settingsBefore settingsString =
-    let
-        assignments =
-            settingsString |> String.split ","
-
-        assignmentFunctionResults =
-            assignments
-                |> List.map String.trim
-                |> List.filter (String.isEmpty >> not)
-                |> List.map
-                    (\assignment ->
-                        case assignment |> String.split "=" |> List.map String.trim of
-                            [ settingName, assignedValue ] ->
-                                case parseBotSettingsNames |> Dict.get settingName of
-                                    Nothing ->
-                                        Err ("Unknown setting name '" ++ settingName ++ "'.")
-
-                                    Just parseFunction ->
-                                        parseFunction assignedValue
-                                            |> Result.mapError (\parseError -> "Failed to parse value for setting '" ++ settingName ++ "': " ++ parseError)
-
-                            _ ->
-                                Err ("Failed to parse assignment '" ++ assignment ++ "'.")
-                    )
-    in
-    assignmentFunctionResults
-        |> Result.Extra.combine
-        |> Result.map
-            (\assignmentFunctions ->
-                assignmentFunctions
-                    |> List.foldl (\assignmentFunction previousSettings -> assignmentFunction previousSettings)
-                        settingsBefore
-            )
-
-
 parseBotSettingBreakDurationMinutes : String -> Result String (BotSettings -> BotSettings)
 parseBotSettingBreakDurationMinutes breakDurationString =
     let
@@ -678,7 +637,7 @@ integrateWebBrowserBotEvent event stateBefore =
         BotFramework.SetAppSettings settingsString ->
             let
                 parseSettingsResult =
-                    parseSettingsFromString defaultBotSettings settingsString
+                    parseBotSettings settingsString
             in
             parseSettingsResult
                 |> Result.map

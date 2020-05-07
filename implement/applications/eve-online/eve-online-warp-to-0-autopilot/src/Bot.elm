@@ -20,6 +20,7 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import Common.AppSettings
 import EveOnline.BotFramework exposing (BotEffect(..))
 import EveOnline.ParseUserInterface
     exposing
@@ -58,7 +59,7 @@ processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.Bot
 processEvent =
     EveOnline.BotFramework.processEvent
         { processEvent = processEveOnlineBotEvent
-        , parseAppSettings = always (Ok ())
+        , parseAppSettings = Common.AppSettings.parseAllowOnlyEmpty ()
         }
 
 

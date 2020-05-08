@@ -122,6 +122,7 @@ To achieve this, we combine the following tools:
 + Elm command line program
 + Visual Studio Code
 + elmtooling.elm-ls-vscode
++ elm-format
 
 The following subsections explain in detail how to set up these tools.
 
@@ -197,6 +198,21 @@ When you save the file (`Ctrl + S`), the VSCode extension starts Elm in the back
 When you hover the mouse cursor over the highlighted text, a popup window shows more details. Here you find the message we get from Elm:
 
 ![Visual Studio Code displays diagnostics from Elm - details on hover](./../image/2020-01-20.vscode-elm-display-error-hover.png)
+
+### elm-format
+
+elm-format is a tool we use to format the text in the apps code files. This tool arranges program codes in a standard way - without changing the function. This consistent formatting makes the code easier to read. Using this standardized layout is especially useful when collaborating with other people or asking for help with coding.
+
+The easiest way to use elm-format is by integrating it with VSCode, the same way as we did with the Elm command line program above.
+
+You can download a zip-archive containing the executable program from https://github.com/avh4/elm-format/releases/download/0.8.3/elm-format-0.8.3-win-i386.zip
+Extracting that zip-archive gets you the file `elm-format.exe`.
+
+To integrate it with VSCode, navigate again to the `Elm LS` extension settings as we did for the other settings earlier. Here, enter the path to the `elm-format.exe` file in the text box under `Elm Format Path`, as shown in this image:
+
+![Elm extension setting elm-format](./../image/2020-05-08-vscode-settings-extension-elm-format.png)
+
+Now you can invoke the formatting using the `Format Document` command in the VSCode editor. An easy way to test if the formatting works is to open an `.elm` file from the example projects and add a blank line between two functions. As we can see in the example projects, the standard format is to have two empty lines between function definitions. When you add a third one in between, you can see it revert to two blank lines as soon as you invoke the formatting.
 
 ## Bot Code
 

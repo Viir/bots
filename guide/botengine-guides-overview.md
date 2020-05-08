@@ -1,9 +1,9 @@
 
 ## Guides
 
-+ [Developing for EVE Online](https://github.com/Viir/bots/blob/master/guide/eve-online/developing-bots-for-eve-online.md): Learn how to use the framework behind the most advanced EVE Online bots and intel tools.
++ [Developing for EVE Online](https://to.botengine.org/guide/developing-for-eve-online): Learn how to use the framework behind the most advanced EVE Online bots and intel tools.
 
-+ [Parsed User Interface of the EVE Online Game Client](https://github.com/Viir/bots/blob/master/guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md): Find things faster in the EVE Online game client user interface.
++ [Parsed User Interface of the EVE Online Game Client](https://to.botengine.org/guide/parsed-user-interface-of-the-eve-online-game-client): Find things faster in the EVE Online game client user interface.
 
 + [Walkthrough, Programming]: Programming an EVE Online mining bot to defend against rats: [https://youtu.be/dgV9Ce7f03I](https://youtu.be/dgV9Ce7f03I)
 

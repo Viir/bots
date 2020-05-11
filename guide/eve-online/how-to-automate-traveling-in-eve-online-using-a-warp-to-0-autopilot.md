@@ -5,7 +5,7 @@ When playing EVE Online, you might spend significant time traveling between sola
 Fortunately, this process can be automated using a bot. The bot we are using here follows the route set in the in-game autopilot and uses the context menu to initiate warp and dock commands. Using the following steps, you can set up your warp-to-0 auto-pilot bot, to travel fast and safe in EVE Online.
 
 + Download the BotEngine Windows console app from 
-[https://botengine.blob.core.windows.net/blob-library/by-name/2020-04-20-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-04-20-botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
+[https://botengine.blob.core.windows.net/blob-library/by-name/2020-05-11-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-05-11-botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
 + Start the EVE Online client and log in to the game.
 + To start the autopilot bot, run the `BotEngine.exe` program with the following command:
 

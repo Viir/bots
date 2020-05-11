@@ -1,7 +1,8 @@
-{- EVE Online mining bot version 2020-05-07
+{- EVE Online mining bot version 2020-05-07 - 2020-05-11 Nitrucks
+   Adapted for 2020-05-11 scenario from Nitrucks at https://forum.botengine.org/t/mining-bot-failing-to-press-stations/3289/4?u=viir
 
-   The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
-   It remembers the station in which it was last docked, and docks again at the same station.
+   The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a structure to unload the ore. It then repeats this cycle until you stop it.
+   It remembers the station in which it was last docked.
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -593,9 +594,9 @@ dockToStationUsingSurroundingsButtonMenu :
     -> DecisionPathNode
 dockToStationUsingSurroundingsButtonMenu ( describeChooseStation, chooseStationMenuEntry ) =
     useContextMenuOnListSurroundingsButton
-        [ ( "Click on menu entry 'stations'."
+        [ ( "Click on menu entry 'structures'."
           , lastContextMenuOrSubmenu
-                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "stations")
+                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "structures")
                 >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
           )
         , ( describeChooseStation

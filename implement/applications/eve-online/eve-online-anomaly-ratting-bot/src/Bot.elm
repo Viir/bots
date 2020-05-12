@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-05-07
+{- EVE Online anomaly ratting bot version 2020-05-12
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -527,18 +527,12 @@ processEveOnlineBotEvent :
     -> BotState
     -> ( BotState, EveOnline.BotFramework.BotEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
-    processEveOnlineBotEventWithSettings (eventContext.appSettings |> Maybe.withDefault defaultBotSettings) event stateBefore
-
-
-processEveOnlineBotEventWithSettings :
-    BotSettings
-    -> EveOnline.BotFramework.BotEvent
-    -> BotState
-    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
-processEveOnlineBotEventWithSettings botSettings event stateBefore =
     case event of
         EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
             let
+                botSettings =
+                    eventContext.appSettings |> Maybe.withDefault defaultBotSettings
+
                 botMemory =
                     stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory parsedUserInterface
 

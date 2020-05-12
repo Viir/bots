@@ -21,7 +21,7 @@ module Bot exposing
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Common.AppSettings as AppSettings
-import EveOnline.BotFramework exposing (BotEffect(..))
+import EveOnline.AppFramework exposing (AppEffect(..))
 import EveOnline.ParseUserInterface
     exposing
         ( InfoPanelRouteRouteElementMarker
@@ -47,34 +47,34 @@ type alias BotState =
 
 
 type alias State =
-    EveOnline.BotFramework.StateIncludingFramework () BotState
+    EveOnline.AppFramework.StateIncludingFramework () BotState
 
 
 initState : State
 initState =
-    EveOnline.BotFramework.initState { lastActivityTime = 0 }
+    EveOnline.AppFramework.initState { lastActivityTime = 0 }
 
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
-    EveOnline.BotFramework.processEvent
+    EveOnline.AppFramework.processEvent
         { processEvent = processEveOnlineBotEvent
         , parseAppSettings = AppSettings.parseAllowOnlyEmpty ()
         }
 
 
 processEveOnlineBotEvent :
-    EveOnline.BotFramework.BotEventContext ()
-    -> EveOnline.BotFramework.BotEvent
+    EveOnline.AppFramework.AppEventContext ()
+    -> EveOnline.AppFramework.AppEvent
     -> BotState
-    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
+    -> ( BotState, EveOnline.AppFramework.AppEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
     case event of
-        EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
+        EveOnline.AppFramework.MemoryReadingCompleted parsedUserInterface ->
             let
                 continueWaiting statusDescriptionText =
                     ( stateBefore
-                    , EveOnline.BotFramework.ContinueSession
+                    , EveOnline.AppFramework.ContinueSession
                         { millisecondsToNextReadingFromGame = 3000
                         , statusDescriptionText = statusDescriptionText
                         , effects = []
@@ -92,7 +92,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
                     in
                     if 60 * finishSessionAfterInactivityMinutes < eventContext.timeInMilliseconds // 1000 - lastActivityTime then
                         ( stateBefore
-                        , EveOnline.BotFramework.FinishSession
+                        , EveOnline.AppFramework.FinishSession
                             { statusDescriptionText =
                                 "I finish this session because there was nothing to do for me in the last "
                                     ++ (finishSessionAfterInactivityMinutes |> String.fromInt)
@@ -102,7 +102,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
 
                     else
                         ( { stateBefore | lastActivityTime = lastActivityTime }
-                        , EveOnline.BotFramework.ContinueSession
+                        , EveOnline.AppFramework.ContinueSession
                             { millisecondsToNextReadingFromGame = 2000
                             , effects = effects
                             , statusDescriptionText = statusDescriptionText
@@ -133,7 +133,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
 botEffectsWhenNotWaitingForShipManeuver :
     ParsedUserInterface
     -> InfoPanelRouteRouteElementMarker
-    -> ( List BotEffect, String )
+    -> ( List AppEffect, String )
 botEffectsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstMarker =
     let
         openMenuAnnouncementAndEffect =

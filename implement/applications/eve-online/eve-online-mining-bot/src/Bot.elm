@@ -29,7 +29,7 @@ module Bot exposing
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Dict
-import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
+import EveOnline.AppFramework exposing (AppEffect(..), getEntropyIntFromUserInterface)
 import EveOnline.ParseUserInterface
     exposing
         ( MaybeVisible(..)
@@ -150,7 +150,7 @@ type alias BotState =
 
 
 type alias State =
-    EveOnline.BotFramework.StateIncludingFramework BotSettings BotState
+    EveOnline.AppFramework.StateIncludingFramework BotSettings BotState
 
 
 {-| A first outline of the decision tree for a mining bot came from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
@@ -829,7 +829,7 @@ useContextMenuOnListSurroundingsButton actionsDependingOnNewReadings parsedUserI
 
 initState : State
 initState =
-    EveOnline.BotFramework.initState
+    EveOnline.AppFramework.initState
         { programState = Nothing
         , botMemory =
             { lastDockedStationNameFromInfoPanel = Nothing
@@ -850,20 +850,20 @@ initShipModulesMemory =
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
-    EveOnline.BotFramework.processEvent
-        { processEvent = processEveOnlineBotEvent
-        , parseAppSettings = parseBotSettings
+    EveOnline.AppFramework.processEvent
+        { parseAppSettings = parseBotSettings
+        , processEvent = processEveOnlineBotEvent
         }
 
 
 processEveOnlineBotEvent :
-    EveOnline.BotFramework.BotEventContext BotSettings
-    -> EveOnline.BotFramework.BotEvent
+    EveOnline.AppFramework.AppEventContext BotSettings
+    -> EveOnline.AppFramework.AppEvent
     -> BotState
-    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
+    -> ( BotState, EveOnline.AppFramework.AppEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
     case event of
-        EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
+        EveOnline.AppFramework.MemoryReadingCompleted parsedUserInterface ->
             let
                 botSettings =
                     eventContext.appSettings |> Maybe.withDefault defaultBotSettings
@@ -920,7 +920,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
                                     )
 
                 effectsRequests =
-                    effectsOnGameClientWindow |> List.map EveOnline.BotFramework.EffectOnGameClientWindow
+                    effectsOnGameClientWindow |> List.map EveOnline.AppFramework.EffectOnGameClientWindow
 
                 describeActivity =
                     (originalDecisionStagesDescriptions ++ [ currentStepDescription ])
@@ -933,7 +933,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
                         |> String.join "\n"
             in
             ( { stateBefore | botMemory = botMemory, programState = programState }
-            , EveOnline.BotFramework.ContinueSession
+            , EveOnline.AppFramework.ContinueSession
                 { effects = effectsRequests
                 , millisecondsToNextReadingFromGame = botSettings.botStepDelayMilliseconds
                 , statusDescriptionText = statusMessage

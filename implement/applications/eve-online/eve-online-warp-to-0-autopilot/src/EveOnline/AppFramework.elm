@@ -11,11 +11,11 @@
 -}
 
 
-module EveOnline.BotFramework exposing
-    ( BotEffect(..)
-    , BotEvent(..)
-    , BotEventContext
-    , BotEventResponse(..)
+module EveOnline.AppFramework exposing
+    ( AppEffect(..)
+    , AppEvent(..)
+    , AppEventContext
+    , AppEventResponse(..)
     , SetupState
     , StateIncludingFramework
     , getEntropyIntFromUserInterface
@@ -32,37 +32,37 @@ import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
 
 
-type BotEvent
+type AppEvent
     = MemoryReadingCompleted EveOnline.ParseUserInterface.ParsedUserInterface
 
 
-type BotEventResponse
+type AppEventResponse
     = ContinueSession ContinueSessionStructure
     | FinishSession { statusDescriptionText : String }
 
 
 type alias ContinueSessionStructure =
-    { effects : List BotEffect
+    { effects : List AppEffect
     , millisecondsToNextReadingFromGame : Int
     , statusDescriptionText : String
     }
 
 
-type BotEffect
+type AppEffect
     = EffectOnGameClientWindow VolatileHostInterface.EffectOnWindowStructure
     | EffectConsoleBeepSequence (List ConsoleBeepStructure)
 
 
-type alias BotEventContext appSettings =
+type alias AppEventContext appSettings =
     { timeInMilliseconds : Int
     , appSettings : Maybe appSettings
     , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
 
-type alias StateIncludingFramework appSettings botState =
+type alias StateIncludingFramework appSettings appState =
     { setup : SetupState
-    , botState : BotAndLastEventState botState
+    , appState : AppAndLastEventState appState
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
     , taskInProgress : Maybe { startTimeInMilliseconds : Int, taskIdString : String, taskDescription : String }
@@ -71,15 +71,15 @@ type alias StateIncludingFramework appSettings botState =
     }
 
 
-type alias BotAndLastEventState botState =
-    { botState : botState
-    , lastEvent : Maybe { timeInMilliseconds : Int, eventResult : ( botState, BotEventResponse ) }
-    , effectQueue : BotEffectQueue
+type alias AppAndLastEventState appState =
+    { appState : appState
+    , lastEvent : Maybe { timeInMilliseconds : Int, eventResult : ( appState, AppEventResponse ) }
+    , effectQueue : AppEffectQueue
     }
 
 
-type alias BotEffectQueue =
-    List { timeInMilliseconds : Int, effect : BotEffect }
+type alias AppEffectQueue =
+    List { timeInMilliseconds : Int, effect : AppEffect }
 
 
 type alias SetupState =
@@ -95,8 +95,8 @@ type alias SetupState =
 
 type SetupTask
     = ContinueSetup SetupState InterfaceToHost.Task String
-    | OperateBot
-        { buildTaskFromBotEffect : BotEffect -> InterfaceToHost.Task
+    | OperateApp
+        { buildTaskFromAppEffect : AppEffect -> InterfaceToHost.Task
         , getMemoryReadingTask : InterfaceToHost.Task
         , releaseVolatileHostTask : InterfaceToHost.Task
         }
@@ -126,11 +126,11 @@ initSetup =
     }
 
 
-initState : botState -> StateIncludingFramework appSettings botState
-initState botState =
+initState : appState -> StateIncludingFramework appSettings appState
+initState appState =
     { setup = initSetup
-    , botState =
-        { botState = botState
+    , appState =
+        { appState = appState
         , lastEvent = Nothing
         , effectQueue = []
         }
@@ -143,12 +143,12 @@ initState botState =
 
 
 processEvent :
-    { processEvent : BotEventContext appSettings -> BotEvent -> botState -> ( botState, BotEventResponse )
-    , parseAppSettings : String -> Result String appSettings
+    { parseAppSettings : String -> Result String appSettings
+    , processEvent : AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse )
     }
     -> InterfaceToHost.BotEvent
-    -> StateIncludingFramework appSettings botState
-    -> ( StateIncludingFramework appSettings botState, InterfaceToHost.BotResponse )
+    -> StateIncludingFramework appSettings appState
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotResponse )
 processEvent appConfiguration fromHostEvent stateBefore =
     let
         continueAfterIntegrateEvent =
@@ -160,12 +160,12 @@ processEvent appConfiguration fromHostEvent stateBefore =
 
         InterfaceToHost.CompletedTask taskComplete ->
             let
-                ( setupState, maybeBotEventFromTaskComplete ) =
+                ( setupState, maybeAppEventFromTaskComplete ) =
                     stateBefore.setup
                         |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
             in
             continueAfterIntegrateEvent
-                maybeBotEventFromTaskComplete
+                maybeAppEventFromTaskComplete
                 { stateBefore | setup = setupState, taskInProgress = Nothing }
 
         InterfaceToHost.SetAppSettings appSettings ->
@@ -191,22 +191,22 @@ processEvent appConfiguration fromHostEvent stateBefore =
 
 
 processEventAfterIntegrateEvent :
-    { processEvent : BotEventContext appSettings -> BotEvent -> botState -> ( botState, BotEventResponse )
+    { processEvent : AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse )
     }
-    -> Maybe BotEvent
-    -> StateIncludingFramework appSettings botState
-    -> ( StateIncludingFramework appSettings botState, InterfaceToHost.BotResponse )
-processEventAfterIntegrateEvent appConfiguration maybeBotEvent stateBefore =
+    -> Maybe AppEvent
+    -> StateIncludingFramework appSettings appState
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotResponse )
+processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
     let
         ( state, responseBeforeAddingStatusMessage ) =
             case stateBefore.taskInProgress of
                 Nothing ->
                     processEventNotWaitingForTaskCompletion
                         appConfiguration.processEvent
-                        (maybeBotEvent
+                        (maybeAppEvent
                             |> Maybe.map
-                                (\botEvent ->
-                                    ( botEvent
+                                (\appEvent ->
+                                    ( appEvent
                                     , { timeInMilliseconds = stateBefore.timeInMilliseconds
                                       , appSettings = stateBefore.appSettings
                                       , sessionTimeLimitInMilliseconds = stateBefore.sessionTimeLimitInMilliseconds
@@ -246,11 +246,11 @@ processEventAfterIntegrateEvent appConfiguration maybeBotEvent stateBefore =
 
 
 processEventNotWaitingForTaskCompletion :
-    (BotEventContext appSettings -> BotEvent -> botState -> ( botState, BotEventResponse ))
-    -> Maybe ( BotEvent, BotEventContext appSettings )
-    -> StateIncludingFramework appSettings botState
-    -> ( StateIncludingFramework appSettings botState, InterfaceToHost.BotResponse )
-processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefore =
+    (AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse ))
+    -> Maybe ( AppEvent, AppEventContext appSettings )
+    -> StateIncludingFramework appSettings appState
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotResponse )
+processEventNotWaitingForTaskCompletion appProcessEvent maybeAppEvent stateBefore =
     case stateBefore.setup |> getNextSetupTask of
         ContinueSetup setupState setupTask setupTaskDescription ->
             let
@@ -277,7 +277,7 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
                 |> InterfaceToHost.ContinueSession
             )
 
-        OperateBot operateBot ->
+        OperateApp operateApp ->
             if volatileHostRecycleInterval < stateBefore.setup.requestsToVolatileHostCount then
                 let
                     taskIndex =
@@ -307,7 +307,7 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
                   }
                 , { startTasks =
                         [ { taskId = InterfaceToHost.taskIdFromString taskIdString
-                          , task = operateBot.releaseVolatileHostTask
+                          , task = operateApp.releaseVolatileHostTask
                           }
                         ]
                   , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
@@ -318,63 +318,63 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
 
             else
                 let
-                    botStateBefore =
-                        stateBefore.botState
+                    appStateBefore =
+                        stateBefore.appState
 
-                    maybeBotEventResult =
-                        maybeBotEvent
+                    maybeAppEventResult =
+                        maybeAppEvent
                             |> Maybe.map
-                                (\( botEvent, botEventContext ) -> botStateBefore.botState |> botProcessEvent botEventContext botEvent)
+                                (\( appEvent, appEventContext ) -> appStateBefore.appState |> appProcessEvent appEventContext appEvent)
 
-                    botStateBeforeProcessEffects =
-                        case maybeBotEventResult of
+                    appStateBeforeProcessEffects =
+                        case maybeAppEventResult of
                             Nothing ->
-                                stateBefore.botState
+                                stateBefore.appState
 
-                            Just ( newBotState, botEventResponse ) ->
+                            Just ( newAppState, appEventResponse ) ->
                                 let
                                     effectQueue =
-                                        case botEventResponse of
+                                        case appEventResponse of
                                             FinishSession _ ->
                                                 []
 
                                             ContinueSession continueSessionResponse ->
                                                 continueSessionResponse.effects
                                                     |> List.map
-                                                        (\botEffect ->
-                                                            { timeInMilliseconds = stateBefore.timeInMilliseconds, effect = botEffect }
+                                                        (\appEffect ->
+                                                            { timeInMilliseconds = stateBefore.timeInMilliseconds, effect = appEffect }
                                                         )
                                 in
-                                { botStateBefore
-                                    | botState = newBotState
-                                    , lastEvent = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, eventResult = ( newBotState, botEventResponse ) }
+                                { appStateBefore
+                                    | appState = newAppState
+                                    , lastEvent = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, eventResult = ( newAppState, appEventResponse ) }
                                     , effectQueue = effectQueue
                                 }
 
-                    ( botEffectQueue, botEffectTask ) =
+                    ( appEffectQueue, appEffectTask ) =
                         case
-                            botStateBeforeProcessEffects.effectQueue
-                                |> dequeueNextEffectFromBotState { currentTimeInMs = stateBefore.timeInMilliseconds }
+                            appStateBeforeProcessEffects.effectQueue
+                                |> dequeueNextEffectFromAppState { currentTimeInMs = stateBefore.timeInMilliseconds }
                         of
                             NoEffect ->
-                                ( botStateBeforeProcessEffects.effectQueue, Nothing )
+                                ( appStateBeforeProcessEffects.effectQueue, Nothing )
 
                             ForwardEffect forward ->
-                                ( forward.newQueueState, forward.effect |> operateBot.buildTaskFromBotEffect |> Just )
+                                ( forward.newQueueState, forward.effect |> operateApp.buildTaskFromAppEffect |> Just )
 
-                    botState =
-                        { botStateBeforeProcessEffects | effectQueue = botEffectQueue }
+                    appState =
+                        { appStateBeforeProcessEffects | effectQueue = appEffectQueue }
 
                     timeForNextMemoryReadingGeneral =
                         (stateBefore.setup.lastMemoryReading |> Maybe.map .timeInMilliseconds |> Maybe.withDefault 0) + 10000
 
-                    timeForNextMemoryReadingFromBot =
-                        botState.lastEvent
+                    timeForNextMemoryReadingFromApp =
+                        appState.lastEvent
                             |> Maybe.andThen
-                                (\botLastEvent ->
-                                    case botLastEvent.eventResult |> Tuple.second of
+                                (\appLastEvent ->
+                                    case appLastEvent.eventResult |> Tuple.second of
                                         ContinueSession continueSessionResponse ->
-                                            Just (botLastEvent.timeInMilliseconds + continueSessionResponse.millisecondsToNextReadingFromGame)
+                                            Just (appLastEvent.timeInMilliseconds + continueSessionResponse.millisecondsToNextReadingFromGame)
 
                                         FinishSession _ ->
                                             Nothing
@@ -382,20 +382,20 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
                             |> Maybe.withDefault 0
 
                     timeForNextMemoryReading =
-                        min timeForNextMemoryReadingGeneral timeForNextMemoryReadingFromBot
+                        min timeForNextMemoryReadingGeneral timeForNextMemoryReadingFromApp
 
                     memoryReadingTasks =
                         if timeForNextMemoryReading < stateBefore.timeInMilliseconds then
-                            [ operateBot.getMemoryReadingTask ]
+                            [ operateApp.getMemoryReadingTask ]
 
                         else
                             []
 
-                    botFinishesSession =
-                        botState.lastEvent
+                    appFinishesSession =
+                        appState.lastEvent
                             |> Maybe.map
-                                (\botLastEvent ->
-                                    case botLastEvent.eventResult |> Tuple.second of
+                                (\appLastEvent ->
+                                    case appLastEvent.eventResult |> Tuple.second of
                                         ContinueSession _ ->
                                             False
 
@@ -405,19 +405,19 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
                             |> Maybe.withDefault False
 
                     ( taskInProgress, startTasks ) =
-                        (botEffectTask |> Maybe.map List.singleton |> Maybe.withDefault [])
+                        (appEffectTask |> Maybe.map List.singleton |> Maybe.withDefault [])
                             ++ memoryReadingTasks
                             |> List.head
                             |> Maybe.map
                                 (\task ->
                                     let
                                         taskIdString =
-                                            "operate-bot"
+                                            "operate-app"
                                     in
                                     ( Just
                                         { startTimeInMilliseconds = stateBefore.timeInMilliseconds
                                         , taskIdString = taskIdString
-                                        , taskDescription = "From bot effect or memory reading."
+                                        , taskDescription = "From app effect or memory reading."
                                         }
                                     , [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task } ]
                                     )
@@ -433,15 +433,15 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
                         }
 
                     state =
-                        { stateBefore | setup = setupState, botState = botState, taskInProgress = taskInProgress }
+                        { stateBefore | setup = setupState, appState = appState, taskInProgress = taskInProgress }
                 in
-                if botFinishesSession then
+                if appFinishesSession then
                     ( state, { statusDescriptionText = "The app finished the session." } |> InterfaceToHost.FinishSession )
 
                 else
                     ( state
                     , { startTasks = startTasks
-                      , statusDescriptionText = "Operate bot."
+                      , statusDescriptionText = "Operate app."
                       , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
                       }
                         |> InterfaceToHost.ContinueSession
@@ -453,7 +453,7 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
             )
 
 
-integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe BotEvent )
+integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe AppEvent )
 integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
     case taskResult of
         InterfaceToHost.CreateVolatileHostResponse createVolatileHostResult ->
@@ -511,7 +511,7 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
 integrateResponseFromVolatileHost :
     { timeInMilliseconds : Int, responseFromVolatileHost : VolatileHostInterface.ResponseFromVolatileHost, runInVolatileHostDurationInMs : Int }
     -> SetupState
-    -> ( SetupState, Maybe BotEvent )
+    -> ( SetupState, Maybe AppEvent )
 integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost, runInVolatileHostDurationInMs } stateBefore =
     case responseFromVolatileHost of
         VolatileHostInterface.ListGameClientProcessesResponse gameClientProcesses ->
@@ -537,7 +537,7 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
                         , memoryReadingDurations = memoryReadingDurations
                     }
 
-                maybeBotEvent =
+                maybeAppEvent =
                     case getMemoryReadingResult of
                         VolatileHostInterface.ProcessNotFound ->
                             Nothing
@@ -552,16 +552,16 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
                             maybeParsedMemoryReading
                                 |> Maybe.map MemoryReadingCompleted
             in
-            ( state, maybeBotEvent )
+            ( state, maybeAppEvent )
 
 
-type NextBotEffectFromQueue
+type NextAppEffectFromQueue
     = NoEffect
-    | ForwardEffect { newQueueState : BotEffectQueue, effect : BotEffect }
+    | ForwardEffect { newQueueState : AppEffectQueue, effect : AppEffect }
 
 
-dequeueNextEffectFromBotState : { currentTimeInMs : Int } -> BotEffectQueue -> NextBotEffectFromQueue
-dequeueNextEffectFromBotState { currentTimeInMs } effectQueueBefore =
+dequeueNextEffectFromAppState : { currentTimeInMs : Int } -> AppEffectQueue -> NextAppEffectFromQueue
+dequeueNextEffectFromAppState { currentTimeInMs } effectQueueBefore =
     case effectQueueBefore of
         [] ->
             NoEffect
@@ -661,8 +661,8 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                                 , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
                                                 }
                                     in
-                                    OperateBot
-                                        { buildTaskFromBotEffect =
+                                    OperateApp
+                                        { buildTaskFromAppEffect =
                                             \effect ->
                                                 case effect of
                                                     EffectOnGameClientWindow effectOnWindow ->
@@ -722,8 +722,8 @@ requestToVolatileHostResultDisplayString result =
 statusReportFromState : StateIncludingFramework appSettings s -> String
 statusReportFromState state =
     let
-        fromBot =
-            state.botState.lastEvent
+        fromApp =
+            state.appState.lastEvent
                 |> Maybe.map
                     (\lastEvent ->
                         case lastEvent.eventResult |> Tuple.second of
@@ -754,8 +754,8 @@ statusReportFromState state =
                         |> Maybe.withDefault "Nothing"
                    )
 
-        botEffectQueueLength =
-            state.botState.effectQueue |> List.length
+        appEffectQueueLength =
+            state.appState.effectQueue |> List.length
 
         memoryReadingDurations =
             state.setup.memoryReadingDurations
@@ -770,21 +770,21 @@ statusReportFromState state =
         runtimeExpensesReport =
             "amrd=" ++ (averageMemoryReadingDuration |> String.fromInt) ++ "ms"
 
-        botEffectQueueLengthWarning =
-            if botEffectQueueLength < 4 then
+        appEffectQueueLengthWarning =
+            if appEffectQueueLength < 6 then
                 []
 
             else
-                [ "Bot effect queue length is " ++ (botEffectQueueLength |> String.fromInt) ]
+                [ "App effect queue length is " ++ (appEffectQueueLength |> String.fromInt) ]
     in
-    [ fromBot
+    [ fromApp
     , "----"
     , "EVE Online framework status:"
 
     -- , runtimeExpensesReport
     , lastResultFromVolatileHost
     ]
-        ++ botEffectQueueLengthWarning
+        ++ appEffectQueueLengthWarning
         |> String.join "\n"
 
 

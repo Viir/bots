@@ -25,7 +25,7 @@ module Bot exposing
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Dict
-import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
+import EveOnline.AppFramework exposing (AppEffect(..), getEntropyIntFromUserInterface)
 import EveOnline.ParseUserInterface
     exposing
         ( MaybeVisible(..)
@@ -115,7 +115,7 @@ type alias BotDecisionContext =
 
 
 type alias State =
-    EveOnline.BotFramework.StateIncludingFramework BotSettings BotState
+    EveOnline.AppFramework.StateIncludingFramework BotSettings BotState
 
 
 probeScanResultsRepresentsMatchingAnomaly : BotSettings -> EveOnline.ParseUserInterface.ProbeScanResult -> Bool
@@ -507,7 +507,7 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
 
 initState : State
 initState =
-    EveOnline.BotFramework.initState
+    EveOnline.AppFramework.initState
         { programState = Nothing
         , botMemory = { lastDockedStationNameFromInfoPanel = Nothing }
         }
@@ -515,20 +515,20 @@ initState =
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
-    EveOnline.BotFramework.processEvent
+    EveOnline.AppFramework.processEvent
         { processEvent = processEveOnlineBotEvent
         , parseAppSettings = parseBotSettings
         }
 
 
 processEveOnlineBotEvent :
-    EveOnline.BotFramework.BotEventContext BotSettings
-    -> EveOnline.BotFramework.BotEvent
+    EveOnline.AppFramework.AppEventContext BotSettings
+    -> EveOnline.AppFramework.AppEvent
     -> BotState
-    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
+    -> ( BotState, EveOnline.AppFramework.AppEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
     case event of
-        EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
+        EveOnline.AppFramework.MemoryReadingCompleted parsedUserInterface ->
             let
                 botSettings =
                     eventContext.appSettings |> Maybe.withDefault defaultBotSettings
@@ -585,7 +585,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
                                     )
 
                 effectsRequests =
-                    effectsOnGameClientWindow |> List.map EveOnline.BotFramework.EffectOnGameClientWindow
+                    effectsOnGameClientWindow |> List.map EveOnline.AppFramework.EffectOnGameClientWindow
 
                 describeActivity =
                     (originalDecisionStagesDescriptions ++ [ currentStepDescription ])
@@ -598,7 +598,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
                         |> String.join "\n"
             in
             ( { stateBefore | botMemory = botMemory, programState = programState }
-            , EveOnline.BotFramework.ContinueSession
+            , EveOnline.AppFramework.ContinueSession
                 { effects = effectsRequests
                 , millisecondsToNextReadingFromGame = botSettings.botStepDelayMilliseconds
                 , statusDescriptionText = statusMessage

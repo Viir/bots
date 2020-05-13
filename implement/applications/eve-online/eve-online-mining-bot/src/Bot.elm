@@ -113,10 +113,15 @@ type alias ShipModulesMemory =
 
 
 type alias BotDecisionContext =
-    { settings : BotSettings
+    { eventContext : EveOnline.AppFramework.AppEventContext BotSettings
     , memory : BotMemory
     , parsedUserInterface : ParsedUserInterface
     }
+
+
+botSettingsFromDecisionContext : BotDecisionContext -> BotSettings
+botSettingsFromDecisionContext decisionContext =
+    decisionContext.eventContext.appSettings |> Maybe.withDefault defaultBotSettings
 
 
 type alias UIElement =
@@ -182,14 +187,14 @@ returnDronesAndRunAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.Par
 returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
     let
         returnDronesShieldHitpointsThresholdPercent =
-            context.settings.runAwayShieldHitpointsThresholdPercent + 5
+            (context |> botSettingsFromDecisionContext).runAwayShieldHitpointsThresholdPercent + 5
 
         runAwayWithDescription =
             DescribeBranch
                 ("Shield hitpoints are at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%. Run away.")
                 (runAway context)
     in
-    if shipUI.hitpointsPercent.shield < context.settings.runAwayShieldHitpointsThresholdPercent then
+    if shipUI.hitpointsPercent.shield < (context |> botSettingsFromDecisionContext).runAwayShieldHitpointsThresholdPercent then
         Just runAwayWithDescription
 
     else if shipUI.hitpointsPercent.shield < returnDronesShieldHitpointsThresholdPercent then
@@ -342,7 +347,7 @@ lastDockedStationNameFromInfoPanelFromMemoryOrSettings context =
             Just stationName
 
         Nothing ->
-            context.settings.lastDockedStationNameFromInfoPanel
+            (context |> botSettingsFromDecisionContext).lastDockedStationNameFromInfoPanel
 
 
 inSpaceWithOreHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
@@ -369,9 +374,9 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                     Just fillPercent ->
                         let
                             describeThresholdToUnload =
-                                (context.settings.oreHoldMaxPercent |> String.fromInt) ++ "%"
+                                ((context |> botSettingsFromDecisionContext).oreHoldMaxPercent |> String.fromInt) ++ "%"
                         in
-                        if context.settings.oreHoldMaxPercent <= fillPercent then
+                        if (context |> botSettingsFromDecisionContext).oreHoldMaxPercent <= fillPercent then
                             DescribeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
                                 (returnDronesToBay context.parsedUserInterface
                                     |> Maybe.withDefault
@@ -475,7 +480,12 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
                 |> Maybe.withDefault
                     (DescribeBranch
                         ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                        (lockTargetFromOverviewEntryAndEnsureIsInRange (min context.settings.targetingRange context.settings.miningModuleRange) asteroidInOverview)
+                        (lockTargetFromOverviewEntryAndEnsureIsInRange
+                            (min (context |> botSettingsFromDecisionContext).targetingRange
+                                (context |> botSettingsFromDecisionContext).miningModuleRange
+                            )
+                            asteroidInOverview
+                        )
                     )
 
 
@@ -864,17 +874,19 @@ processEveOnlineBotEvent eventContext event stateBefore =
     case event of
         EveOnline.AppFramework.MemoryReadingCompleted parsedUserInterface ->
             let
-                botSettings =
-                    eventContext.appSettings |> Maybe.withDefault defaultBotSettings
-
                 botMemory =
                     stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory parsedUserInterface
+
+                decisionContext =
+                    { eventContext = eventContext
+                    , memory = botMemory
+                    , parsedUserInterface = parsedUserInterface
+                    }
 
                 programStateIfEvalDecisionTreeNew =
                     let
                         originalDecision =
-                            decideNextAction
-                                { settings = botSettings, memory = botMemory, parsedUserInterface = parsedUserInterface }
+                            decideNextAction decisionContext
 
                         originalRemainingActions =
                             case unpackToDecisionStagesDescriptionsAndLeaf originalDecision |> Tuple.second of
@@ -934,7 +946,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
             ( { stateBefore | botMemory = botMemory, programState = programState }
             , EveOnline.AppFramework.ContinueSession
                 { effects = effectsRequests
-                , millisecondsToNextReadingFromGame = botSettings.botStepDelayMilliseconds
+                , millisecondsToNextReadingFromGame = (decisionContext |> botSettingsFromDecisionContext).botStepDelayMilliseconds
                 , statusDescriptionText = statusMessage
                 }
             )

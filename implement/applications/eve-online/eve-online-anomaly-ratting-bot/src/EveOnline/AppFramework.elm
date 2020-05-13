@@ -21,6 +21,7 @@ module EveOnline.AppFramework exposing
     , getEntropyIntFromUserInterface
     , initState
     , processEvent
+    , secondsToSessionEnd
     )
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
@@ -839,3 +840,9 @@ stringEllipsis howLong append string =
 
     else
         String.left (howLong - String.length append) string ++ append
+
+
+secondsToSessionEnd : AppEventContext a -> Maybe Int
+secondsToSessionEnd appEventContext =
+    appEventContext.sessionTimeLimitInMilliseconds
+        |> Maybe.map (\sessionTimeLimitInMilliseconds -> (sessionTimeLimitInMilliseconds - appEventContext.timeInMilliseconds) // 1000)

@@ -108,10 +108,15 @@ type alias BotMemory =
 
 
 type alias BotDecisionContext =
-    { settings : BotSettings
+    { eventContext : EveOnline.AppFramework.AppEventContext BotSettings
     , memory : BotMemory
     , parsedUserInterface : ParsedUserInterface
     }
+
+
+botSettingsFromDecisionContext : BotDecisionContext -> BotSettings
+botSettingsFromDecisionContext decisionContext =
+    decisionContext.eventContext.appSettings |> Maybe.withDefault defaultBotSettings
 
 
 type alias State =
@@ -242,7 +247,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             (launchAndEngageDrones context.parsedUserInterface
                                                 |> Maybe.withDefault
                                                     (DescribeBranch "No idling drones."
-                                                        (if context.settings.maxTargetCount <= (context.parsedUserInterface.targets |> List.length) then
+                                                        (if (context |> botSettingsFromDecisionContext).maxTargetCount <= (context.parsedUserInterface.targets |> List.length) then
                                                             DescribeBranch "Enough locked targets." (EndDecisionPath Wait)
 
                                                          else
@@ -282,7 +287,7 @@ enterAnomaly context =
             let
                 matchingScanResults =
                     probeScannerWindow.scanResults
-                        |> List.filter (probeScanResultsRepresentsMatchingAnomaly context.settings)
+                        |> List.filter (probeScanResultsRepresentsMatchingAnomaly (context |> botSettingsFromDecisionContext))
             in
             case matchingScanResults |> listElementAtWrappedIndex (getEntropyIntFromUserInterface context.parsedUserInterface) of
                 Nothing ->
@@ -516,8 +521,8 @@ initState =
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
     EveOnline.AppFramework.processEvent
-        { processEvent = processEveOnlineBotEvent
-        , parseAppSettings = parseBotSettings
+        { parseAppSettings = parseBotSettings
+        , processEvent = processEveOnlineBotEvent
         }
 
 
@@ -530,17 +535,19 @@ processEveOnlineBotEvent eventContext event stateBefore =
     case event of
         EveOnline.AppFramework.MemoryReadingCompleted parsedUserInterface ->
             let
-                botSettings =
-                    eventContext.appSettings |> Maybe.withDefault defaultBotSettings
-
                 botMemory =
                     stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory parsedUserInterface
+
+                decisionContext =
+                    { eventContext = eventContext
+                    , memory = botMemory
+                    , parsedUserInterface = parsedUserInterface
+                    }
 
                 programStateIfEvalDecisionTreeNew =
                     let
                         originalDecision =
-                            decideNextAction
-                                { settings = botSettings, memory = botMemory, parsedUserInterface = parsedUserInterface }
+                            decideNextAction decisionContext
 
                         originalRemainingActions =
                             case unpackToDecisionStagesDescriptionsAndLeaf originalDecision |> Tuple.second of
@@ -600,7 +607,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
             ( { stateBefore | botMemory = botMemory, programState = programState }
             , EveOnline.AppFramework.ContinueSession
                 { effects = effectsRequests
-                , millisecondsToNextReadingFromGame = botSettings.botStepDelayMilliseconds
+                , millisecondsToNextReadingFromGame = (decisionContext |> botSettingsFromDecisionContext).botStepDelayMilliseconds
                 , statusDescriptionText = statusMessage
                 }
             )

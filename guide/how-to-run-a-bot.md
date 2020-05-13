@@ -1,4 +1,4 @@
-# How to Run a Bot
+# How to Run a BotEngine App
 
 ## What is a Bot?
 
@@ -19,7 +19,7 @@ Download the BotEngine Windows console app from
 Extract this Zip-Archive. This will give you a file named `BotEngine.exe`. To start a bot, call this program with a command like the following:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/cbd803d5bb2fd49de2ef892bb7da964f9791c4f5/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+C:\path\to\the\BotEngine.exe  run  "https://github.com/Viir/bots/tree/cbd803d5bb2fd49de2ef892bb7da964f9791c4f5/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
@@ -50,13 +50,13 @@ Status message from bot:
 I see no route in the info panel. I will start when a route is set.
 ```
 
-You can pause bot operation by pressing the `SHIFT` + `CTRL` + `ALT` keys. To let the bot continue, focus the console window and press the enter key. The key combination `CTRL` + `C` stops the bot and the botengine process.
+You can pause bot operation by pressing the `SHIFT` + `CTRL` + `ALT` keys. To let the bot continue, focus the console window and press the enter key. The key combination `CTRL` + `C` stops the app and the botengine process.
 
 ## Configuring a Bot
 
 Some bots offer customization using settings. When starting a bot from the command line, you can use the `--app-settings` parameter to apply settings. The complete command line can then look as follows:
 ```cmd
-C:\path\to\the\botengine.exe  run-bot  --app-settings="My app settings"  "https://github.com/Viir/bots/tree/c4911ff9a0c3a279209e31a61b63bfa736c8f3c5/implement/templates/remember-app-settings"
+C:\path\to\the\botengine.exe  run  --app-settings="My app settings"  "https://github.com/Viir/bots/tree/c4911ff9a0c3a279209e31a61b63bfa736c8f3c5/implement/templates/remember-app-settings"
 ```
 
 The supported settings depend entirely on the bot that you chose. To learn which settings are supported in your case, read the description for the bot or contact its author.
@@ -65,13 +65,13 @@ The supported settings depend entirely on the bot that you chose. To learn which
 
 Authors often include a human-readable description with the bot code, for example, in [this EVE Online mining bot](https://github.com/Viir/bots/tree/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm).
 
-You can display this description using the `describe-bot` command:
+You can display this description using the `botengine describe` command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  describe-bot  "https://github.com/Viir/bots/tree/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-mining-bot"
+C:\path\to\the\BotEngine.exe  describe  "https://github.com/Viir/bots/tree/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-mining-bot"
 ```
 
-The `describe-bot` command works with any bot source that is supported by the `run-bot` command.
+The `describe` command works with any bot source that is supported by the `run` command.
 
 The information you get this way includes the description given by the author of the app. This description often contains a guide on how to use the app.
 
@@ -94,11 +94,11 @@ For more about purchasing and using credits, see the guide at [https://forum.bot
 
 ### Starting an Online Bot Session
 
-To start an online session, use the `--online-session` option with the `run-bot` command.
+To start an online session, use the `--online-session` option with the `botengine run` command.
 
 Below is an example of a full command to run a bot in an online session:
 ```cmd
-botengine  run-bot  --online-session  "https://github.com/Viir/bots/tree/652ed9fc83aa3f04cb21c1cbf28911201bd53925/implement/templates/remember-app-settings"
+botengine  run  --online-session  "https://github.com/Viir/bots/tree/652ed9fc83aa3f04cb21c1cbf28911201bd53925/implement/templates/remember-app-settings"
 ```
 
 If you have not set up your system for online sessions, the engine then stops with this error:
@@ -118,10 +118,10 @@ Copy that command from the web page into the Windows Command Prompt and execute 
 The program then confirms:
 
 ```text
-I stored this as the default key. You can now use it with the 'run-bot' command by adding the '--online-session' option.
+I stored this as the default key. You can now use it with the 'run' command by adding the '--online-session' option.
 ```
 
-Now you can use the `run-bot` command again to start the online session.
+Now you can use the `botengine run` command again to start the online session.
 
 After the online session is started, you can also see it at https://reactor.botengine.org/ under `Most recent bot sessions`:
 

@@ -26,12 +26,12 @@ In this section, we will follow the fastest way to your custom bot.
 First, let's look at an EVE Online bot from the examples. Run this autopilot bot:
 
 ```cmd
-botengine  run-bot  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+botengine  run  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
 If you are not yet familiar with this method of running a bot, read that guide first: [./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md](./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md)
 
-The `botengine run-bot` command loads the bot code from the given address to run it on your system. Before running this bot, you need to start an EVE Online client, no need to go beyond character selection.
+The `botengine run` command loads the app code from the given address to run it on your system. Before running this app, you need to start an EVE Online client, no need to go beyond character selection.
 
 When the bot has started, it will display this message:
 
@@ -44,10 +44,10 @@ To edit the bot code files, we download them first. Use this link to download al
 
 Extract the downloaded zip-archive, and you will find the same subdirectory we used in the command to run the bot: `implement\applications\eve-online\eve-online-warp-to-0-autopilot`.
 
-Now you can use the `botengine run-bot` command on this directory as well:
+Now you can use the `botengine run` command on this directory as well:
 
 ```cmd
-botengine  run-bot  "C:\Users\John\Downloads\bots-183be242cd434e8282d7b4fb36ec6bbbf0f58c8a\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
+botengine  run  "C:\Users\John\Downloads\bots-183be242cd434e8282d7b4fb36ec6bbbf0f58c8a\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
 ```
 
 Running this command gives you the same bot with the same behavior because the bot code files are still the same. You can also see that the bot ID displayed in the console window is `16BA890853...` for both commands since the bot ID only depends on the bot code files.

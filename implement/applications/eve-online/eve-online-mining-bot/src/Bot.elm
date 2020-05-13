@@ -28,6 +28,7 @@ module Bot exposing
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Common.AppSettings as AppSettings
+import Common.EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.AppFramework exposing (AppEffect(..), getEntropyIntFromUserInterface)
 import EveOnline.ParseUserInterface
@@ -39,7 +40,7 @@ import EveOnline.ParseUserInterface
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
-import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
+import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (effectMouseClickAtLocation)
 import Set
 
 

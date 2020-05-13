@@ -21,6 +21,7 @@ module Bot exposing
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Common.AppSettings as AppSettings
+import Common.EffectOnWindow exposing (MouseButton(..))
 import EveOnline.AppFramework exposing (AppEffect(..))
 import EveOnline.ParseUserInterface
     exposing
@@ -31,7 +32,7 @@ import EveOnline.ParseUserInterface
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
         )
-import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
+import EveOnline.VolatileHostInterface exposing (effectMouseClickAtLocation)
 
 
 finishSessionAfterInactivityMinutes : Int
@@ -139,7 +140,7 @@ botEffectsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstM
         openMenuAnnouncementAndEffect =
             ( [ EffectOnGameClientWindow
                     (effectMouseClickAtLocation
-                        VolatileHostInterface.MouseButtonRight
+                        Common.EffectOnWindow.MouseButtonRight
                         (infoPanelRouteFirstMarker.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
                     )
               ]

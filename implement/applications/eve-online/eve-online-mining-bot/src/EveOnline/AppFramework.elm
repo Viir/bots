@@ -17,9 +17,13 @@ module EveOnline.AppFramework exposing
     , AppEventContext
     , AppEventResponse(..)
     , SetupState
+    , ShipModulesMemory
     , StateIncludingFramework
     , getEntropyIntFromUserInterface
+    , getModuleButtonTooltipFromModuleButton
+    , initShipModulesMemory
     , initState
+    , integrateCurrentReadingsIntoShipModulesMemory
     , processEvent
     , secondsToSessionEnd
     )
@@ -28,13 +32,13 @@ import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Common.FNV
 import Dict
 import EveOnline.MemoryReading
-import EveOnline.ParseUserInterface
+import EveOnline.ParseUserInterface exposing (MaybeVisible(..), maybeNothingFromCanNotSeeIt)
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
 
 
 type AppEvent
-    = MemoryReadingCompleted EveOnline.ParseUserInterface.ParsedUserInterface
+    = ReadingFromGameClientCompleted EveOnline.ParseUserInterface.ParsedUserInterface
 
 
 type AppEventResponse
@@ -110,9 +114,85 @@ type alias ConsoleBeepStructure =
     }
 
 
+type alias ShipModulesMemory =
+    { tooltipFromModuleButton : Dict.Dict String EveOnline.ParseUserInterface.ModuleButtonTooltip
+    , lastReadingTooltip : MaybeVisible EveOnline.ParseUserInterface.ModuleButtonTooltip
+    }
+
+
 volatileHostRecycleInterval : Int
 volatileHostRecycleInterval =
     400
+
+
+initShipModulesMemory : ShipModulesMemory
+initShipModulesMemory =
+    { tooltipFromModuleButton = Dict.empty
+    , lastReadingTooltip = CanNotSeeIt
+    }
+
+
+integrateCurrentReadingsIntoShipModulesMemory : EveOnline.ParseUserInterface.ParsedUserInterface -> ShipModulesMemory -> ShipModulesMemory
+integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
+    let
+        getTooltipDataForEqualityComparison tooltip =
+            tooltip.uiNode
+                |> EveOnline.ParseUserInterface.getAllContainedDisplayTextsWithRegion
+                |> List.map (Tuple.mapSecond .totalDisplayRegion)
+
+        {- To ensure robustness, we store a new tooltip only when the display texts match in two consecutive readings from the game client. -}
+        tooltipAvailableToStore =
+            case ( memoryBefore.lastReadingTooltip, currentReading.moduleButtonTooltip ) of
+                ( CanSee previousTooltip, CanSee currentTooltip ) ->
+                    if getTooltipDataForEqualityComparison previousTooltip == getTooltipDataForEqualityComparison currentTooltip then
+                        Just currentTooltip
+
+                    else
+                        Nothing
+
+                _ ->
+                    Nothing
+
+        visibleModuleButtons =
+            currentReading.shipUI
+                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.map .moduleButtons
+                |> Maybe.withDefault []
+
+        visibleModuleButtonsIds =
+            visibleModuleButtons |> List.map getModuleButtonIdentifierInMemory
+
+        maybeModuleButtonWithHighlight =
+            visibleModuleButtons
+                |> List.filter .isHiliteVisible
+                |> List.head
+
+        tooltipFromModuleButtonAddition =
+            case ( tooltipAvailableToStore, maybeModuleButtonWithHighlight ) of
+                ( Just tooltip, Just moduleButtonWithHighlight ) ->
+                    Dict.insert (moduleButtonWithHighlight |> getModuleButtonIdentifierInMemory) tooltip
+
+                _ ->
+                    identity
+
+        tooltipFromModuleButton =
+            memoryBefore.tooltipFromModuleButton
+                |> tooltipFromModuleButtonAddition
+                |> Dict.filter (\moduleButtonId _ -> visibleModuleButtonsIds |> List.member moduleButtonId)
+    in
+    { tooltipFromModuleButton = tooltipFromModuleButton
+    , lastReadingTooltip = currentReading.moduleButtonTooltip
+    }
+
+
+getModuleButtonTooltipFromModuleButton : ShipModulesMemory -> EveOnline.ParseUserInterface.ShipUIModuleButton -> Maybe EveOnline.ParseUserInterface.ModuleButtonTooltip
+getModuleButtonTooltipFromModuleButton moduleMemory moduleButton =
+    moduleMemory.tooltipFromModuleButton |> Dict.get (moduleButton |> getModuleButtonIdentifierInMemory)
+
+
+getModuleButtonIdentifierInMemory : EveOnline.ParseUserInterface.ShipUIModuleButton -> String
+getModuleButtonIdentifierInMemory =
+    .uiNode >> .uiNode >> .pythonObjectAddress
 
 
 initSetup : SetupState
@@ -551,7 +631,7 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
                                         |> Maybe.map (EveOnline.ParseUserInterface.parseUITreeWithDisplayRegionFromUITree >> EveOnline.ParseUserInterface.parseUserInterfaceFromUITree)
                             in
                             maybeParsedMemoryReading
-                                |> Maybe.map MemoryReadingCompleted
+                                |> Maybe.map ReadingFromGameClientCompleted
             in
             ( state, maybeAppEvent )
 

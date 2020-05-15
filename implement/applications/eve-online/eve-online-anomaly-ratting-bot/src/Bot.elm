@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-05-13
+{- EVE Online anomaly ratting bot version 2020-05-15
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -24,6 +24,7 @@ module Bot exposing
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Common.AppSettings as AppSettings
+import Common.Basics exposing (listElementAtWrappedIndex)
 import Common.EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.AppFramework exposing (AppEffect(..), getEntropyIntFromUserInterface)
@@ -534,7 +535,7 @@ processEveOnlineBotEvent :
     -> ( BotState, EveOnline.AppFramework.AppEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
     case event of
-        EveOnline.AppFramework.MemoryReadingCompleted parsedUserInterface ->
+        EveOnline.AppFramework.ReadingFromGameClientCompleted parsedUserInterface ->
             let
                 botMemory =
                     stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory parsedUserInterface
@@ -761,12 +762,3 @@ isShipWarpingOrJumping =
             )
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
-
-
-listElementAtWrappedIndex : Int -> List element -> Maybe element
-listElementAtWrappedIndex indexToWrap list =
-    if (list |> List.length) < 1 then
-        Nothing
-
-    else
-        list |> List.drop (indexToWrap |> modBy (list |> List.length)) |> List.head

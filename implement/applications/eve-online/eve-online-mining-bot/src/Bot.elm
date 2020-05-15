@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-05-13
+{- EVE Online mining bot version 2020-05-15
 
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -28,9 +28,10 @@ module Bot exposing
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Common.AppSettings as AppSettings
+import Common.Basics exposing (listElementAtWrappedIndex)
 import Common.EffectOnWindow exposing (MouseButton(..))
 import Dict
-import EveOnline.AppFramework exposing (AppEffect(..), getEntropyIntFromUserInterface)
+import EveOnline.AppFramework exposing (AppEffect(..), ShipModulesMemory, getEntropyIntFromUserInterface)
 import EveOnline.ParseUserInterface
     exposing
         ( MaybeVisible(..)
@@ -41,7 +42,6 @@ import EveOnline.ParseUserInterface
         , maybeVisibleAndThen
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (effectMouseClickAtLocation)
-import Set
 
 
 {-| Sources for the defaults:
@@ -104,12 +104,6 @@ type alias BotMemory =
     , volumeUnloadedCubicMeters : Int
     , lastUsedCapacityInOreHold : Maybe Int
     , shipModules : ShipModulesMemory
-    }
-
-
-type alias ShipModulesMemory =
-    { tooltipFromModuleButton : Dict.Dict String EveOnline.ParseUserInterface.ModuleButtonTooltip
-    , lastReadingTooltip : MaybeVisible EveOnline.ParseUserInterface.ModuleButtonTooltip
     }
 
 
@@ -355,7 +349,13 @@ inSpaceWithOreHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOn
 inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHoldSelected =
     if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
         DescribeBranch "I see we are warping."
-            (returnDronesToBay context.parsedUserInterface |> Maybe.withDefault (EndDecisionPath Wait))
+            ([ returnDronesToBay context.parsedUserInterface
+             , readShipUIModuleButtonTooltips context
+             ]
+                |> List.filterMap identity
+                |> List.head
+                |> Maybe.withDefault (EndDecisionPath Wait)
+            )
 
     else
         case seeUndockingComplete.shipUI.moduleButtonsRows.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
@@ -548,7 +548,7 @@ lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
     case overviewEntry.objectDistanceInMeters of
         Ok distanceInMeters ->
             if distanceInMeters <= rangeInMeters then
-                if overviewEntryIsTargetedOrTargeting overviewEntry then
+                if overviewEntry.commonIndications.targetedByMe || overviewEntry.commonIndications.targeting then
                     DescribeBranch "Wait for target locking to complete." (EndDecisionPath Wait)
 
                 else
@@ -756,11 +756,7 @@ readShipUIModuleButtonTooltips context =
         |> maybeNothingFromCanNotSeeIt
         |> Maybe.map .moduleButtons
         |> Maybe.withDefault []
-        |> List.filter
-            (\moduleButton ->
-                (context.memory.shipModules.tooltipFromModuleButton |> Dict.get (moduleButton |> getModuleButtonIdentifierInMemory))
-                    == Nothing
-            )
+        |> List.filter (EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules >> (==) Nothing)
         |> List.head
         |> Maybe.map
             (\moduleButtonWithoutMemoryOfTooltip ->
@@ -846,16 +842,9 @@ initState =
             , timesUnloaded = 0
             , volumeUnloadedCubicMeters = 0
             , lastUsedCapacityInOreHold = Nothing
-            , shipModules = initShipModulesMemory
+            , shipModules = EveOnline.AppFramework.initShipModulesMemory
             }
         }
-
-
-initShipModulesMemory : ShipModulesMemory
-initShipModulesMemory =
-    { tooltipFromModuleButton = Dict.empty
-    , lastReadingTooltip = CanNotSeeIt
-    }
 
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
@@ -873,7 +862,7 @@ processEveOnlineBotEvent :
     -> ( BotState, EveOnline.AppFramework.AppEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
     case event of
-        EveOnline.AppFramework.MemoryReadingCompleted parsedUserInterface ->
+        EveOnline.AppFramework.ReadingFromGameClientCompleted parsedUserInterface ->
             let
                 botMemory =
                     stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory parsedUserInterface
@@ -1072,65 +1061,9 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
     , timesUnloaded = timesUnloaded
     , volumeUnloadedCubicMeters = volumeUnloadedCubicMeters
     , lastUsedCapacityInOreHold = lastUsedCapacityInOreHold
-    , shipModules = botMemoryBefore.shipModules |> integrateCurrentReadingsIntoShipModulesMemory currentReading
-    }
-
-
-getModuleButtonIdentifierInMemory : EveOnline.ParseUserInterface.ShipUIModuleButton -> String
-getModuleButtonIdentifierInMemory =
-    .uiNode >> .uiNode >> .pythonObjectAddress
-
-
-integrateCurrentReadingsIntoShipModulesMemory : ParsedUserInterface -> ShipModulesMemory -> ShipModulesMemory
-integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
-    let
-        getTooltipDataForEqualityComparison tooltip =
-            tooltip.uiNode
-                |> EveOnline.ParseUserInterface.getAllContainedDisplayTextsWithRegion
-                |> List.map (Tuple.mapSecond .totalDisplayRegion)
-
-        {- To ensure robustness, we store a new tooltip only when the display texts match in two consecutive readings from the game client. -}
-        tooltipAvailableToStore =
-            case ( memoryBefore.lastReadingTooltip, currentReading.moduleButtonTooltip ) of
-                ( CanSee previousTooltip, CanSee currentTooltip ) ->
-                    if getTooltipDataForEqualityComparison previousTooltip == getTooltipDataForEqualityComparison currentTooltip then
-                        Just currentTooltip
-
-                    else
-                        Nothing
-
-                _ ->
-                    Nothing
-
-        visibleModuleButtons =
-            currentReading.shipUI
-                |> maybeNothingFromCanNotSeeIt
-                |> Maybe.map .moduleButtons
-                |> Maybe.withDefault []
-
-        visibleModuleButtonsIds =
-            visibleModuleButtons |> List.map getModuleButtonIdentifierInMemory
-
-        maybeModuleButtonWithHighlight =
-            visibleModuleButtons
-                |> List.filter .isHiliteVisible
-                |> List.head
-
-        tooltipFromModuleButtonAddition =
-            case ( tooltipAvailableToStore, maybeModuleButtonWithHighlight ) of
-                ( Just tooltip, Just moduleButtonWithHighlight ) ->
-                    Dict.insert (moduleButtonWithHighlight |> getModuleButtonIdentifierInMemory) tooltip
-
-                _ ->
-                    identity
-
-        tooltipFromModuleButton =
-            memoryBefore.tooltipFromModuleButton
-                |> tooltipFromModuleButtonAddition
-                |> Dict.filter (\moduleButtonId _ -> visibleModuleButtonsIds |> List.member moduleButtonId)
-    in
-    { tooltipFromModuleButton = tooltipFromModuleButton
-    , lastReadingTooltip = currentReading.moduleButtonTooltip
+    , shipModules =
+        botMemoryBefore.shipModules
+            |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
     }
 
 
@@ -1209,14 +1142,6 @@ overviewWindowEntryRepresentsAnAsteroid entry =
         && (entry.textsLeftToRight |> List.any (String.toLower >> String.contains "belt") |> not)
 
 
-overviewEntryIsTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
-overviewEntryIsTargetedOrTargeting =
-    .namesUnderSpaceObjectIcon
-        >> Set.intersect ([ "targetedByMeIndicator", "targeting" ] |> Set.fromList)
-        >> Set.isEmpty
-        >> not
-
-
 capacityGaugeUsedPercent : EveOnline.ParseUserInterface.InventoryWindow -> Maybe Int
 capacityGaugeUsedPercent =
     .selectedContainerCapacityGauge
@@ -1288,12 +1213,3 @@ isShipWarpingOrJumping =
             )
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
-
-
-listElementAtWrappedIndex : Int -> List element -> Maybe element
-listElementAtWrappedIndex indexToWrap list =
-    if (list |> List.length) < 1 then
-        Nothing
-
-    else
-        list |> List.drop (indexToWrap |> modBy (list |> List.length)) |> List.head

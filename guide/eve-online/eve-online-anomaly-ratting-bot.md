@@ -7,24 +7,9 @@ This bot uses the probe scanner to warp to anomalies and kills rats using drones
 + **safe**: does not inject into or write to the EVE Online client. That is why using it with EVE Online is not detectable.
 + **accurate & robust**: This bot uses Sanderling memory reading to get information about the game state and user interface.
 
-## Starting the Bot
+## Setting up the Game Client
 
-+ Download the BotEngine Windows console app from 
-[https://botengine.blob.core.windows.net/blob-library/by-name/2020-05-14-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-05-14-botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
-+ Start the EVE Online client and log in to the game.
-+ To start the autopilot bot, run the `BotEngine.exe` program with the following command:
-
-```cmd
-C:\path\to\the\BotEngine.exe  run  "https://github.com/Viir/bots/tree/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-anomaly-ratting-bot"
-```
-You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
-
-After you have entered this command, the bot needs a few seconds to start and find the EVE Online client process. It also shows status messages to inform what it is doing at the moment and when the startup is complete.
-
-![EVE Online App Starting](./image/2019-10-08.eve-online-autopilot-bot-startup.png)
-
-
-Follow these steps to configure the game client:
+Despite being quite robust, this bot is far from being as smart as a human. For example, its perception is more limited than ours, so we need to set up the game to make sure that the bot can see everything it needs to. Following is the list of setup instructions for the EVE Online client:
 
 + Set the UI language to English.
 + Enable the info panel 'System info'.
@@ -36,7 +21,23 @@ Follow these steps to configure the game client:
   + Hide passive modules by disabling the check-box `Display Passive Modules`.
 + Configure the keyboard key 'W' to make the ship orbit.
 
-To meet bot developers and discuss development for EVE Online, see the [BotEngine forum](https://forum.botengine.org/tags/eve-online).
+## Starting the Ratting Bot
+
+To start the bot, download the script from https://catalog.botengine.org/C6CE0BE5DC14407EE1F1B84F79C8E5121C25EE93C084D931768E456F51F1AB1C and then run it.
+
+In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-bot-did-not-find-botengine-program
+
+After completing the installation, run the script again to start the bot.
+
+The bot needs a few seconds to start and find the EVE Online client process. It also shows status messages to inform what it is doing at the moment and when the startup is complete.
+
+![EVE Online App Starting](./image/2019-10-08.eve-online-autopilot-bot-startup.png)
+
+From here on, the bot works automatically. It detects the topmost game client window and starts working in that game client.
+
+----
+
+In case I forgot to add something here or you have any questions, don't hesitate to ask on the [BotEngine forum](https://forum.botengine.org/).
 
 ## Pricing and Online Bot Sessions
 

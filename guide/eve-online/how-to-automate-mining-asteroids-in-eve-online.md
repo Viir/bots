@@ -14,6 +14,8 @@ Before going into the setup, a quick overview of this bot and what it does:
 + Displays statistics such as the total volume of unloaded ore, so that you can easily track performance.
 + Closes message boxes that could pop up sometimes during gameplay.
 
+## Setting up the Game Client
+
 Despite being quite robust, this mining bot is far from being as smart as a human. For example, its perception is more limited than ours, so we need to set up the game to make sure that the bot can see everything it needs to. Following is the list of setup instructions for the EVE Online client:
 
 + Set the UI language to English.
@@ -28,11 +30,13 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from https://catalog.botengine.org/CE7B2F0E1135ECD2FAE85A2353A96A2B48BC7B280FDE4E627776C60C3C1D5967 and then run it.
+To start the mining bot, download the script from https://catalog.botengine.org/B7FB1F20404CA08C45FF784FEE5CBF5DE5093FCC899B3659C4B2EF004F5E63A7 and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-bot-did-not-find-botengine-program
 
 After completing the installation, run the script again to start the mining bot.
+
+From here on, the bot works automatically. It detects the topmost game client window and starts working in that game client.
 
 In case the bot does not work as expected, the first place to look is in the status message of the bot. Depending on what the bot is seeing and doing at the moment, it can display many different status messages.
 For example, if you disable the location ('System info') info panel in the EVE Online client, the bot displays the following message:
@@ -41,7 +45,7 @@ For example, if you disable the location ('System info') info panel in the EVE O
 
 As soon as you enable this info panel again, the bot will also continue working.
 
-The bot repeats the cycle of mining and unloading until you tell it to pause (`SHIFT` + `CTRL`+`ALT` keys) or stop it.
+The bot repeats the cycle of mining and unloading until you tell it to pause (`SHIFT` + `CTRL` + `ALT` keys) or stop it.
 
 To give an overview of the performance of the bot, it displays statistics like this:
 

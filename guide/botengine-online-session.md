@@ -2,7 +2,7 @@
 
 When running a botengine app, you can choose to start it in an online session. Online sessions provide several advantages over offline sessions:
 
-+ Monitoring from any device: No need to go to your PC to check the status of your app. You can use your smartphone or any other device with a web browser to see the status of your app.
++ Monitoring from other devices: No need to go to your PC to check the status of your app. You can use your smartphone or any other device with a web browser to see the status of your app.
 + Organize and keep track of your operations and experiments: Easily see which apps you already tested and when you used them the last time.
 + Longer running time: Run an app continuously in one session for up to 72 hours.
 
@@ -30,7 +30,7 @@ Then use the button "Download script with this command line to run the app". The
 
 If you have not set up your system for online sessions, the engine then stops with this error:
 
-```
+```text
 I ran into a problem: I was started with a configuration to use an online session ('--online-session' option), but I did not find a stored default online session key. Use the 'online-session-key  store-default-key' command to store a key. For a detailed guide, see https://to.botengine.org/failed-run-online-session-did-not-find-key
 ```
 
@@ -45,7 +45,7 @@ Copy that command from the web page into the Windows Command Prompt and execute 
 The program then confirms:
 
 ```text
-I stored this as the default key. You can now use it with the 'run' command by adding the '--online-session' option.
+I stored this as the default online session key. I will use this key when running an app in an online session.
 ```
 
 Now you can use the `botengine run` command again to start the online session.

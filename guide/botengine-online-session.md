@@ -28,27 +28,19 @@ If you don't use the Command Prompt, use the app configuration interface on the 
 
 Then use the button "Download script with this command line to run the app". The script file you get here starts the app in an online session.
 
-If you have not set up your system for online sessions, the engine then stops with this error:
+When you start an app with a configuration for an online session, you might get this prompt from the engine:
 
-```text
-I ran into a problem: I was started with a configuration to use an online session ('--online-session' option), but I did not find a stored default online session key. Use the 'online-session-key  store-default-key' command to store a key. For a detailed guide, see https://to.botengine.org/failed-run-online-session-did-not-find-key
-```
+![botengine for Windows prompt for online session key](./image/2020-05-17-botengine-for-windows-prompt-for-key.png)
+
+Here you need to enter your online session key to continue.
 
 To get your key, go to https://reactor.botengine.org and log in to your account. After logging in, you see a section titled `Online session keys`. In this section, there is an entry for a key, containing a button labeled `Show key`. Clicking this button reveals your key. Please don't share this key with anyone, and don't post it on the forum.
 
-Besides the key itself, clicking the `Show key` button also reveals the complete command you can use to store the key on your system:
+![Web UI displaying online session key](./image/2020-05-17-online-session-key-in-reactor-page.png)
 
-![Web UI displaying online session key and a command to store the key](./image/2020-03-18-botengine-web-ui-online-session-keys.png)
+Copy the key from the web page and paste it into the botengine console window. Press the enter key to complete the input. The engine then checks the key and continues to start the app in an online session.
 
-Copy that command from the web page into the Windows Command Prompt and execute it.
-
-The program then confirms:
-
-```text
-I stored this as the default online session key. I will use this key when running an app in an online session.
-```
-
-Now you can use the `botengine run` command again to start the online session.
+The engine also stores the entered key in the Windows user account, so you don't have to enter it the next time you start an online session.
 
 After the online session is started, you can also see it at https://reactor.botengine.org/ under `Most recent online sessions`:
 

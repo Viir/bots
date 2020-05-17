@@ -129,7 +129,7 @@ When you have applied settings for multiple farm cycles, the bot displays this m
 
 ## Pricing and Online Bot Sessions
 
-You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online-bot session as explained at [https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions](https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions)
+You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online-bot session as explained at [https://to.botengine.org/guide/online-session](https://to.botengine.org/guide/online-session)
 
 Online bot sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
 

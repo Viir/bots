@@ -141,6 +141,11 @@ type alias BotState =
     , lastReloadPageTimeInSeconds : Maybe Int
     , reloadPageCount : Int
     , completedFarmCycles : List FarmCycleConclusion
+    , lastRequestReportListResult :
+        Maybe
+            { request : RequestReportListResponseStructure
+            , decodeResponseResult : Result Json.Decode.Error RequestReportListCallbackDataStructure
+            }
     , parseResponseError : Maybe Json.Decode.Error
     , cache_relativeCoordinatesToSearchForFarmsPartitions : List (List VillageCoordinates)
     }
@@ -184,6 +189,7 @@ type ResponseFromBrowser
     | GetPresetsResponse (List ArmyPreset)
     | ActivatedVillageResponse
     | SendPresetAttackToCoordinatesResponse SendPresetAttackToCoordinatesResponseStructure
+    | RequestReportListResponse RequestReportListResponseStructure
 
 
 type alias RootInformationStructure =
@@ -208,6 +214,32 @@ type alias VillageByCoordinatesResponseStructure =
     { villageCoordinates : VillageCoordinates
     , jumpToVillage : Bool
     }
+
+
+type alias RequestReportListResponseStructure =
+    { offset : Int
+    , count : Int
+    }
+
+
+type alias RequestReportListCallbackDataStructure =
+    { offset : Int
+    , total : Int
+    , reports : List RequestReportListCallbackDataReportStructure
+    }
+
+
+type alias RequestReportListCallbackDataReportStructure =
+    { id : Int
+    , time_created : Int
+    , result : BattleReportResult
+    }
+
+
+type BattleReportResult
+    = BattleReportResult_NO_CASUALTIES
+    | BattleReportResult_CASUALTIES
+    | BattleReportResult_DEFEAT
 
 
 type alias SendPresetAttackToCoordinatesResponseStructure =
@@ -289,6 +321,7 @@ type RequestToPageStructure
     | VillageByCoordinatesRequest { coordinates : VillageCoordinates, jumpToVillage : Bool }
     | SendPresetAttackToCoordinatesRequest { coordinates : VillageCoordinates, presetId : Int }
     | VillageMenuActivateVillageRequest
+    | ReadBattleReportListRequest
 
 
 type VillageCompletedStructure
@@ -335,6 +368,7 @@ initState =
         , lastReloadPageTimeInSeconds = Nothing
         , reloadPageCount = 0
         , completedFarmCycles = []
+        , lastRequestReportListResult = Nothing
         , parseResponseError = Nothing
         , cache_relativeCoordinatesToSearchForFarmsPartitions = []
         }
@@ -509,11 +543,12 @@ decideNextAction { lastPageLocation } stateBefore =
                                                                 { javascript = requestComponents.javascript
                                                                 , requestId = requestToPageIdString
                                                                 , timeToWaitForCallbackMilliseconds =
-                                                                    if requestComponents.usesCallback then
-                                                                        800
+                                                                    case requestComponents.waitForCallbackDuration of
+                                                                        Just waitForCallbackDuration ->
+                                                                            waitForCallbackDuration
 
-                                                                    else
-                                                                        0
+                                                                        Nothing ->
+                                                                            0
                                                                 }
                                                             , { stateBefore
                                                                 | lastRequestToPageId = requestToPageId
@@ -803,14 +838,28 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                 ActivatedVillageResponse ->
                     { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
 
+                RequestReportListResponse requestReportList ->
+                    let
+                        decodeReportListResult =
+                            runJavascriptInCurrentPageResponse.callbackReturnValueAsString
+                                |> Maybe.withDefault ""
+                                |> Json.Decode.decodeString decodeRequestReportListCallbackData
 
-decideInFarmCycle : BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
-decideInFarmCycle botState farmCycleState =
+                        -- TODO: Remember specific case of timeout: This information is useful to decide when and how to retry.
+                    in
+                    { stateBefore
+                        | lastRequestReportListResult = Just { request = requestReportList, decodeResponseResult = decodeReportListResult }
+                    }
+
+
+maintainGameClient : BotState -> Maybe (DecisionPathNode InFarmCycleResponse)
+maintainGameClient botState =
     case botState.lastRunJavascriptResult of
         Nothing ->
             DescribeBranch
                 "Test if web browser is already open."
                 (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
+                |> Just
 
         Just _ ->
             case botState |> lastReloadPageAgeInSecondsFromState |> Maybe.andThen (nothingFromIntIfGreaterThan waitDurationAfterReloadWebPage) of
@@ -818,6 +867,7 @@ decideInFarmCycle botState farmCycleState =
                     DescribeBranch
                         ("Waiting because reloaded web page " ++ (lastReloadPageAgeInSeconds |> String.fromInt) ++ " seconds ago.")
                         (EndDecisionPath (ContinueFarmCycle Nothing))
+                        |> Just
 
                 Nothing ->
                     case botState |> reasonToRestartGameClientFromBotState of
@@ -825,9 +875,16 @@ decideInFarmCycle botState farmCycleState =
                             DescribeBranch
                                 ("Restart the game client (" ++ reasonToRestartGameClient ++ ").")
                                 (EndDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
+                                |> Just
 
                         Nothing ->
-                            decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState
+                            Nothing
+
+
+decideInFarmCycle : BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
+decideInFarmCycle botState farmCycleState =
+    maintainGameClient botState
+        |> Maybe.withDefault (decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState)
 
 
 decideInFarmCycleWhenNotWaitingGlobally : BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
@@ -1042,7 +1099,19 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                         )
                                     )
                         )
+
+        readBattleReportList =
+            DescribeBranch "Read report list"
+                (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadBattleReportListRequest))))
     in
+    {-
+       Disable reading battle report list for to clean up status message.
+          case botState.lastRequestReportListResult of
+              Nothing ->
+                  readBattleReportList
+
+              Just readReportListResult ->
+    -}
     case ownVillagesNeedingDetailsUpdate of
         ownVillageNeedingDetailsUpdate :: _ ->
             DescribeBranch
@@ -1347,26 +1416,29 @@ squareDistanceBetweenCoordinates coordsA coordsB =
     distX * distX + distY * distY
 
 
-componentsForRequestToPage : RequestToPageStructure -> { javascript : String, usesCallback : Bool }
+componentsForRequestToPage : RequestToPageStructure -> { javascript : String, waitForCallbackDuration : Maybe Int }
 componentsForRequestToPage requestToPage =
     case requestToPage of
         ReadRootInformationRequest ->
-            { javascript = readRootInformationScript, usesCallback = False }
+            { javascript = readRootInformationScript, waitForCallbackDuration = Nothing }
 
         ReadSelectedCharacterVillageDetailsRequest { villageId } ->
-            { javascript = readSelectedCharacterVillageDetailsScript villageId, usesCallback = False }
+            { javascript = readSelectedCharacterVillageDetailsScript villageId, waitForCallbackDuration = Nothing }
 
         ReadArmyPresets ->
-            { javascript = getPresetsScript, usesCallback = False }
+            { javascript = getPresetsScript, waitForCallbackDuration = Nothing }
 
         VillageByCoordinatesRequest { coordinates, jumpToVillage } ->
-            { javascript = startVillageByCoordinatesScript coordinates { jumpToVillage = jumpToVillage }, usesCallback = True }
+            { javascript = startVillageByCoordinatesScript coordinates { jumpToVillage = jumpToVillage }, waitForCallbackDuration = Just 800 }
 
         SendPresetAttackToCoordinatesRequest { coordinates, presetId } ->
-            { javascript = startSendPresetAttackToCoordinatesScript coordinates { presetId = presetId }, usesCallback = False }
+            { javascript = startSendPresetAttackToCoordinatesScript coordinates { presetId = presetId }, waitForCallbackDuration = Nothing }
 
         VillageMenuActivateVillageRequest ->
-            { javascript = villageMenuActivateVillageScript, usesCallback = False }
+            { javascript = villageMenuActivateVillageScript, waitForCallbackDuration = Nothing }
+
+        ReadBattleReportListRequest ->
+            { javascript = startRequestReportListScript { offset = 0, count = 100 }, waitForCallbackDuration = Just 3000 }
 
 
 readRootInformationScript : String
@@ -1398,6 +1470,7 @@ decodeResponseFromBrowser =
         [ decodeRootInformation |> Json.Decode.map RootInformation
         , decodeReadSelectedCharacterVillageDetailsResponse |> Json.Decode.map ReadSelectedCharacterVillageDetailsResponse
         , decodeVillageByCoordinatesResponse |> Json.Decode.map VillageByCoordinatesResponse
+        , decodeRequestReportListResponse |> Json.Decode.map RequestReportListResponse
         , decodeGetPresetsResponse |> Json.Decode.map GetPresetsResponse
         , decodeActivatedVillageResponse |> Json.Decode.map (always ActivatedVillageResponse)
         , decodeSendPresetAttackToCoordinatesResponse |> Json.Decode.map SendPresetAttackToCoordinatesResponse
@@ -1717,6 +1790,101 @@ decodeActivatedVillageResponse =
     Json.Decode.field "activatedVillage" (Json.Decode.succeed ())
 
 
+{-| What values does `requestReportList` support for the `filters` parameter?
+2020-05-20 I used `JSON.stringify` on a value for `filters` coming from the `ReportListController` (`$scope.activeFilters` in the calling site) and got this:
+
+"{"BATTLE\_RESULTS":{"1":false,"2":false,"3":false},"BATTLE\_TYPES":{"attack":true,"defense":true,"support":true,"scouting":true},"OTHERS\_TYPES":{"trade":true,"system":true,"misc":true},"MISC":{"favourite":false,"full\_haul":false,"forwarded":false,"character":false}}"
+
+The above `filters` variant was with all visible; at least that was the intention. Let's see what `filters` we find when using the filters in the UI:
+
+Victory with casualties:
+
+"{"BATTLE\_RESULTS":{"1":false,"2":true,"3":false},"BATTLE\_TYPES":{"attack":true,"defense":true,"support":true,"scouting":true},"OTHERS\_TYPES":{"trade":true,"system":true,"misc":true},"MISC":{"favourite":false,"full\_haul":false,"forwarded":false,"character":false}}"
+
+Defeat:
+
+"{"BATTLE\_RESULTS":{"1":false,"2":false,"3":true},"BATTLE\_TYPES":{"attack":true,"defense":true,"support":true,"scouting":true},"OTHERS\_TYPES":{"trade":true,"system":true,"misc":true},"MISC":{"favourite":false,"full\_haul":false,"forwarded":false,"character":false}}"
+
+-}
+startRequestReportListScript : { offset : Int, count : Int } -> String
+startRequestReportListScript request =
+    let
+        argumentJson =
+            [ ( "offset", request.offset |> Json.Encode.int )
+            , ( "count", request.count |> Json.Encode.int )
+            ]
+                |> Json.Encode.object
+                |> Json.Encode.encode 0
+    in
+    """
+(function requestReportList(argument) {
+
+        reportService = angular.element(document.body).injector().get('reportService');
+
+        reportService.requestReportList('battle', argument.offset, argument.count, null, { "BATTLE_RESULTS": { "1": false, "2": false, "3": false }, "BATTLE_TYPES": { "attack": true, "defense": true, "support": true, "scouting": true }, "OTHERS_TYPES": { "trade": true, "system": true, "misc": true }, "MISC": { "favourite": false, "full_haul": false, "forwarded": false, "character": false } }, function (reportsData) {
+
+
+            /*
+            TODO: Remove.
+            Inspect if the callback given to requestReportList is invoked with a proper value.
+            */
+            console.log(JSON.stringify(reportsData));
+
+
+            ____callback____(JSON.stringify(reportsData));
+
+
+            /*
+            TODO: Remove.
+            */
+            console.log("Returned from callback");
+        });
+
+        return JSON.stringify({ startedRequestReportList : argument });
+})(""" ++ argumentJson ++ ")"
+
+
+decodeRequestReportListResponse : Json.Decode.Decoder RequestReportListResponseStructure
+decodeRequestReportListResponse =
+    Json.Decode.field "startedRequestReportList"
+        (Json.Decode.map2 RequestReportListResponseStructure
+            (Json.Decode.field "offset" Json.Decode.int)
+            (Json.Decode.field "count" Json.Decode.int)
+        )
+
+
+decodeRequestReportListCallbackData : Json.Decode.Decoder RequestReportListCallbackDataStructure
+decodeRequestReportListCallbackData =
+    Json.Decode.map3 RequestReportListCallbackDataStructure
+        (Json.Decode.field "offset" Json.Decode.int)
+        (Json.Decode.field "total" Json.Decode.int)
+        (Json.Decode.field "reports" (Json.Decode.list decodeRequestReportListCallbackDataReport))
+
+
+decodeRequestReportListCallbackDataReport : Json.Decode.Decoder RequestReportListCallbackDataReportStructure
+decodeRequestReportListCallbackDataReport =
+    Json.Decode.map3 RequestReportListCallbackDataReportStructure
+        (Json.Decode.field "id" Json.Decode.int)
+        (Json.Decode.field "time_created" Json.Decode.int)
+        (Json.Decode.field "result" decodeBattleReportResult)
+
+
+decodeBattleReportResult : Json.Decode.Decoder BattleReportResult
+decodeBattleReportResult =
+    Json.Decode.int
+        |> Json.Decode.andThen
+            (\resultInteger ->
+                [ ( 1, BattleReportResult_NO_CASUALTIES )
+                , ( 2, BattleReportResult_CASUALTIES )
+                , ( 3, BattleReportResult_DEFEAT )
+                ]
+                    |> Dict.fromList
+                    |> Dict.get resultInteger
+                    |> Maybe.map Json.Decode.succeed
+                    |> Maybe.withDefault (Json.Decode.fail ("Unknown report result type '" ++ (resultInteger |> String.fromInt) ++ "'"))
+            )
+
+
 statusMessageFromState : BotState -> String
 statusMessageFromState state =
     case state.lastRunJavascriptResult of
@@ -1855,11 +2023,29 @@ statusMessageFromState state =
                             )
                         |> Maybe.withDefault []
 
+                readBattleReportsReport =
+                    case state.lastRequestReportListResult of
+                        Nothing ->
+                            "Did not yet read battle reports."
+
+                        Just requestReportListResult ->
+                            let
+                                responseReport =
+                                    case requestReportListResult.decodeResponseResult of
+                                        Ok requestReportListResponse ->
+                                            "Received IDs of " ++ (requestReportListResponse.reports |> List.length |> String.fromInt) ++ " reports"
+
+                                        Err decodeError ->
+                                            "Failed to decode the response: " ++ Json.Decode.errorToString decodeError
+                            in
+                            "Read the list of battle reports: " ++ responseReport
+
                 allReportLines =
                     [ completedFarmCyclesReportLines
                     , [ sentAttacksReport ]
                     , [ coordinatesChecksReport ]
                     , [ inGameReport ]
+                    , [ readBattleReportsReport ]
                     , reloadReportLines
                     , [ parseResponseErrorReport ]
                     , if enableDebugInspection then

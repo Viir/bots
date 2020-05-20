@@ -16,7 +16,7 @@ parseAllowOnlyEmpty appSettings appSettingsString =
         Ok appSettings
 
     else
-        Err "I got an app settings string that is not empty, but I am not programmed to support any app settings at all. Maybe the catalog has another app which better matches your use case?"
+        Err "I received an app-settings string that is not empty, but I only accept an empty app-settings string. I am not programmed to support any app settings. Maybe there is another app which better matches your use case?"
 
 
 parseSimpleCommaSeparatedList : Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings

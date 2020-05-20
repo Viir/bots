@@ -842,7 +842,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                     let
                         decodeReportListResult =
                             runJavascriptInCurrentPageResponse.callbackReturnValueAsString
-                                |> Maybe.withDefault ""
+                                |> Maybe.withDefault "Looks like the callback was not invoked in time."
                                 |> Json.Decode.decodeString decodeRequestReportListCallbackData
 
                         -- TODO: Remember specific case of timeout: This information is useful to decide when and how to retry.
@@ -1438,7 +1438,7 @@ componentsForRequestToPage requestToPage =
             { javascript = villageMenuActivateVillageScript, waitForCallbackDuration = Nothing }
 
         ReadBattleReportListRequest ->
-            { javascript = startRequestReportListScript { offset = 0, count = 100 }, waitForCallbackDuration = Just 3000 }
+            { javascript = startRequestReportListScript { offset = 0, count = 25 }, waitForCallbackDuration = Just 3000 }
 
 
 readRootInformationScript : String

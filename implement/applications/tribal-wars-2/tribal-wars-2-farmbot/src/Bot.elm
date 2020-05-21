@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-05-20
+{- Tribal Wars 2 farmbot version 2020-05-21
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -20,12 +20,13 @@
    ## Configuration Settings
 
    All settings are optional; you only need them in case the defaults don't fit your use-case.
-   You can adjust four settings:
+   You can adjust five settings:
 
    + 'number-of-farm-cycles' : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
    + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
    + 'farm-barb-min-points': Minimum points of barbarian villages to attack.
    + 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
+   + 'farm-avoid-coordinates': List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
 
    Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
    --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
@@ -59,6 +60,7 @@ defaultBotSettings =
     , breakDurationMaxMinutes = 120
     , farmBarbarianVillageMinimumPoints = Nothing
     , farmBarbarianVillageMaximumDistance = 50
+    , farmAvoidCoordinates = []
     }
 
 
@@ -70,6 +72,7 @@ parseBotSettings =
          , ( "break-duration", AppSettings.ValueTypeCustom parseBotSettingBreakDurationMinutes )
          , ( "farm-barb-min-points", AppSettings.ValueTypeInteger (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }) )
          , ( "farm-barb-max-distance", AppSettings.ValueTypeInteger (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance }) )
+         , ( "farm-avoid-coordinates", AppSettings.ValueTypeCustom parseSettingFarmAvoidCoordinates )
          ]
             |> Dict.fromList
         )
@@ -157,6 +160,7 @@ type alias BotSettings =
     , breakDurationMaxMinutes : Int
     , farmBarbarianVillageMinimumPoints : Maybe Int
     , farmBarbarianVillageMaximumDistance : Int
+    , farmAvoidCoordinates : List VillageCoordinates
     }
 
 
@@ -664,6 +668,45 @@ parseBotSettingBreakDurationMinutes breakDurationString =
                     _ ->
                         Err "Missing value"
             )
+
+
+parseSettingFarmAvoidCoordinates : String -> Result String (BotSettings -> BotSettings)
+parseSettingFarmAvoidCoordinates listOfCoordinatesAsString =
+    listOfCoordinatesAsString
+        |> parseSettingListCoordinates
+        |> Result.map (\farmAvoidCoordinates -> \settings -> { settings | farmAvoidCoordinates = farmAvoidCoordinates })
+
+
+parseSettingListCoordinates : String -> Result String (List VillageCoordinates)
+parseSettingListCoordinates listOfCoordinatesAsString =
+    let
+        coordinatesParseResults : List (Result String VillageCoordinates)
+        coordinatesParseResults =
+            listOfCoordinatesAsString
+                |> String.split " "
+                |> List.filter (String.isEmpty >> not)
+                |> List.map
+                    (\coordinatesAsString ->
+                        (case coordinatesAsString |> String.split "|" |> List.map String.trim of
+                            [ xAsString, yAsString ] ->
+                                case ( xAsString |> String.toInt, yAsString |> String.toInt ) of
+                                    ( Just x, Just y ) ->
+                                        Ok { x = x, y = y }
+
+                                    _ ->
+                                        Err "Failed to parse component as integer."
+
+                            _ ->
+                                Err "Unexpected number of components."
+                        )
+                            |> Result.mapError
+                                (\errorInCoordinate ->
+                                    "Failed to parse coordinates string '" ++ coordinatesAsString ++ "': " ++ errorInCoordinate
+                                )
+                    )
+    in
+    coordinatesParseResults
+        |> Result.Extra.combine
 
 
 integrateWebBrowserBotEvent : BotEvent -> BotState -> Result String BotState
@@ -1250,7 +1293,7 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
                                                 False
 
                                             VillageThere village ->
-                                                village |> villageMatchesSettingsForFarm botState.settings
+                                                villageMatchesSettingsForFarm botState.settings coordinates village
                         )
                     >> List.head
 
@@ -1294,10 +1337,9 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
             |> EndDecisionPath
 
 
-villageMatchesSettingsForFarm : BotSettings -> VillageByCoordinatesDetails -> Bool
-villageMatchesSettingsForFarm settings village =
-    village.affiliation
-        == AffiliationBarbarian
+villageMatchesSettingsForFarm : BotSettings -> VillageCoordinates -> VillageByCoordinatesDetails -> Bool
+villageMatchesSettingsForFarm settings villageCoordinates village =
+    (village.affiliation == AffiliationBarbarian)
         && (settings.farmBarbarianVillageMinimumPoints
                 |> Maybe.map
                     (\farmBarbarianVillageMinimumPoints ->
@@ -1310,6 +1352,7 @@ villageMatchesSettingsForFarm settings village =
                     )
                 |> Maybe.withDefault True
            )
+        && (settings.farmAvoidCoordinates |> List.member villageCoordinates |> not)
 
 
 pickBestMatchingArmyPresetForVillage :
@@ -1916,7 +1959,7 @@ statusMessageFromState state =
 
                 villagesMatchingSettingsForFarm =
                     villagesByCoordinates
-                        |> Dict.filter (\_ village -> village |> villageMatchesSettingsForFarm state.settings)
+                        |> Dict.filter (\( x, y ) village -> villageMatchesSettingsForFarm state.settings { x = x, y = y } village)
 
                 numberOfVillagesAvoidedBySettings =
                     (barbarianVillages |> Dict.size) - (villagesMatchingSettingsForFarm |> Dict.size)

@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-05-20
+{- EVE Online mining bot version 2020-05-21
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
 
@@ -30,12 +30,11 @@ import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex)
 import Common.EffectOnWindow exposing (MouseButton(..))
 import Dict
-import EveOnline.AppFramework exposing (AppEffect(..), ShipModulesMemory, getEntropyIntFromUserInterface)
+import EveOnline.AppFramework exposing (AppEffect(..), ShipModulesMemory, getEntropyIntFromReadingFromGameClient)
 import EveOnline.ParseUserInterface
     exposing
         ( MaybeVisible(..)
         , OverviewWindowEntry
-        , ParsedUserInterface
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
@@ -87,6 +86,10 @@ parseBotSettings =
         defaultBotSettings
 
 
+type alias ReadingFromGameClient =
+    EveOnline.ParseUserInterface.ParsedUserInterface
+
+
 type alias BotSettings =
     { runAwayShieldHitpointsThresholdPercent : Int
     , targetingRange : Int
@@ -109,7 +112,7 @@ type alias BotMemory =
 type alias BotDecisionContext =
     { eventContext : EveOnline.AppFramework.AppEventContext BotSettings
     , memory : BotMemory
-    , parsedUserInterface : ParsedUserInterface
+    , readingFromGameClient : ReadingFromGameClient
     }
 
 
@@ -124,7 +127,7 @@ type alias UIElement =
 
 type alias TreeLeafAct =
     { actionsAlreadyDecided : ( String, List VolatileHostInterface.EffectOnWindowStructure )
-    , actionsDependingOnNewReadings : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+    , actionsDependingOnNewReadings : List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
     }
 
 
@@ -142,7 +145,7 @@ type alias BotState =
     { programState :
         Maybe
             { originalDecision : DecisionPathNode
-            , remainingActions : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+            , remainingActions : List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
             }
     , botMemory : BotMemory
     }
@@ -156,12 +159,12 @@ type alias State =
 -}
 decideNextAction : BotDecisionContext -> DecisionPathNode
 decideNextAction context =
-    generalSetupInUserInterface context.parsedUserInterface
+    generalSetupInUserInterface context.readingFromGameClient
         |> Maybe.withDefault
             (branchDependingOnDockedOrInSpace
                 (DescribeBranch "I see no ship UI, assume we are docked."
                     (ensureOreHoldIsSelectedInInventoryWindow
-                        context.parsedUserInterface
+                        context.readingFromGameClient
                         dockedWithOreHoldSelected
                     )
                 )
@@ -169,11 +172,11 @@ decideNextAction context =
                 (\seeUndockingComplete ->
                     DescribeBranch "I see we are in space, undocking complete."
                         (ensureOreHoldIsSelectedInInventoryWindow
-                            context.parsedUserInterface
+                            context.readingFromGameClient
                             (inSpaceWithOreHoldSelected context seeUndockingComplete)
                         )
                 )
-                context.parsedUserInterface
+                context.readingFromGameClient
             )
 
 
@@ -192,7 +195,7 @@ returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
         Just runAwayWithDescription
 
     else if shipUI.hitpointsPercent.shield < returnDronesShieldHitpointsThresholdPercent then
-        returnDronesToBay context.parsedUserInterface
+        returnDronesToBay context.readingFromGameClient
             |> Maybe.map
                 (DescribeBranch
                     ("Shield hitpoints are below " ++ (returnDronesShieldHitpointsThresholdPercent |> String.fromInt) ++ "%. Return drones.")
@@ -204,19 +207,19 @@ returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
         Nothing
 
 
-generalSetupInUserInterface : EveOnline.ParseUserInterface.ParsedUserInterface -> Maybe DecisionPathNode
-generalSetupInUserInterface gameUserInterface =
+generalSetupInUserInterface : ReadingFromGameClient -> Maybe DecisionPathNode
+generalSetupInUserInterface readingFromGameClient =
     [ closeMessageBox, ensureInfoPanelLocationInfoIsExpanded ]
         |> List.filterMap
             (\maybeSetupDecisionFromGameReading ->
-                maybeSetupDecisionFromGameReading gameUserInterface
+                maybeSetupDecisionFromGameReading readingFromGameClient
             )
         |> List.head
 
 
-closeMessageBox : EveOnline.ParseUserInterface.ParsedUserInterface -> Maybe DecisionPathNode
-closeMessageBox gameUserInterface =
-    gameUserInterface.messageBoxes
+closeMessageBox : ReadingFromGameClient -> Maybe DecisionPathNode
+closeMessageBox readingFromGameClient =
+    readingFromGameClient.messageBoxes
         |> List.head
         |> Maybe.map
             (\messageBox ->
@@ -242,13 +245,13 @@ closeMessageBox gameUserInterface =
             )
 
 
-ensureInfoPanelLocationInfoIsExpanded : EveOnline.ParseUserInterface.ParsedUserInterface -> Maybe DecisionPathNode
-ensureInfoPanelLocationInfoIsExpanded gameUserInterface =
-    case gameUserInterface.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
+ensureInfoPanelLocationInfoIsExpanded : ReadingFromGameClient -> Maybe DecisionPathNode
+ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
+    case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
         CanNotSeeIt ->
             Just
                 (DescribeBranch "I cannot see the location info panel. Enable the info panel."
-                    (case gameUserInterface.infoPanelContainer |> maybeVisibleAndThen .icons |> maybeVisibleAndThen .locationInfo of
+                    (case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .icons |> maybeVisibleAndThen .locationInfo of
                         CanNotSeeIt ->
                             DescribeBranch "I cannot see the icon for the location info panel." (EndDecisionPath Wait)
 
@@ -348,7 +351,7 @@ inSpaceWithOreHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOn
 inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHoldSelected =
     if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
         DescribeBranch "I see we are warping."
-            ([ returnDronesToBay context.parsedUserInterface
+            ([ returnDronesToBay context.readingFromGameClient
              , readShipUIModuleButtonTooltips context
              ]
                 |> List.filterMap identity
@@ -378,7 +381,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                         in
                         if (context |> botSettingsFromDecisionContext).oreHoldMaxPercent <= fillPercent then
                             DescribeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
-                                (returnDronesToBay context.parsedUserInterface
+                                (returnDronesToBay context.readingFromGameClient
                                     |> Maybe.withDefault
                                         (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
                                             Nothing ->
@@ -387,13 +390,13 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                             Just lastDockedStationNameFromInfoPanel ->
                                                 dockToStationMatchingNameSeenInInfoPanel
                                                     { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
-                                                    context.parsedUserInterface
+                                                    context.readingFromGameClient
                                         )
                                 )
 
                         else
                             DescribeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
-                                (case context.parsedUserInterface.targets |> List.head of
+                                (case context.readingFromGameClient.targets |> List.head of
                                     Nothing ->
                                         DescribeBranch "I see no locked target."
                                             (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
@@ -431,7 +434,7 @@ unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode
 unlockTargetsNotForMining context =
     let
         targetsToUnlock =
-            context.parsedUserInterface.targets
+            context.readingFromGameClient.targets
                 |> List.filter (.textsTopToBottom >> List.any (String.toLower >> String.contains "asteroid") >> not)
     in
     targetsToUnlock
@@ -467,16 +470,16 @@ unlockTargetsNotForMining context =
 
 travelToMiningSiteAndLaunchDronesAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
 travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
-    case context.parsedUserInterface |> topmostAsteroidFromOverviewWindow of
+    case context.readingFromGameClient |> topmostAsteroidFromOverviewWindow of
         Nothing ->
             DescribeBranch "I see no asteroid in the overview. Warp to mining site."
-                (returnDronesToBay context.parsedUserInterface
+                (returnDronesToBay context.readingFromGameClient
                     |> Maybe.withDefault
-                        (warpToMiningSite context.parsedUserInterface)
+                        (warpToMiningSite context.readingFromGameClient)
                 )
 
         Just asteroidInOverview ->
-            launchDrones context.parsedUserInterface
+            launchDrones context.readingFromGameClient
                 |> Maybe.withDefault
                     (DescribeBranch
                         ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
@@ -489,14 +492,14 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
                     )
 
 
-ensureOreHoldIsSelectedInInventoryWindow : ParsedUserInterface -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode
-ensureOreHoldIsSelectedInInventoryWindow parsedUserInterface continueWithInventoryWindow =
-    case parsedUserInterface |> inventoryWindowWithOreHoldSelectedFromUserInterface of
+ensureOreHoldIsSelectedInInventoryWindow : ReadingFromGameClient -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode
+ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInventoryWindow =
+    case readingFromGameClient |> inventoryWindowWithOreHoldSelectedFromGameClient of
         Just inventoryWindow ->
             continueWithInventoryWindow inventoryWindow
 
         Nothing ->
-            case parsedUserInterface.inventoryWindows |> List.head of
+            case readingFromGameClient.inventoryWindows |> List.head of
                 Nothing ->
                     DescribeBranch "I do not see an inventory window. Please open an inventory window." (EndDecisionPath Wait)
 
@@ -587,7 +590,7 @@ lockTargetFromOverviewEntry overviewEntry =
         )
 
 
-dockToStationMatchingNameSeenInInfoPanel : { stationNameFromInfoPanel : String } -> ParsedUserInterface -> DecisionPathNode
+dockToStationMatchingNameSeenInInfoPanel : { stationNameFromInfoPanel : String } -> ReadingFromGameClient -> DecisionPathNode
 dockToStationMatchingNameSeenInInfoPanel { stationNameFromInfoPanel } =
     dockToStationUsingSurroundingsButtonMenu
         ( "Click on menu entry representing the station '" ++ stationNameFromInfoPanel ++ "'."
@@ -598,7 +601,7 @@ dockToStationMatchingNameSeenInInfoPanel { stationNameFromInfoPanel } =
 
 dockToStationUsingSurroundingsButtonMenu :
     ( String, List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry )
-    -> ParsedUserInterface
+    -> ReadingFromGameClient
     -> DecisionPathNode
 dockToStationUsingSurroundingsButtonMenu ( describeChooseStation, chooseStationMenuEntry ) =
     useContextMenuOnListSurroundingsButton
@@ -620,9 +623,9 @@ dockToStationUsingSurroundingsButtonMenu ( describeChooseStation, chooseStationM
         ]
 
 
-warpToMiningSite : ParsedUserInterface -> DecisionPathNode
-warpToMiningSite parsedUserInterface =
-    parsedUserInterface
+warpToMiningSite : ReadingFromGameClient -> DecisionPathNode
+warpToMiningSite readingFromGameClient =
+    readingFromGameClient
         |> useContextMenuOnListSurroundingsButton
             [ ( "Click on menu entry 'asteroid belts'."
               , lastContextMenuOrSubmenu
@@ -632,7 +635,7 @@ warpToMiningSite parsedUserInterface =
             , ( "Click on one of the menu entries."
               , lastContextMenuOrSubmenu
                     >> Maybe.andThen
-                        (.entries >> listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface))
+                        (.entries >> listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient))
                     >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
               )
             , ( "Click menu entry 'Warp to Within'"
@@ -652,24 +655,24 @@ runAway : BotDecisionContext -> DecisionPathNode
 runAway context =
     case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
         Nothing ->
-            dockToRandomStation context.parsedUserInterface
+            dockToRandomStation context.readingFromGameClient
 
         Just lastDockedStationNameFromInfoPanel ->
             dockToStationMatchingNameSeenInInfoPanel
                 { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
-                context.parsedUserInterface
+                context.readingFromGameClient
 
 
-dockToRandomStation : ParsedUserInterface -> DecisionPathNode
-dockToRandomStation parsedUserInterface =
+dockToRandomStation : ReadingFromGameClient -> DecisionPathNode
+dockToRandomStation readingFromGameClient =
     dockToStationUsingSurroundingsButtonMenu
-        ( "Pick random station.", listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface) )
-        parsedUserInterface
+        ( "Pick random station.", listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient) )
+        readingFromGameClient
 
 
-launchDrones : ParsedUserInterface -> Maybe DecisionPathNode
-launchDrones parsedUserInterface =
-    parsedUserInterface.dronesWindow
+launchDrones : ReadingFromGameClient -> Maybe DecisionPathNode
+launchDrones readingFromGameClient =
+    readingFromGameClient.dronesWindow
         |> maybeNothingFromCanNotSeeIt
         |> Maybe.andThen
             (\dronesWindow ->
@@ -711,9 +714,9 @@ launchDrones parsedUserInterface =
             )
 
 
-returnDronesToBay : ParsedUserInterface -> Maybe DecisionPathNode
-returnDronesToBay parsedUserInterface =
-    parsedUserInterface.dronesWindow
+returnDronesToBay : ReadingFromGameClient -> Maybe DecisionPathNode
+returnDronesToBay readingFromGameClient =
+    readingFromGameClient.dronesWindow
         |> maybeNothingFromCanNotSeeIt
         |> Maybe.andThen .droneGroupInLocalSpace
         |> Maybe.andThen
@@ -751,7 +754,7 @@ actWithoutFurtherReadings actionsAlreadyDecided =
 
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
 readShipUIModuleButtonTooltips context =
-    context.parsedUserInterface.shipUI
+    context.readingFromGameClient.shipUI
         |> maybeNothingFromCanNotSeeIt
         |> Maybe.map .moduleButtons
         |> Maybe.withDefault []
@@ -772,7 +775,7 @@ readShipUIModuleButtonTooltips context =
 
 actStartingWithRightClickOnOverviewEntry :
     OverviewWindowEntry
-    -> List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+    -> List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
     -> EndDecisionPathStructure
 actStartingWithRightClickOnOverviewEntry overviewEntry actionsDependingOnNewReadings =
     Act
@@ -794,17 +797,17 @@ branchDependingOnDockedOrInSpace :
     DecisionPathNode
     -> (EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode)
     -> (SeeUndockingComplete -> DecisionPathNode)
-    -> ParsedUserInterface
+    -> ReadingFromGameClient
     -> DecisionPathNode
-branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUndockingComplete parsedUserInterface =
-    case parsedUserInterface.shipUI of
+branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUndockingComplete readingFromGameClient =
+    case readingFromGameClient.shipUI of
         CanNotSeeIt ->
             branchIfDocked
 
         CanSee shipUI ->
             branchIfCanSeeShipUI shipUI
                 |> Maybe.withDefault
-                    (case parsedUserInterface.overviewWindow of
+                    (case readingFromGameClient.overviewWindow of
                         CanNotSeeIt ->
                             DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
 
@@ -814,9 +817,9 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
                     )
 
 
-useContextMenuOnListSurroundingsButton : List ( String, ParsedUserInterface -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) ) -> ParsedUserInterface -> DecisionPathNode
-useContextMenuOnListSurroundingsButton actionsDependingOnNewReadings parsedUserInterface =
-    case parsedUserInterface.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
+useContextMenuOnListSurroundingsButton : List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) ) -> ReadingFromGameClient -> DecisionPathNode
+useContextMenuOnListSurroundingsButton actionsDependingOnNewReadings readingFromGameClient =
+    case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
         CanNotSeeIt ->
             DescribeBranch "I cannot see the location info panel." (EndDecisionPath Wait)
 
@@ -861,15 +864,15 @@ processEveOnlineBotEvent :
     -> ( BotState, EveOnline.AppFramework.AppEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
     case event of
-        EveOnline.AppFramework.ReadingFromGameClientCompleted parsedUserInterface ->
+        EveOnline.AppFramework.ReadingFromGameClientCompleted readingFromGameClient ->
             let
                 botMemory =
-                    stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory parsedUserInterface
+                    stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory readingFromGameClient
 
                 decisionContext =
                     { eventContext = eventContext
                     , memory = botMemory
-                    , parsedUserInterface = parsedUserInterface
+                    , readingFromGameClient = readingFromGameClient
                     }
 
                 programStateIfEvalDecisionTreeNew =
@@ -908,8 +911,8 @@ processEveOnlineBotEvent eventContext event stateBefore =
                         [] ->
                             ( "Wait", [], Nothing )
 
-                        ( nextActionDescription, nextActionEffectFromUserInterface ) :: remainingActions ->
-                            case parsedUserInterface |> nextActionEffectFromUserInterface of
+                        ( nextActionDescription, nextActionEffectFromGameClient ) :: remainingActions ->
+                            case readingFromGameClient |> nextActionEffectFromGameClient of
                                 Nothing ->
                                     ( "Failed step: " ++ nextActionDescription, [], Nothing )
 
@@ -929,7 +932,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
                         |> String.join "\n"
 
                 statusMessage =
-                    [ describeStateForMonitoring parsedUserInterface botMemory, describeActivity ]
+                    [ describeStateForMonitoring readingFromGameClient botMemory, describeActivity ]
                         |> String.join "\n"
             in
             ( { stateBefore | botMemory = botMemory, programState = programState }
@@ -941,8 +944,8 @@ processEveOnlineBotEvent eventContext event stateBefore =
             )
 
 
-describeStateForMonitoring : ParsedUserInterface -> BotMemory -> String
-describeStateForMonitoring parsedUserInterface botMemory =
+describeStateForMonitoring : ReadingFromGameClient -> BotMemory -> String
+describeStateForMonitoring readingFromGameClient botMemory =
     let
         describeSessionPerformance =
             [ ( "times unloaded", botMemory.timesUnloaded )
@@ -952,13 +955,13 @@ describeStateForMonitoring parsedUserInterface botMemory =
                 |> String.join ", "
 
         describeShip =
-            case parsedUserInterface.shipUI of
+            case readingFromGameClient.shipUI of
                 CanSee shipUI ->
                     "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
 
                 CanNotSeeIt ->
                     case
-                        parsedUserInterface.infoPanelContainer
+                        readingFromGameClient.infoPanelContainer
                             |> maybeVisibleAndThen .infoPanelLocationInfo
                             |> maybeVisibleAndThen .expandedContent
                             |> maybeNothingFromCanNotSeeIt
@@ -971,7 +974,7 @@ describeStateForMonitoring parsedUserInterface botMemory =
                             "I cannot see if I am docked or in space. Please set up game client first."
 
         describeDrones =
-            case parsedUserInterface.dronesWindow of
+            case readingFromGameClient.dronesWindow of
                 CanNotSeeIt ->
                     "Can not see drone window."
 
@@ -984,8 +987,8 @@ describeStateForMonitoring parsedUserInterface botMemory =
 
         describeOreHold =
             "Ore hold filled "
-                ++ (parsedUserInterface
-                        |> inventoryWindowWithOreHoldSelectedFromUserInterface
+                ++ (readingFromGameClient
+                        |> inventoryWindowWithOreHoldSelectedFromGameClient
                         |> Maybe.andThen capacityGaugeUsedPercent
                         |> Maybe.map String.fromInt
                         |> Maybe.withDefault "Unknown"
@@ -1002,7 +1005,7 @@ describeStateForMonitoring parsedUserInterface botMemory =
         |> String.join "\n"
 
 
-integrateCurrentReadingsIntoBotMemory : ParsedUserInterface -> BotMemory -> BotMemory
+integrateCurrentReadingsIntoBotMemory : ReadingFromGameClient -> BotMemory -> BotMemory
 integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
     let
         currentStationNameFromInfoPanel =
@@ -1014,7 +1017,7 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
 
         lastUsedCapacityInOreHold =
             currentReading
-                |> inventoryWindowWithOreHoldSelectedFromUserInterface
+                |> inventoryWindowWithOreHoldSelectedFromGameClient
                 |> Maybe.andThen .selectedContainerCapacityGauge
                 |> Maybe.andThen Result.toMaybe
                 |> Maybe.map .used
@@ -1115,19 +1118,19 @@ menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel menuEn
         == (menuEntry.text |> String.trim |> String.toLower)
 
 
-lastContextMenuOrSubmenu : ParsedUserInterface -> Maybe EveOnline.ParseUserInterface.ContextMenu
+lastContextMenuOrSubmenu : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ContextMenu
 lastContextMenuOrSubmenu =
     .contextMenus >> List.head
 
 
-topmostAsteroidFromOverviewWindow : ParsedUserInterface -> Maybe OverviewWindowEntry
+topmostAsteroidFromOverviewWindow : ReadingFromGameClient -> Maybe OverviewWindowEntry
 topmostAsteroidFromOverviewWindow =
     overviewWindowEntriesRepresentingAsteroids
         >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
         >> List.head
 
 
-overviewWindowEntriesRepresentingAsteroids : ParsedUserInterface -> List OverviewWindowEntry
+overviewWindowEntriesRepresentingAsteroids : ReadingFromGameClient -> List OverviewWindowEntry
 overviewWindowEntriesRepresentingAsteroids =
     .overviewWindow
         >> maybeNothingFromCanNotSeeIt
@@ -1149,8 +1152,8 @@ capacityGaugeUsedPercent =
             (\capacity -> capacity.maximum |> Maybe.map (\maximum -> capacity.used * 100 // maximum))
 
 
-inventoryWindowWithOreHoldSelectedFromUserInterface : ParsedUserInterface -> Maybe EveOnline.ParseUserInterface.InventoryWindow
-inventoryWindowWithOreHoldSelectedFromUserInterface =
+inventoryWindowWithOreHoldSelectedFromGameClient : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.InventoryWindow
+inventoryWindowWithOreHoldSelectedFromGameClient =
     .inventoryWindows
         >> List.filter inventoryWindowSelectedContainerIsOreHold
         >> List.head

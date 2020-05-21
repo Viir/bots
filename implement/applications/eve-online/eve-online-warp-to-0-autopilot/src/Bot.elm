@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2020-05-20
+{- EVE Online Warp-to-0 auto-pilot version 2020-05-21
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
    Before starting the bot, set up as follows:
@@ -27,10 +27,10 @@ import EveOnline.ParseUserInterface
     exposing
         ( InfoPanelRouteRouteElementMarker
         , MaybeVisible(..)
-        , ParsedUserInterface
         , ShipUI
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
+        , maybeVisibleAndThen
         )
 import EveOnline.VolatileHostInterface exposing (effectMouseClickAtLocation)
 
@@ -38,6 +38,10 @@ import EveOnline.VolatileHostInterface exposing (effectMouseClickAtLocation)
 finishSessionAfterInactivityMinutes : Int
 finishSessionAfterInactivityMinutes =
     4
+
+
+type alias ReadingFromGameClient =
+    EveOnline.ParseUserInterface.ParsedUserInterface
 
 
 {-| To support the feature that finishes the session some time of inactivity, it needs to remember the time of the last activity.
@@ -71,7 +75,7 @@ processEveOnlineBotEvent :
     -> ( BotState, EveOnline.AppFramework.AppEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
     case event of
-        EveOnline.AppFramework.ReadingFromGameClientCompleted parsedUserInterface ->
+        EveOnline.AppFramework.ReadingFromGameClientCompleted readingFromGameClient ->
             let
                 continueWaiting statusDescriptionText =
                     ( stateBefore
@@ -110,13 +114,13 @@ processEveOnlineBotEvent eventContext event stateBefore =
                             }
                         )
             in
-            case parsedUserInterface |> infoPanelRouteFirstMarkerFromParsedUserInterface of
+            case readingFromGameClient |> infoPanelRouteFirstMarkerFromReadingFromGameClient of
                 Nothing ->
                     continueWithCurrentEffects
                         ( [], "I see no route in the info panel. I will start when a route is set." )
 
                 Just infoPanelRouteFirstMarker ->
-                    case parsedUserInterface.shipUI of
+                    case readingFromGameClient.shipUI of
                         CanNotSeeIt ->
                             continueWithCurrentEffects
                                 ( [], "I do not see the ship UI. Looks like we are docked." )
@@ -128,14 +132,14 @@ processEveOnlineBotEvent eventContext event stateBefore =
 
                             else
                                 continueWithCurrentEffects
-                                    (botEffectsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstMarker)
+                                    (botEffectsWhenNotWaitingForShipManeuver readingFromGameClient infoPanelRouteFirstMarker)
 
 
 botEffectsWhenNotWaitingForShipManeuver :
-    ParsedUserInterface
+    ReadingFromGameClient
     -> InfoPanelRouteRouteElementMarker
     -> ( List AppEffect, String )
-botEffectsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstMarker =
+botEffectsWhenNotWaitingForShipManeuver readingFromGameClient infoPanelRouteFirstMarker =
     let
         openMenuAnnouncementAndEffect =
             ( [ EffectOnGameClientWindow
@@ -147,7 +151,7 @@ botEffectsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstM
             , "I click on the route element icon in the info panel to open the menu."
             )
     in
-    case parsedUserInterface.contextMenus |> List.head of
+    case readingFromGameClient.contextMenus |> List.head of
         Nothing ->
             openMenuAnnouncementAndEffect
 
@@ -176,10 +180,10 @@ botEffectsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstM
                     )
 
 
-infoPanelRouteFirstMarkerFromParsedUserInterface : ParsedUserInterface -> Maybe InfoPanelRouteRouteElementMarker
-infoPanelRouteFirstMarkerFromParsedUserInterface =
+infoPanelRouteFirstMarkerFromReadingFromGameClient : ReadingFromGameClient -> Maybe InfoPanelRouteRouteElementMarker
+infoPanelRouteFirstMarkerFromReadingFromGameClient =
     .infoPanelContainer
-        >> EveOnline.ParseUserInterface.maybeVisibleAndThen .infoPanelRoute
+        >> maybeVisibleAndThen .infoPanelRoute
         >> maybeNothingFromCanNotSeeIt
         >> Maybe.map .routeElementMarker
         >> Maybe.map (List.sortBy (\routeMarker -> routeMarker.uiNode.totalDisplayRegion.x + routeMarker.uiNode.totalDisplayRegion.y))

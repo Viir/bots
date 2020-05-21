@@ -19,7 +19,7 @@ module EveOnline.AppFramework exposing
     , SetupState
     , ShipModulesMemory
     , StateIncludingFramework
-    , getEntropyIntFromUserInterface
+    , getEntropyIntFromReadingFromGameClient
     , getModuleButtonTooltipFromModuleButton
     , initShipModulesMemory
     , initState
@@ -869,8 +869,8 @@ statusReportFromState state =
         |> String.join "\n"
 
 
-getEntropyIntFromUserInterface : EveOnline.ParseUserInterface.ParsedUserInterface -> Int
-getEntropyIntFromUserInterface parsedUserInterface =
+getEntropyIntFromReadingFromGameClient : EveOnline.ParseUserInterface.ParsedUserInterface -> Int
+getEntropyIntFromReadingFromGameClient readingFromGameClient =
     let
         entropyFromString =
             Common.FNV.hashString
@@ -892,19 +892,19 @@ getEntropyIntFromUserInterface parsedUserInterface =
                 |> List.concat
 
         fromMenus =
-            parsedUserInterface.contextMenus
+            readingFromGameClient.contextMenus
                 |> List.concatMap (.entries >> List.map .uiNode)
                 |> List.concatMap entropyFromUiElement
 
         fromOverview =
-            parsedUserInterface.overviewWindow
+            readingFromGameClient.overviewWindow
                 |> EveOnline.ParseUserInterface.maybeNothingFromCanNotSeeIt
                 |> Maybe.map .entries
                 |> Maybe.withDefault []
                 |> List.concatMap entropyFromOverviewEntry
 
         fromProbeScanner =
-            parsedUserInterface.probeScannerWindow
+            readingFromGameClient.probeScannerWindow
                 |> EveOnline.ParseUserInterface.maybeNothingFromCanNotSeeIt
                 |> Maybe.map .scanResults
                 |> Maybe.withDefault []

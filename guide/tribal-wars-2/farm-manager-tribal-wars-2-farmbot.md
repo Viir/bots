@@ -16,6 +16,7 @@ It automatically detects barbarian villages, available troops and configured arm
 + Takes into account the limit of 50 attacks per village.
 + Fast enough to send 800 attacks per hour.
 + Option to avoid barbarian villages under a certain amount of points.
++ Avoid having your troops die at remaining walls: Option to avoid barbarian villages with specific coordinates.
 
 ### Safe
 
@@ -94,14 +95,15 @@ When all your villages are out of units or at the attack limit, the bot stops wi
 ## Configuration Settings
 
 All settings are optional; you only need them in case the defaults don't fit your use-case.
-You can adjust four settings:
+You can adjust five settings:
 
 + 'number-of-farm-cycles' : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
 + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
 + 'farm-barb-min-points': Minimum points of barbarian villages to attack.
 + 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
++ 'farm-avoid-coordinates': List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
 
-To configure settings, open the configuration page at https://catalog.botengine.org/EE4C5C3690A3CD5307A7815821CF1CFA205D60BD0BC414452E15F97818EE84F5 in a web browser.
+To configure settings, open the configuration page at https://catalog.botengine.org/64AAE01CE30C88F2973264AC3F357943F3D640472E4A2DE64155016B4F83A498 in a web browser.
 
 On this page, scroll down to the button `Configure app`.
 

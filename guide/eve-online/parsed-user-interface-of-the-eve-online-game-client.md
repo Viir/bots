@@ -4,7 +4,7 @@ The parsed user interface is a common way to access parts of the user interface 
 
 The UI tree in the EVE Online client can contain thousands of nodes and tens of thousands of individual properties. Because of this large amount of data, navigating in there can be time-consuming. To make this easier, this library filters and transforms the memory reading result into a form that contains less redundant information and uses names more closely related to the experience of players; for example, the overview window or ship modules.
 
-In the program code, we find the implementation in the module [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/1f8e065b0785bd38030aeedcad8e8132d03738bb/implement/applications/eve-online/eve-online-mining-bot/src/EveOnline/ParseUserInterface.elm).
+In the program code, we find the implementation in the module [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/37eabfd11610026a1ef8060d3d7aaab46c3ad53a/implement/applications/eve-online/eve-online-mining-bot/src/EveOnline/ParseUserInterface.elm).
 
 Years of feedback from developers have shaped this library to contain shortcuts to the often used UI elements. Let's look at the root type to get a general idea of what we can find there:
 
@@ -86,7 +86,7 @@ Some apps identify ship modules by their display location because this is faster
 
 ![Ship UI modules grouped into rows](./image/2020-03-11-eve-online-ship-ui-module-rows-names.png)
 
-The [mining bot example project](https://github.com/Viir/bots/blob/210943751be58b4e3077d4d9e8287a9d5b1016a6/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm) also uses modules this way.
+The [mining bot example project](https://github.com/Viir/bots/blob/37eabfd11610026a1ef8060d3d7aaab46c3ad53a/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm) also uses modules this way.
 
 ## Module Button Tooltip
 

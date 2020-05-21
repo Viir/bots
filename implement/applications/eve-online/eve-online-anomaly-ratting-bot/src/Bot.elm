@@ -28,7 +28,7 @@ import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex)
 import Common.EffectOnWindow exposing (MouseButton(..))
 import Dict
-import EveOnline.AppFramework exposing (AppEffect(..), getEntropyIntFromReadingFromGameClient)
+import EveOnline.AppFramework exposing (AppEffect(..), ShipModulesMemory, getEntropyIntFromReadingFromGameClient)
 import EveOnline.ParseUserInterface
     exposing
         ( MaybeVisible(..)
@@ -110,6 +110,7 @@ type alias BotState =
 
 type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
+    , shipModules : ShipModulesMemory
     }
 
 
@@ -148,7 +149,7 @@ probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
 decideNextAction : BotDecisionContext -> DecisionPathNode
 decideNextAction context =
     branchDependingOnDockedOrInSpace
-        (DescribeBranch "I see no ship UI, assume we are docked." (EndDecisionPath Wait))
+        (DescribeBranch "I see no ship UI, assume we are docked." askForHelpToGetUnstuck)
         (always Nothing)
         (\seeUndockingComplete ->
             DescribeBranch "I see we are in space, undocking complete." (decideNextActionWhenInSpace context seeUndockingComplete)
@@ -159,7 +160,14 @@ decideNextAction context =
 decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
 decideNextActionWhenInSpace context seeUndockingComplete =
     if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
-        DescribeBranch "I see we are warping." (EndDecisionPath Wait)
+        DescribeBranch "I see we are warping."
+            ([ returnDronesToBay context.readingFromGameClient
+             , readShipUIModuleButtonTooltips context
+             ]
+                |> List.filterMap identity
+                |> List.head
+                |> Maybe.withDefault waitForProgressInGame
+            )
 
     else
         case seeUndockingComplete |> shipUIModulesToActivateAlways |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
@@ -236,7 +244,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                                         (DescribeBranch "No drones to return." (continueIfCombatComplete context))
 
                                              else
-                                                DescribeBranch "Wait for target locking to complete." (EndDecisionPath Wait)
+                                                DescribeBranch "Wait for target locking to complete." waitForProgressInGame
                                             )
 
                                     nextOverviewEntryToLock :: _ ->
@@ -254,12 +262,12 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                                 |> Maybe.withDefault
                                                     (DescribeBranch "No idling drones."
                                                         (if (context |> botSettingsFromDecisionContext).maxTargetCount <= (context.readingFromGameClient.targets |> List.length) then
-                                                            DescribeBranch "Enough locked targets." (EndDecisionPath Wait)
+                                                            DescribeBranch "Enough locked targets." waitForProgressInGame
 
                                                          else
                                                             case overviewEntriesToLock of
                                                                 [] ->
-                                                                    DescribeBranch "I see no more overview entries to lock." (EndDecisionPath Wait)
+                                                                    DescribeBranch "I see no more overview entries to lock." waitForProgressInGame
 
                                                                 nextOverviewEntryToLock :: _ ->
                                                                     DescribeBranch "Lock more targets."
@@ -287,7 +295,7 @@ enterAnomaly : BotDecisionContext -> DecisionPathNode
 enterAnomaly context =
     case context.readingFromGameClient.probeScannerWindow of
         CanNotSeeIt ->
-            DescribeBranch "Can not see the probe scanner window." (EndDecisionPath Wait)
+            DescribeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
 
         CanSee probeScannerWindow ->
             let
@@ -301,8 +309,11 @@ enterAnomaly context =
             of
                 Nothing ->
                     DescribeBranch
-                        ("I see " ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt) ++ " scan results, and no matching anomaly.")
-                        (EndDecisionPath Wait)
+                        ("I see "
+                            ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt)
+                            ++ " scan results, and no matching anomaly. Wait for a matching anomaly to appear."
+                        )
+                        waitForProgressInGame
 
                 Just anomalyScanResult ->
                     DescribeBranch "Warp to anomaly."
@@ -470,6 +481,27 @@ lockTargetFromOverviewEntry overviewEntry =
         )
 
 
+readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
+readShipUIModuleButtonTooltips context =
+    context.readingFromGameClient.shipUI
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filter (EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules >> (==) Nothing)
+        |> List.head
+        |> Maybe.map
+            (\moduleButtonWithoutMemoryOfTooltip ->
+                EndDecisionPath
+                    (actWithoutFurtherReadings
+                        ( "Read tooltip for module button"
+                        , [ VolatileHostInterface.MouseMoveTo
+                                { location = moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion }
+                          ]
+                        )
+                    )
+            )
+
+
 actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
 actWithoutFurtherReadings actionsAlreadyDecided =
     Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
@@ -501,17 +533,17 @@ branchDependingOnDockedOrInSpace :
     -> (SeeUndockingComplete -> DecisionPathNode)
     -> ReadingFromGameClient
     -> DecisionPathNode
-branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUndockingComplete parsedUserInterface =
-    case parsedUserInterface.shipUI of
+branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUndockingComplete readingFromGameClient =
+    case readingFromGameClient.shipUI of
         CanNotSeeIt ->
             branchIfDocked
 
         CanSee shipUI ->
             branchIfCanSeeShipUI shipUI
                 |> Maybe.withDefault
-                    (case parsedUserInterface.overviewWindow of
+                    (case readingFromGameClient.overviewWindow of
                         CanNotSeeIt ->
-                            DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
+                            DescribeBranch "I see no overview window, wait until undocking completed." waitForProgressInGame
 
                         CanSee overviewWindow ->
                             branchIfUndockingComplete
@@ -519,11 +551,24 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
                     )
 
 
+waitForProgressInGame : DecisionPathNode
+waitForProgressInGame =
+    EndDecisionPath Wait
+
+
+askForHelpToGetUnstuck : DecisionPathNode
+askForHelpToGetUnstuck =
+    DescribeBranch "I am stuck here and need help to continue." (EndDecisionPath Wait)
+
+
 initState : State
 initState =
     EveOnline.AppFramework.initState
         { programState = Nothing
-        , botMemory = { lastDockedStationNameFromInfoPanel = Nothing }
+        , botMemory =
+            { lastDockedStationNameFromInfoPanel = Nothing
+            , shipModules = EveOnline.AppFramework.initShipModulesMemory
+            }
         }
 
 
@@ -634,15 +679,15 @@ describeReadingFromGameClientForMonitoring readingFromGameClient =
                     "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
 
                 CanNotSeeIt ->
-                    "I cannot see the ship UI. Please set up game client first."
+                    "I do not see the ship UI. Please set up game client first."
 
         describeDrones =
             case readingFromGameClient.dronesWindow of
                 CanNotSeeIt ->
-                    "Can not see drone window."
+                    "I do not see the drones window."
 
                 CanSee dronesWindow ->
-                    "Can see the drones window: In bay: "
+                    "I see the drones window: In bay: "
                         ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
                         ++ ", in local space: "
                         ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
@@ -659,11 +704,8 @@ allOverviewEntriesToAttack =
 
 
 overviewEntryIsTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
-overviewEntryIsTargetedOrTargeting =
-    .namesUnderSpaceObjectIcon
-        >> Set.intersect ([ "targetedByMeIndicator", "targeting" ] |> Set.fromList)
-        >> Set.isEmpty
-        >> not
+overviewEntryIsTargetedOrTargeting overviewEntry =
+    overviewEntry.commonIndications.targetedByMe || overviewEntry.commonIndications.targeting
 
 
 overviewEntryIsActiveTarget : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
@@ -701,6 +743,9 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
             |> List.filterMap identity
             |> List.head
+    , shipModules =
+        botMemoryBefore.shipModules
+            |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
     }
 
 

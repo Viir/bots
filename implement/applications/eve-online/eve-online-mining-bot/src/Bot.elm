@@ -232,7 +232,7 @@ closeMessageBox readingFromGameClient =
                      in
                      case messageBox.buttons |> List.filter buttonCanBeUsedToClose |> List.head of
                         Nothing ->
-                            DescribeBranch "I see no way to close this message box." (EndDecisionPath Wait)
+                            DescribeBranch "I see no way to close this message box." askForHelpToGetUnstuck
 
                         Just buttonToUse ->
                             EndDecisionPath
@@ -250,10 +250,10 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
     case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
         CanNotSeeIt ->
             Just
-                (DescribeBranch "I cannot see the location info panel. Enable the info panel."
+                (DescribeBranch "I do not see the location info panel. Enable the info panel."
                     (case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .icons |> maybeVisibleAndThen .locationInfo of
                         CanNotSeeIt ->
-                            DescribeBranch "I cannot see the icon for the location info panel." (EndDecisionPath Wait)
+                            DescribeBranch "I do not see the icon for the location info panel." askForHelpToGetUnstuck
 
                         CanSee iconLocationInfoPanel ->
                             EndDecisionPath
@@ -291,7 +291,7 @@ dockedWithOreHoldSelected : EveOnline.ParseUserInterface.InventoryWindow -> Deci
 dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
     case inventoryWindowWithOreHoldSelected |> itemHangarFromInventoryWindow of
         Nothing ->
-            DescribeBranch "I do not see the item hangar in the inventory." (EndDecisionPath Wait)
+            DescribeBranch "I do not see the item hangar in the inventory." askForHelpToGetUnstuck
 
         Just itemHangar ->
             case inventoryWindowWithOreHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
@@ -299,7 +299,7 @@ dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
                     DescribeBranch "I see no item in the ore hold. Time to undock."
                         (case inventoryWindowWithOreHoldSelected |> activeShipTreeEntryFromInventoryWindow |> Maybe.map .uiNode of
                             Nothing ->
-                                EndDecisionPath Wait
+                                DescribeBranch "I do not see the active ship in the inventory." askForHelpToGetUnstuck
 
                             Just activeShipEntry ->
                                 EndDecisionPath
@@ -356,7 +356,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
              ]
                 |> List.filterMap identity
                 |> List.head
-                |> Maybe.withDefault (EndDecisionPath Wait)
+                |> Maybe.withDefault waitForProgressInGame
             )
 
     else
@@ -372,7 +372,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
             Nothing ->
                 case inventoryWindowWithOreHoldSelected |> capacityGaugeUsedPercent of
                     Nothing ->
-                        DescribeBranch "I cannot see the ore hold capacity gauge." (EndDecisionPath Wait)
+                        DescribeBranch "I do not see the ore hold capacity gauge." askForHelpToGetUnstuck
 
                     Just fillPercent ->
                         let
@@ -385,7 +385,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                     |> Maybe.withDefault
                                         (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
                                             Nothing ->
-                                                DescribeBranch "At which station should I dock?. I was never docked in a station in this session." (EndDecisionPath Wait)
+                                                DescribeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
 
                                             Just lastDockedStationNameFromInfoPanel ->
                                                 dockToStationMatchingNameSeenInInfoPanel
@@ -413,7 +413,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                                         Nothing ->
                                                             DescribeBranch "All mining laser modules are active."
                                                                 (readShipUIModuleButtonTooltips context
-                                                                    |> Maybe.withDefault (EndDecisionPath Wait)
+                                                                    |> Maybe.withDefault waitForProgressInGame
                                                                 )
 
                                                         Just inactiveModule ->
@@ -501,14 +501,14 @@ ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInven
         Nothing ->
             case readingFromGameClient.inventoryWindows |> List.head of
                 Nothing ->
-                    DescribeBranch "I do not see an inventory window. Please open an inventory window." (EndDecisionPath Wait)
+                    DescribeBranch "I do not see an inventory window. Please open an inventory window." askForHelpToGetUnstuck
 
                 Just inventoryWindow ->
                     DescribeBranch
                         "Ore hold is not selected. Select the ore hold."
                         (case inventoryWindow |> activeShipTreeEntryFromInventoryWindow of
                             Nothing ->
-                                DescribeBranch "I do not see the active ship in the inventory." (EndDecisionPath Wait)
+                                DescribeBranch "I do not see the active ship in the inventory." askForHelpToGetUnstuck
 
                             Just activeShipTreeEntry ->
                                 let
@@ -524,7 +524,7 @@ ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInven
                                             (case activeShipTreeEntry.toggleBtn of
                                                 Nothing ->
                                                     DescribeBranch "I do not see the toggle button to expand the active ship tree entry."
-                                                        (EndDecisionPath Wait)
+                                                        askForHelpToGetUnstuck
 
                                                 Just toggleBtn ->
                                                     EndDecisionPath
@@ -551,7 +551,7 @@ lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
         Ok distanceInMeters ->
             if distanceInMeters <= rangeInMeters then
                 if overviewEntry.commonIndications.targetedByMe || overviewEntry.commonIndications.targeting then
-                    DescribeBranch "Wait for target locking to complete." (EndDecisionPath Wait)
+                    DescribeBranch "Locking target is in progress, wait for completion." waitForProgressInGame
 
                 else
                     DescribeBranch "Object is in range. Lock target."
@@ -572,7 +572,7 @@ lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
                     )
 
         Err error ->
-            DescribeBranch ("Failed to read the distance: " ++ error) (EndDecisionPath Wait)
+            DescribeBranch ("Failed to read the distance: " ++ error) askForHelpToGetUnstuck
 
 
 lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
@@ -747,11 +747,6 @@ returnDronesToBay readingFromGameClient =
             )
 
 
-actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
-actWithoutFurtherReadings actionsAlreadyDecided =
-    Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
-
-
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
 readShipUIModuleButtonTooltips context =
     context.readingFromGameClient.shipUI
@@ -771,6 +766,11 @@ readShipUIModuleButtonTooltips context =
                         )
                     )
             )
+
+
+actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
+actWithoutFurtherReadings actionsAlreadyDecided =
+    Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
 
 
 actStartingWithRightClickOnOverviewEntry :
@@ -809,7 +809,7 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
                 |> Maybe.withDefault
                     (case readingFromGameClient.overviewWindow of
                         CanNotSeeIt ->
-                            DescribeBranch "I see no overview window, wait until undocking completed." (EndDecisionPath Wait)
+                            DescribeBranch "I see no overview window, wait until undocking completed." waitForProgressInGame
 
                         CanSee overviewWindow ->
                             branchIfUndockingComplete
@@ -821,7 +821,7 @@ useContextMenuOnListSurroundingsButton : List ( String, ReadingFromGameClient ->
 useContextMenuOnListSurroundingsButton actionsDependingOnNewReadings readingFromGameClient =
     case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
         CanNotSeeIt ->
-            DescribeBranch "I cannot see the location info panel." (EndDecisionPath Wait)
+            DescribeBranch "I do not see the location info panel." askForHelpToGetUnstuck
 
         CanSee infoPanelLocationInfo ->
             EndDecisionPath
@@ -833,6 +833,16 @@ useContextMenuOnListSurroundingsButton actionsDependingOnNewReadings readingFrom
                     , actionsDependingOnNewReadings = actionsDependingOnNewReadings
                     }
                 )
+
+
+waitForProgressInGame : DecisionPathNode
+waitForProgressInGame =
+    EndDecisionPath Wait
+
+
+askForHelpToGetUnstuck : DecisionPathNode
+askForHelpToGetUnstuck =
+    DescribeBranch "I am stuck here and need help to continue." (EndDecisionPath Wait)
 
 
 initState : State
@@ -971,15 +981,15 @@ describeStateForMonitoring readingFromGameClient botMemory =
                             "I am docked at '" ++ stationName ++ "'."
 
                         Nothing ->
-                            "I cannot see if I am docked or in space. Please set up game client first."
+                            "I do not see if I am docked or in space. Please set up game client first."
 
         describeDrones =
             case readingFromGameClient.dronesWindow of
                 CanNotSeeIt ->
-                    "Can not see drone window."
+                    "I do not see the drones window."
 
                 CanSee dronesWindow ->
-                    "Can see the drones window: In bay: "
+                    "I see the drones window: In bay: "
                         ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
                         ++ ", in local space: "
                         ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")

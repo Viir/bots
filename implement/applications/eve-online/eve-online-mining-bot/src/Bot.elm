@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-05-21
+{- EVE Online mining bot version 2020-05-23
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
 
@@ -484,6 +484,7 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
                     (DescribeBranch
                         ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
                         (lockTargetFromOverviewEntryAndEnsureIsInRange
+                            context.readingFromGameClient
                             (min (context |> botSettingsFromDecisionContext).targetingRange
                                 (context |> botSettingsFromDecisionContext).miningModuleRange
                             )
@@ -545,8 +546,8 @@ ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInven
                         )
 
 
-lockTargetFromOverviewEntryAndEnsureIsInRange : Int -> OverviewWindowEntry -> DecisionPathNode
-lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
+lockTargetFromOverviewEntryAndEnsureIsInRange : ReadingFromGameClient -> Int -> OverviewWindowEntry -> DecisionPathNode
+lockTargetFromOverviewEntryAndEnsureIsInRange readingFromGameClient rangeInMeters overviewEntry =
     case overviewEntry.objectDistanceInMeters of
         Ok distanceInMeters ->
             if distanceInMeters <= rangeInMeters then
@@ -559,16 +560,20 @@ lockTargetFromOverviewEntryAndEnsureIsInRange rangeInMeters overviewEntry =
 
             else
                 DescribeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
-                    (EndDecisionPath
-                        (actStartingWithRightClickOnOverviewEntry
-                            overviewEntry
-                            [ ( "Click menu entry 'approach'."
-                              , lastContextMenuOrSubmenu
-                                    >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
-                                    >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-                              )
-                            ]
-                        )
+                    (if shipManeuverIsApproaching readingFromGameClient then
+                        DescribeBranch "I see we already approach." waitForProgressInGame
+
+                     else
+                        EndDecisionPath
+                            (actStartingWithRightClickOnOverviewEntry
+                                overviewEntry
+                                [ ( "Click menu entry 'approach'."
+                                  , lastContextMenuOrSubmenu
+                                        >> Maybe.andThen (menuEntryContainingTextIgnoringCase "approach")
+                                        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+                                  )
+                                ]
+                            )
                     )
 
         Err error ->
@@ -1223,5 +1228,16 @@ isShipWarpingOrJumping =
                 [ EveOnline.ParseUserInterface.ManeuverWarp, EveOnline.ParseUserInterface.ManeuverJump ]
                     |> List.member maneuverType
             )
+        -- If the ship is just floating in space, there might be no indication displayed.
+        >> Maybe.withDefault False
+
+
+shipManeuverIsApproaching : ReadingFromGameClient -> Bool
+shipManeuverIsApproaching =
+    .shipUI
+        >> maybeNothingFromCanNotSeeIt
+        >> Maybe.andThen (.indication >> maybeNothingFromCanNotSeeIt)
+        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
+        >> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverApproach)
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False

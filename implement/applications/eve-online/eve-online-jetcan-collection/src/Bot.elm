@@ -1,6 +1,9 @@
 {- 🚧 EVE Online Cerberus jetcan collection bot version 2020-05-28 📦
 
-   As described by Foivos Saropoulos aka Cerberus at https://forum.botengine.org/t/eve-jetcan-collection/3231/3?u=viir
+   As described by Foivos Saropoulos aka Cerberus in several posts:
+
+   + https://forum.botengine.org/t/eve-jetcan-collection/3231/3?u=viir
+   + https://forum.botengine.org/t/eve-jetcan-collection/3231/18?u=viir
 -}
 {-
    bot-catalog-tags:eve-online,mining,jetcan
@@ -158,11 +161,14 @@ decideNextAction context =
                 (runAwayIfHitpointsAreTooLow context)
                 (\seeUndockingComplete ->
                     DescribeBranch "I see we are in space, undocking complete."
-                        (transferItemsFromCargoContainerToOreHold context
+                        (activateShipModulesInMiddleRow context seeUndockingComplete
                             |> Maybe.withDefault
-                                (ensureOreHoldIsSelectedInInventoryWindow
-                                    context.parsedUserInterface
-                                    (inSpaceWithOreHoldSelected context seeUndockingComplete)
+                                (transferItemsFromCargoContainerToOreHold context
+                                    |> Maybe.withDefault
+                                        (ensureOreHoldIsSelectedInInventoryWindow
+                                            context.parsedUserInterface
+                                            (inSpaceWithOreHoldSelected context seeUndockingComplete)
+                                        )
                                 )
                         )
                 )
@@ -375,6 +381,23 @@ lastDockedStationNameFromInfoPanelFromMemoryOrSettings context =
             context.settings.lastDockedStationNameFromInfoPanel
 
 
+activateShipModulesInMiddleRow : BotDecisionContext -> SeeUndockingComplete -> Maybe DecisionPathNode
+activateShipModulesInMiddleRow context seeUndockingComplete =
+    case seeUndockingComplete.shipUI.moduleButtonsRows.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+        Just inactiveModule ->
+            Just
+                (DescribeBranch "I see an inactive module in the middle row. Activate it."
+                    (EndDecisionPath
+                        (actWithoutFurtherReadings
+                            ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
+                        )
+                    )
+                )
+
+        Nothing ->
+            Nothing
+
+
 inSpaceWithOreHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
 inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHoldSelected =
     if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
@@ -575,9 +598,9 @@ dockToStationUsingSurroundingsButtonMenu :
     -> DecisionPathNode
 dockToStationUsingSurroundingsButtonMenu ( describeChooseStation, chooseStationMenuEntry ) =
     useContextMenuOnListSurroundingsButton
-        [ ( "Click on menu entry 'stations'."
+        [ ( "Click on menu entry 'Structures'."
           , lastContextMenuOrSubmenu
-                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "stations")
+                >> Maybe.andThen (menuEntryContainingTextIgnoringCase "Structures")
                 >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
           )
         , ( describeChooseStation

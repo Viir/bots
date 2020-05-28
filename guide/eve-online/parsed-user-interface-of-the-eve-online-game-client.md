@@ -4,7 +4,7 @@ The parsed user interface is a common way to access parts of the user interface 
 
 The UI tree in the EVE Online client can contain thousands of nodes and tens of thousands of individual properties. Because of this large amount of data, navigating in there can be time-consuming. To make this easier, this library filters and transforms the memory reading result into a form that contains less redundant information and uses names more closely related to the experience of players; for example, the overview window or ship modules.
 
-In the program code, we find the implementation in the module [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/210943751be58b4e3077d4d9e8287a9d5b1016a6/implement/applications/eve-online/eve-online-mining-bot/src/EveOnline/ParseUserInterface.elm).
+In the program code, we find the implementation in the module [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/37eabfd11610026a1ef8060d3d7aaab46c3ad53a/implement/applications/eve-online/eve-online-mining-bot/src/EveOnline/ParseUserInterface.elm).
 
 Years of feedback from developers have shaped this library to contain shortcuts to the often used UI elements. Let's look at the root type to get a general idea of what we can find there:
 
@@ -56,15 +56,59 @@ type alias ShipUI =
     }
 ```
 
+### Capacitor
+
+```Elm
+type alias ShipUICapacitor =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , pmarks : List ShipUICapacitorPmark
+    , levelFromPmarksPercent : Maybe Int
+    }
+```
+
+Use the field `levelFromPmarksPercent` to get the capacitor level in percent.
+
 ### Module Buttons
 
-The ship UI displays ship modules in the form of module buttons. We can look at these module buttons to learn about the state of the modules, and we can also click on them to toggle the module activity.
+```Elm
+type alias ShipUIModuleButton =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , slotUINode : UITreeNodeWithDisplayRegion
+    , isActive : Maybe Bool
+    , isHiliteVisible : Bool
+    , rampRotationMilli : Maybe Int
+    }
+```
 
-Some bots identify ship modules by their display location because this is faster than reading the tooltips. You can find some bot descriptions calling for arranging modules into the three rows by use. To access the modules grouped into `top`, `middle`, and `bottom`, use the field `moduleButtonsRows`.
+The ship UI displays ship modules in the form of module buttons. One module button can represent a single module or multiple grouped modules. We can look at these module buttons to learn about the state of the modules, and we can also click on them to toggle the module activity.
+
+Some apps identify ship modules by their display location because this is faster than reading the tooltips. You can find some app descriptions calling for arranging modules into the three rows by use. To access the modules grouped into `top`, `middle`, and `bottom`, use the field `moduleButtonsRows`.
 
 ![Ship UI modules grouped into rows](./image/2020-03-11-eve-online-ship-ui-module-rows-names.png)
 
-The [mining bot example project](https://github.com/Viir/bots/blob/210943751be58b4e3077d4d9e8287a9d5b1016a6/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm) also uses modules this way.
+The [mining bot example project](https://github.com/Viir/bots/blob/37eabfd11610026a1ef8060d3d7aaab46c3ad53a/implement/applications/eve-online/eve-online-mining-bot/src/Bot.elm) also uses modules this way.
+
+## Module Button Tooltip
+
+![Module Button Tooltip](./image/2020-05-13-eve-online-module-button-tooltip-scaled.png)
+
+```Elm
+type alias ModuleButtonTooltip =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , shortcut : Maybe { text : String, parseResult : Result String (List Common.EffectOnWindow.VirtualKeyCode) }
+    , optimalRange : Maybe { asString : String, inMeters : Result String Int }
+    }
+```
+
+The module button tooltip helps us to learn more about the module buttons displayed in the ship UI. This UI element appears when we move the mouse over a module button and shows details of the ship module(s) it represents.
+
+Use the function `getAllContainedDisplayTexts` to get the texts contained in the tooltip.
+
+Besides information about the modules, the tooltip also shows the keyboard shortcut to toggle the activity of the module(s). The framework parses these into representations of the keyboard keys. You can use this list of keys to toggle modules without using the mouse.
+
+### Linking a Tooltip With Its Module Button
+
+For the module button tooltip to be useful, we usually want to know which module button it belongs to. The easiest way to establish this link is by using the `isHiliteVisible` field on the module button: When you move the mouse over a module button to trigger the tooltip, you can see `isHiliteVisible` switches to `True` for the module button. Apps use this approach and then remember the tooltip for each module button. There are common functions to update a memory structure holding this information, most importantly `integrateCurrentReadingsIntoShipModulesMemory` in the mining bot example.
 
 ## Inventory Window
 

@@ -1,4 +1,4 @@
-# How to Automate Mining Asteroids in EVE Online
+# EVE Online Mining Bot
 
 For this guide, I picked a mining bot optimal for beginners, which means easy to set up and use. After several iterations in development, this bot has matured to be robust regarding interruptions and changes in the game environment.
 
@@ -7,17 +7,14 @@ Maybe you have seen some bots or 'macros' which follow a fixed sequence of actio
 Before going into the setup, a quick overview of this bot and what it does:
 
 + When the ore hold is not full, warps to an asteroid belt.
++ Uses drones to defend against rats if available.
 + Mines from asteroids.
 + When the ore hold is full, warps and docks to a station to unload the ore into the item hangar. (It remembers the station in which it was last docked, and docks again at the same station.)
 + Runs away if shield hitpoints drop too low (The default threshold is 50%).
-+ Uses drones to defend against rats if available.
 + Displays statistics such as the total volume of unloaded ore, so that you can easily track performance.
 + Closes message boxes that could pop up sometimes during gameplay.
 
-If you haven't yet, follow the [guide on using a warp-to-0 autopilot bot](./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md), because it covers the details of setting up and using an EVE Online bot:
-https://github.com/Viir/bots/blob/master/guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md
-
-When you have successfully used the warp-to-0 autopilot bot, you can continue here to upgrade to the mining bot.
+## Setting up the Game Client
 
 Despite being quite robust, this mining bot is far from being as smart as a human. For example, its perception is more limited than ours, so we need to set up the game to make sure that the bot can see everything it needs to. Following is the list of setup instructions for the EVE Online client:
 
@@ -31,11 +28,15 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
     + Hide passive modules by disabling the check-box `Display Passive Modules`.
 + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
 
-To start the mining bot, you use almost the same command as shown in the guide on the warp-to-0 autopilot bot. The only difference is that to start the mining bot, you supply a different bot source. This is the whole command to run the mining bot:
+## Starting the Mining Bot
 
-```cmd
-botengine  run-bot  https://github.com/Viir/bots/tree/f509334861949dca1e061281a3ebb81dbc6adbdc/implement/applications/eve-online/eve-online-mining-bot
-```
+To start the mining bot, download the script from https://catalog.botengine.org/37ACE8908393727F36EC6B2B5BE0FBF95A1CFB801D7D52F604550ADA13EBDA3D and then run it.
+
+In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-bot-did-not-find-botengine-program
+
+After completing the installation, run the script again to start the mining bot.
+
+From here on, the bot works automatically. It detects the topmost game client window and starts working in that game client.
 
 In case the bot does not work as expected, the first place to look is in the status message of the bot. Depending on what the bot is seeing and doing at the moment, it can display many different status messages.
 For example, if you disable the location ('System info') info panel in the EVE Online client, the bot displays the following message:
@@ -44,7 +45,7 @@ For example, if you disable the location ('System info') info panel in the EVE O
 
 As soon as you enable this info panel again, the bot will also continue working.
 
-The bot repeats the cycle of mining and unloading until you tell it to pause (`SHIFT` + `CTRL`+`ALT` keys) or stop it.
+The bot repeats the cycle of mining and unloading until you tell it to pause (`SHIFT` + `CTRL` + `ALT` keys) or stop it.
 
 To give an overview of the performance of the bot, it displays statistics like this:
 

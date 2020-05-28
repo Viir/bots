@@ -1,16 +1,16 @@
-# Developing Bots for EVE Online
+# Developing for EVE Online
 
-Do you want to learn how to build a bot or intel tool for EVE Online or customize an existing one? This guide explains the process I use to make these apps.
+Do you want to learn how to build a bot or intel tool for EVE Online or customize an existing one? This guide shows you how I make apps like these.
 
 In part, this is a summary of my ~~failings~~ learnings from development projects. But most importantly, this guide lives from and evolves with your questions, so thank you for the feedback!
 
-Wondering what outcome to expect? Two examples are the [mining bot](https://github.com/Viir/bots/blob/master/guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md) and [warp-to-0 autopilot](https://github.com/Viir/bots/blob/master/guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md).
+Wondering what outcome to expect? Two examples are the [mining bot](https://to.botengine.org/guide/app/eve-online-mining-bot) and [warp-to-0 autopilot](https://to.botengine.org/guide/app/eve-online-autopilot-bot).
 
 ## Scope and Overall Direction
 
-My way of working is just one out of many, reflecting the kinds of projects I work on and my preferences. Important to me are simplicity, sustainability, and robustness. That is why I select methods that are easy to explain and have a low maintenance effort.
+My way of working is just one out of many, reflecting the kinds of projects I work on and my preferences. I select methods that are simple and easy to explain and lead to software with low maintenance costs.
 
-For those who already have some experience in software development, I compiled the following overview of my technical decisions:
+For those who already have some experience in software development, I compiled the following overview of my technical decisions (If you have no experience in programming, this list probably is less interesting, feel free to skip it):
 
 + I do not write into the game client's memory or use injection. These techniques can allow for more direct control of the game. A downside of these methods is they enable CCP to detect the presence of the foreign program. Another reason I don't use injection is the more complex concept makes it harder to learn and maintain implementations. For my projects, I stay close to the user interface and control the game by sending mouse and keyboard input.
 
@@ -26,12 +26,12 @@ In this section, we will follow the fastest way to your custom bot.
 First, let's look at an EVE Online bot from the examples. Run this autopilot bot:
 
 ```cmd
-botengine  run-bot  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+botengine  run  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
-If you are not yet familiar with this method of running a bot, read that guide first: [./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md](./how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md)
+If the botengine program is not yet installed on your system, you need to install it first, as described in the guide at https://to.botengine.org/failed-run-bot-did-not-find-botengine-program
 
-The `botengine run-bot` command loads the bot code from the given address to run it on your system. Before running this bot, you need to start an EVE Online client, no need to go beyond character selection.
+The `botengine run` command loads the app code from the given address to run it on your system. Before running this app, you need to start an EVE Online client, no need to go beyond character selection.
 
 When the bot has started, it will display this message:
 
@@ -44,10 +44,10 @@ To edit the bot code files, we download them first. Use this link to download al
 
 Extract the downloaded zip-archive, and you will find the same subdirectory we used in the command to run the bot: `implement\applications\eve-online\eve-online-warp-to-0-autopilot`.
 
-Now you can use the `botengine run-bot` command on this directory as well:
+Now you can use the `botengine run` command on this directory as well:
 
 ```cmd
-botengine  run-bot  "C:\Users\John\Downloads\bots-183be242cd434e8282d7b4fb36ec6bbbf0f58c8a\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
+botengine  run  "C:\Users\John\Downloads\bots-183be242cd434e8282d7b4fb36ec6bbbf0f58c8a\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
 ```
 
 Running this command gives you the same bot with the same behavior because the bot code files are still the same. You can also see that the bot ID displayed in the console window is `16BA890853...` for both commands since the bot ID only depends on the bot code files.
@@ -122,6 +122,7 @@ To achieve this, we combine the following tools:
 + Elm command line program
 + Visual Studio Code
 + elmtooling.elm-ls-vscode
++ elm-format
 
 The following subsections explain in detail how to set up these tools.
 
@@ -197,6 +198,21 @@ When you save the file (`Ctrl + S`), the VSCode extension starts Elm in the back
 When you hover the mouse cursor over the highlighted text, a popup window shows more details. Here you find the message we get from Elm:
 
 ![Visual Studio Code displays diagnostics from Elm - details on hover](./../image/2020-01-20.vscode-elm-display-error-hover.png)
+
+### elm-format
+
+elm-format is a tool we use to format the text in the apps code files. This tool arranges program codes in a standard way - without changing the function. This consistent formatting makes the code easier to read. Using this standardized layout is especially useful when collaborating with other people or asking for help with coding.
+
+The easiest way to use elm-format is by integrating it with VSCode, the same way as we did with the Elm command line program above.
+
+You can download a zip-archive containing the executable program from https://github.com/avh4/elm-format/releases/download/0.8.3/elm-format-0.8.3-win-i386.zip
+Extracting that zip-archive gets you the file `elm-format.exe`.
+
+To integrate it with VSCode, navigate again to the `Elm LS` extension settings as we did for the other settings earlier. Here, enter the path to the `elm-format.exe` file in the text box under `Elm Format Path`, as shown in this image:
+
+![Elm extension setting elm-format](./../image/2020-05-08-vscode-settings-extension-elm-format.png)
+
+Now you can invoke the formatting using the `Format Document` command in the VSCode editor. An easy way to test if the formatting works is to open an `.elm` file from the example projects and add a blank line between two functions. As we can see in the example projects, the standard format is to have two empty lines between function definitions. When you add a third one in between, you can see it revert to two blank lines as soon as you invoke the formatting.
 
 ## Bot Code
 

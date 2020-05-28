@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-04-15
+{- Tribal Wars 2 farmbot version 2020-05-21
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -20,12 +20,13 @@
    ## Configuration Settings
 
    All settings are optional; you only need them in case the defaults don't fit your use-case.
-   You can adjust four settings:
+   You can adjust five settings:
 
    + 'number-of-farm-cycles' : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
    + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
    + 'farm-barb-min-points': Minimum points of barbarian villages to attack.
    + 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
+   + 'farm-avoid-coordinates': List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
 
    Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
    --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
@@ -43,6 +44,7 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import Common.AppSettings as AppSettings
 import Dict
 import Json.Decode
 import Json.Encode
@@ -58,17 +60,23 @@ defaultBotSettings =
     , breakDurationMaxMinutes = 120
     , farmBarbarianVillageMinimumPoints = Nothing
     , farmBarbarianVillageMaximumDistance = 50
+    , farmAvoidCoordinates = []
     }
 
 
-parseBotSettingsNames : Dict.Dict String (String -> Result String (BotSettings -> BotSettings))
-parseBotSettingsNames =
-    [ ( "number-of-farm-cycles", parseBotSettingInt (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles }) )
-    , ( "break-duration", parseBotSettingBreakDurationMinutes )
-    , ( "farm-barb-min-points", parseBotSettingInt (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }) )
-    , ( "farm-barb-max-distance", parseBotSettingInt (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance }) )
-    ]
-        |> Dict.fromList
+parseBotSettings : String -> Result String BotSettings
+parseBotSettings =
+    AppSettings.parseSimpleCommaSeparatedList
+        {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
+        ([ ( "number-of-farm-cycles", AppSettings.ValueTypeInteger (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles }) )
+         , ( "break-duration", AppSettings.ValueTypeCustom parseBotSettingBreakDurationMinutes )
+         , ( "farm-barb-min-points", AppSettings.ValueTypeInteger (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }) )
+         , ( "farm-barb-max-distance", AppSettings.ValueTypeInteger (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance }) )
+         , ( "farm-avoid-coordinates", AppSettings.ValueTypeCustom parseSettingFarmAvoidCoordinates )
+         ]
+            |> Dict.fromList
+        )
+        defaultBotSettings
 
 
 farmArmyPresetNamePattern : String
@@ -136,6 +144,11 @@ type alias BotState =
     , lastReloadPageTimeInSeconds : Maybe Int
     , reloadPageCount : Int
     , completedFarmCycles : List FarmCycleConclusion
+    , lastRequestReportListResult :
+        Maybe
+            { request : RequestReportListResponseStructure
+            , decodeResponseResult : Result Json.Decode.Error RequestReportListCallbackDataStructure
+            }
     , parseResponseError : Maybe Json.Decode.Error
     , cache_relativeCoordinatesToSearchForFarmsPartitions : List (List VillageCoordinates)
     }
@@ -147,6 +160,7 @@ type alias BotSettings =
     , breakDurationMaxMinutes : Int
     , farmBarbarianVillageMinimumPoints : Maybe Int
     , farmBarbarianVillageMaximumDistance : Int
+    , farmAvoidCoordinates : List VillageCoordinates
     }
 
 
@@ -179,6 +193,7 @@ type ResponseFromBrowser
     | GetPresetsResponse (List ArmyPreset)
     | ActivatedVillageResponse
     | SendPresetAttackToCoordinatesResponse SendPresetAttackToCoordinatesResponseStructure
+    | RequestReportListResponse RequestReportListResponseStructure
 
 
 type alias RootInformationStructure =
@@ -203,6 +218,32 @@ type alias VillageByCoordinatesResponseStructure =
     { villageCoordinates : VillageCoordinates
     , jumpToVillage : Bool
     }
+
+
+type alias RequestReportListResponseStructure =
+    { offset : Int
+    , count : Int
+    }
+
+
+type alias RequestReportListCallbackDataStructure =
+    { offset : Int
+    , total : Int
+    , reports : List RequestReportListCallbackDataReportStructure
+    }
+
+
+type alias RequestReportListCallbackDataReportStructure =
+    { id : Int
+    , time_created : Int
+    , result : BattleReportResult
+    }
+
+
+type BattleReportResult
+    = BattleReportResult_NO_CASUALTIES
+    | BattleReportResult_CASUALTIES
+    | BattleReportResult_DEFEAT
 
 
 type alias SendPresetAttackToCoordinatesResponseStructure =
@@ -284,6 +325,7 @@ type RequestToPageStructure
     | VillageByCoordinatesRequest { coordinates : VillageCoordinates, jumpToVillage : Bool }
     | SendPresetAttackToCoordinatesRequest { coordinates : VillageCoordinates, presetId : Int }
     | VillageMenuActivateVillageRequest
+    | ReadBattleReportListRequest
 
 
 type VillageCompletedStructure
@@ -330,6 +372,7 @@ initState =
         , lastReloadPageTimeInSeconds = Nothing
         , reloadPageCount = 0
         , completedFarmCycles = []
+        , lastRequestReportListResult = Nothing
         , parseResponseError = Nothing
         , cache_relativeCoordinatesToSearchForFarmsPartitions = []
         }
@@ -504,11 +547,12 @@ decideNextAction { lastPageLocation } stateBefore =
                                                                 { javascript = requestComponents.javascript
                                                                 , requestId = requestToPageIdString
                                                                 , timeToWaitForCallbackMilliseconds =
-                                                                    if requestComponents.usesCallback then
-                                                                        800
+                                                                    case requestComponents.waitForCallbackDuration of
+                                                                        Just waitForCallbackDuration ->
+                                                                            waitForCallbackDuration
 
-                                                                    else
-                                                                        0
+                                                                        Nothing ->
+                                                                            0
                                                                 }
                                                             , { stateBefore
                                                                 | lastRequestToPageId = requestToPageId
@@ -605,52 +649,6 @@ decideNextAction { lastPageLocation } stateBefore =
             )
 
 
-parseBotSettingInt : (Int -> BotSettings -> BotSettings) -> String -> Result String (BotSettings -> BotSettings)
-parseBotSettingInt integrateInt argumentAsString =
-    case argumentAsString |> String.toInt of
-        Nothing ->
-            Err ("Failed to parse '" ++ argumentAsString ++ "' as a whole number (integer).")
-
-        Just int ->
-            Ok (integrateInt int)
-
-
-parseSettingsFromString : BotSettings -> String -> Result String BotSettings
-parseSettingsFromString settingsBefore settingsString =
-    let
-        assignments =
-            settingsString |> String.split ","
-
-        assignmentFunctionResults =
-            assignments
-                |> List.map String.trim
-                |> List.filter (String.isEmpty >> not)
-                |> List.map
-                    (\assignment ->
-                        case assignment |> String.split "=" |> List.map String.trim of
-                            [ settingName, assignedValue ] ->
-                                case parseBotSettingsNames |> Dict.get settingName of
-                                    Nothing ->
-                                        Err ("Unknown setting name '" ++ settingName ++ "'.")
-
-                                    Just parseFunction ->
-                                        parseFunction assignedValue
-                                            |> Result.mapError (\parseError -> "Failed to parse value for setting '" ++ settingName ++ "': " ++ parseError)
-
-                            _ ->
-                                Err ("Failed to parse assignment '" ++ assignment ++ "'.")
-                    )
-    in
-    assignmentFunctionResults
-        |> Result.Extra.combine
-        |> Result.map
-            (\assignmentFunctions ->
-                assignmentFunctions
-                    |> List.foldl (\assignmentFunction previousSettings -> assignmentFunction previousSettings)
-                        settingsBefore
-            )
-
-
 parseBotSettingBreakDurationMinutes : String -> Result String (BotSettings -> BotSettings)
 parseBotSettingBreakDurationMinutes breakDurationString =
     let
@@ -672,13 +670,52 @@ parseBotSettingBreakDurationMinutes breakDurationString =
             )
 
 
+parseSettingFarmAvoidCoordinates : String -> Result String (BotSettings -> BotSettings)
+parseSettingFarmAvoidCoordinates listOfCoordinatesAsString =
+    listOfCoordinatesAsString
+        |> parseSettingListCoordinates
+        |> Result.map (\farmAvoidCoordinates -> \settings -> { settings | farmAvoidCoordinates = farmAvoidCoordinates })
+
+
+parseSettingListCoordinates : String -> Result String (List VillageCoordinates)
+parseSettingListCoordinates listOfCoordinatesAsString =
+    let
+        coordinatesParseResults : List (Result String VillageCoordinates)
+        coordinatesParseResults =
+            listOfCoordinatesAsString
+                |> String.split " "
+                |> List.filter (String.isEmpty >> not)
+                |> List.map
+                    (\coordinatesAsString ->
+                        (case coordinatesAsString |> String.split "|" |> List.map String.trim of
+                            [ xAsString, yAsString ] ->
+                                case ( xAsString |> String.toInt, yAsString |> String.toInt ) of
+                                    ( Just x, Just y ) ->
+                                        Ok { x = x, y = y }
+
+                                    _ ->
+                                        Err "Failed to parse component as integer."
+
+                            _ ->
+                                Err "Unexpected number of components."
+                        )
+                            |> Result.mapError
+                                (\errorInCoordinate ->
+                                    "Failed to parse coordinates string '" ++ coordinatesAsString ++ "': " ++ errorInCoordinate
+                                )
+                    )
+    in
+    coordinatesParseResults
+        |> Result.Extra.combine
+
+
 integrateWebBrowserBotEvent : BotEvent -> BotState -> Result String BotState
 integrateWebBrowserBotEvent event stateBefore =
     case event of
         BotFramework.SetAppSettings settingsString ->
             let
                 parseSettingsResult =
-                    parseSettingsFromString defaultBotSettings settingsString
+                    parseBotSettings settingsString
             in
             parseSettingsResult
                 |> Result.map
@@ -844,14 +881,28 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                 ActivatedVillageResponse ->
                     { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
 
+                RequestReportListResponse requestReportList ->
+                    let
+                        decodeReportListResult =
+                            runJavascriptInCurrentPageResponse.callbackReturnValueAsString
+                                |> Maybe.withDefault "Looks like the callback was not invoked in time."
+                                |> Json.Decode.decodeString decodeRequestReportListCallbackData
 
-decideInFarmCycle : BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
-decideInFarmCycle botState farmCycleState =
+                        -- TODO: Remember specific case of timeout: This information is useful to decide when and how to retry.
+                    in
+                    { stateBefore
+                        | lastRequestReportListResult = Just { request = requestReportList, decodeResponseResult = decodeReportListResult }
+                    }
+
+
+maintainGameClient : BotState -> Maybe (DecisionPathNode InFarmCycleResponse)
+maintainGameClient botState =
     case botState.lastRunJavascriptResult of
         Nothing ->
             DescribeBranch
                 "Test if web browser is already open."
                 (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
+                |> Just
 
         Just _ ->
             case botState |> lastReloadPageAgeInSecondsFromState |> Maybe.andThen (nothingFromIntIfGreaterThan waitDurationAfterReloadWebPage) of
@@ -859,6 +910,7 @@ decideInFarmCycle botState farmCycleState =
                     DescribeBranch
                         ("Waiting because reloaded web page " ++ (lastReloadPageAgeInSeconds |> String.fromInt) ++ " seconds ago.")
                         (EndDecisionPath (ContinueFarmCycle Nothing))
+                        |> Just
 
                 Nothing ->
                     case botState |> reasonToRestartGameClientFromBotState of
@@ -866,9 +918,16 @@ decideInFarmCycle botState farmCycleState =
                             DescribeBranch
                                 ("Restart the game client (" ++ reasonToRestartGameClient ++ ").")
                                 (EndDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
+                                |> Just
 
                         Nothing ->
-                            decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState
+                            Nothing
+
+
+decideInFarmCycle : BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
+decideInFarmCycle botState farmCycleState =
+    maintainGameClient botState
+        |> Maybe.withDefault (decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState)
 
 
 decideInFarmCycleWhenNotWaitingGlobally : BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
@@ -1083,7 +1142,19 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                         )
                                     )
                         )
+
+        readBattleReportList =
+            DescribeBranch "Read report list"
+                (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadBattleReportListRequest))))
     in
+    {-
+       Disable reading battle report list for to clean up status message.
+          case botState.lastRequestReportListResult of
+              Nothing ->
+                  readBattleReportList
+
+              Just readReportListResult ->
+    -}
     case ownVillagesNeedingDetailsUpdate of
         ownVillageNeedingDetailsUpdate :: _ ->
             DescribeBranch
@@ -1222,7 +1293,7 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
                                                 False
 
                                             VillageThere village ->
-                                                village |> villageMatchesSettingsForFarm botState.settings
+                                                villageMatchesSettingsForFarm botState.settings coordinates village
                         )
                     >> List.head
 
@@ -1266,10 +1337,9 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
             |> EndDecisionPath
 
 
-villageMatchesSettingsForFarm : BotSettings -> VillageByCoordinatesDetails -> Bool
-villageMatchesSettingsForFarm settings village =
-    village.affiliation
-        == AffiliationBarbarian
+villageMatchesSettingsForFarm : BotSettings -> VillageCoordinates -> VillageByCoordinatesDetails -> Bool
+villageMatchesSettingsForFarm settings villageCoordinates village =
+    (village.affiliation == AffiliationBarbarian)
         && (settings.farmBarbarianVillageMinimumPoints
                 |> Maybe.map
                     (\farmBarbarianVillageMinimumPoints ->
@@ -1282,6 +1352,7 @@ villageMatchesSettingsForFarm settings village =
                     )
                 |> Maybe.withDefault True
            )
+        && (settings.farmAvoidCoordinates |> List.member villageCoordinates |> not)
 
 
 pickBestMatchingArmyPresetForVillage :
@@ -1388,26 +1459,29 @@ squareDistanceBetweenCoordinates coordsA coordsB =
     distX * distX + distY * distY
 
 
-componentsForRequestToPage : RequestToPageStructure -> { javascript : String, usesCallback : Bool }
+componentsForRequestToPage : RequestToPageStructure -> { javascript : String, waitForCallbackDuration : Maybe Int }
 componentsForRequestToPage requestToPage =
     case requestToPage of
         ReadRootInformationRequest ->
-            { javascript = readRootInformationScript, usesCallback = False }
+            { javascript = readRootInformationScript, waitForCallbackDuration = Nothing }
 
         ReadSelectedCharacterVillageDetailsRequest { villageId } ->
-            { javascript = readSelectedCharacterVillageDetailsScript villageId, usesCallback = False }
+            { javascript = readSelectedCharacterVillageDetailsScript villageId, waitForCallbackDuration = Nothing }
 
         ReadArmyPresets ->
-            { javascript = getPresetsScript, usesCallback = False }
+            { javascript = getPresetsScript, waitForCallbackDuration = Nothing }
 
         VillageByCoordinatesRequest { coordinates, jumpToVillage } ->
-            { javascript = startVillageByCoordinatesScript coordinates { jumpToVillage = jumpToVillage }, usesCallback = True }
+            { javascript = startVillageByCoordinatesScript coordinates { jumpToVillage = jumpToVillage }, waitForCallbackDuration = Just 800 }
 
         SendPresetAttackToCoordinatesRequest { coordinates, presetId } ->
-            { javascript = startSendPresetAttackToCoordinatesScript coordinates { presetId = presetId }, usesCallback = False }
+            { javascript = startSendPresetAttackToCoordinatesScript coordinates { presetId = presetId }, waitForCallbackDuration = Nothing }
 
         VillageMenuActivateVillageRequest ->
-            { javascript = villageMenuActivateVillageScript, usesCallback = False }
+            { javascript = villageMenuActivateVillageScript, waitForCallbackDuration = Nothing }
+
+        ReadBattleReportListRequest ->
+            { javascript = startRequestReportListScript { offset = 0, count = 25 }, waitForCallbackDuration = Just 3000 }
 
 
 readRootInformationScript : String
@@ -1439,6 +1513,7 @@ decodeResponseFromBrowser =
         [ decodeRootInformation |> Json.Decode.map RootInformation
         , decodeReadSelectedCharacterVillageDetailsResponse |> Json.Decode.map ReadSelectedCharacterVillageDetailsResponse
         , decodeVillageByCoordinatesResponse |> Json.Decode.map VillageByCoordinatesResponse
+        , decodeRequestReportListResponse |> Json.Decode.map RequestReportListResponse
         , decodeGetPresetsResponse |> Json.Decode.map GetPresetsResponse
         , decodeActivatedVillageResponse |> Json.Decode.map (always ActivatedVillageResponse)
         , decodeSendPresetAttackToCoordinatesResponse |> Json.Decode.map SendPresetAttackToCoordinatesResponse
@@ -1758,6 +1833,101 @@ decodeActivatedVillageResponse =
     Json.Decode.field "activatedVillage" (Json.Decode.succeed ())
 
 
+{-| What values does `requestReportList` support for the `filters` parameter?
+2020-05-20 I used `JSON.stringify` on a value for `filters` coming from the `ReportListController` (`$scope.activeFilters` in the calling site) and got this:
+
+"{"BATTLE\_RESULTS":{"1":false,"2":false,"3":false},"BATTLE\_TYPES":{"attack":true,"defense":true,"support":true,"scouting":true},"OTHERS\_TYPES":{"trade":true,"system":true,"misc":true},"MISC":{"favourite":false,"full\_haul":false,"forwarded":false,"character":false}}"
+
+The above `filters` variant was with all visible; at least that was the intention. Let's see what `filters` we find when using the filters in the UI:
+
+Victory with casualties:
+
+"{"BATTLE\_RESULTS":{"1":false,"2":true,"3":false},"BATTLE\_TYPES":{"attack":true,"defense":true,"support":true,"scouting":true},"OTHERS\_TYPES":{"trade":true,"system":true,"misc":true},"MISC":{"favourite":false,"full\_haul":false,"forwarded":false,"character":false}}"
+
+Defeat:
+
+"{"BATTLE\_RESULTS":{"1":false,"2":false,"3":true},"BATTLE\_TYPES":{"attack":true,"defense":true,"support":true,"scouting":true},"OTHERS\_TYPES":{"trade":true,"system":true,"misc":true},"MISC":{"favourite":false,"full\_haul":false,"forwarded":false,"character":false}}"
+
+-}
+startRequestReportListScript : { offset : Int, count : Int } -> String
+startRequestReportListScript request =
+    let
+        argumentJson =
+            [ ( "offset", request.offset |> Json.Encode.int )
+            , ( "count", request.count |> Json.Encode.int )
+            ]
+                |> Json.Encode.object
+                |> Json.Encode.encode 0
+    in
+    """
+(function requestReportList(argument) {
+
+        reportService = angular.element(document.body).injector().get('reportService');
+
+        reportService.requestReportList('battle', argument.offset, argument.count, null, { "BATTLE_RESULTS": { "1": false, "2": false, "3": false }, "BATTLE_TYPES": { "attack": true, "defense": true, "support": true, "scouting": true }, "OTHERS_TYPES": { "trade": true, "system": true, "misc": true }, "MISC": { "favourite": false, "full_haul": false, "forwarded": false, "character": false } }, function (reportsData) {
+
+
+            /*
+            TODO: Remove.
+            Inspect if the callback given to requestReportList is invoked with a proper value.
+            */
+            console.log(JSON.stringify(reportsData));
+
+
+            ____callback____(JSON.stringify(reportsData));
+
+
+            /*
+            TODO: Remove.
+            */
+            console.log("Returned from callback");
+        });
+
+        return JSON.stringify({ startedRequestReportList : argument });
+})(""" ++ argumentJson ++ ")"
+
+
+decodeRequestReportListResponse : Json.Decode.Decoder RequestReportListResponseStructure
+decodeRequestReportListResponse =
+    Json.Decode.field "startedRequestReportList"
+        (Json.Decode.map2 RequestReportListResponseStructure
+            (Json.Decode.field "offset" Json.Decode.int)
+            (Json.Decode.field "count" Json.Decode.int)
+        )
+
+
+decodeRequestReportListCallbackData : Json.Decode.Decoder RequestReportListCallbackDataStructure
+decodeRequestReportListCallbackData =
+    Json.Decode.map3 RequestReportListCallbackDataStructure
+        (Json.Decode.field "offset" Json.Decode.int)
+        (Json.Decode.field "total" Json.Decode.int)
+        (Json.Decode.field "reports" (Json.Decode.list decodeRequestReportListCallbackDataReport))
+
+
+decodeRequestReportListCallbackDataReport : Json.Decode.Decoder RequestReportListCallbackDataReportStructure
+decodeRequestReportListCallbackDataReport =
+    Json.Decode.map3 RequestReportListCallbackDataReportStructure
+        (Json.Decode.field "id" Json.Decode.int)
+        (Json.Decode.field "time_created" Json.Decode.int)
+        (Json.Decode.field "result" decodeBattleReportResult)
+
+
+decodeBattleReportResult : Json.Decode.Decoder BattleReportResult
+decodeBattleReportResult =
+    Json.Decode.int
+        |> Json.Decode.andThen
+            (\resultInteger ->
+                [ ( 1, BattleReportResult_NO_CASUALTIES )
+                , ( 2, BattleReportResult_CASUALTIES )
+                , ( 3, BattleReportResult_DEFEAT )
+                ]
+                    |> Dict.fromList
+                    |> Dict.get resultInteger
+                    |> Maybe.map Json.Decode.succeed
+                    |> Maybe.withDefault (Json.Decode.fail ("Unknown report result type '" ++ (resultInteger |> String.fromInt) ++ "'"))
+            )
+
+
 statusMessageFromState : BotState -> String
 statusMessageFromState state =
     case state.lastRunJavascriptResult of
@@ -1789,7 +1959,7 @@ statusMessageFromState state =
 
                 villagesMatchingSettingsForFarm =
                     villagesByCoordinates
-                        |> Dict.filter (\_ village -> village |> villageMatchesSettingsForFarm state.settings)
+                        |> Dict.filter (\( x, y ) village -> villageMatchesSettingsForFarm state.settings { x = x, y = y } village)
 
                 numberOfVillagesAvoidedBySettings =
                     (barbarianVillages |> Dict.size) - (villagesMatchingSettingsForFarm |> Dict.size)
@@ -1896,11 +2066,29 @@ statusMessageFromState state =
                             )
                         |> Maybe.withDefault []
 
+                readBattleReportsReport =
+                    case state.lastRequestReportListResult of
+                        Nothing ->
+                            "Did not yet read battle reports."
+
+                        Just requestReportListResult ->
+                            let
+                                responseReport =
+                                    case requestReportListResult.decodeResponseResult of
+                                        Ok requestReportListResponse ->
+                                            "Received IDs of " ++ (requestReportListResponse.reports |> List.length |> String.fromInt) ++ " reports"
+
+                                        Err decodeError ->
+                                            "Failed to decode the response: " ++ Json.Decode.errorToString decodeError
+                            in
+                            "Read the list of battle reports: " ++ responseReport
+
                 allReportLines =
                     [ completedFarmCyclesReportLines
                     , [ sentAttacksReport ]
                     , [ coordinatesChecksReport ]
                     , [ inGameReport ]
+                    , [ readBattleReportsReport ]
                     , reloadReportLines
                     , [ parseResponseErrorReport ]
                     , if enableDebugInspection then

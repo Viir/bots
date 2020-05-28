@@ -16,6 +16,7 @@ It automatically detects barbarian villages, available troops and configured arm
 + Takes into account the limit of 50 attacks per village.
 + Fast enough to send 800 attacks per hour.
 + Option to avoid barbarian villages under a certain amount of points.
++ Avoid having your troops die at remaining walls: Option to avoid barbarian villages with specific coordinates.
 
 ### Safe
 
@@ -25,11 +26,12 @@ It automatically detects barbarian villages, available troops and configured arm
 
 ## Starting the Farmbot
 
-To start the farmbot, download the script from [https://botengine.blob.core.windows.net/blob-library/by-name/2020-04-20-run-app-EE4C5C3690-tribal-wars-2-farmbot.bat](https://botengine.blob.core.windows.net/blob-library/by-name/2020-04-20-run-app-EE4C5C3690-tribal-wars-2-farmbot.bat) and then run it.
+This video shows the process of starting the farmbot and setting up your Tribal Wars 2 account:
 
-In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at [https://to.botengine.org/failed-run-bot-did-not-find-botengine-program](https://to.botengine.org/failed-run-bot-did-not-find-botengine-program)
+https://youtu.be/yzkernqechE
 
-After completing the installation, run the script again to start the farmbot.
+To start the farmbot, download the executable file from [https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-05-07.exe](https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-05-07.exe) and then run it.
+
 The first time you start the bot, it will download a web browser component. This can take some time, depending on your internet connection.
 
 ![Tribal Wars 2 Farmbot Starting](./image/2020-01-25.tribal-wars-2-farmbot-before-login.png)
@@ -93,14 +95,15 @@ When all your villages are out of units or at the attack limit, the bot stops wi
 ## Configuration Settings
 
 All settings are optional; you only need them in case the defaults don't fit your use-case.
-You can adjust four settings:
+You can adjust five settings:
 
 + 'number-of-farm-cycles' : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
 + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
 + 'farm-barb-min-points': Minimum points of barbarian villages to attack.
 + 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
++ 'farm-avoid-coordinates': List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
 
-To configure settings, open the configuration page at https://catalog.botengine.org/EE4C5C3690A3CD5307A7815821CF1CFA205D60BD0BC414452E15F97818EE84F5 in a web browser.
+To configure settings, open the configuration page at https://catalog.botengine.org/64AAE01CE30C88F2973264AC3F357943F3D640472E4A2DE64155016B4F83A498 in a web browser.
 
 On this page, scroll down to the button `Configure app`.
 
@@ -128,7 +131,7 @@ When you have applied settings for multiple farm cycles, the bot displays this m
 
 ## Pricing and Online Bot Sessions
 
-You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online-bot session as explained at [https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions](https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#online-bot-sessions)
+You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online-bot session as explained at [https://to.botengine.org/guide/online-session](https://to.botengine.org/guide/online-session)
 
 Online bot sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
 

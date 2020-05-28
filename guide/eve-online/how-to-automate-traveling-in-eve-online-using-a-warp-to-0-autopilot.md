@@ -1,20 +1,18 @@
-# How to Automate Traveling in EVE Online - Using a Warp-To-0 Autopilot
+# EVE Online Warp-To-0 Autopilot Bot
 
 When playing EVE Online, you might spend significant time traveling between solar systems. This activity is so common that there is even an in-game autopilot to automate this process. But that autopilot has a critical flaw: It is quite inefficient and will cause long travel times. You can travel faster by manually commanding your ship.
 
-Fortunately, this process can be automated using a bot. The bot we are using here follows the route set in the in-game autopilot and uses the context menu to initiate warp and dock commands. Using the following steps, you can set up your warp-to-0 auto-pilot bot, to travel fast and safe in EVE Online.
+Fortunately, this process can be automated using a bot. The bot we are using here follows the route set in the in-game autopilot and uses the context menu to initiate warp and dock commands.
 
-+ Download the BotEngine Windows console app from 
-[https://botengine.blob.core.windows.net/blob-library/by-name/2020-04-20-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2020-04-20-botengine-console.zip). Extract this Zip-Archive. This will give you a file named `BotEngine.exe`.
-+ Start the EVE Online client and log in to the game.
-+ To start the autopilot bot, run the `BotEngine.exe` program with the following command:
+## Starting the Autopilot Bot
 
-```cmd
-C:\path\to\the\BotEngine.exe  run-bot  "https://github.com/Viir/bots/tree/8db3758e0bb81a0a1a6016b1a049f5f55a1b6b4a/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
-```
-You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe). This app comes by default with any Windows 10 installation.
+To start the bot, download the script from https://catalog.botengine.org/646B1D8413D18793C61C63620315AC1496765835B0E539B9097B0523B3D2010E and then run it.
 
-After you have entered this command, the bot needs a few seconds to start and find the EVE Online client process. It also shows status messages to inform what it is doing at the moment and when the startup is complete.
+In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-bot-did-not-find-botengine-program
+
+After completing the installation, run the script again to start the bot.
+
+The bot needs a few seconds to start and find the EVE Online client process. It also shows status messages to inform what it is doing at the moment and when the startup is complete.
 
 ![EVE Online Warp-To-0 Autopilot Starting](./image/2019-10-08.eve-online-autopilot-bot-startup.png)
 
@@ -33,4 +31,3 @@ The bot only works when the UI language is set to English. The bot reads the tex
 
 Alright, I think that is all there is to know about the basic autopilot bot. If you have questions about this bot or are searching for other bots, don't hesitate to ask on the [BotEngine forum](https://forum.botengine.org/).
 
-(This guide is based on the more general guide at [/guide/how-to-run-a-bot.md](./../how-to-run-a-bot.md))

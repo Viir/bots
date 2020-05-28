@@ -1,6 +1,6 @@
 {- This is a template to test functions to locate objects in images.
 
-   To use this template, use it like a bot and run it using the `run-bot` command.
+   To use this template, run it using the `botengine run` command.
    Specify the path to the file to load the image from using the `--app-settings` parameter.
 
    To test an image search function, replace the function `image_shows_object_at_origin` below with your search function.

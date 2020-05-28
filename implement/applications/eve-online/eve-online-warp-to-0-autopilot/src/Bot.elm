@@ -1,7 +1,7 @@
-{- EVE Online Warp-to-0 auto-pilot version 2020-04-15
+{- EVE Online Warp-to-0 auto-pilot version 2020-05-26
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
-   Before starting the bot, set up as follows:
+   Before starting the bot, set up the game client as follows:
    + Set the UI language to English.
    + Set the in-game autopilot route.
    + Make sure the autopilot info panel is expanded, so that the route is visible.
@@ -20,22 +20,28 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
-import EveOnline.BotFramework exposing (BotEffect(..))
+import Common.AppSettings as AppSettings
+import Common.EffectOnWindow exposing (MouseButton(..))
+import EveOnline.AppFramework exposing (AppEffect(..))
 import EveOnline.ParseUserInterface
     exposing
         ( InfoPanelRouteRouteElementMarker
         , MaybeVisible(..)
-        , ParsedUserInterface
         , ShipUI
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
+        , maybeVisibleAndThen
         )
-import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
+import EveOnline.VolatileHostInterface exposing (effectMouseClickAtLocation)
 
 
 finishSessionAfterInactivityMinutes : Int
 finishSessionAfterInactivityMinutes =
-    3
+    4
+
+
+type alias ReadingFromGameClient =
+    EveOnline.ParseUserInterface.ParsedUserInterface
 
 
 {-| To support the feature that finishes the session some time of inactivity, it needs to remember the time of the last activity.
@@ -46,102 +52,106 @@ type alias BotState =
 
 
 type alias State =
-    EveOnline.BotFramework.StateIncludingFramework BotState
+    EveOnline.AppFramework.StateIncludingFramework () BotState
 
 
 initState : State
 initState =
-    EveOnline.BotFramework.initState { lastActivityTime = 0 }
+    EveOnline.AppFramework.initState { lastActivityTime = 0 }
 
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
-    EveOnline.BotFramework.processEvent processEveOnlineBotEvent
+    EveOnline.AppFramework.processEvent
+        { processEvent = processEveOnlineBotEvent
+        , parseAppSettings = AppSettings.parseAllowOnlyEmpty ()
+        }
 
 
 processEveOnlineBotEvent :
-    EveOnline.BotFramework.BotEventContext
-    -> EveOnline.BotFramework.BotEvent
+    EveOnline.AppFramework.AppEventContext ()
+    -> EveOnline.AppFramework.AppEvent
     -> BotState
-    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
+    -> ( BotState, EveOnline.AppFramework.AppEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
     case event of
-        EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
+        EveOnline.AppFramework.ReadingFromGameClientCompleted readingFromGameClient ->
             let
-                ( effects, statusMessage ) =
-                    botEffectsFromGameClientState parsedUserInterface
-
-                ( lastActivityTime, millisecondsToNextReadingFromGame ) =
-                    if effects |> List.isEmpty then
-                        ( stateBefore.lastActivityTime, 4000 )
-
-                    else
-                        ( eventContext.timeInMilliseconds // 1000, 2000 )
-            in
-            if 60 * finishSessionAfterInactivityMinutes < eventContext.timeInMilliseconds // 1000 - lastActivityTime then
-                ( stateBefore
-                , EveOnline.BotFramework.FinishSession
-                    { statusDescriptionText =
-                        "I finish this session because there was nothing to do for me in the last "
-                            ++ (finishSessionAfterInactivityMinutes |> String.fromInt)
-                            ++ " minutes."
-                    }
-                )
-
-            else
-                ( { stateBefore | lastActivityTime = lastActivityTime }
-                , EveOnline.BotFramework.ContinueSession
-                    { effects = effects
-                    , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
-                    , statusDescriptionText = statusMessage
-                    }
-                )
-
-
-botEffectsFromGameClientState : ParsedUserInterface -> ( List BotEffect, String )
-botEffectsFromGameClientState parsedUserInterface =
-    case parsedUserInterface |> infoPanelRouteFirstMarkerFromParsedUserInterface of
-        Nothing ->
-            ( []
-            , "I see no route in the info panel. I will start when a route is set."
-            )
-
-        Just infoPanelRouteFirstMarker ->
-            case parsedUserInterface.shipUI of
-                CanNotSeeIt ->
-                    ( []
-                    , "I cannot see if the ship is warping or jumping. I wait for the ship UI to appear on the screen."
+                continueWaiting statusDescriptionText =
+                    ( stateBefore
+                    , EveOnline.AppFramework.ContinueSession
+                        { millisecondsToNextReadingFromGame = 3000
+                        , statusDescriptionText = statusDescriptionText
+                        , effects = []
+                        }
                     )
 
-                CanSee shipUi ->
-                    if shipUi |> isShipWarpingOrJumping then
-                        ( []
-                        , "I see the ship is warping or jumping. I wait until that maneuver ends."
+                continueWithCurrentEffects ( effects, statusDescriptionText ) =
+                    let
+                        lastActivityTime =
+                            if effects |> List.isEmpty then
+                                stateBefore.lastActivityTime
+
+                            else
+                                eventContext.timeInMilliseconds // 1000
+                    in
+                    if 60 * finishSessionAfterInactivityMinutes < eventContext.timeInMilliseconds // 1000 - lastActivityTime then
+                        ( stateBefore
+                        , EveOnline.AppFramework.FinishSession
+                            { statusDescriptionText =
+                                "I finish this session because there was nothing to do for me in the last "
+                                    ++ (finishSessionAfterInactivityMinutes |> String.fromInt)
+                                    ++ " minutes."
+                            }
                         )
 
                     else
-                        botEffectsWhenNotWaitingForShipManeuver
-                            parsedUserInterface
-                            infoPanelRouteFirstMarker
+                        ( { stateBefore | lastActivityTime = lastActivityTime }
+                        , EveOnline.AppFramework.ContinueSession
+                            { millisecondsToNextReadingFromGame = 2000
+                            , effects = effects
+                            , statusDescriptionText = statusDescriptionText
+                            }
+                        )
+            in
+            case readingFromGameClient |> infoPanelRouteFirstMarkerFromReadingFromGameClient of
+                Nothing ->
+                    continueWithCurrentEffects
+                        ( [], "I see no route in the info panel. I will start when a route is set." )
+
+                Just infoPanelRouteFirstMarker ->
+                    case readingFromGameClient.shipUI of
+                        CanNotSeeIt ->
+                            continueWithCurrentEffects
+                                ( [], "I do not see the ship UI. Looks like we are docked." )
+
+                        CanSee shipUi ->
+                            if shipUi |> isShipWarpingOrJumping then
+                                continueWaiting
+                                    "I see the ship is warping or jumping. I wait until that maneuver ends."
+
+                            else
+                                continueWithCurrentEffects
+                                    (botEffectsWhenNotWaitingForShipManeuver readingFromGameClient infoPanelRouteFirstMarker)
 
 
 botEffectsWhenNotWaitingForShipManeuver :
-    ParsedUserInterface
+    ReadingFromGameClient
     -> InfoPanelRouteRouteElementMarker
-    -> ( List BotEffect, String )
-botEffectsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstMarker =
+    -> ( List AppEffect, String )
+botEffectsWhenNotWaitingForShipManeuver readingFromGameClient infoPanelRouteFirstMarker =
     let
         openMenuAnnouncementAndEffect =
             ( [ EffectOnGameClientWindow
                     (effectMouseClickAtLocation
-                        VolatileHostInterface.MouseButtonRight
+                        Common.EffectOnWindow.MouseButtonRight
                         (infoPanelRouteFirstMarker.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
                     )
               ]
             , "I click on the route element icon in the info panel to open the menu."
             )
     in
-    case parsedUserInterface.contextMenus |> List.head of
+    case readingFromGameClient.contextMenus |> List.head of
         Nothing ->
             openMenuAnnouncementAndEffect
 
@@ -170,10 +180,10 @@ botEffectsWhenNotWaitingForShipManeuver parsedUserInterface infoPanelRouteFirstM
                     )
 
 
-infoPanelRouteFirstMarkerFromParsedUserInterface : ParsedUserInterface -> Maybe InfoPanelRouteRouteElementMarker
-infoPanelRouteFirstMarkerFromParsedUserInterface =
+infoPanelRouteFirstMarkerFromReadingFromGameClient : ReadingFromGameClient -> Maybe InfoPanelRouteRouteElementMarker
+infoPanelRouteFirstMarkerFromReadingFromGameClient =
     .infoPanelContainer
-        >> EveOnline.ParseUserInterface.maybeVisibleAndThen .infoPanelRoute
+        >> maybeVisibleAndThen .infoPanelRoute
         >> maybeNothingFromCanNotSeeIt
         >> Maybe.map .routeElementMarker
         >> Maybe.map (List.sortBy (\routeMarker -> routeMarker.uiNode.totalDisplayRegion.x + routeMarker.uiNode.totalDisplayRegion.y))

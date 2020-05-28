@@ -4,20 +4,20 @@ module EveOnline.VolatileHostInterface exposing
     , GameClientProcessSummaryStruct
     , GetMemoryReadingResultStructure(..)
     , Location2d
-    , MouseButton(..)
     , RequestToVolatileHost(..)
     , ResponseFromVolatileHost(..)
     , SearchUIRootAddressResultStructure
     , SearchUIRootAddressStructure
-    , VirtualKeyCode(..)
     , WindowId
     , buildRequestStringToGetResponseFromVolatileHost
     , decodeRequestToVolatileHost
     , deserializeResponseFromVolatileHost
     , effectMouseClickAtLocation
+    , effectsForDragAndDrop
     , encodeRequestToVolatileHost
     )
 
+import Common.EffectOnWindow exposing (MouseButton(..), VirtualKeyCode(..), virtualKeyCodeAsInteger, virtualKeyCodeFromMouseButton)
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
@@ -95,33 +95,12 @@ type
     -}
     = MouseMoveTo MouseMoveToStructure
     | SimpleMouseClickAtLocation MouseClickAtLocation
-    | SimpleDragAndDrop SimpleDragAndDropStructure
     | KeyDown VirtualKeyCode
     | KeyUp VirtualKeyCode
 
 
 type alias MouseMoveToStructure =
     { location : Location2d }
-
-
-type alias MouseButtonChangeStructure =
-    { location : LocationRelativeToWindow
-    , button : MouseButton
-    }
-
-
-type VirtualKeyCode
-    = VirtualKeyCodeFromInt Int
-      -- Names from https://docs.microsoft.com/en-us/windows/desktop/inputdev/virtual-key-codes
-    | VK_SHIFT
-    | VK_CONTROL
-    | VK_MENU
-    | VK_ESCAPE
-    | VK_SPACE
-
-
-type LocationRelativeToWindow
-    = ClientArea Location2d -- https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-clienttoscreen
 
 
 type alias WindowId =
@@ -134,18 +113,6 @@ type alias MouseClickAtLocation =
     }
 
 
-type alias SimpleDragAndDropStructure =
-    { startLocation : Location2d
-    , mouseButton : MouseButton
-    , endLocation : Location2d
-    }
-
-
-type MouseButton
-    = MouseButtonLeft
-    | MouseButtonRight
-
-
 type alias Location2d =
     { x : Int, y : Int }
 
@@ -154,6 +121,15 @@ type alias ConsoleBeepStructure =
     { frequency : Int
     , durationInMs : Int
     }
+
+
+effectsForDragAndDrop : { startLocation : Location2d, mouseButton : MouseButton, endLocation : Location2d } -> List EffectOnWindowStructure
+effectsForDragAndDrop { startLocation, mouseButton, endLocation } =
+    [ MouseMoveTo { location = startLocation }
+    , KeyDown (virtualKeyCodeFromMouseButton mouseButton)
+    , MouseMoveTo { location = endLocation }
+    , KeyUp (virtualKeyCodeFromMouseButton mouseButton)
+    ]
 
 
 deserializeResponseFromVolatileHost : String -> Result Json.Decode.Error ResponseFromVolatileHost
@@ -241,11 +217,6 @@ encodeEffectOnWindowStructure effectOnWindow =
                 [ ( "simpleMouseClickAtLocation", mouseClickAtLocation |> encodeMouseClickAtLocation )
                 ]
 
-        SimpleDragAndDrop dragAndDrop ->
-            Json.Encode.object
-                [ ( "simpleDragAndDrop", dragAndDrop |> encodeSimpleDragAndDrop )
-                ]
-
         KeyDown virtualKeyCode ->
             Json.Encode.object
                 [ ( "keyDown", virtualKeyCode |> encodeKey )
@@ -289,15 +260,6 @@ decodeMouseClickAtLocation =
     Json.Decode.map2 MouseClickAtLocation
         (Json.Decode.field "location" jsonDecodeLocation2d)
         (Json.Decode.field "mouseButton" jsonDecodeMouseButton)
-
-
-encodeSimpleDragAndDrop : SimpleDragAndDropStructure -> Json.Encode.Value
-encodeSimpleDragAndDrop simpleDragAndDrop =
-    Json.Encode.object
-        [ ( "startLocation", simpleDragAndDrop.startLocation |> encodeLocation2d )
-        , ( "mouseButton", simpleDragAndDrop.mouseButton |> encodeMouseButton )
-        , ( "endLocation", simpleDragAndDrop.endLocation |> encodeLocation2d )
-        ]
 
 
 encodeLocation2d : Location2d -> Json.Encode.Value
@@ -419,29 +381,6 @@ effectMouseClickAtLocation : MouseButton -> Location2d -> EffectOnWindowStructur
 effectMouseClickAtLocation mouseButton location =
     SimpleMouseClickAtLocation
         { location = location, mouseButton = mouseButton }
-
-
-virtualKeyCodeAsInteger : VirtualKeyCode -> Int
-virtualKeyCodeAsInteger keyCode =
-    -- Mapping from https://docs.microsoft.com/en-us/windows/desktop/inputdev/virtual-key-codes
-    case keyCode of
-        VirtualKeyCodeFromInt asInt ->
-            asInt
-
-        VK_SHIFT ->
-            0x10
-
-        VK_CONTROL ->
-            0x11
-
-        VK_MENU ->
-            0x12
-
-        VK_ESCAPE ->
-            0x1B
-
-        VK_SPACE ->
-            0x20
 
 
 jsonDecodeSucceedWhenNotNull : a -> Json.Decode.Decoder a

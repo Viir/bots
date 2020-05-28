@@ -3,7 +3,7 @@
    + Read from the game client using Sanderling memory reading and parse the user interface from the memory reading (https://github.com/Arcitectus/Sanderling).
    + Play sounds.
    + Send mouse and keyboard input to the game client.
-   + Forward the app settings from the host.
+   + Parse the app-settings and inform the user about the result.
 
    The framework automatically selects an EVE Online client process and finishes the session when that process disappears.
    When multiple game clients are open, the framework prioritizes the one with the topmost window. This approach helps users control which game client is picked by an app.
@@ -11,75 +11,80 @@
 -}
 
 
-module EveOnline.BotFramework exposing
-    ( BotEffect(..)
-    , BotEvent(..)
-    , BotEventContext
-    , BotEventResponse(..)
+module EveOnline.AppFramework exposing
+    ( AppEffect(..)
+    , AppEvent(..)
+    , AppEventContext
+    , AppEventResponse(..)
     , SetupState
+    , ShipModulesMemory
     , StateIncludingFramework
-    , getEntropyIntFromUserInterface
+    , getEntropyIntFromReadingFromGameClient
+    , getModuleButtonTooltipFromModuleButton
+    , initShipModulesMemory
     , initState
+    , integrateCurrentReadingsIntoShipModulesMemory
     , processEvent
+    , secondsToSessionEnd
     )
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
 import Common.FNV
 import Dict
 import EveOnline.MemoryReading
-import EveOnline.ParseUserInterface
+import EveOnline.ParseUserInterface exposing (MaybeVisible(..), maybeNothingFromCanNotSeeIt)
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
 
 
-type BotEvent
-    = MemoryReadingCompleted EveOnline.ParseUserInterface.ParsedUserInterface
+type AppEvent
+    = ReadingFromGameClientCompleted EveOnline.ParseUserInterface.ParsedUserInterface
 
 
-type BotEventResponse
+type AppEventResponse
     = ContinueSession ContinueSessionStructure
     | FinishSession { statusDescriptionText : String }
 
 
 type alias ContinueSessionStructure =
-    { effects : List BotEffect
+    { effects : List AppEffect
     , millisecondsToNextReadingFromGame : Int
     , statusDescriptionText : String
     }
 
 
-type BotEffect
+type AppEffect
     = EffectOnGameClientWindow VolatileHostInterface.EffectOnWindowStructure
     | EffectConsoleBeepSequence (List ConsoleBeepStructure)
 
 
-type alias BotEventContext =
+type alias AppEventContext appSettings =
     { timeInMilliseconds : Int
-    , appSettings : Maybe String
+    , appSettings : Maybe appSettings
     , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
 
-type alias StateIncludingFramework botState =
+type alias StateIncludingFramework appSettings appState =
     { setup : SetupState
-    , botState : BotAndLastEventState botState
+    , appState : AppAndLastEventState appState
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
     , taskInProgress : Maybe { startTimeInMilliseconds : Int, taskIdString : String, taskDescription : String }
-    , appSettings : Maybe String
+    , appSettings : Maybe appSettings
     , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
 
-type alias BotAndLastEventState botState =
-    { botState : botState
-    , lastEvent : Maybe { timeInMilliseconds : Int, eventResult : ( botState, BotEventResponse ) }
-    , effectQueue : BotEffectQueue
+type alias AppAndLastEventState appState =
+    { appState : appState
+    , lastEvent : Maybe { timeInMilliseconds : Int, eventResult : ( appState, AppEventResponse ) }
+    , effectQueue : AppEffectQueue
     }
 
 
-type alias BotEffectQueue =
-    List { timeInMilliseconds : Int, effect : BotEffect }
+type alias AppEffectQueue =
+    List { timeInMilliseconds : Int, effect : AppEffect }
 
 
 type alias SetupState =
@@ -95,8 +100,8 @@ type alias SetupState =
 
 type SetupTask
     = ContinueSetup SetupState InterfaceToHost.Task String
-    | OperateBot
-        { buildTaskFromBotEffect : BotEffect -> InterfaceToHost.Task
+    | OperateApp
+        { buildTaskFromAppEffect : AppEffect -> InterfaceToHost.Task
         , getMemoryReadingTask : InterfaceToHost.Task
         , releaseVolatileHostTask : InterfaceToHost.Task
         }
@@ -109,9 +114,85 @@ type alias ConsoleBeepStructure =
     }
 
 
+type alias ShipModulesMemory =
+    { tooltipFromModuleButton : Dict.Dict String EveOnline.ParseUserInterface.ModuleButtonTooltip
+    , lastReadingTooltip : MaybeVisible EveOnline.ParseUserInterface.ModuleButtonTooltip
+    }
+
+
 volatileHostRecycleInterval : Int
 volatileHostRecycleInterval =
     400
+
+
+initShipModulesMemory : ShipModulesMemory
+initShipModulesMemory =
+    { tooltipFromModuleButton = Dict.empty
+    , lastReadingTooltip = CanNotSeeIt
+    }
+
+
+integrateCurrentReadingsIntoShipModulesMemory : EveOnline.ParseUserInterface.ParsedUserInterface -> ShipModulesMemory -> ShipModulesMemory
+integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
+    let
+        getTooltipDataForEqualityComparison tooltip =
+            tooltip.uiNode
+                |> EveOnline.ParseUserInterface.getAllContainedDisplayTextsWithRegion
+                |> List.map (Tuple.mapSecond .totalDisplayRegion)
+
+        {- To ensure robustness, we store a new tooltip only when the display texts match in two consecutive readings from the game client. -}
+        tooltipAvailableToStore =
+            case ( memoryBefore.lastReadingTooltip, currentReading.moduleButtonTooltip ) of
+                ( CanSee previousTooltip, CanSee currentTooltip ) ->
+                    if getTooltipDataForEqualityComparison previousTooltip == getTooltipDataForEqualityComparison currentTooltip then
+                        Just currentTooltip
+
+                    else
+                        Nothing
+
+                _ ->
+                    Nothing
+
+        visibleModuleButtons =
+            currentReading.shipUI
+                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.map .moduleButtons
+                |> Maybe.withDefault []
+
+        visibleModuleButtonsIds =
+            visibleModuleButtons |> List.map getModuleButtonIdentifierInMemory
+
+        maybeModuleButtonWithHighlight =
+            visibleModuleButtons
+                |> List.filter .isHiliteVisible
+                |> List.head
+
+        tooltipFromModuleButtonAddition =
+            case ( tooltipAvailableToStore, maybeModuleButtonWithHighlight ) of
+                ( Just tooltip, Just moduleButtonWithHighlight ) ->
+                    Dict.insert (moduleButtonWithHighlight |> getModuleButtonIdentifierInMemory) tooltip
+
+                _ ->
+                    identity
+
+        tooltipFromModuleButton =
+            memoryBefore.tooltipFromModuleButton
+                |> tooltipFromModuleButtonAddition
+                |> Dict.filter (\moduleButtonId _ -> visibleModuleButtonsIds |> List.member moduleButtonId)
+    in
+    { tooltipFromModuleButton = tooltipFromModuleButton
+    , lastReadingTooltip = currentReading.moduleButtonTooltip
+    }
+
+
+getModuleButtonTooltipFromModuleButton : ShipModulesMemory -> EveOnline.ParseUserInterface.ShipUIModuleButton -> Maybe EveOnline.ParseUserInterface.ModuleButtonTooltip
+getModuleButtonTooltipFromModuleButton moduleMemory moduleButton =
+    moduleMemory.tooltipFromModuleButton |> Dict.get (moduleButton |> getModuleButtonIdentifierInMemory)
+
+
+getModuleButtonIdentifierInMemory : EveOnline.ParseUserInterface.ShipUIModuleButton -> String
+getModuleButtonIdentifierInMemory =
+    .uiNode >> .uiNode >> .pythonObjectAddress
 
 
 initSetup : SetupState
@@ -126,11 +207,11 @@ initSetup =
     }
 
 
-initState : botState -> StateIncludingFramework botState
-initState botState =
+initState : appState -> StateIncludingFramework appSettings appState
+initState appState =
     { setup = initSetup
-    , botState =
-        { botState = botState
+    , appState =
+        { appState = appState
         , lastEvent = Nothing
         , effectQueue = []
         }
@@ -143,19 +224,78 @@ initState botState =
 
 
 processEvent :
-    (BotEventContext -> BotEvent -> botState -> ( botState, BotEventResponse ))
+    { parseAppSettings : String -> Result String appSettings
+    , processEvent : AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse )
+    }
     -> InterfaceToHost.BotEvent
-    -> StateIncludingFramework botState
-    -> ( StateIncludingFramework botState, InterfaceToHost.BotResponse )
-processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
+    -> StateIncludingFramework appSettings appState
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotResponse )
+processEvent appConfiguration fromHostEvent stateBefore =
     let
-        ( stateBefore, maybeBotEvent ) =
-            stateBeforeIntegratingEvent |> integrateFromHostEvent fromHostEvent
+        continueAfterIntegrateEvent =
+            processEventAfterIntegrateEvent { processEvent = appConfiguration.processEvent }
+    in
+    case fromHostEvent of
+        InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
+            continueAfterIntegrateEvent Nothing { stateBefore | timeInMilliseconds = timeInMilliseconds }
 
+        InterfaceToHost.CompletedTask taskComplete ->
+            let
+                ( setupState, maybeAppEventFromTaskComplete ) =
+                    stateBefore.setup
+                        |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
+            in
+            continueAfterIntegrateEvent
+                maybeAppEventFromTaskComplete
+                { stateBefore | setup = setupState, taskInProgress = Nothing }
+
+        InterfaceToHost.SetAppSettings appSettings ->
+            case appConfiguration.parseAppSettings appSettings of
+                Err parseSettingsError ->
+                    ( stateBefore
+                    , InterfaceToHost.FinishSession { statusDescriptionText = "Failed to parse these app-settings: " ++ parseSettingsError }
+                    )
+
+                Ok parsedAppSettings ->
+                    ( { stateBefore | appSettings = Just parsedAppSettings }
+                    , InterfaceToHost.ContinueSession
+                        { statusDescriptionText = "Succeeded parsing these app-settings."
+                        , startTasks = []
+                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
+                        }
+                    )
+
+        InterfaceToHost.SetSessionTimeLimit sessionTimeLimit ->
+            continueAfterIntegrateEvent
+                Nothing
+                { stateBefore | sessionTimeLimitInMilliseconds = Just sessionTimeLimit.timeInMilliseconds }
+
+
+processEventAfterIntegrateEvent :
+    { processEvent : AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse )
+    }
+    -> Maybe AppEvent
+    -> StateIncludingFramework appSettings appState
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotResponse )
+processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
+    let
         ( state, responseBeforeAddingStatusMessage ) =
             case stateBefore.taskInProgress of
                 Nothing ->
-                    processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefore
+                    processEventNotWaitingForTaskCompletion
+                        appConfiguration.processEvent
+                        (maybeAppEvent
+                            |> Maybe.map
+                                (\appEvent ->
+                                    ( appEvent
+                                    , { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                      , appSettings = stateBefore.appSettings
+                                      , sessionTimeLimitInMilliseconds = stateBefore.sessionTimeLimitInMilliseconds
+                                      }
+                                    )
+                                )
+                        )
+                        stateBefore
 
                 Just taskInProgress ->
                     ( stateBefore
@@ -187,11 +327,11 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
 
 
 processEventNotWaitingForTaskCompletion :
-    (BotEventContext -> BotEvent -> botState -> ( botState, BotEventResponse ))
-    -> Maybe ( BotEvent, BotEventContext )
-    -> StateIncludingFramework botState
-    -> ( StateIncludingFramework botState, InterfaceToHost.BotResponse )
-processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefore =
+    (AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse ))
+    -> Maybe ( AppEvent, AppEventContext appSettings )
+    -> StateIncludingFramework appSettings appState
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotResponse )
+processEventNotWaitingForTaskCompletion appProcessEvent maybeAppEvent stateBefore =
     case stateBefore.setup |> getNextSetupTask of
         ContinueSetup setupState setupTask setupTaskDescription ->
             let
@@ -218,7 +358,7 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
                 |> InterfaceToHost.ContinueSession
             )
 
-        OperateBot operateBot ->
+        OperateApp operateApp ->
             if volatileHostRecycleInterval < stateBefore.setup.requestsToVolatileHostCount then
                 let
                     taskIndex =
@@ -248,7 +388,7 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
                   }
                 , { startTasks =
                         [ { taskId = InterfaceToHost.taskIdFromString taskIdString
-                          , task = operateBot.releaseVolatileHostTask
+                          , task = operateApp.releaseVolatileHostTask
                           }
                         ]
                   , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
@@ -259,63 +399,63 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
 
             else
                 let
-                    botStateBefore =
-                        stateBefore.botState
+                    appStateBefore =
+                        stateBefore.appState
 
-                    maybeBotEventResult =
-                        maybeBotEvent
+                    maybeAppEventResult =
+                        maybeAppEvent
                             |> Maybe.map
-                                (\( botEvent, botEventContext ) -> botStateBefore.botState |> botProcessEvent botEventContext botEvent)
+                                (\( appEvent, appEventContext ) -> appStateBefore.appState |> appProcessEvent appEventContext appEvent)
 
-                    botStateBeforeProcessEffects =
-                        case maybeBotEventResult of
+                    appStateBeforeProcessEffects =
+                        case maybeAppEventResult of
                             Nothing ->
-                                stateBefore.botState
+                                stateBefore.appState
 
-                            Just ( newBotState, botEventResponse ) ->
+                            Just ( newAppState, appEventResponse ) ->
                                 let
                                     effectQueue =
-                                        case botEventResponse of
+                                        case appEventResponse of
                                             FinishSession _ ->
                                                 []
 
                                             ContinueSession continueSessionResponse ->
                                                 continueSessionResponse.effects
                                                     |> List.map
-                                                        (\botEffect ->
-                                                            { timeInMilliseconds = stateBefore.timeInMilliseconds, effect = botEffect }
+                                                        (\appEffect ->
+                                                            { timeInMilliseconds = stateBefore.timeInMilliseconds, effect = appEffect }
                                                         )
                                 in
-                                { botStateBefore
-                                    | botState = newBotState
-                                    , lastEvent = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, eventResult = ( newBotState, botEventResponse ) }
+                                { appStateBefore
+                                    | appState = newAppState
+                                    , lastEvent = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, eventResult = ( newAppState, appEventResponse ) }
                                     , effectQueue = effectQueue
                                 }
 
-                    ( botEffectQueue, botEffectTask ) =
+                    ( appEffectQueue, appEffectTask ) =
                         case
-                            botStateBeforeProcessEffects.effectQueue
-                                |> dequeueNextEffectFromBotState { currentTimeInMs = stateBefore.timeInMilliseconds }
+                            appStateBeforeProcessEffects.effectQueue
+                                |> dequeueNextEffectFromAppState { currentTimeInMs = stateBefore.timeInMilliseconds }
                         of
                             NoEffect ->
-                                ( botStateBeforeProcessEffects.effectQueue, Nothing )
+                                ( appStateBeforeProcessEffects.effectQueue, Nothing )
 
                             ForwardEffect forward ->
-                                ( forward.newQueueState, forward.effect |> operateBot.buildTaskFromBotEffect |> Just )
+                                ( forward.newQueueState, forward.effect |> operateApp.buildTaskFromAppEffect |> Just )
 
-                    botState =
-                        { botStateBeforeProcessEffects | effectQueue = botEffectQueue }
+                    appState =
+                        { appStateBeforeProcessEffects | effectQueue = appEffectQueue }
 
                     timeForNextMemoryReadingGeneral =
                         (stateBefore.setup.lastMemoryReading |> Maybe.map .timeInMilliseconds |> Maybe.withDefault 0) + 10000
 
-                    timeForNextMemoryReadingFromBot =
-                        botState.lastEvent
+                    timeForNextMemoryReadingFromApp =
+                        appState.lastEvent
                             |> Maybe.andThen
-                                (\botLastEvent ->
-                                    case botLastEvent.eventResult |> Tuple.second of
+                                (\appLastEvent ->
+                                    case appLastEvent.eventResult |> Tuple.second of
                                         ContinueSession continueSessionResponse ->
-                                            Just (botLastEvent.timeInMilliseconds + continueSessionResponse.millisecondsToNextReadingFromGame)
+                                            Just (appLastEvent.timeInMilliseconds + continueSessionResponse.millisecondsToNextReadingFromGame)
 
                                         FinishSession _ ->
                                             Nothing
@@ -323,20 +463,20 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
                             |> Maybe.withDefault 0
 
                     timeForNextMemoryReading =
-                        min timeForNextMemoryReadingGeneral timeForNextMemoryReadingFromBot
+                        min timeForNextMemoryReadingGeneral timeForNextMemoryReadingFromApp
 
                     memoryReadingTasks =
                         if timeForNextMemoryReading < stateBefore.timeInMilliseconds then
-                            [ operateBot.getMemoryReadingTask ]
+                            [ operateApp.getMemoryReadingTask ]
 
                         else
                             []
 
-                    botFinishesSession =
-                        botState.lastEvent
+                    appFinishesSession =
+                        appState.lastEvent
                             |> Maybe.map
-                                (\botLastEvent ->
-                                    case botLastEvent.eventResult |> Tuple.second of
+                                (\appLastEvent ->
+                                    case appLastEvent.eventResult |> Tuple.second of
                                         ContinueSession _ ->
                                             False
 
@@ -346,19 +486,19 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
                             |> Maybe.withDefault False
 
                     ( taskInProgress, startTasks ) =
-                        (botEffectTask |> Maybe.map List.singleton |> Maybe.withDefault [])
+                        (appEffectTask |> Maybe.map List.singleton |> Maybe.withDefault [])
                             ++ memoryReadingTasks
                             |> List.head
                             |> Maybe.map
                                 (\task ->
                                     let
                                         taskIdString =
-                                            "operate-bot"
+                                            "operate-app"
                                     in
                                     ( Just
                                         { startTimeInMilliseconds = stateBefore.timeInMilliseconds
                                         , taskIdString = taskIdString
-                                        , taskDescription = "From bot effect or memory reading."
+                                        , taskDescription = "From app effect or memory reading."
                                         }
                                     , [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task } ]
                                     )
@@ -374,15 +514,15 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
                         }
 
                     state =
-                        { stateBefore | setup = setupState, botState = botState, taskInProgress = taskInProgress }
+                        { stateBefore | setup = setupState, appState = appState, taskInProgress = taskInProgress }
                 in
-                if botFinishesSession then
+                if appFinishesSession then
                     ( state, { statusDescriptionText = "The app finished the session." } |> InterfaceToHost.FinishSession )
 
                 else
                     ( state
                     , { startTasks = startTasks
-                      , statusDescriptionText = "Operate bot."
+                      , statusDescriptionText = "Operate app."
                       , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
                       }
                         |> InterfaceToHost.ContinueSession
@@ -394,43 +534,7 @@ processEventNotWaitingForTaskCompletion botProcessEvent maybeBotEvent stateBefor
             )
 
 
-integrateFromHostEvent : InterfaceToHost.BotEvent -> StateIncludingFramework a -> ( StateIncludingFramework a, Maybe ( BotEvent, BotEventContext ) )
-integrateFromHostEvent fromHostEvent stateBefore =
-    let
-        ( state, maybeBotEvent ) =
-            case fromHostEvent of
-                InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
-                    ( { stateBefore | timeInMilliseconds = timeInMilliseconds }, Nothing )
-
-                InterfaceToHost.CompletedTask taskComplete ->
-                    let
-                        ( setupState, maybeBotEventFromTaskComplete ) =
-                            stateBefore.setup
-                                |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
-                    in
-                    ( { stateBefore | setup = setupState, taskInProgress = Nothing }, maybeBotEventFromTaskComplete )
-
-                InterfaceToHost.SetAppSettings appSettings ->
-                    ( { stateBefore | appSettings = Just appSettings }, Nothing )
-
-                InterfaceToHost.SetSessionTimeLimit sessionTimeLimit ->
-                    ( { stateBefore | sessionTimeLimitInMilliseconds = Just sessionTimeLimit.timeInMilliseconds }, Nothing )
-    in
-    ( state
-    , maybeBotEvent
-        |> Maybe.map
-            (\botEvent ->
-                ( botEvent
-                , { timeInMilliseconds = state.timeInMilliseconds
-                  , appSettings = state.appSettings
-                  , sessionTimeLimitInMilliseconds = state.sessionTimeLimitInMilliseconds
-                  }
-                )
-            )
-    )
-
-
-integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe BotEvent )
+integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe AppEvent )
 integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
     case taskResult of
         InterfaceToHost.CreateVolatileHostResponse createVolatileHostResult ->
@@ -488,7 +592,7 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
 integrateResponseFromVolatileHost :
     { timeInMilliseconds : Int, responseFromVolatileHost : VolatileHostInterface.ResponseFromVolatileHost, runInVolatileHostDurationInMs : Int }
     -> SetupState
-    -> ( SetupState, Maybe BotEvent )
+    -> ( SetupState, Maybe AppEvent )
 integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost, runInVolatileHostDurationInMs } stateBefore =
     case responseFromVolatileHost of
         VolatileHostInterface.ListGameClientProcessesResponse gameClientProcesses ->
@@ -514,7 +618,7 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
                         , memoryReadingDurations = memoryReadingDurations
                     }
 
-                maybeBotEvent =
+                maybeAppEvent =
                     case getMemoryReadingResult of
                         VolatileHostInterface.ProcessNotFound ->
                             Nothing
@@ -527,18 +631,18 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
                                         |> Maybe.map (EveOnline.ParseUserInterface.parseUITreeWithDisplayRegionFromUITree >> EveOnline.ParseUserInterface.parseUserInterfaceFromUITree)
                             in
                             maybeParsedMemoryReading
-                                |> Maybe.map MemoryReadingCompleted
+                                |> Maybe.map ReadingFromGameClientCompleted
             in
-            ( state, maybeBotEvent )
+            ( state, maybeAppEvent )
 
 
-type NextBotEffectFromQueue
+type NextAppEffectFromQueue
     = NoEffect
-    | ForwardEffect { newQueueState : BotEffectQueue, effect : BotEffect }
+    | ForwardEffect { newQueueState : AppEffectQueue, effect : AppEffect }
 
 
-dequeueNextEffectFromBotState : { currentTimeInMs : Int } -> BotEffectQueue -> NextBotEffectFromQueue
-dequeueNextEffectFromBotState { currentTimeInMs } effectQueueBefore =
+dequeueNextEffectFromAppState : { currentTimeInMs : Int } -> AppEffectQueue -> NextAppEffectFromQueue
+dequeueNextEffectFromAppState { currentTimeInMs } effectQueueBefore =
     case effectQueueBefore of
         [] ->
             NoEffect
@@ -638,8 +742,8 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                                 , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
                                                 }
                                     in
-                                    OperateBot
-                                        { buildTaskFromBotEffect =
+                                    OperateApp
+                                        { buildTaskFromAppEffect =
                                             \effect ->
                                                 case effect of
                                                     EffectOnGameClientWindow effectOnWindow ->
@@ -696,11 +800,11 @@ requestToVolatileHostResultDisplayString result =
             { string = "Success: " ++ (runInVolatileHostComplete.returnValueToString |> Maybe.withDefault "null"), isErr = False }
 
 
-statusReportFromState : StateIncludingFramework s -> String
+statusReportFromState : StateIncludingFramework appSettings s -> String
 statusReportFromState state =
     let
-        fromBot =
-            state.botState.lastEvent
+        fromApp =
+            state.appState.lastEvent
                 |> Maybe.map
                     (\lastEvent ->
                         case lastEvent.eventResult |> Tuple.second of
@@ -731,8 +835,8 @@ statusReportFromState state =
                         |> Maybe.withDefault "Nothing"
                    )
 
-        botEffectQueueLength =
-            state.botState.effectQueue |> List.length
+        appEffectQueueLength =
+            state.appState.effectQueue |> List.length
 
         memoryReadingDurations =
             state.setup.memoryReadingDurations
@@ -747,26 +851,26 @@ statusReportFromState state =
         runtimeExpensesReport =
             "amrd=" ++ (averageMemoryReadingDuration |> String.fromInt) ++ "ms"
 
-        botEffectQueueLengthWarning =
-            if botEffectQueueLength < 4 then
+        appEffectQueueLengthWarning =
+            if appEffectQueueLength < 6 then
                 []
 
             else
-                [ "Bot effect queue length is " ++ (botEffectQueueLength |> String.fromInt) ]
+                [ "App effect queue length is " ++ (appEffectQueueLength |> String.fromInt) ]
     in
-    [ fromBot
+    [ fromApp
     , "----"
     , "EVE Online framework status:"
 
     -- , runtimeExpensesReport
     , lastResultFromVolatileHost
     ]
-        ++ botEffectQueueLengthWarning
+        ++ appEffectQueueLengthWarning
         |> String.join "\n"
 
 
-getEntropyIntFromUserInterface : EveOnline.ParseUserInterface.ParsedUserInterface -> Int
-getEntropyIntFromUserInterface parsedUserInterface =
+getEntropyIntFromReadingFromGameClient : EveOnline.ParseUserInterface.ParsedUserInterface -> Int
+getEntropyIntFromReadingFromGameClient readingFromGameClient =
     let
         entropyFromString =
             Common.FNV.hashString
@@ -788,19 +892,19 @@ getEntropyIntFromUserInterface parsedUserInterface =
                 |> List.concat
 
         fromMenus =
-            parsedUserInterface.contextMenus
+            readingFromGameClient.contextMenus
                 |> List.concatMap (.entries >> List.map .uiNode)
                 |> List.concatMap entropyFromUiElement
 
         fromOverview =
-            parsedUserInterface.overviewWindow
+            readingFromGameClient.overviewWindow
                 |> EveOnline.ParseUserInterface.maybeNothingFromCanNotSeeIt
                 |> Maybe.map .entries
                 |> Maybe.withDefault []
                 |> List.concatMap entropyFromOverviewEntry
 
         fromProbeScanner =
-            parsedUserInterface.probeScannerWindow
+            readingFromGameClient.probeScannerWindow
                 |> EveOnline.ParseUserInterface.maybeNothingFromCanNotSeeIt
                 |> Maybe.map .scanResults
                 |> Maybe.withDefault []
@@ -816,3 +920,9 @@ stringEllipsis howLong append string =
 
     else
         String.left (howLong - String.length append) string ++ append
+
+
+secondsToSessionEnd : AppEventContext a -> Maybe Int
+secondsToSessionEnd appEventContext =
+    appEventContext.sessionTimeLimitInMilliseconds
+        |> Maybe.map (\sessionTimeLimitInMilliseconds -> (sessionTimeLimitInMilliseconds - appEventContext.timeInMilliseconds) // 1000)

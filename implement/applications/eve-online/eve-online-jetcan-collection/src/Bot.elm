@@ -1,4 +1,4 @@
-{- 🚧 EVE Online Cerberus jetcan collection bot version 2020-05-06 📦
+{- 🚧 EVE Online Cerberus jetcan collection bot version 2020-05-28 📦
 
    As described by Foivos Saropoulos aka Cerberus at https://forum.botengine.org/t/eve-jetcan-collection/3231/3?u=viir
 -}
@@ -15,8 +15,9 @@ module Bot exposing
     )
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import Common.EffectOnWindow exposing (MouseButton(..))
 import Dict
-import EveOnline.BotFramework exposing (BotEffect(..), getEntropyIntFromUserInterface)
+import EveOnline.AppFramework exposing (AppEffect(..), getEntropyIntFromReadingFromGameClient)
 import EveOnline.ParseUserInterface
     exposing
         ( MaybeVisible(..)
@@ -26,7 +27,7 @@ import EveOnline.ParseUserInterface
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
-import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (MouseButton(..), effectMouseClickAtLocation)
+import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (effectMouseClickAtLocation)
 import Result.Extra
 import Set
 
@@ -138,7 +139,7 @@ type alias BotState =
 
 
 type alias State =
-    EveOnline.BotFramework.StateIncludingFramework BotState
+    EveOnline.AppFramework.StateIncludingFramework BotSettings BotState
 
 
 {-| A first outline of the decision tree for a mining bot came from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
@@ -305,12 +306,11 @@ dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
                         (EndDecisionPath
                             (actWithoutFurtherReadings
                                 ( "Drag and drop."
-                                , [ VolatileHostInterface.SimpleDragAndDrop
-                                        { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
-                                        , endLocation = itemHangar.totalDisplayRegion |> centerFromDisplayRegion
-                                        , mouseButton = MouseButtonLeft
-                                        }
-                                  ]
+                                , VolatileHostInterface.effectsForDragAndDrop
+                                    { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
+                                    , endLocation = itemHangar.totalDisplayRegion |> centerFromDisplayRegion
+                                    , mouseButton = MouseButtonLeft
+                                    }
                                 )
                             )
                         )
@@ -354,12 +354,11 @@ transferItemsFromCargoContainerToOreHold context =
                                                 EndDecisionPath
                                                     (actWithoutFurtherReadings
                                                         ( "Drag and drop."
-                                                        , [ VolatileHostInterface.SimpleDragAndDrop
-                                                                { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
-                                                                , endLocation = oreHoldTreeEntry.uiNode.totalDisplayRegion |> centerFromDisplayRegion
-                                                                , mouseButton = MouseButtonLeft
-                                                                }
-                                                          ]
+                                                        , VolatileHostInterface.effectsForDragAndDrop
+                                                            { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
+                                                            , endLocation = oreHoldTreeEntry.uiNode.totalDisplayRegion |> centerFromDisplayRegion
+                                                            , mouseButton = MouseButtonLeft
+                                                            }
                                                         )
                                                     )
                                 )
@@ -488,9 +487,9 @@ getMoreOreFromJetCans context seeUndockingComplete =
                         )
 
 
-keyCodeF5 : VolatileHostInterface.VirtualKeyCode
+keyCodeF5 : Common.EffectOnWindow.VirtualKeyCode
 keyCodeF5 =
-    VolatileHostInterface.VirtualKeyCodeFromInt 0x74
+    Common.EffectOnWindow.VirtualKeyCodeFromInt 0x74
 
 
 ensureOreHoldIsSelectedInInventoryWindow : ParsedUserInterface -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode
@@ -667,7 +666,7 @@ runAway context =
 dockToRandomStation : ParsedUserInterface -> DecisionPathNode
 dockToRandomStation parsedUserInterface =
     dockToStationUsingSurroundingsButtonMenu
-        ( "Pick random station.", listElementAtWrappedIndex (getEntropyIntFromUserInterface parsedUserInterface) )
+        ( "Pick random station.", listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient parsedUserInterface) )
         parsedUserInterface
 
 
@@ -746,7 +745,7 @@ useContextMenuOnListSurroundingsButton actionsDependingOnNewReadings parsedUserI
 
 initState : State
 initState =
-    EveOnline.BotFramework.initState
+    EveOnline.AppFramework.initState
         { programState = Nothing
         , botMemory =
             { lastDockedStationNameFromInfoPanel = Nothing
@@ -768,34 +767,24 @@ initShipModulesMemory =
 
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
-    EveOnline.BotFramework.processEvent processEveOnlineBotEvent
+    EveOnline.AppFramework.processEvent
+        { processEvent = processEveOnlineBotEvent
+        , parseAppSettings = parseSettingsFromString defaultBotSettings
+        }
 
 
 processEveOnlineBotEvent :
-    EveOnline.BotFramework.BotEventContext
-    -> EveOnline.BotFramework.BotEvent
+    EveOnline.AppFramework.AppEventContext BotSettings
+    -> EveOnline.AppFramework.AppEvent
     -> BotState
-    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
+    -> ( BotState, EveOnline.AppFramework.AppEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
-    case parseSettingsFromString defaultBotSettings (eventContext.appSettings |> Maybe.withDefault "") of
-        Err parseSettingsError ->
-            ( stateBefore
-            , EveOnline.BotFramework.FinishSession { statusDescriptionText = "Failed to parse bot settings: " ++ parseSettingsError }
-            )
-
-        Ok settings ->
-            processEveOnlineBotEventWithSettings settings event stateBefore
-
-
-processEveOnlineBotEventWithSettings :
-    BotSettings
-    -> EveOnline.BotFramework.BotEvent
-    -> BotState
-    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
-processEveOnlineBotEventWithSettings botSettings event stateBefore =
     case event of
-        EveOnline.BotFramework.MemoryReadingCompleted parsedUserInterface ->
+        EveOnline.AppFramework.ReadingFromGameClientCompleted parsedUserInterface ->
             let
+                botSettings =
+                    eventContext.appSettings |> Maybe.withDefault defaultBotSettings
+
                 botMemory =
                     stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory parsedUserInterface
 
@@ -848,7 +837,7 @@ processEveOnlineBotEventWithSettings botSettings event stateBefore =
                                     )
 
                 effectsRequests =
-                    effectsOnGameClientWindow |> List.map EveOnline.BotFramework.EffectOnGameClientWindow
+                    effectsOnGameClientWindow |> List.map EveOnline.AppFramework.EffectOnGameClientWindow
 
                 describeActivity =
                     (originalDecisionStagesDescriptions ++ [ currentStepDescription ])
@@ -861,7 +850,7 @@ processEveOnlineBotEventWithSettings botSettings event stateBefore =
                         |> String.join "\n"
             in
             ( { stateBefore | botMemory = botMemory, programState = programState }
-            , EveOnline.BotFramework.ContinueSession
+            , EveOnline.AppFramework.ContinueSession
                 { effects = effectsRequests
                 , millisecondsToNextReadingFromGame = botSettings.botStepDelayMilliseconds
                 , statusDescriptionText = statusMessage

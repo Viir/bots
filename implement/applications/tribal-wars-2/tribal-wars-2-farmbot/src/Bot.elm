@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-05-21
+{- Tribal Wars 2 farmbot version 2020-05-29
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -467,18 +467,12 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                     activityDecision
                         |> unpackToDecisionStagesDescriptionsAndLeaf
 
-                activityDescription =
-                    activityDecisionStages
-                        |> List.indexedMap
-                            (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
-                        |> String.join "\n"
-
                 newState =
                     maybeUpdatedState |> Maybe.withDefault stateBefore
             in
             { newState = newState
             , response = responseToFramework
-            , statusMessage = statusMessageFromState newState ++ "\nCurrent activity:\n" ++ activityDescription
+            , statusMessage = statusMessageFromState newState { activityDecisionStages = activityDecisionStages }
             }
 
 
@@ -1928,8 +1922,8 @@ decodeBattleReportResult =
             )
 
 
-statusMessageFromState : BotState -> String
-statusMessageFromState state =
+statusMessageFromState : BotState -> { activityDecisionStages : List String } -> String
+statusMessageFromState state { activityDecisionStages } =
     case state.lastRunJavascriptResult of
         Nothing ->
             "Opening web browser."
@@ -2083,23 +2077,42 @@ statusMessageFromState state =
                             in
                             "Read the list of battle reports: " ++ responseReport
 
-                allReportLines =
-                    [ completedFarmCyclesReportLines
-                    , [ sentAttacksReport ]
-                    , [ coordinatesChecksReport ]
-                    , [ inGameReport ]
-                    , [ readBattleReportsReport ]
-                    , reloadReportLines
-                    , [ parseResponseErrorReport ]
-                    , if enableDebugInspection then
-                        debugInspectionLines
+                settingsReport =
+                    "Settings: "
+                        ++ ([ ( "cycles", state.settings.numberOfFarmCycles |> String.fromInt )
+                            , ( "breaks"
+                              , (state.settings.breakDurationMinMinutes |> String.fromInt)
+                                    ++ " - "
+                                    ++ (state.settings.breakDurationMaxMinutes |> String.fromInt)
+                              )
+                            ]
+                                |> List.map (\( settingName, settingValue ) -> settingName ++ ": " ++ settingValue)
+                                |> String.join ", "
+                           )
 
-                      else
-                        []
-                    ]
-                        |> List.concat
+                activityDescription =
+                    activityDecisionStages
+                        |> List.indexedMap
+                            (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
+                        |> String.join "\n"
             in
-            allReportLines
+            [ completedFarmCyclesReportLines
+            , [ sentAttacksReport ]
+            , [ coordinatesChecksReport ]
+            , [ inGameReport ]
+            , [ readBattleReportsReport ]
+            , reloadReportLines
+            , [ parseResponseErrorReport ]
+            , if enableDebugInspection then
+                debugInspectionLines
+
+              else
+                []
+            , [ "", "Current activity:" ]
+            , [ activityDescription ]
+            , [ "---", settingsReport ]
+            ]
+                |> List.concat
                 |> String.join "\n"
 
 

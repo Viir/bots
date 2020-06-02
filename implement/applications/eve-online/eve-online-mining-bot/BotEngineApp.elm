@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-06-01
+{- EVE Online mining bot version 2020-06-02
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
 
@@ -302,13 +302,11 @@ dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
                                 DescribeBranch "I do not see the active ship in the inventory." askForHelpToGetUnstuck
 
                             Just activeShipEntry ->
-                                EndDecisionPath
-                                    (useContextMenuCascade
-                                        ( "Rightclick on the ship in the inventory window."
-                                        , activeShipEntry |> predictUIElementInventoryShipEntry
-                                        )
-                                        [ MenuEntryWithTextContaining "Undock" ]
+                                useContextMenuCascade
+                                    ( "ship in the inventory window"
+                                    , activeShipEntry |> predictUIElementInventoryShipEntry
                                     )
+                                    (MenuEntryWithTextContaining "Undock" MenuCascadeCompleted)
                         )
 
                 Just itemInInventory ->
@@ -435,11 +433,9 @@ unlockTargetsNotForMining context =
                         ++ (targetToUnlock.textsTopToBottom |> String.join " ")
                         ++ "'. Unlock this target."
                     )
-                    (EndDecisionPath
-                        (useContextMenuCascade
-                            ( "Target", targetToUnlock.barAndImageCont |> Maybe.withDefault targetToUnlock.uiNode )
-                            [ MenuEntryWithTextContaining "unlock" ]
-                        )
+                    (useContextMenuCascade
+                        ( "target", targetToUnlock.barAndImageCont |> Maybe.withDefault targetToUnlock.uiNode )
+                        (MenuEntryWithTextContaining "unlock" MenuCascadeCompleted)
                     )
             )
 
@@ -540,11 +536,9 @@ lockTargetFromOverviewEntryAndEnsureIsInRange readingFromGameClient rangeInMeter
                         DescribeBranch "I see we already approach." waitForProgressInGame
 
                      else
-                        EndDecisionPath
-                            (actStartingWithRightClickOnOverviewEntry
-                                overviewEntry
-                                [ MenuEntryWithTextContaining "approach" ]
-                            )
+                        useContextMenuCascadeOnOverviewEntry
+                            overviewEntry
+                            (MenuEntryWithTextContaining "approach" MenuCascadeCompleted)
                     )
 
         Err error ->
@@ -554,10 +548,8 @@ lockTargetFromOverviewEntryAndEnsureIsInRange readingFromGameClient rangeInMeter
 lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
 lockTargetFromOverviewEntry overviewEntry =
     DescribeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
-        (EndDecisionPath
-            (actStartingWithRightClickOnOverviewEntry overviewEntry
-                [ MenuEntryWithTextEqual "Lock target" ]
-            )
+        (useContextMenuCascadeOnOverviewEntry overviewEntry
+            (MenuEntryWithTextEqual "Lock target" MenuCascadeCompleted)
         )
 
 
@@ -575,25 +567,28 @@ dockToStationUsingSurroundingsButtonMenu :
     -> ReadingFromGameClient
     -> DecisionPathNode
 dockToStationUsingSurroundingsButtonMenu ( describeChooseStation, chooseStationMenuEntry ) =
-    useContextMenuOnListSurroundingsButton
-        [ MenuEntryWithTextContaining "stations"
-        , MenuEntryWithCustomChoice { describeChoice = describeChooseStation, chooseEntry = chooseStationMenuEntry }
-        , MenuEntryWithTextContaining "dock"
-        ]
+    useContextMenuCascadeOnListSurroundingsButton
+        (MenuEntryWithTextContaining "stations"
+            (MenuEntryWithCustomChoice { describeChoice = describeChooseStation, chooseEntry = chooseStationMenuEntry }
+                (MenuEntryWithTextContaining "dock" MenuCascadeCompleted)
+            )
+        )
 
 
 warpToMiningSite : ReadingFromGameClient -> DecisionPathNode
 warpToMiningSite readingFromGameClient =
     readingFromGameClient
-        |> useContextMenuOnListSurroundingsButton
-            [ MenuEntryWithTextContaining "asteroid belts"
-            , MenuEntryWithCustomChoice
-                { describeChoice = "random entry"
-                , chooseEntry = listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient)
-                }
-            , MenuEntryWithTextContaining "Warp to Within"
-            , MenuEntryWithTextContaining "Within 0 m"
-            ]
+        |> useContextMenuCascadeOnListSurroundingsButton
+            (MenuEntryWithTextContaining "asteroid belts"
+                (MenuEntryWithCustomChoice
+                    { describeChoice = "random entry"
+                    , chooseEntry = listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient)
+                    }
+                    (MenuEntryWithTextContaining "Warp to Within"
+                        (MenuEntryWithTextContaining "Within 0 m" MenuCascadeCompleted)
+                    )
+                )
+            )
 
 
 runAway : BotDecisionContext -> DecisionPathNode
@@ -633,11 +628,9 @@ launchDrones readingFromGameClient =
                         if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
                             Just
                                 (DescribeBranch "Launch drones"
-                                    (EndDecisionPath
-                                        (useContextMenuCascade
-                                            ( "drones group.", droneGroupInBay.header.uiNode )
-                                            [ MenuEntryWithTextContaining "Launch drone" ]
-                                        )
+                                    (useContextMenuCascade
+                                        ( "drones group", droneGroupInBay.header.uiNode )
+                                        (MenuEntryWithTextContaining "Launch drone" MenuCascadeCompleted)
                                     )
                                 )
 
@@ -662,11 +655,9 @@ returnDronesToBay readingFromGameClient =
                 else
                     Just
                         (DescribeBranch "I see there are drones in local space. Return those to bay."
-                            (EndDecisionPath
-                                (useContextMenuCascade
-                                    ( "drones group", droneGroupInLocalSpace.header.uiNode )
-                                    [ MenuEntryWithTextContaining "Return to drone bay" ]
-                                )
+                            (useContextMenuCascade
+                                ( "drones group", droneGroupInLocalSpace.header.uiNode )
+                                (MenuEntryWithTextContaining "Return to drone bay" MenuCascadeCompleted)
                             )
                         )
             )
@@ -698,14 +689,14 @@ actWithoutFurtherReadings actionsAlreadyDecided =
     Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
 
 
-actStartingWithRightClickOnOverviewEntry :
+useContextMenuCascadeOnOverviewEntry :
     OverviewWindowEntry
-    -> List ContextMenuCascadeStage
-    -> EndDecisionPathStructure
-actStartingWithRightClickOnOverviewEntry overviewEntry contextMenuStages =
+    -> UseContextMenuCascadeNode
+    -> DecisionPathNode
+useContextMenuCascadeOnOverviewEntry overviewEntry useContextMenu =
     useContextMenuCascade
-        ( "overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'.", overviewEntry.uiNode )
-        contextMenuStages
+        ( "overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'", overviewEntry.uiNode )
+        useContextMenu
 
 
 type alias SeeUndockingComplete =
@@ -738,18 +729,16 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
                     )
 
 
-useContextMenuOnListSurroundingsButton : List ContextMenuCascadeStage -> ReadingFromGameClient -> DecisionPathNode
-useContextMenuOnListSurroundingsButton contextMenuCascadeStages readingFromGameClient =
+useContextMenuCascadeOnListSurroundingsButton : UseContextMenuCascadeNode -> ReadingFromGameClient -> DecisionPathNode
+useContextMenuCascadeOnListSurroundingsButton useContextMenu readingFromGameClient =
     case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
         CanNotSeeIt ->
             DescribeBranch "I do not see the location info panel." askForHelpToGetUnstuck
 
         CanSee infoPanelLocationInfo ->
-            EndDecisionPath
-                (useContextMenuCascade
-                    ( "surroundings button", infoPanelLocationInfo.listSurroundingsButton )
-                    contextMenuCascadeStages
-                )
+            useContextMenuCascade
+                ( "surroundings button", infoPanelLocationInfo.listSurroundingsButton )
+                useContextMenu
 
 
 waitForProgressInGame : DecisionPathNode
@@ -1018,52 +1007,70 @@ activeShipTreeEntryFromInventoryWindow =
         >> List.head
 
 
-type ContextMenuCascadeStage
-    = MenuEntryWithTextContaining String
-    | MenuEntryWithTextEqual String
-    | MenuEntryWithCustomChoice { describeChoice : String, chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry }
+type UseContextMenuCascadeNode
+    = MenuEntryWithTextContaining String UseContextMenuCascadeNode
+    | MenuEntryWithTextEqual String UseContextMenuCascadeNode
+    | MenuEntryWithCustomChoice { describeChoice : String, chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry } UseContextMenuCascadeNode
+    | MenuCascadeCompleted
 
 
-useContextMenuCascade : ( String, UIElement ) -> List ContextMenuCascadeStage -> EndDecisionPathStructure
-useContextMenuCascade ( initialUIElementName, initialUIElement ) stages =
-    Act
-        { actionsAlreadyDecided =
-            ( "Open context menu on " ++ initialUIElementName
-            , [ initialUIElement |> clickOnUIElement MouseButtonRight
-              ]
-            )
-        , actionsDependingOnNewReadings = stages |> List.map actionForContextMenuCascadeStage
-        }
+useContextMenuCascade : ( String, UIElement ) -> UseContextMenuCascadeNode -> DecisionPathNode
+useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu =
+    { actionsAlreadyDecided =
+        ( "Open context menu on " ++ initialUIElementName
+        , [ initialUIElement |> clickOnUIElement MouseButtonRight
+          ]
+        )
+    , actionsDependingOnNewReadings = useContextMenu |> unpackContextMenuTreeToListOfActionsDependingOnReadings
+    }
+        |> Act
+        |> EndDecisionPath
 
 
-actionForContextMenuCascadeStage : ContextMenuCascadeStage -> ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
-actionForContextMenuCascadeStage stage =
+{-| This works only while the context menu model does not support branching. In this special case, we can unpack the tree into a list.
+-}
+unpackContextMenuTreeToListOfActionsDependingOnReadings :
+    UseContextMenuCascadeNode
+    -> List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
     let
-        ( describeChoice, chooseEntry ) =
-            case stage of
-                MenuEntryWithTextContaining textToSearch ->
-                    ( "with text containing '" ++ textToSearch ++ "'"
-                    , List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
-                        >> List.sortBy (.text >> String.trim >> String.length)
-                        >> List.head
-                    )
+        actionFromChoice ( describeChoice, chooseEntry ) =
+            ( "Click menu entry " ++ describeChoice ++ "."
+            , lastContextMenuOrSubmenu
+                >> Maybe.andThen (.entries >> chooseEntry)
+                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
+            )
 
-                MenuEntryWithTextEqual textToSearch ->
-                    ( "with text equal '" ++ textToSearch ++ "'"
-                    , List.filter (.text >> String.trim >> String.toLower >> (==) (textToSearch |> String.toLower))
-                        >> List.head
-                    )
-
-                MenuEntryWithCustomChoice custom ->
-                    ( "'" ++ custom.describeChoice ++ "'"
-                    , custom.chooseEntry
-                    )
+        listFromNextChoiceAndFollowingNodes nextChoice following =
+            (nextChoice |> actionFromChoice) :: (following |> unpackContextMenuTreeToListOfActionsDependingOnReadings)
     in
-    ( "Click menu entry " ++ describeChoice ++ "."
-    , lastContextMenuOrSubmenu
-        >> Maybe.andThen (.entries >> chooseEntry)
-        >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-    )
+    case treeNode of
+        MenuCascadeCompleted ->
+            []
+
+        MenuEntryWithTextContaining textToSearch following ->
+            listFromNextChoiceAndFollowingNodes
+                ( "with text containing '" ++ textToSearch ++ "'"
+                , List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
+                    >> List.sortBy (.text >> String.trim >> String.length)
+                    >> List.head
+                )
+                following
+
+        MenuEntryWithTextEqual textToSearch following ->
+            listFromNextChoiceAndFollowingNodes
+                ( "with text equal '" ++ textToSearch ++ "'"
+                , List.filter (.text >> String.trim >> String.toLower >> (==) (textToSearch |> String.toLower))
+                    >> List.head
+                )
+                following
+
+        MenuEntryWithCustomChoice custom following ->
+            listFromNextChoiceAndFollowingNodes
+                ( "'" ++ custom.describeChoice ++ "'"
+                , custom.chooseEntry
+                )
+                following
 
 
 {-| The names are at least sometimes displayed different: 'Moon 7' can become 'M7'

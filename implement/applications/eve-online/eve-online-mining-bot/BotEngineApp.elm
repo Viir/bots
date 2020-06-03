@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-06-02
+{- EVE Online mining bot version 2020-06-03
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
 
@@ -40,6 +40,7 @@ import EveOnline.ParseUserInterface
         , maybeVisibleAndThen
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (effectMouseClickAtLocation)
+import String.Extra
 
 
 {-| Sources for the defaults:
@@ -556,7 +557,7 @@ lockTargetFromOverviewEntry overviewEntry =
 dockToStationMatchingNameSeenInInfoPanel : { stationNameFromInfoPanel : String } -> ReadingFromGameClient -> DecisionPathNode
 dockToStationMatchingNameSeenInInfoPanel { stationNameFromInfoPanel } =
     dockToStationUsingSurroundingsButtonMenu
-        ( "Click on menu entry representing the station '" ++ stationNameFromInfoPanel ++ "'."
+        ( "representing the station '" ++ stationNameFromInfoPanel ++ "'."
         , List.filter (menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel)
             >> List.head
         )
@@ -568,7 +569,7 @@ dockToStationUsingSurroundingsButtonMenu :
     -> DecisionPathNode
 dockToStationUsingSurroundingsButtonMenu ( describeChooseStation, chooseStationMenuEntry ) =
     useContextMenuCascadeOnListSurroundingsButton
-        (MenuEntryWithTextContaining "stations"
+        (MenuEntryWithTextContainingFirstOf [ "stations", "structures" ]
             (MenuEntryWithCustomChoice { describeChoice = describeChooseStation, chooseEntry = chooseStationMenuEntry }
                 (MenuEntryWithTextContaining "dock" MenuCascadeCompleted)
             )
@@ -1009,6 +1010,7 @@ activeShipTreeEntryFromInventoryWindow =
 
 type UseContextMenuCascadeNode
     = MenuEntryWithTextContaining String UseContextMenuCascadeNode
+    | MenuEntryWithTextContainingFirstOf (List String) UseContextMenuCascadeNode
     | MenuEntryWithTextEqual String UseContextMenuCascadeNode
     | MenuEntryWithCustomChoice { describeChoice : String, chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry } UseContextMenuCascadeNode
     | MenuCascadeCompleted
@@ -1054,6 +1056,20 @@ unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
                 , List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
                     >> List.sortBy (.text >> String.trim >> String.length)
                     >> List.head
+                )
+                following
+
+        MenuEntryWithTextContainingFirstOf priorities following ->
+            listFromNextChoiceAndFollowingNodes
+                ( "with text containing first available of " ++ (priorities |> List.map (String.Extra.surround "'") |> String.join ", ")
+                , \menuEntries ->
+                    priorities
+                        |> List.concatMap
+                            (\textToSearch ->
+                                menuEntries |> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
+                            )
+                        |> List.sortBy (.text >> String.trim >> String.length)
+                        |> List.head
                 )
                 following
 

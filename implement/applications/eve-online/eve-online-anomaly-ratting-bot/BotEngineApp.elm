@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-06-02
+{- EVE Online anomaly ratting bot version 2020-06-03
    This bot uses the probe scanner to warp to anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -28,7 +28,19 @@ import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex)
 import Common.EffectOnWindow exposing (MouseButton(..))
 import Dict
-import EveOnline.AppFramework exposing (AppEffect(..), ShipModulesMemory, getEntropyIntFromReadingFromGameClient)
+import EveOnline.AppFramework
+    exposing
+        ( AppEffect(..)
+        , ReadingFromGameClient
+        , ShipModulesMemory
+        , UIElement
+        , UseContextMenuCascadeNode
+        , clickOnUIElement
+        , getEntropyIntFromReadingFromGameClient
+        , menuCascadeCompleted
+        , useMenuEntryWithTextContaining
+        , useMenuEntryWithTextEqual
+        )
 import EveOnline.ParseUserInterface
     exposing
         ( MaybeVisible(..)
@@ -39,7 +51,7 @@ import EveOnline.ParseUserInterface
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
-import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (effectMouseClickAtLocation)
+import EveOnline.VolatileHostInterface as VolatileHostInterface
 import Set
 
 
@@ -67,19 +79,11 @@ parseBotSettings =
         defaultBotSettings
 
 
-type alias ReadingFromGameClient =
-    EveOnline.ParseUserInterface.ParsedUserInterface
-
-
 type alias BotSettings =
     { anomalyName : String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
-
-
-type alias UIElement =
-    EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
 
 
 type alias TreeLeafAct =
@@ -213,7 +217,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                     DescribeBranch "I see a target to unlock."
                         (useContextMenuCascade
                             ( "locked target", targetToUnlock.barAndImageCont |> Maybe.withDefault targetToUnlock.uiNode )
-                            (MenuEntryWithTextContaining "unlock" MenuCascadeCompleted)
+                            (useMenuEntryWithTextContaining "unlock" menuCascadeCompleted)
                         )
 
                 Nothing ->
@@ -304,8 +308,8 @@ enterAnomaly context =
                     DescribeBranch "Warp to anomaly."
                         (useContextMenuCascade
                             ( "Scan result", anomalyScanResult.uiNode )
-                            (MenuEntryWithTextContaining "Warp to Within"
-                                (MenuEntryWithTextContaining "Within 0 m" MenuCascadeCompleted)
+                            (useMenuEntryWithTextContaining "Warp to Within"
+                                (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
                             )
                         )
 
@@ -358,7 +362,7 @@ launchAndEngageDrones readingFromGameClient =
                                 (DescribeBranch "Engage idling drone(s)"
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInLocalSpace.header.uiNode )
-                                        (MenuEntryWithTextContaining "engage target" MenuCascadeCompleted)
+                                        (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
                                     )
                                 )
 
@@ -367,7 +371,7 @@ launchAndEngageDrones readingFromGameClient =
                                 (DescribeBranch "Launch drones"
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInBay.header.uiNode )
-                                        (MenuEntryWithTextContaining "Launch drone" MenuCascadeCompleted)
+                                        (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
                                     )
                                 )
 
@@ -394,7 +398,7 @@ returnDronesToBay parsedUserInterface =
                         (DescribeBranch "I see there are drones in local space. Return those to bay."
                             (useContextMenuCascade
                                 ( "drones group", droneGroupInLocalSpace.header.uiNode )
-                                (MenuEntryWithTextContaining "Return to drone bay" MenuCascadeCompleted)
+                                (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
                             )
                         )
             )
@@ -404,7 +408,7 @@ lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
 lockTargetFromOverviewEntry overviewEntry =
     DescribeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
         (useContextMenuCascadeOnOverviewEntry overviewEntry
-            (MenuEntryWithTextEqual "Lock target" MenuCascadeCompleted)
+            (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
         )
 
 
@@ -696,13 +700,6 @@ shipUIModulesToActivateAlways =
     .shipUI >> .moduleButtonsRows >> .middle
 
 
-type UseContextMenuCascadeNode
-    = MenuEntryWithTextContaining String UseContextMenuCascadeNode
-    | MenuEntryWithTextEqual String UseContextMenuCascadeNode
-    | MenuEntryWithCustomChoice { describeChoice : String, chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry } UseContextMenuCascadeNode
-    | MenuCascadeCompleted
-
-
 useContextMenuCascade : ( String, UIElement ) -> UseContextMenuCascadeNode -> DecisionPathNode
 useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu =
     { actionsAlreadyDecided =
@@ -710,66 +707,10 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
         , [ initialUIElement |> clickOnUIElement MouseButtonRight
           ]
         )
-    , actionsDependingOnNewReadings = useContextMenu |> unpackContextMenuTreeToListOfActionsDependingOnReadings
+    , actionsDependingOnNewReadings = useContextMenu |> EveOnline.AppFramework.unpackContextMenuTreeToListOfActionsDependingOnReadings
     }
         |> Act
         |> EndDecisionPath
-
-
-{-| This works only while the context menu model does not support branching. In this special case, we can unpack the tree into a list.
--}
-unpackContextMenuTreeToListOfActionsDependingOnReadings :
-    UseContextMenuCascadeNode
-    -> List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
-unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
-    let
-        actionFromChoice ( describeChoice, chooseEntry ) =
-            ( "Click menu entry " ++ describeChoice ++ "."
-            , lastContextMenuOrSubmenu
-                >> Maybe.andThen (.entries >> chooseEntry)
-                >> Maybe.map (.uiNode >> clickOnUIElement MouseButtonLeft >> List.singleton)
-            )
-
-        listFromNextChoiceAndFollowingNodes nextChoice following =
-            (nextChoice |> actionFromChoice) :: (following |> unpackContextMenuTreeToListOfActionsDependingOnReadings)
-    in
-    case treeNode of
-        MenuCascadeCompleted ->
-            []
-
-        MenuEntryWithTextContaining textToSearch following ->
-            listFromNextChoiceAndFollowingNodes
-                ( "with text containing '" ++ textToSearch ++ "'"
-                , List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
-                    >> List.sortBy (.text >> String.trim >> String.length)
-                    >> List.head
-                )
-                following
-
-        MenuEntryWithTextEqual textToSearch following ->
-            listFromNextChoiceAndFollowingNodes
-                ( "with text equal '" ++ textToSearch ++ "'"
-                , List.filter (.text >> String.trim >> String.toLower >> (==) (textToSearch |> String.toLower))
-                    >> List.head
-                )
-                following
-
-        MenuEntryWithCustomChoice custom following ->
-            listFromNextChoiceAndFollowingNodes
-                ( "'" ++ custom.describeChoice ++ "'"
-                , custom.chooseEntry
-                )
-                following
-
-
-lastContextMenuOrSubmenu : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ContextMenu
-lastContextMenuOrSubmenu =
-    .contextMenus >> List.head
-
-
-clickOnUIElement : MouseButton -> UIElement -> VolatileHostInterface.EffectOnWindowStructure
-clickOnUIElement mouseButton uiElement =
-    effectMouseClickAtLocation mouseButton (uiElement.totalDisplayRegion |> centerFromDisplayRegion)
 
 
 isShipWarpingOrJumping : EveOnline.ParseUserInterface.ShipUI -> Bool

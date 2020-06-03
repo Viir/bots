@@ -16,25 +16,42 @@ module EveOnline.AppFramework exposing
     , AppEvent(..)
     , AppEventContext
     , AppEventResponse(..)
+    , ReadingFromGameClient
     , SetupState
     , ShipModulesMemory
     , StateIncludingFramework
+    , UIElement
+    , UseContextMenuCascadeNode(..)
+    , clickOnUIElement
     , getEntropyIntFromReadingFromGameClient
     , getModuleButtonTooltipFromModuleButton
     , initShipModulesMemory
     , initState
     , integrateCurrentReadingsIntoShipModulesMemory
+    , menuCascadeCompleted
+    , menuEntryMatchesStationNameFromLocationInfoPanel
     , processEvent
     , secondsToSessionEnd
+    , unpackContextMenuTreeToListOfActionsDependingOnReadings
+    , useMenuEntryWithTextContaining
+    , useMenuEntryWithTextContainingFirstOf
+    , useMenuEntryWithTextEqual
     )
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import Common.EffectOnWindow
 import Common.FNV
 import Dict
 import EveOnline.MemoryReading
-import EveOnline.ParseUserInterface exposing (MaybeVisible(..), maybeNothingFromCanNotSeeIt)
-import EveOnline.VolatileHostInterface as VolatileHostInterface
+import EveOnline.ParseUserInterface
+    exposing
+        ( MaybeVisible(..)
+        , centerFromDisplayRegion
+        , maybeNothingFromCanNotSeeIt
+        )
+import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (effectMouseClickAtLocation)
 import EveOnline.VolatileHostScript as VolatileHostScript
+import String.Extra
 
 
 type AppEvent
@@ -112,6 +129,14 @@ type alias ConsoleBeepStructure =
     { frequency : Int
     , durationInMs : Int
     }
+
+
+type alias ReadingFromGameClient =
+    EveOnline.ParseUserInterface.ParsedUserInterface
+
+
+type alias UIElement =
+    EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
 
 
 type alias ShipModulesMemory =
@@ -926,3 +951,96 @@ secondsToSessionEnd : AppEventContext a -> Maybe Int
 secondsToSessionEnd appEventContext =
     appEventContext.sessionTimeLimitInMilliseconds
         |> Maybe.map (\sessionTimeLimitInMilliseconds -> (sessionTimeLimitInMilliseconds - appEventContext.timeInMilliseconds) // 1000)
+
+
+clickOnUIElement : Common.EffectOnWindow.MouseButton -> UIElement -> VolatileHostInterface.EffectOnWindowStructure
+clickOnUIElement mouseButton uiElement =
+    effectMouseClickAtLocation mouseButton (uiElement.totalDisplayRegion |> centerFromDisplayRegion)
+
+
+type UseContextMenuCascadeNode
+    = MenuEntryWithCustomChoice { describeChoice : String, chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry } UseContextMenuCascadeNode
+    | MenuCascadeCompleted
+
+
+useMenuEntryWithTextContaining : String -> UseContextMenuCascadeNode -> UseContextMenuCascadeNode
+useMenuEntryWithTextContaining textToSearch =
+    MenuEntryWithCustomChoice
+        { describeChoice = "with text containing '" ++ textToSearch ++ "'"
+        , chooseEntry =
+            List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
+                >> List.sortBy (.text >> String.trim >> String.length)
+                >> List.head
+        }
+
+
+useMenuEntryWithTextContainingFirstOf : List String -> UseContextMenuCascadeNode -> UseContextMenuCascadeNode
+useMenuEntryWithTextContainingFirstOf priorities =
+    MenuEntryWithCustomChoice
+        { describeChoice = "with text containing first available of " ++ (priorities |> List.map (String.Extra.surround "'") |> String.join ", ")
+        , chooseEntry =
+            \menuEntries ->
+                priorities
+                    |> List.concatMap
+                        (\textToSearch ->
+                            menuEntries |> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
+                        )
+                    |> List.sortBy (.text >> String.trim >> String.length)
+                    |> List.head
+        }
+
+
+useMenuEntryWithTextEqual : String -> UseContextMenuCascadeNode -> UseContextMenuCascadeNode
+useMenuEntryWithTextEqual textToSearch =
+    MenuEntryWithCustomChoice
+        { describeChoice = "with text equal '" ++ textToSearch ++ "'"
+        , chooseEntry =
+            List.filter (.text >> String.trim >> String.toLower >> (==) (textToSearch |> String.toLower)) >> List.head
+        }
+
+
+menuCascadeCompleted : UseContextMenuCascadeNode
+menuCascadeCompleted =
+    MenuCascadeCompleted
+
+
+{-| This works only while the context menu model does not support branching. In this special case, we can unpack the tree into a list.
+-}
+unpackContextMenuTreeToListOfActionsDependingOnReadings :
+    UseContextMenuCascadeNode
+    -> List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
+    let
+        actionFromChoice ( describeChoice, chooseEntry ) =
+            ( "Click menu entry " ++ describeChoice ++ "."
+            , lastContextMenuOrSubmenu
+                >> Maybe.andThen (.entries >> chooseEntry)
+                >> Maybe.map (.uiNode >> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft >> List.singleton)
+            )
+
+        listFromNextChoiceAndFollowingNodes nextChoice following =
+            (nextChoice |> actionFromChoice) :: (following |> unpackContextMenuTreeToListOfActionsDependingOnReadings)
+    in
+    case treeNode of
+        MenuCascadeCompleted ->
+            []
+
+        MenuEntryWithCustomChoice custom following ->
+            listFromNextChoiceAndFollowingNodes
+                ( "'" ++ custom.describeChoice ++ "'"
+                , custom.chooseEntry
+                )
+                following
+
+
+{-| The names are at least sometimes displayed different: 'Moon 7' can become 'M7'
+-}
+menuEntryMatchesStationNameFromLocationInfoPanel : String -> EveOnline.ParseUserInterface.ContextMenuEntry -> Bool
+menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel menuEntry =
+    (stationNameFromInfoPanel |> String.toLower |> String.replace "moon " "m")
+        == (menuEntry.text |> String.trim |> String.toLower)
+
+
+lastContextMenuOrSubmenu : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ContextMenu
+lastContextMenuOrSubmenu =
+    .contextMenus >> List.head

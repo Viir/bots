@@ -36,14 +36,16 @@ import EveOnline.AppFramework
         , ReadingFromGameClient
         , ShipModulesMemory
         , UIElement
-        , UseContextMenuCascadeNode(..)
+        , UseContextMenuCascadeNode
         , clickOnUIElement
         , getEntropyIntFromReadingFromGameClient
         , menuCascadeCompleted
         , menuEntryMatchesStationNameFromLocationInfoPanel
+        , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
         , useMenuEntryWithTextContainingFirstOf
         , useMenuEntryWithTextEqual
+        , useRandomMenuEntry
         )
 import EveOnline.ParseUserInterface
     exposing
@@ -562,20 +564,20 @@ lockTargetFromOverviewEntry overviewEntry =
 dockToStationMatchingNameSeenInInfoPanel : { stationNameFromInfoPanel : String } -> ReadingFromGameClient -> DecisionPathNode
 dockToStationMatchingNameSeenInInfoPanel { stationNameFromInfoPanel } =
     dockToStationUsingSurroundingsButtonMenu
-        ( "representing the station '" ++ stationNameFromInfoPanel ++ "'."
-        , List.filter (menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel)
-            >> List.head
-        )
+        { describeChoice = "representing the station '" ++ stationNameFromInfoPanel ++ "'."
+        , chooseEntry =
+            List.filter (menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel) >> List.head
+        }
 
 
 dockToStationUsingSurroundingsButtonMenu :
-    ( String, List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry )
+    { describeChoice : String, chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry }
     -> ReadingFromGameClient
     -> DecisionPathNode
-dockToStationUsingSurroundingsButtonMenu ( describeChooseStation, chooseStationMenuEntry ) =
+dockToStationUsingSurroundingsButtonMenu stationMenuEntryChoice =
     useContextMenuCascadeOnListSurroundingsButton
         (useMenuEntryWithTextContainingFirstOf [ "stations", "structures" ]
-            (MenuEntryWithCustomChoice { describeChoice = describeChooseStation, chooseEntry = chooseStationMenuEntry }
+            (useMenuEntryInLastContextMenuInCascade stationMenuEntryChoice
                 (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
             )
         )
@@ -586,12 +588,9 @@ warpToMiningSite readingFromGameClient =
     readingFromGameClient
         |> useContextMenuCascadeOnListSurroundingsButton
             (useMenuEntryWithTextContaining "asteroid belts"
-                (MenuEntryWithCustomChoice
-                    { describeChoice = "random entry"
-                    , chooseEntry = listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient)
-                    }
+                (useRandomMenuEntry
                     (useMenuEntryWithTextContaining "Warp to Within"
-                        (useMenuEntryWithTextContaining "Within 0 m" MenuCascadeCompleted)
+                        (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
                     )
                 )
             )
@@ -612,7 +611,7 @@ runAway context =
 dockToRandomStation : ReadingFromGameClient -> DecisionPathNode
 dockToRandomStation readingFromGameClient =
     dockToStationUsingSurroundingsButtonMenu
-        ( "Pick random station.", listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient) )
+        { describeChoice = "Pick random station", chooseEntry = listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient) }
         readingFromGameClient
 
 

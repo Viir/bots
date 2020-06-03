@@ -21,7 +21,7 @@ module EveOnline.AppFramework exposing
     , ShipModulesMemory
     , StateIncludingFramework
     , UIElement
-    , UseContextMenuCascadeNode(..)
+    , UseContextMenuCascadeNode
     , clickOnUIElement
     , getEntropyIntFromReadingFromGameClient
     , getModuleButtonTooltipFromModuleButton
@@ -33,12 +33,15 @@ module EveOnline.AppFramework exposing
     , processEvent
     , secondsToSessionEnd
     , unpackContextMenuTreeToListOfActionsDependingOnReadings
+    , useMenuEntryInLastContextMenuInCascade
     , useMenuEntryWithTextContaining
     , useMenuEntryWithTextContainingFirstOf
     , useMenuEntryWithTextEqual
+    , useRandomMenuEntry
     )
 
 import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import Common.Basics
 import Common.EffectOnWindow
 import Common.FNV
 import Dict
@@ -959,13 +962,13 @@ clickOnUIElement mouseButton uiElement =
 
 
 type UseContextMenuCascadeNode
-    = MenuEntryWithCustomChoice { describeChoice : String, chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry } UseContextMenuCascadeNode
+    = MenuEntryWithCustomChoice { describeChoice : String, chooseEntry : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry } UseContextMenuCascadeNode
     | MenuCascadeCompleted
 
 
 useMenuEntryWithTextContaining : String -> UseContextMenuCascadeNode -> UseContextMenuCascadeNode
 useMenuEntryWithTextContaining textToSearch =
-    MenuEntryWithCustomChoice
+    useMenuEntryInLastContextMenuInCascade
         { describeChoice = "with text containing '" ++ textToSearch ++ "'"
         , chooseEntry =
             List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
@@ -976,14 +979,15 @@ useMenuEntryWithTextContaining textToSearch =
 
 useMenuEntryWithTextContainingFirstOf : List String -> UseContextMenuCascadeNode -> UseContextMenuCascadeNode
 useMenuEntryWithTextContainingFirstOf priorities =
-    MenuEntryWithCustomChoice
+    useMenuEntryInLastContextMenuInCascade
         { describeChoice = "with text containing first available of " ++ (priorities |> List.map (String.Extra.surround "'") |> String.join ", ")
         , chooseEntry =
             \menuEntries ->
                 priorities
                     |> List.concatMap
                         (\textToSearch ->
-                            menuEntries |> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
+                            menuEntries
+                                |> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
                         )
                     |> List.sortBy (.text >> String.trim >> String.length)
                     |> List.head
@@ -992,10 +996,34 @@ useMenuEntryWithTextContainingFirstOf priorities =
 
 useMenuEntryWithTextEqual : String -> UseContextMenuCascadeNode -> UseContextMenuCascadeNode
 useMenuEntryWithTextEqual textToSearch =
-    MenuEntryWithCustomChoice
+    useMenuEntryInLastContextMenuInCascade
         { describeChoice = "with text equal '" ++ textToSearch ++ "'"
         , chooseEntry =
-            List.filter (.text >> String.trim >> String.toLower >> (==) (textToSearch |> String.toLower)) >> List.head
+            List.filter (.text >> String.trim >> String.toLower >> (==) (textToSearch |> String.toLower))
+                >> List.head
+        }
+
+
+useMenuEntryInLastContextMenuInCascade :
+    { describeChoice : String, chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry }
+    -> UseContextMenuCascadeNode
+    -> UseContextMenuCascadeNode
+useMenuEntryInLastContextMenuInCascade choice =
+    MenuEntryWithCustomChoice
+        { describeChoice = choice.describeChoice
+        , chooseEntry = pickEntryFromLastContextMenuInCascade choice.chooseEntry
+        }
+
+
+useRandomMenuEntry : UseContextMenuCascadeNode -> UseContextMenuCascadeNode
+useRandomMenuEntry =
+    MenuEntryWithCustomChoice
+        { describeChoice = "random entry"
+        , chooseEntry =
+            \readingFromGameClient ->
+                readingFromGameClient
+                    |> pickEntryFromLastContextMenuInCascade
+                        (Common.Basics.listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient))
         }
 
 
@@ -1013,8 +1041,7 @@ unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
     let
         actionFromChoice ( describeChoice, chooseEntry ) =
             ( "Click menu entry " ++ describeChoice ++ "."
-            , lastContextMenuOrSubmenu
-                >> Maybe.andThen (.entries >> chooseEntry)
+            , chooseEntry
                 >> Maybe.map (.uiNode >> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft >> List.singleton)
             )
 
@@ -1039,6 +1066,14 @@ menuEntryMatchesStationNameFromLocationInfoPanel : String -> EveOnline.ParseUser
 menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel menuEntry =
     (stationNameFromInfoPanel |> String.toLower |> String.replace "moon " "m")
         == (menuEntry.text |> String.trim |> String.toLower)
+
+
+pickEntryFromLastContextMenuInCascade :
+    (List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry)
+    -> ReadingFromGameClient
+    -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry
+pickEntryFromLastContextMenuInCascade pickEntry =
+    lastContextMenuOrSubmenu >> Maybe.map .entries >> Maybe.withDefault [] >> pickEntry
 
 
 lastContextMenuOrSubmenu : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ContextMenu

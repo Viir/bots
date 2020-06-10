@@ -18,15 +18,15 @@ For those who already have some experience in software development, I compiled t
 
 + If I would make only a simple bot or even just a macro, I could as well use a programming language like C# or Python. I am using the Elm programming language because it is simpler to learn and works better for larger projects and AI programming. Especially the time-travel debugging is useful when working on bots.
 
-+ One thing I learned from answering bot developer's questions is this: You want to make it easy for people to communicate what bot code they used and in which environment. If a bot does not work as expected, understanding the cause requires not only having the bot code but also knowing the scenario the bot was used in. The data a bot reads from its environment is the basis for its decisions, so I favor methods that make it easy to collect, organize, and share this data.
++ One thing I learned from answering developer's questions is this: You want to make it easy for people to communicate what code they used and in which environment. If an app does not work as expected, understanding the cause requires not only having the program code but also knowing the scenario the app was used in. The data a app reads from its environment is the basis for its decisions, so I favor methods that make it easy to collect, organize, and share this data.
 
-## The Simplest Custom Bot
+## The Simplest Custom App
 
-In this section, we will follow the fastest way to your custom bot.
-First, let's look at an EVE Online bot from the examples. Run this autopilot bot:
+In this section, we will follow the fastest way to your custom app.
+First, let's look at one of the EVE Online apps in the example projects. Run this autopilot bot:
 
 ```cmd
-botengine  run  "https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+botengine  run  "https://github.com/Viir/bots/tree/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
 If the botengine program is not yet installed on your system, you need to install it first, as described in the guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
@@ -39,35 +39,32 @@ When the bot has started, it will display this message:
 
 That is unless you have set a route in the autopilot.
 
-To customize this bot, we change the bot code. The bot code is made up of the files behind the address we gave to the botengine program.
-To edit the bot code files, we download them first. Use this link to download all the files packaged in a zip-archive: https://github.com/Viir/bots/archive/183be242cd434e8282d7b4fb36ec6bbbf0f58c8a.zip
+To customize this bot, we change the app code. The app code is made up of the files behind the address we gave to the botengine program.
+To edit the app code files, we download them first. Use this link to download all the files packaged in a zip-archive: https://github.com/Viir/bots/archive/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d.zip
 
-Extract the downloaded zip-archive, and you will find the same subdirectory we used in the command to run the bot: `implement\applications\eve-online\eve-online-warp-to-0-autopilot`.
+Extract the downloaded zip-archive, and you will find the same subdirectory we used in the command to run the app: `implement\applications\eve-online\eve-online-warp-to-0-autopilot`.
 
 Now you can use the `botengine run` command on this directory as well:
 
 ```cmd
-botengine  run  "C:\Users\John\Downloads\bots-183be242cd434e8282d7b4fb36ec6bbbf0f58c8a\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
+botengine  run  "C:\Users\John\Downloads\bots-d33deb2ae2131e1a3d575e41f87c6b2b87f7009d\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
 ```
 
-Running this command gives you the same bot with the same behavior because the bot code files are still the same. You can also see that the bot ID displayed in the console window is `16BA890853...` for both commands since the bot ID only depends on the bot code files.
+Running this command gives you the same app with the same behavior because the app code files are still the same.
 
-To change the bot code, open the file `Bot.elm` in this directory in a text editor. For now, the Windows Notepad app is sufficient as an editor.
+To change the app code, open the file `BotEngineApp.elm` in this directory in a text editor. For now, the Windows Notepad app is sufficient as an editor.
 
-On [line 86](https://github.com/Viir/bots/blob/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L86), you find the text that we saw in the bots status message earlier, enclosed in double-quotes:
+On [line 120](https://github.com/Viir/bots/blob/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L120), you find the text that we saw in the bots status message earlier, enclosed in double-quotes:
 
-![EVE Online autopilot bot code in Notepad](./image/2020-01-26.eve-online-autopilot-bot-code-in-notepad.png)
+![EVE Online autopilot bot code in Notepad](./image/2020-06-10-eve-online-autopilot-bot-code-in-notepad.png)
 
 Replace that text between the double-quotes with another text:
 
 ```Elm
-botRequestsFromGameClientState : ParsedUserInterface -> ( List BotRequest, String )
-botRequestsFromGameClientState parsedUserInterface =
-    case parsedUserInterface |> infoPanelRouteFirstMarkerFromParsedUserInterface of
-        Nothing ->
-            ( []
-            , "Hello World!"
-            )
+            case readingFromGameClient |> infoPanelRouteFirstMarkerFromReadingFromGameClient of
+                Nothing ->
+                    continueWithCurrentEffects
+                        ( [], "Hello World! - I see no route in the info panel." )
 ```
 
 When running the bot again from the local directory, you will see your change reflected in the status message in the console window.
@@ -89,24 +86,24 @@ On this journey, we will also pick up some basic vocabulary used in application 
 
 ### Effects
 
-For the application to be useful, it needs to affect its environment in some way eventually. If it is a bot, it might send input to the game client. An intel tool, on the other hand, might play a sound. We have a common name for these observable consequences of running the application: These are the effects.
+For the application to be useful, it needs to affect its environment in some way eventually. If it is a bot, it might send input to the game client. An intel tool, on the other hand, might play a sound. We have a common name for these observable consequences of running the application: We call them 'effects'.
 
 ### Events
 
 To be able to decide which effects would be most useful, the application needs to learn about its environment. In our case, this environment is the game client. The application receives this information about the game client with events.
 
-When programming an application, every effect originates from an event. An event can result in zero or multiple effects, but the application cannot issue an effect without an event. This constraint is not so evident from a user's perspective because the user does not know when events happen. But knowing this rule will help to understand the structure of the program code.
+When programming an application, every effect originates from an event. An event can result in zero or multiple effects, but the application cannot issue an effect without an event. This constraint is not evident from a user's perspective because the user does not know when events happen. But knowing this rule helps to understand the structure of the program code.
 
 ### Event Response
 
-This section explains the structure of the response of the application to an event (type `EveOnline.BotFramework.BotEventResponse`)
+This section explains the structure of the response of the application to an event (type `EveOnline.AppFramework.AppEventResponse`)
 An important component of this response is the effects, as explained above. But besides the effects, the application can give some more information back to the framework to decide how the session continues. The responses are divided into two categories: `ContinueSession` and `FinishSession`.
 
-Following are the components for a `ContinueSession` response (type `EveOnline.BotFramework.ContinueSessionStructure`):
+Following are the components for a `ContinueSession` response (type `EveOnline.AppFramework.ContinueSessionStructure`):
 
-+ `statusDescriptionText`: The text to display as status description from the bot. You see this in the console window or on the session view on the web interface.
++ `statusDescriptionText`: The text to display as status description from the app. You see this in the console window or on the session view on the web interface.
 + `effects`: The effects, as explained above.
-+ `millisecondsToNextReadingFromGame`: You choose how many milliseconds the framework should wait before starting to acquire the next reading from the game client. If your bot has some work to do, you might want it to do several steps per second. Sometimes, you have to wait for some progress in the game world, idling. In these cases, choosing a lower update frequency can save processing resources and space.
++ `millisecondsToNextReadingFromGame`: You choose how many milliseconds the framework should wait before starting to acquire the next reading from the game client. If your app has some work to do, you might want to use several steps per second. Sometimes, you have to wait for some progress in the game world, idling. In these cases, choosing a lower update frequency can save processing resources and memory.
 
 In case the app responds with `FinishSession`, the only component is the `statusDescriptionText`.
 
@@ -115,7 +112,7 @@ In case the app responds with `FinishSession`, the only component is the `status
 This section introduces a setup to help us:
 
 + Understand a program: Syntax highlighting helps with reading. Navigation becomes easier with the ability to jump to definitions and find references.
-+ Check our bot code for problems: Static analysis detects errors after typing and before running a bot.
++ Check our app code for problems: Static analysis detects errors after typing and before running an app.
 
 To achieve this, we combine the following tools:
 
@@ -126,7 +123,7 @@ To achieve this, we combine the following tools:
 
 The following subsections explain in detail how to set up these tools.
 
-To test and verify that the setup works, you need the source files of a bot on your system. You can use the files from https://github.com/Viir/bots/tree/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
+To test and verify that the setup works, you need the source files of an app on your system. You can use the files from https://github.com/Viir/bots/blob/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
 
 ### Elm command line program
 
@@ -136,27 +133,32 @@ Download the file from https://github.com/elm/compiler/releases/download/0.19.1/
 
 Extract the `binary-for-windows-64-bit.gz` file; this will get you a file named `binary-for-windows-64-bit`. Rename this to `elm.exe`, so the system will recognize it as an executable file. If you don't know how to extract `.gz` files, [7zip](https://www.7-zip.org) can do that.
 
-Next, we perform a small test to verify the elm.exe program works on the bot code as intended. Since `elm.exe` is a command line program, we start it from the Windows Command Prompt (cmd.exe).
-Before starting the elm.exe, you need to navigate to the bot code directory containing the `elm.json` file. You can use the `cd` command in the Command Prompt to switch to this directory, with a command like this:
+Next, we perform a small test to verify the elm.exe program works on the app code as intended. Since `elm.exe` is a command line program, we start it from the Windows Command Prompt (cmd.exe).
+Before starting the elm.exe, you need to navigate to the app code directory containing the `elm.json` file. You can use the `cd` command in the Command Prompt to switch to this directory, with a command like this:
+
 ```cmd
-cd "C:\Users\John\Downloads\bots\implement\applications\bot\eve-online\eve-online-warp-to-0-autopilot"
+cd "C:\Users\John\Downloads\bots-d33deb2ae2131e1a3d575e41f87c6b2b87f7009d\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
 ```
 
-Now you can use elm.exe on the bot code files with a command like the following:
+Now you can use elm.exe on the app code files with a command like the following:
 ```
-"C:\Users\John\Downloads\binary-for-windows-64-bit\elm.exe" make src/Main.elm
+"C:\Users\John\Downloads\binary-for-windows-64-bit\elm.exe" make BotEngineApp.elm
 ```
 If everything works so far, the elm.exe will write an output which ends like the following:
 ```
-Success! Compiled 1 module.
-
-    Main ---> index.html
+Success! Compiled 10 modules.
 ```
+or just
+
+```
+Success!
+```
+
 That number of modules it mentions can vary;
 
-To see the detection of errors in action, we can now make some destructive change to the `Bot.elm` file. For example, simulate a typing mistake, on [line 90](https://github.com/Viir/bots/blob/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L90), replace `shipUI` with `shipUi`.
+To see the detection of errors in action, we can now make some destructive change to the `BotEngineApp.elm` file. For example, simulate a typing mistake, on [line 123](https://github.com/Viir/bots/blob/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L123), replace `shipUI` with `shipUi`.
 After saving the changed file, invoke Elm with the same command again. Now we get a different output, informing us about a problem in the code:
-![Elm compilation detected a problem in the bot code](./../image/2020-01-20.elm-detected-problem.png)
+![Elm compilation detected a problem in the app code](./../image/2020-06-10-elm-make-detected-problem.png)
 
 For development, we don't need to use the Elm program directly, but other tools depend on it. The tools we set up next automate the process of starting the Elm program and presenting the results inside a code editor.
 
@@ -182,22 +184,22 @@ In the settings interface, select the `Elm configuration` entry under `Extension
 VSCode automatically saves this setting and remembers it the next time you open the program.
 
 To use VSCode with Elm, open it with the directory containing the `elm.json` file as the working directory. Otherwise, the Elm functionality will not work.
-A convenient way to do this is using the Windows Explorer context menu entry `Open with Code` on the bot directory, as shown in the screenshot below:
+A convenient way to do this is using the Windows Explorer context menu entry `Open with Code` on the directory containing the code, as shown in the screenshot below:
 
 ![Open a directory in Visual Studio Code from the Windows Explorer](./../image/vscode-open-directory-from-explorer.png)
 
-Now we can test if our setup works correctly. In VSCode, open the `Bot.elm` file and make the same code change as done earlier to provoke an error message from Elm.
+Now we can test if our setup works correctly. In VSCode, open the `BotEngineApp.elm` file and make the same code change as done earlier to provoke an error message from Elm.
 When you save the file (`Ctrl + S`), the VSCode extension starts Elm in the background to check the code. On the first time, it can take longer as required packages are downloaded. But usually, Elm should complete the check in a second. If the code is ok, you will not see any change. If there is a problem, this is displayed in multiple places, as you can see in the screenshot below:
 
 + In the file tree view, coloring files containing errors in red.
 + On the scroll bar in an open file. You can see this as a red dot in the screenshot. This indicator helps to scroll to interesting locations in large files quickly.
 + When the offending portion of the code is visible in an editor viewport, the error is pointed out with a red squiggly underline.
 
-![Visual Studio Code displays diagnostics from Elm](./../image/2020-01-20.vscode-elm-display-error.png)
+![Visual Studio Code displays diagnostics from Elm](./../image/2020-06-10-vscode-elm-display-error.png)
 
 When you hover the mouse cursor over the highlighted text, a popup window shows more details. Here you find the message we get from Elm:
 
-![Visual Studio Code displays diagnostics from Elm - details on hover](./../image/2020-01-20.vscode-elm-display-error-hover.png)
+![Visual Studio Code displays diagnostics from Elm - details on hover](./../image/2020-06-10-vscode-elm-display-error-hover.png)
 
 ### elm-format
 
@@ -214,37 +216,48 @@ To integrate it with VSCode, navigate again to the `Elm LS` extension settings a
 
 Now you can invoke the formatting using the `Format Document` command in the VSCode editor. An easy way to test if the formatting works is to open an `.elm` file from the example projects and add a blank line between two functions. As we can see in the example projects, the standard format is to have two empty lines between function definitions. When you add a third one in between, you can see it revert to two blank lines as soon as you invoke the formatting.
 
-## Bot Code
+## App Code Structure
 
-In the previous section, we already changed the code in the `Bot.elm` file. This section explains how this file is structured, so we better understand what we are doing in there.
+In 'The Simplest Custom App' section, we already changed the code in the `BotEngineApp.elm` file. This section explains how this file is structured, so we better understand what we are doing in there.
 
 ### Entry Point - `processEvent`
 
-Each time an event happens, the framework calls the function [`processEvent`](https://github.com/Viir/bots/blob/4a8c9b900f8676c2bb98d2f3c9e91cd945439234/implement/applications/eve-online/eve-online-warp-to-0-autopilot/src/Bot.elm#L48-L50). Because of this unique role, this function is sometimes also referred to as 'entry point'.
+Each time an event happens, the framework calls the function [`processEvent`]https://github.com/Viir/bots/blob/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L63-L68). Because of this unique role, this function is sometimes also referred to as 'entry point'.
 
 Let's look at how this function is implemented:
+
 ```Elm
 processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
 processEvent =
-    EveOnline.BotFramework.processEvent processEveOnlineBotEvent
+    EveOnline.AppFramework.processEvent
+        { processEvent = processEveOnlineBotEvent
+        , parseAppSettings = AppSettings.parseAllowOnlyEmpty ()
+        }
 ```
 
 This function delegates the interesting part to the function `processEveOnlineBotEvent`.
 
-Let's look at the type signature of `processEveOnlineBotEvent`, the first lines of the function's source code:
+Let's look at the type annotation of `processEveOnlineBotEvent`, the first lines of the function's source code:
+
 ```Elm
 processEveOnlineBotEvent :
-    BotEventAtTime
+    EveOnline.AppFramework.AppEventContext ()
+    -> EveOnline.AppFramework.AppEvent
     -> BotState
-    -> { newState : BotState, requests : List BotRequest, millisecondsToNextMemoryReading : Int, statusDescriptionText : String }
+    -> ( BotState, EveOnline.AppFramework.AppEventResponse )
+[...]
 ```
 
-I will quickly break down the Elm syntax here: The part after the last arrow (`->`) is the return type. It describes the shape of values returned by the bot to the framework. The part between the colon (`:`) and the return type is the list of parameters. So we have two parameters, one of type `BotEventAtTime` and one of type `BotState`.
+I will quickly break down the Elm syntax here: The part after the last arrow (`->`) is the return type. It describes the shape of values returned by the app to the framework. The part between the colon (`:`) and the return type is the list of parameters. So this function has three parameters.
 
-Let's have a closer look at the three different types here:
+Let's have a closer look at the parameters:
 
-+ `BotEventAtTime`: This describes an event that happens during the operation of the bot. All information the bot ever receives is coming through the values given with this first parameter.
-+ `BotState`: The `BotState` type is specific to the bot. With this type, we describe what the bot remembers between events. When the framework informs the bot about a new event, it also passes the `BotState` value which the bot returned after processing the previous event (The `newState` field in the return type). But what if this is the first event? Then there is no previous event? In this case, the framework takes the value from the function `initState`.
++ `EveOnline.AppFramework.AppEvent`: This describes an event that happens during the operation of the app.
++ `BotState`: The `BotState` type is specific to the app. With this type, we describe what the app remembers between events. When the framework informs the app about a new event, it also passes the `BotState` value which the app returned after processing the previous event. But what if this is the first event? Then there is no previous event? In this case, the framework takes the value from the function `initState`.
+
+All information the app ever receives is coming through the values given with the first and second parameter (`AppEventContext` and `AppEvent`).
+
+Just like the structure of the `BotState` type, its name is also specific for the app. We could as well use another name, as long as we use it consistently in both the last parameter and the return type.
 
 ## Programming Language
 

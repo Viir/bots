@@ -14,7 +14,7 @@ module Bot exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import BotEngine.SimpleBotFramework as SimpleBotFramework
     exposing
         ( bringWindowToForeground
@@ -67,7 +67,7 @@ initState =
         }
 
 
-processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
+processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent =
     SimpleBotFramework.processEvent simpleProcessEvent
 

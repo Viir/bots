@@ -43,7 +43,7 @@ module BotEngine.SimpleBotFramework exposing
     , taskIdFromString
     )
 
-import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import BotEngine.VolatileHostWindowsApi as VolatileHostWindowsApi
 import Dict
 import Json.Decode
@@ -179,9 +179,9 @@ initState simpleBotInitState =
 
 processEvent :
     (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
-    -> InterfaceToHost.BotEvent
+    -> InterfaceToHost.AppEvent
     -> State simpleBotState
-    -> ( State simpleBotState, InterfaceToHost.BotResponse )
+    -> ( State simpleBotState, InterfaceToHost.AppResponse )
 processEvent simpleBotProcessEvent event stateBefore =
     let
         state =
@@ -604,7 +604,7 @@ taskOnWindowFromSimpleBotTask simpleBotTask =
             VolatileHostWindowsApi.TakeScreenshot
 
 
-integrateEvent : InterfaceToHost.BotEvent -> State simpleBotState -> State simpleBotState
+integrateEvent : InterfaceToHost.AppEvent -> State simpleBotState -> State simpleBotState
 integrateEvent event stateBefore =
     case event of
         InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->

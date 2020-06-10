@@ -7,7 +7,7 @@ module Main exposing
     )
 
 import Bot
-import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 
 
 interfaceToHost_initState : Bot.State

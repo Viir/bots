@@ -40,7 +40,7 @@ module EveOnline.AppFramework exposing
     , useRandomMenuEntry
     )
 
-import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import Common.Basics
 import Common.EffectOnWindow
 import Common.FNV
@@ -255,9 +255,9 @@ processEvent :
     { parseAppSettings : String -> Result String appSettings
     , processEvent : AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse )
     }
-    -> InterfaceToHost.BotEvent
+    -> InterfaceToHost.AppEvent
     -> StateIncludingFramework appSettings appState
-    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotResponse )
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
 processEvent appConfiguration fromHostEvent stateBefore =
     let
         continueAfterIntegrateEvent =
@@ -304,7 +304,7 @@ processEventAfterIntegrateEvent :
     }
     -> Maybe AppEvent
     -> StateIncludingFramework appSettings appState
-    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotResponse )
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
 processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
     let
         ( state, responseBeforeAddingStatusMessage ) =
@@ -358,7 +358,7 @@ processEventNotWaitingForTaskCompletion :
     (AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse ))
     -> Maybe ( AppEvent, AppEventContext appSettings )
     -> StateIncludingFramework appSettings appState
-    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotResponse )
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
 processEventNotWaitingForTaskCompletion appProcessEvent maybeAppEvent stateBefore =
     case stateBefore.setup |> getNextSetupTask of
         ContinueSetup setupState setupTask setupTaskDescription ->

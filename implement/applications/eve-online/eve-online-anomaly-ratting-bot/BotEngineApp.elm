@@ -1,4 +1,4 @@
-{- EVE Online anomaly ratting bot version 2020-06-03
+{- EVE Online anomaly ratting bot version 2020-06-10
    This bot uses the probe scanner to warp to anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -23,7 +23,7 @@ module BotEngineApp exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex)
 import Common.EffectOnWindow exposing (MouseButton(..))
@@ -499,7 +499,7 @@ initState =
         }
 
 
-processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
+processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent =
     EveOnline.AppFramework.processEvent
         { parseAppSettings = parseBotSettings

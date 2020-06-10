@@ -26,7 +26,7 @@ In this section, we will follow the fastest way to your custom app.
 First, let's look at one of the EVE Online apps in the example projects. Run this autopilot bot:
 
 ```cmd
-botengine  run  "https://github.com/Viir/bots/tree/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+botengine  run  "https://github.com/Viir/bots/tree/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
 If the botengine program is not yet installed on your system, you need to install it first, as described in the guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
@@ -40,21 +40,21 @@ When the bot has started, it will display this message:
 That is unless you have set a route in the autopilot.
 
 To customize this bot, we change the app code. The app code is made up of the files behind the address we gave to the botengine program.
-To edit the app code files, we download them first. Use this link to download all the files packaged in a zip-archive: https://github.com/Viir/bots/archive/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d.zip
+To edit the app code files, we download them first. Use this link to download all the files packaged in a zip-archive: https://github.com/Viir/bots/archive/39afeba4ca24884666a8e473a9d7ae6842ee6227.zip
 
 Extract the downloaded zip-archive, and you will find the same subdirectory we used in the command to run the app: `implement\applications\eve-online\eve-online-warp-to-0-autopilot`.
 
 Now you can use the `botengine run` command on this directory as well:
 
 ```cmd
-botengine  run  "C:\Users\John\Downloads\bots-d33deb2ae2131e1a3d575e41f87c6b2b87f7009d\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
+botengine  run  "C:\Users\John\Downloads\bots-39afeba4ca24884666a8e473a9d7ae6842ee6227\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
 ```
 
 Running this command gives you the same app with the same behavior because the app code files are still the same.
 
 To change the app code, open the file `BotEngineApp.elm` in this directory in a text editor. For now, the Windows Notepad app is sufficient as an editor.
 
-On [line 120](https://github.com/Viir/bots/blob/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L120), you find the text that we saw in the bots status message earlier, enclosed in double-quotes:
+On [line 120](https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L120), you find the text that we saw in the bots status message earlier, enclosed in double-quotes:
 
 ![EVE Online autopilot bot code in Notepad](./image/2020-06-10-eve-online-autopilot-bot-code-in-notepad.png)
 
@@ -123,7 +123,7 @@ To achieve this, we combine the following tools:
 
 The following subsections explain in detail how to set up these tools.
 
-To test and verify that the setup works, you need the source files of an app on your system. You can use the files from https://github.com/Viir/bots/blob/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
+To test and verify that the setup works, you need the source files of an app on your system. You can use the files from https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
 
 ### Elm command line program
 
@@ -137,7 +137,7 @@ Next, we perform a small test to verify the elm.exe program works on the app cod
 Before starting the elm.exe, you need to navigate to the app code directory containing the `elm.json` file. You can use the `cd` command in the Command Prompt to switch to this directory, with a command like this:
 
 ```cmd
-cd "C:\Users\John\Downloads\bots-d33deb2ae2131e1a3d575e41f87c6b2b87f7009d\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
+cd "C:\Users\John\Downloads\bots-39afeba4ca24884666a8e473a9d7ae6842ee6227\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
 ```
 
 Now you can use elm.exe on the app code files with a command like the following:
@@ -156,7 +156,7 @@ Success!
 
 That number of modules it mentions can vary;
 
-To see the detection of errors in action, we can now make some destructive change to the `BotEngineApp.elm` file. For example, simulate a typing mistake, on [line 123](https://github.com/Viir/bots/blob/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L123), replace `shipUI` with `shipUi`.
+To see the detection of errors in action, we can now make some destructive change to the `BotEngineApp.elm` file. For example, simulate a typing mistake, on [line 123](https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L123), replace `shipUI` with `shipUi`.
 After saving the changed file, invoke Elm with the same command again. Now we get a different output, informing us about a problem in the code:
 ![Elm compilation detected a problem in the app code](./../image/2020-06-10-elm-make-detected-problem.png)
 
@@ -222,12 +222,12 @@ In 'The Simplest Custom App' section, we already changed the code in the `BotEng
 
 ### Entry Point - `processEvent`
 
-Each time an event happens, the framework calls the function [`processEvent`]https://github.com/Viir/bots/blob/d33deb2ae2131e1a3d575e41f87c6b2b87f7009d/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L63-L68). Because of this unique role, this function is sometimes also referred to as 'entry point'.
+Each time an event happens, the framework calls the function [`processEvent`](https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L63-L68). Because of this unique role, this function is sometimes also referred to as 'entry point'.
 
 Let's look at how this function is implemented:
 
 ```Elm
-processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
+processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent =
     EveOnline.AppFramework.processEvent
         { processEvent = processEveOnlineBotEvent
@@ -261,11 +261,27 @@ Just like the structure of the `BotState` type, its name is also specific for th
 
 ## Programming Language
 
-#### Custom Types
+The apps here are mainly written using the Elm programming language. Many apps also contain a small portion of glue code in other languages like C#, but thanks to the framework, you don't even need to read these low-level parts.
 
-Custom types are also called tagged union types or algebraic data types. In the documentation about Elm, the term 'Custom Type' seems to be more popular.
+### An Introduction to Elm
 
-Let's look at how a custom type with a type parameter can be used to compose more specific types. I will take a popular example of such a type. This one is often used to describe what can be seen on the screen.
+A great resource to learn about the Elm programming language is the official guide at https://guide.elm-lang.org
+
+Parts of this guide are specific to web applications and less interesting when building bots. However, it also teaches fundamentals, which are very useful for us, specifically ["Core Language"](https://guide.elm-lang.org/core_language.html) and ["Types"](https://guide.elm-lang.org/types/).
+And if you want to get into even more detail: The [Appendix](https://guide.elm-lang.org/appendix/function_types.html) covers more advanced topics, helping to understand not only how to write apps, but also how the framework is built.
+
+### Types
+
+Types are an important tool we get with the programming language. The type system allows the engine to draw our attention to problems in the program code before we even run an app. In the program code of examples, you can find many descriptions of types on lines starting with the "type" keyword. Here are two examples:
+
+```Elm
+type alias DronesWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , droneGroups : List DronesWindowDroneGroup
+    , droneGroupInBay : Maybe DronesWindowDroneGroup
+    , droneGroupInLocalSpace : Maybe DronesWindowDroneGroup
+    }
+```
 
 ```Elm
 type MaybeVisible feature
@@ -273,38 +289,9 @@ type MaybeVisible feature
     | CanSee feature
 ```
 
-In this type definition, we have a type parameter called `feature`. We can instantiate the `MaybeVisible` type by specifying what to use as `feature`. For example, we can use the type `Bool` as the `feature`:
+The guide on the Elm programming language has a chapter ["Types"](https://guide.elm-lang.org/types/), and I recommend reading this if you want to learn what these syntaxes mean. This chapter is also worth a look if you encounter a confusing "TYPE MISMATCH" error in a program code. In the ["Reading Types"](https://guide.elm-lang.org/types/reading_types.html) part, you will also find an interactive playground where you can test Elm syntax to reveal types that are sometimes not visible in program syntax.
 
-```Elm
-type alias MaybeVisibleBool =
-    MaybeVisible Bool
-```
-
-The type `MaybeVisible Bool` can have three different values:
-
-+ `CanNotSeeIt`
-+ `CanSee True`
-+ `CanSee False`
-
-In the larger context, this combination could be used as follows:
-```Elm
-type alias EveOnlineVision =
-    { shipOreHoldIsFull : MaybeVisible Bool
-    }
-
-
-describeWhatWeSee : EveOnlineVision -> String
-describeWhatWeSee vision =
-    case vision.shipOreHoldIsFull of
-        CanNotSeeIt ->
-            "I can not see if the ship's ore hold is full. Do we need to change the setup?"
-
-        CanSee True ->
-            "The ship's ore hold is full."
-
-        CanSee False ->
-            "The ship's ore hold is not full."
-```
+Here is the link to the "Types" chapter in the Elm guide: https://guide.elm-lang.org/types/
 
 ----
 

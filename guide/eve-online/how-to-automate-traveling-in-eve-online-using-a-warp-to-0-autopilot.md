@@ -8,7 +8,7 @@ Fortunately, this process can be automated using a bot. The bot we are using her
 
 To start the bot, download the script from https://catalog.botengine.org/8ff549cf159319a1632f60517c55346c399afa44172dd5c8c53813e27b8765f8 and then run it.
 
-In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-bot-did-not-find-botengine-program
+In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 
 After completing the installation, run the script again to start the bot.
 

@@ -1,4 +1,4 @@
-# Failed to Run Bot - Did Not Find the BotEngine Program
+# Failed to Run App - Did Not Find the BotEngine Program
 
 When you land here, you probably tried to use the `botengine` program in some form. Maybe you downloaded a script from the [botengine catalog](https://to.botengine.org/catalog), and got this error message when running the script:
 

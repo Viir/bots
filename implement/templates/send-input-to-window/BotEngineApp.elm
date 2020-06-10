@@ -4,11 +4,11 @@
    A good way to test and visualize the mouse paths is to use this bot on a canvas in the MS Paint app.
 -}
 {-
-   bot-catalog-tags:template,send-input-to-window,test
+   app-catalog-tags:template,send-input-to-window,test
 -}
 
 
-module Bot exposing
+module BotEngineApp exposing
     ( State
     , initState
     , processEvent

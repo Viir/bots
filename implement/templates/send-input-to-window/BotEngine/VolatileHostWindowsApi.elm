@@ -1,16 +1,16 @@
-module BotEngine.VolatileHostWindowsApi exposing (
-    RequestToVolatileHost(..)
-    , ResponseFromVolatileHost(..)
-    , ReadFileContentResultStructure(..)
-    , TaskOnWindowStructure(..)
+module BotEngine.VolatileHostWindowsApi exposing
+    ( KeyboardKey(..)
     , Location2d
     , MouseButton(..)
-    , KeyboardKey(..)
+    , ReadFileContentResultStructure(..)
+    , RequestToVolatileHost(..)
+    , ResponseFromVolatileHost(..)
+    , TaskOnWindowStructure(..)
     , WindowId
     , buildRequestStringToGetResponseFromVolatileHost
     , deserializeResponseFromVolatileHost
-    , setupScript)
-
+    , setupScript
+    )
 
 import Json.Decode
 import Json.Encode
@@ -86,9 +86,11 @@ encodeRequestToVolatileHost : RequestToVolatileHost -> Json.Encode.Value
 encodeRequestToVolatileHost request =
     case request of
         GetForegroundWindow ->
-            Json.Encode.object [ ( "GetForegroundWindow", Json.Encode.object [ ] ) ]
+            Json.Encode.object [ ( "GetForegroundWindow", Json.Encode.object [] ) ]
+
         GetWindowText getWindowText ->
             Json.Encode.object [ ( "GetWindowText", getWindowText |> encodeWindowId ) ]
+
         TaskOnWindow taskOnWindow ->
             Json.Encode.object [ ( "TaskOnWindow", taskOnWindow |> encodeTaskOnIdentifiedWindowStructure ) ]
 
@@ -132,9 +134,9 @@ jsonDecodePixelValue =
 encodeWindowId : WindowId -> Json.Encode.Value
 encodeWindowId windowId =
     case windowId of
-    WindowHandleFromInt windowHandleFromInt ->
-        [("WindowHandleFromInt", windowHandleFromInt |> Json.Encode.int )]
-            |> Json.Encode.object
+        WindowHandleFromInt windowHandleFromInt ->
+            [ ( "WindowHandleFromInt", windowHandleFromInt |> Json.Encode.int ) ]
+                |> Json.Encode.object
 
 
 decodeWindowId : Json.Decode.Decoder WindowId
@@ -156,27 +158,33 @@ encodeTaskOnIdentifiedWindowStructure taskOnIdentifiedWindow =
 encodeTaskOnWindowStructure : TaskOnWindowStructure -> Json.Encode.Value
 encodeTaskOnWindowStructure taskOnWindow =
     case taskOnWindow of
-    BringWindowToForeground ->
-        [("BringWindowToForeground", [] |> Json.Encode.object )]
-            |> Json.Encode.object
-    MoveMouseToLocation moveMouseToLocation ->
-        [("MoveMouseToLocation", moveMouseToLocation |> jsonEncodeLocation2d )]
-            |> Json.Encode.object
-    MouseButtonDown mouseButtonDown ->
-        [("MouseButtonDown", mouseButtonDown |> jsonEncodeMouseButton )]
-            |> Json.Encode.object
-    MouseButtonUp mouseButtonUp ->
-        [("MouseButtonUp", mouseButtonUp |> jsonEncodeMouseButton )]
-            |> Json.Encode.object
-    KeyboardKeyDown keyboardKeyDown ->
-        [("KeyboardKeyDown", keyboardKeyDown |> jsonEncodeKeyboardKey )]
-            |> Json.Encode.object
-    KeyboardKeyUp keyboardKeyUp ->
-        [("KeyboardKeyUp", keyboardKeyUp |> jsonEncodeKeyboardKey )]
-            |> Json.Encode.object
-    TakeScreenshot ->
-        [("TakeScreenshot", [] |> Json.Encode.object )]
-            |> Json.Encode.object
+        BringWindowToForeground ->
+            [ ( "BringWindowToForeground", [] |> Json.Encode.object ) ]
+                |> Json.Encode.object
+
+        MoveMouseToLocation moveMouseToLocation ->
+            [ ( "MoveMouseToLocation", moveMouseToLocation |> jsonEncodeLocation2d ) ]
+                |> Json.Encode.object
+
+        MouseButtonDown mouseButtonDown ->
+            [ ( "MouseButtonDown", mouseButtonDown |> jsonEncodeMouseButton ) ]
+                |> Json.Encode.object
+
+        MouseButtonUp mouseButtonUp ->
+            [ ( "MouseButtonUp", mouseButtonUp |> jsonEncodeMouseButton ) ]
+                |> Json.Encode.object
+
+        KeyboardKeyDown keyboardKeyDown ->
+            [ ( "KeyboardKeyDown", keyboardKeyDown |> jsonEncodeKeyboardKey ) ]
+                |> Json.Encode.object
+
+        KeyboardKeyUp keyboardKeyUp ->
+            [ ( "KeyboardKeyUp", keyboardKeyUp |> jsonEncodeKeyboardKey ) ]
+                |> Json.Encode.object
+
+        TakeScreenshot ->
+            [ ( "TakeScreenshot", [] |> Json.Encode.object ) ]
+                |> Json.Encode.object
 
 
 jsonEncodeLocation2d : Location2d -> Json.Encode.Value
@@ -200,7 +208,7 @@ jsonEncodeMouseButton mouseButton =
 jsonEncodeKeyboardKey : KeyboardKey -> Json.Encode.Value
 jsonEncodeKeyboardKey keyboardKey =
     case keyboardKey of
-        KeyboardKeyFromVirtualKeyCode keyCode->
+        KeyboardKeyFromVirtualKeyCode keyCode ->
             [ ( "KeyboardKeyFromVirtualKeyCode", keyCode |> Json.Encode.int ) ] |> Json.Encode.object
 
 
@@ -606,7 +614,7 @@ string SerializeToJsonForBot<T>(T value) =>
             //  Bot code does not expect properties with null values, see https://github.com/Viir/bots/blob/880d745b0aa8408a4417575d54ecf1f513e7aef4/explore/2019-05-14.eve-online-bot-framework/src/Sanderling_Interface_20190514.elm
             NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore,
 
-            //	https://stackoverflow.com/questions/7397207/json-net-error-self-referencing-loop-detected-for-type/18223985#18223985
+            //\thttps://stackoverflow.com/questions/7397207/json-net-error-self-referencing-loop-detected-for-type/18223985#18223985
             ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore,
         });
 

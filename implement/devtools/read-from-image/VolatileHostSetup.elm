@@ -1,10 +1,11 @@
-module VolatileHostSetup exposing (
-    RequestToVolatileHost(..)
+module VolatileHostSetup exposing
+    ( ReadFileContentResultStructure(..)
+    , RequestToVolatileHost(..)
     , ResponseFromVolatileHost(..)
-    , ReadFileContentResultStructure(..)
     , buildRequestStringToGetResponseFromVolatileHost
     , deserializeResponseFromVolatileHost
-    , setupScript)
+    , setupScript
+    )
 
 import Json.Decode
 import Json.Encode
@@ -187,7 +188,7 @@ string SerializeToJsonForBot<T>(T value) =>
             //  Bot code does not expect properties with null values, see https://github.com/Viir/bots/blob/880d745b0aa8408a4417575d54ecf1f513e7aef4/explore/2019-05-14.eve-online-bot-framework/src/Sanderling_Interface_20190514.elm
             NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore,
 
-            //	https://stackoverflow.com/questions/7397207/json-net-error-self-referencing-loop-detected-for-type/18223985#18223985
+            //\thttps://stackoverflow.com/questions/7397207/json-net-error-self-referencing-loop-detected-for-type/18223985#18223985
             ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore,
         });
 

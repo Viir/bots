@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-06-01
+{- Tribal Wars 2 farmbot version 2020-06-10
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -32,18 +32,18 @@
    --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
 -}
 {-
-   bot-catalog-tags:tribal-wars-2,farmbot
+   app-catalog-tags:tribal-wars-2,farmbot
    authors-forum-usernames:viir
 -}
 
 
-module Bot exposing
+module BotEngineApp exposing
     ( State
     , initState
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Dict
 import Json.Decode
@@ -395,7 +395,7 @@ initFarmCycle =
     { sentAttackByCoordinates = Dict.empty }
 
 
-processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
+processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent =
     BotFramework.processEvent processWebBrowserBotEvent
 

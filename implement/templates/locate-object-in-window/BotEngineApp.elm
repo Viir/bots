@@ -3,17 +3,18 @@
    You can test this by placing a screenshot in a paint app like MS Paint or Paint.NET, where you can change its location within the window easily.
 -}
 {-
-   bot-catalog-tags:template,locate-object-in-window,test
+   app-catalog-tags:template,locate-object-in-window,test
+   authors-forum-usernames:viir
 -}
 
 
-module Bot exposing
+module BotEngineApp exposing
     ( State
     , initState
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import BotEngine.SimpleBotFramework as SimpleBotFramework exposing (PixelValue)
 import Maybe.Extra
 
@@ -45,7 +46,7 @@ initState =
         }
 
 
-processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
+processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent =
     SimpleBotFramework.processEvent simpleProcessEvent
 

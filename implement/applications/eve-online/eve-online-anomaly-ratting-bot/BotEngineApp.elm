@@ -12,7 +12,7 @@
    + Configure the keyboard key 'W' to make the ship orbit.
 -}
 {-
-   bot-catalog-tags:eve-online,ratting
+   app-catalog-tags:eve-online,ratting
    authors-forum-usernames:viir
 -}
 

@@ -1,11 +1,11 @@
-{- Do not change this file. The engine uses this file to see on which framework your bot depends.
-   The encoding and decoding of interface messages here mirrors the implementation of the bot running engine.
+{- Do not change this file. The engine uses this file to see on which framework your app depends.
+   The encoding and decoding of interface messages here mirrors the implementation of the botengine.
 -}
 
 
-module BotEngine.Interface_To_Host_20200318 exposing
-    ( BotEvent(..)
-    , BotResponse(..)
+module BotEngine.Interface_To_Host_20200610 exposing
+    ( AppEvent(..)
+    , AppResponse(..)
     , CreateVolatileHostComplete
     , CreateVolatileHostErrorStructure
     , ProcessSerializedEventResponse(..)
@@ -16,7 +16,7 @@ module BotEngine.Interface_To_Host_20200318 exposing
     , TaskId
     , TaskResultStructure(..)
     , VolatileHostId
-    , deserializeBotEvent
+    , deserializeAppEvent
     , elmEntryPoint
     , taskIdFromString
     , wrapForSerialInterface_processEvent
@@ -26,16 +26,16 @@ import Json.Decode
 import Json.Encode
 
 
-type BotEvent
+type AppEvent
     = ArrivedAtTime { timeInMilliseconds : Int }
     | SetAppSettings String
     | CompletedTask CompletedTaskStructure
     | SetSessionTimeLimit { timeInMilliseconds : Int }
 
 
-type BotResponse
-    = ContinueSession BotResponseContinueSession
-    | FinishSession BotResponseFinishSession
+type AppResponse
+    = ContinueSession ContinueSessionStructure
+    | FinishSession FinishSessionStructure
 
 
 type alias CompletedTaskStructure =
@@ -76,22 +76,22 @@ type alias ReleaseVolatileHostStructure =
 
 type ProcessSerializedEventResponse
     = DecodeEventError String
-    | DecodeEventSuccess BotResponse
+    | DecodeEventSuccess AppResponse
 
 
-type alias BotResponseContinueSession =
+type alias ContinueSessionStructure =
     { statusDescriptionText : String
     , startTasks : List StartTaskStructure
     , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
     }
 
 
-type alias BotResponseFinishSession =
+type alias FinishSessionStructure =
     { statusDescriptionText : String
     }
 
 
-{-| Tasks can yield some result to return to the bot. That is why we use the identifier.
+{-| Tasks can yield some result to return to the app. That is why we use the identifier.
 -}
 type alias StartTaskStructure =
     { taskId : TaskId
@@ -123,20 +123,20 @@ type VolatileHostId
     = VolatileHostIdFromString String
 
 
-wrapForSerialInterface_processEvent : (BotEvent -> state -> ( state, BotResponse )) -> String -> state -> ( state, String )
-wrapForSerialInterface_processEvent processEvent serializedBotEventAtTime stateBefore =
+wrapForSerialInterface_processEvent : (AppEvent -> state -> ( state, AppResponse )) -> String -> state -> ( state, String )
+wrapForSerialInterface_processEvent processEvent serializedAppEventAtTime stateBefore =
     let
         ( state, response ) =
-            case serializedBotEventAtTime |> deserializeBotEvent of
+            case serializedAppEventAtTime |> deserializeAppEvent of
                 Err error ->
                     ( stateBefore
                     , ("Failed to deserialize event: " ++ (error |> Json.Decode.errorToString))
                         |> DecodeEventError
                     )
 
-                Ok botEvent ->
+                Ok appEvent ->
                     stateBefore
-                        |> processEvent botEvent
+                        |> processEvent appEvent
                         |> Tuple.mapSecond DecodeEventSuccess
     in
     ( state, response |> encodeProcessSerializedEventResponse |> Json.Encode.encode 0 )
@@ -147,13 +147,13 @@ taskIdFromString =
     TaskIdFromString
 
 
-deserializeBotEvent : String -> Result Json.Decode.Error BotEvent
-deserializeBotEvent =
-    Json.Decode.decodeString decodeBotEvent
+deserializeAppEvent : String -> Result Json.Decode.Error AppEvent
+deserializeAppEvent =
+    Json.Decode.decodeString decodeAppEvent
 
 
-decodeBotEvent : Json.Decode.Decoder BotEvent
-decodeBotEvent =
+decodeAppEvent : Json.Decode.Decoder AppEvent
+decodeAppEvent =
     Json.Decode.oneOf
         [ Json.Decode.field "ArrivedAtTime" jsonDecodeRecordTimeInMilliseconds
             |> Json.Decode.map ArrivedAtTime
@@ -223,12 +223,12 @@ encodeProcessSerializedEventResponse stepResult =
 
         DecodeEventSuccess response ->
             Json.Encode.object
-                [ ( "DecodeEventSuccess", response |> encodeBotResponse ) ]
+                [ ( "DecodeEventSuccess", response |> encodeAppResponse ) ]
 
 
-encodeBotResponse : BotResponse -> Json.Encode.Value
-encodeBotResponse botResponse =
-    case botResponse of
+encodeAppResponse : AppResponse -> Json.Encode.Value
+encodeAppResponse appResponse =
+    case appResponse of
         ContinueSession continueSession ->
             Json.Encode.object [ ( "ContinueSession", continueSession |> encodeContinueSession ) ]
 
@@ -236,7 +236,7 @@ encodeBotResponse botResponse =
             Json.Encode.object [ ( "FinishSession", finishSession |> encodeFinishSession ) ]
 
 
-encodeContinueSession : BotResponseContinueSession -> Json.Encode.Value
+encodeContinueSession : ContinueSessionStructure -> Json.Encode.Value
 encodeContinueSession continueSession =
     [ ( "statusDescriptionText", continueSession.statusDescriptionText |> Json.Encode.string )
     , ( "startTasks", continueSession.startTasks |> Json.Encode.list encodeStartTask )
@@ -245,7 +245,7 @@ encodeContinueSession continueSession =
         |> Json.Encode.object
 
 
-encodeFinishSession : BotResponseFinishSession -> Json.Encode.Value
+encodeFinishSession : FinishSessionStructure -> Json.Encode.Value
 encodeFinishSession finishSession =
     [ ( "statusDescriptionText", finishSession.statusDescriptionText |> Json.Encode.string )
     ]
@@ -367,11 +367,11 @@ jsonDecodeVolatileHostId =
 Elm code needed to inform the Elm compiler about our entry points.
 -}
 elmEntryPoint :
-    botState
-    -> (String -> botState -> ( botState, String ))
-    -> (botState -> String)
-    -> (String -> botState)
-    -> Program Int botState String
+    appState
+    -> (String -> appState -> ( appState, String ))
+    -> (appState -> String)
+    -> (String -> appState)
+    -> Program Int appState String
 elmEntryPoint initState processEventInterface serializeState deserializeState =
     Platform.worker
         { init = \_ -> ( initState, Cmd.none )

@@ -15,18 +15,19 @@
     > [ { x = 23, y = 57 }, { x = 33, y = 57 }, { x = 43, y = 57 }, { x = 53, y = 57 } ]
 -}
 {-
-   bot-catalog-tags:devtool,test,locate-object-in-image
+   app-catalog-tags:devtool,test,locate-object-in-image
+   authors-forum-usernames:viir
 -}
 
 
-module Bot exposing
+module BotEngineApp exposing
     ( State
     , initState
     , processEvent
     )
 
 import Base64.Decode
-import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue)
 import Dict
 import Json.Decode
@@ -158,7 +159,7 @@ initState =
     }
 
 
-processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
+processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent eventAtTime stateBefore =
     let
         state =
@@ -192,7 +193,7 @@ processEvent eventAtTime stateBefore =
     ( state, response )
 
 
-integrateEvent : InterfaceToHost.BotEvent -> State -> State
+integrateEvent : InterfaceToHost.AppEvent -> State -> State
 integrateEvent event stateBefore =
     case event of
         InterfaceToHost.ArrivedAtTime _ ->

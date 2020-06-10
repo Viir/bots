@@ -14,7 +14,7 @@
    + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
 -}
 {-
-   bot-catalog-tags:eve-online,mining
+   app-catalog-tags:eve-online,mining
    authors-forum-usernames:viir
 -}
 

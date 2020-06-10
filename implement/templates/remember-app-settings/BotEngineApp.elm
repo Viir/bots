@@ -3,17 +3,18 @@
    This app also updates the status message to show the last received settings string, so you can check that a method (e.g., via command line) of applying the settings works.
 -}
 {-
-   bot-catalog-tags:template,app-settings,demo-interface-to-host
+   app-catalog-tags:template,app-settings,demo-interface-to-host
+   authors-forum-usernames:viir
 -}
 
 
-module Bot exposing
+module BotEngineApp exposing
     ( State
     , initState
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import Json.Encode
 
 
@@ -28,7 +29,7 @@ initState =
     { timeInMilliseconds = 0, lastReceivedSettings = Nothing }
 
 
-processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotResponse )
+processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent event stateBefore =
     let
         state =
@@ -43,7 +44,7 @@ processEvent event stateBefore =
     )
 
 
-integrateEvent : InterfaceToHost.BotEvent -> State -> State
+integrateEvent : InterfaceToHost.AppEvent -> State -> State
 integrateEvent event stateBefore =
     case event of
         InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->

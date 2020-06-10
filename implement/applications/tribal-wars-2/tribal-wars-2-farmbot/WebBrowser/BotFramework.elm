@@ -15,7 +15,7 @@ module WebBrowser.BotFramework exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200318 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import WebBrowser.VolatileHostInterface as VolatileHostInterface
 import WebBrowser.VolatileHostScript as VolatileHostScript
 
@@ -112,9 +112,9 @@ initState botState =
 
 processEvent :
     (BotEvent -> botState -> BotProcessEventResult botState)
-    -> InterfaceToHost.BotEvent
+    -> InterfaceToHost.AppEvent
     -> StateIncludingSetup botState
-    -> ( StateIncludingSetup botState, InterfaceToHost.BotResponse )
+    -> ( StateIncludingSetup botState, InterfaceToHost.AppResponse )
 processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
     let
         stateBefore =
@@ -175,7 +175,7 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
     ( state, response )
 
 
-processEventNotWaitingForTask : StateIncludingSetup botState -> ( StateIncludingSetup botState, InterfaceToHost.BotResponse )
+processEventNotWaitingForTask : StateIncludingSetup botState -> ( StateIncludingSetup botState, InterfaceToHost.AppResponse )
 processEventNotWaitingForTask stateBefore =
     case
         stateBefore.setup
@@ -292,7 +292,7 @@ processEventNotWaitingForTask stateBefore =
 
 integrateFromHostEvent :
     (BotEvent -> botState -> BotProcessEventResult botState)
-    -> InterfaceToHost.BotEvent
+    -> InterfaceToHost.AppEvent
     -> StateIncludingSetup botState
     -> StateIncludingSetup botState
 integrateFromHostEvent botProcessEvent fromHostEvent stateBefore =

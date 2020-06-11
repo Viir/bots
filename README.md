@@ -2,9 +2,9 @@ What is more exciting than playing video games? - Building an AI that plays vide
 
 ## Guides
 
-+ How to install/register the `botengine` command: [./guide/failed-run-bot-did-not-find-botengine-program.md](./guide/failed-run-bot-did-not-find-botengine-program.md)
++ How to install/register the `botengine` command: [./guide/failed-run-did-not-find-botengine-program.md](./guide/failed-run-did-not-find-botengine-program.md)
 
-+ Developing for EVE Online: [./guide/eve-online/developing-bots-for-eve-online.md](./guide/eve-online/developing-bots-for-eve-online.md)
++ Developing for EVE Online: [./guide/eve-online/developing-for-eve-online.md](./guide/eve-online/developing-for-eve-online.md)
 
 + Find things faster in the EVE Online game client user interface: [./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md](./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md)
 
@@ -19,11 +19,11 @@ What is more exciting than playing video games? - Building an AI that plays vide
 ## Example Projects
 
 + EVE Online warp-to-0 autopilot
-  + User guide: [./guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md](./guide/eve-online/how-to-automate-traveling-in-eve-online-using-a-warp-to-0-autopilot.md)
+  + User guide: [./guide/eve-online/eve-online-warp-to-0-autopilot-bot.md](./guide/eve-online/eve-online-warp-to-0-autopilot-bot.md)
   + Program code: [./implement/applications/eve-online/eve-online-warp-to-0-autopilot](./implement/applications/eve-online/eve-online-warp-to-0-autopilot)
 
 + EVE Online mining bot
-  + User guide: [./guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md](./guide/eve-online/how-to-automate-mining-asteroids-in-eve-online.md)
+  + User guide: [./guide/eve-online/eve-online-mining-bot.md](./guide/eve-online/eve-online-mining-bot.md)
   + Program code: [./implement/applications/eve-online/eve-online-mining-bot](./implement/applications/eve-online/eve-online-mining-bot)
 
 + EVE Online anomaly ratting bot

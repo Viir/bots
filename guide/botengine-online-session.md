@@ -11,7 +11,8 @@ To see a list of your most recent online sessions, log in at https://reactor.bot
 Below is a screenshot of the website you can use to view your online sessions and monitor your apps:
 ![monitor your apps using online sessions](./image/2019-12-11.online-bot-session.png)
 
-Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
+Online sessions cost 2000 credits per hour. When you log in to your account for the first time, you automatically get 1000 credits. Using these initial credits balance, you can test the online session feature without paying anything (Creating an account is free).
+When you have used up the credits on your account, you can add more following the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
 
 For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
 

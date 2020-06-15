@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-06-13 - Yshekinah warp
+{- EVE Online mining bot version 2020-06-15 - Yshekinah warp
    2020-06-13 Adapted to implement idea of Yshekinah shared at https://github.com/Viir/bots/issues/14#issue-637793751
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
@@ -460,18 +460,42 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
                 )
 
         Just asteroidInOverview ->
-            launchDrones context.readingFromGameClient
-                |> Maybe.withDefault
-                    (DescribeBranch
-                        ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                        (lockTargetFromOverviewEntryAndEnsureIsInRange
-                            context.readingFromGameClient
-                            (min (context |> botSettingsFromDecisionContext).targetingRange
-                                (context |> botSettingsFromDecisionContext).miningModuleRange
+            DescribeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                (warpToOverviewEntryIfFarEnough asteroidInOverview
+                    |> Maybe.withDefault
+                        (launchDrones context.readingFromGameClient
+                            |> Maybe.withDefault
+                                (lockTargetFromOverviewEntryAndEnsureIsInRange
+                                    context.readingFromGameClient
+                                    (min (context |> botSettingsFromDecisionContext).targetingRange
+                                        (context |> botSettingsFromDecisionContext).miningModuleRange
+                                    )
+                                    asteroidInOverview
+                                )
+                        )
+                )
+
+
+warpToOverviewEntryIfFarEnough : OverviewWindowEntry -> Maybe DecisionPathNode
+warpToOverviewEntryIfFarEnough overviewEntry =
+    case overviewEntry.objectDistanceInMeters of
+        Ok distanceInMeters ->
+            if distanceInMeters <= 150000 then
+                Nothing
+
+            else
+                Just
+                    (DescribeBranch "Far enough to use Warp"
+                        (useContextMenuCascadeOnOverviewEntry
+                            overviewEntry
+                            (useMenuEntryWithTextContaining "Warp to Within"
+                                (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
                             )
-                            asteroidInOverview
                         )
                     )
+
+        Err error ->
+            Just (DescribeBranch ("Failed to read the distance: " ++ error) askForHelpToGetUnstuck)
 
 
 ensureOreHoldIsSelectedInInventoryWindow : ReadingFromGameClient -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode
@@ -541,23 +565,13 @@ lockTargetFromOverviewEntryAndEnsureIsInRange readingFromGameClient rangeInMeter
 
             else
                 DescribeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
-                    (if distanceInMeters <= 150000 then
-                        if shipManeuverIsApproaching readingFromGameClient then
-                            DescribeBranch "I see we already approach." waitForProgressInGame
-
-                        else
-                            useContextMenuCascadeOnOverviewEntry
-                                overviewEntry
-                                (useMenuEntryWithTextContaining "approach" menuCascadeCompleted)
+                    (if shipManeuverIsApproaching readingFromGameClient then
+                        DescribeBranch "I see we already approach." waitForProgressInGame
 
                      else
-                        DescribeBranch "Far enough to use Warp"
-                            (useContextMenuCascadeOnOverviewEntry
-                                overviewEntry
-                                (useMenuEntryWithTextContaining "Warp to Within"
-                                    (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
-                                )
-                            )
+                        useContextMenuCascadeOnOverviewEntry
+                            overviewEntry
+                            (useMenuEntryWithTextContaining "approach" menuCascadeCompleted)
                     )
 
         Err error ->

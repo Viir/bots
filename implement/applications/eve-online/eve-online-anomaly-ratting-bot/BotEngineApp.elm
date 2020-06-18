@@ -1,4 +1,5 @@
-{- EVE Online anomaly ratting bot version 2020-06-17
+{- EVE Online anomaly ratting bot version 2020-06-18 BrianCorner
+   Adapted to the idea from BrianCorner shared at https://forum.botengine.org/t/add-some-new-features-to-anomalies-bot/3348/5?u=viir
    This bot uses the probe scanner to warp to anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -58,6 +59,7 @@ import Set
 defaultBotSettings : BotSettings
 defaultBotSettings =
     { anomalyName = ""
+    , ratNameToGoToNextAnomaly = Nothing
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1300
     }
@@ -70,6 +72,9 @@ parseBotSettings =
         ([ ( "anomaly-name"
            , AppSettings.ValueTypeString (\anomalyName -> \settings -> { settings | anomalyName = anomalyName })
            )
+         , ( "rat-name-to-go-to-next-anomaly"
+           , AppSettings.ValueTypeString (\name -> \settings -> { settings | ratNameToGoToNextAnomaly = Just name })
+           )
          , ( "bot-step-delay"
            , AppSettings.ValueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
@@ -81,6 +86,7 @@ parseBotSettings =
 
 type alias BotSettings =
     { anomalyName : String
+    , ratNameToGoToNextAnomaly : Maybe String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
@@ -211,6 +217,19 @@ combat context seeUndockingComplete continueIfCombatComplete =
                 |> List.head
                 |> Maybe.andThen (\overviewEntryToAttack -> ensureShipIsOrbiting seeUndockingComplete.shipUI overviewEntryToAttack)
 
+        anomalySiteAlreadyHasAFriendly =
+            seeUndockingComplete.overviewWindow.entries
+                |> List.any (.objectType >> Maybe.map (String.contains "friendly") >> Maybe.withDefault False)
+
+        overviewContainsRatToGoToNextAnomaly =
+            case (context |> botSettingsFromDecisionContext).ratNameToGoToNextAnomaly of
+                Nothing ->
+                    False
+
+                Just ratNameToGoToNextAnomaly ->
+                    seeUndockingComplete.overviewWindow.entries
+                        |> List.any (.objectName >> Maybe.map (String.toLower >> (==) (String.toLower ratNameToGoToNextAnomaly)) >> Maybe.withDefault False)
+
         decisionIfAlreadyOrbiting =
             case targetsToUnlock |> List.head of
                 Just targetToUnlock ->
@@ -276,8 +295,14 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             )
                                 )
     in
-    ensureShipIsOrbitingDecision
-        |> Maybe.withDefault decisionIfAlreadyOrbiting
+    if anomalySiteAlreadyHasAFriendly || overviewContainsRatToGoToNextAnomaly then
+        DescribeBranch
+            "IF ( anomaly sites that already have a friendly in them) or ( OverviewName = “Some rat name”) Then (Go next anomaly sites)"
+            (continueIfCombatComplete context)
+
+    else
+        ensureShipIsOrbitingDecision
+            |> Maybe.withDefault decisionIfAlreadyOrbiting
 
 
 enterAnomaly : BotDecisionContext -> DecisionPathNode

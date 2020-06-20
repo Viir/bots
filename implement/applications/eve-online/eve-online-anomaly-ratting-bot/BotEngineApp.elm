@@ -1,5 +1,8 @@
-{- EVE Online anomaly ratting bot version 2020-06-18 BrianCorner
-   Adapted to the idea from BrianCorner shared at https://forum.botengine.org/t/add-some-new-features-to-anomalies-bot/3348/5?u=viir
+{- EVE Online anomaly ratting bot version 2020-06-20 BrianCorner
+   Adapted to the ideas from BrianCorner shared at:
+   + https://forum.botengine.org/t/add-some-new-features-to-anomalies-bot/3348/5?u=viir
+   + https://forum.botengine.org/t/add-some-new-features-to-anomalies-bot/3348/14?u=viir
+
    This bot uses the probe scanner to warp to anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -59,6 +62,7 @@ import Set
 defaultBotSettings : BotSettings
 defaultBotSettings =
     { anomalyName = ""
+    , friendlyAllianceName = Nothing
     , ratNameToGoToNextAnomaly = Nothing
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1300
@@ -71,6 +75,9 @@ parseBotSettings =
         {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
         ([ ( "anomaly-name"
            , AppSettings.ValueTypeString (\anomalyName -> \settings -> { settings | anomalyName = anomalyName })
+           )
+         , ( "friendly-alliance-name"
+           , AppSettings.ValueTypeString (\name -> \settings -> { settings | friendlyAllianceName = Just name })
            )
          , ( "rat-name-to-go-to-next-anomaly"
            , AppSettings.ValueTypeString (\name -> \settings -> { settings | ratNameToGoToNextAnomaly = Just name })
@@ -86,6 +93,7 @@ parseBotSettings =
 
 type alias BotSettings =
     { anomalyName : String
+    , friendlyAllianceName : Maybe String
     , ratNameToGoToNextAnomaly : Maybe String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
@@ -218,8 +226,18 @@ combat context seeUndockingComplete continueIfCombatComplete =
                 |> Maybe.andThen (\overviewEntryToAttack -> ensureShipIsOrbiting seeUndockingComplete.shipUI overviewEntryToAttack)
 
         anomalySiteAlreadyHasAFriendly =
-            seeUndockingComplete.overviewWindow.entries
-                |> List.any (.objectType >> Maybe.map (String.contains "friendly") >> Maybe.withDefault False)
+            case (context |> botSettingsFromDecisionContext).friendlyAllianceName of
+                Nothing ->
+                    False
+
+                Just friendlyAllianceName ->
+                    seeUndockingComplete.overviewWindow.entries
+                        |> List.any
+                            (.objectAlliance
+                                >> Maybe.map
+                                    (String.trim >> String.toLower >> String.contains (friendlyAllianceName |> String.toLower |> String.trim))
+                                >> Maybe.withDefault False
+                            )
 
         overviewContainsRatToGoToNextAnomaly =
             case (context |> botSettingsFromDecisionContext).ratNameToGoToNextAnomaly of

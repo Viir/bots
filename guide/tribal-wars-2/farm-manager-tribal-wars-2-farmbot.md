@@ -30,7 +30,7 @@ This video shows the process of starting the farmbot and setting up your Tribal 
 
 https://youtu.be/yzkernqechE
 
-To start the farmbot, download the executable file from [https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-05-07.exe](https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-05-07.exe) and then run it.
+To start the farmbot, download the executable file from [https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-06-20.exe](https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-06-20.exe) and then run it.
 
 The first time you start the bot, it will download a web browser component. This can take some time, depending on your internet connection.
 

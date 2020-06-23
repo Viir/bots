@@ -353,9 +353,12 @@ enterAnomaly context =
                     DescribeBranch
                         ("I see "
                             ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt)
-                            ++ " scan results, and no matching anomaly. Wait for a matching anomaly to appear."
+                            ++ " scan results, and no matching anomaly. Dock to structure."
                         )
-                        waitForProgressInGame
+                        (dockToStationOrStructureUsingSurroundingsButtonMenu
+                            { describeChoice = "First structure", chooseEntry = List.head }
+                            context.readingFromGameClient
+                        )
 
                 Just anomalyScanResult ->
                     DescribeBranch "Warp to anomaly."

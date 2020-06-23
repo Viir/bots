@@ -1,7 +1,8 @@
-{- EVE Online anomaly ratting bot version 2020-06-20 BrianCorner
+{- EVE Online anomaly ratting bot version 2020-06-23 BrianCorner
    Adapted to the ideas from BrianCorner shared at:
    + https://forum.botengine.org/t/add-some-new-features-to-anomalies-bot/3348/5?u=viir
    + https://forum.botengine.org/t/add-some-new-features-to-anomalies-bot/3348/14?u=viir
+   + https://forum.botengine.org/t/add-some-new-features-to-anomalies-bot/3348/16?u=viir
 
    This bot uses the probe scanner to warp to anomalies and kills rats using drones and weapon modules.
 
@@ -17,7 +18,7 @@
 -}
 {-
    app-catalog-tags:eve-online,ratting
-   authors-forum-usernames:viir
+   authors-forum-usernames:viir,briancorner
 -}
 
 
@@ -42,7 +43,9 @@ import EveOnline.AppFramework
         , clickOnUIElement
         , getEntropyIntFromReadingFromGameClient
         , menuCascadeCompleted
+        , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
+        , useMenuEntryWithTextContainingFirstOf
         , useMenuEntryWithTextEqual
         )
 import EveOnline.ParseUserInterface
@@ -51,6 +54,7 @@ import EveOnline.ParseUserInterface
         , OverviewWindowEntry
         , ShipUI
         , ShipUIModuleButton
+        , canNotSeeItFromMaybeNothing
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
@@ -89,6 +93,11 @@ parseBotSettings =
             |> Dict.fromList
         )
         defaultBotSettings
+
+
+goodStandingPatterns : List String
+goodStandingPatterns =
+    [ "good standing", "excellent standing", "is in your" ]
 
 
 type alias BotSettings =
@@ -198,7 +207,8 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                     )
 
             Nothing ->
-                combat context seeUndockingComplete enterAnomaly
+                retreatIfNeutralOrEnemyInLocalChat context
+                    |> Maybe.withDefault (combat context seeUndockingComplete enterAnomaly)
 
 
 combat : BotDecisionContext -> SeeUndockingComplete -> (BotDecisionContext -> DecisionPathNode) -> DecisionPathNode
@@ -489,6 +499,75 @@ useContextMenuCascadeOnOverviewEntry overviewEntry useContextMenu =
     useContextMenuCascade
         ( "overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'", overviewEntry.uiNode )
         useContextMenu
+
+
+retreatIfNeutralOrEnemyInLocalChat : BotDecisionContext -> Maybe DecisionPathNode
+retreatIfNeutralOrEnemyInLocalChat context =
+    case context.readingFromGameClient |> localChatWindowFromUserInterface of
+        CanNotSeeIt ->
+            Just (DescribeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
+
+        CanSee localChatWindow ->
+            let
+                chatUserHasGoodStanding chatUser =
+                    goodStandingPatterns
+                        |> List.any
+                            (\goodStandingPattern ->
+                                chatUser.standingIconHint
+                                    |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
+                                    |> Maybe.withDefault False
+                            )
+
+                subsetOfUsersWithNoGoodStanding =
+                    localChatWindow.visibleUsers
+                        |> List.filter (chatUserHasGoodStanding >> not)
+            in
+            if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                Just
+                    (DescribeBranch
+                        "There is an enemy or neutral in local chat. Dock to structure."
+                        (dockToStationOrStructureUsingSurroundingsButtonMenu
+                            { describeChoice = "First structure", chooseEntry = List.head }
+                            context.readingFromGameClient
+                        )
+                    )
+
+            else
+                Nothing
+
+
+localChatWindowFromUserInterface : ReadingFromGameClient -> MaybeVisible EveOnline.ParseUserInterface.ChatWindow
+localChatWindowFromUserInterface =
+    .chatWindowStacks
+        >> List.filterMap .chatWindow
+        >> List.filter (.name >> Maybe.map (String.endsWith "_local") >> Maybe.withDefault False)
+        >> List.head
+        >> canNotSeeItFromMaybeNothing
+
+
+dockToStationOrStructureUsingSurroundingsButtonMenu :
+    { describeChoice : String, chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry }
+    -> ReadingFromGameClient
+    -> DecisionPathNode
+dockToStationOrStructureUsingSurroundingsButtonMenu stationMenuEntryChoice =
+    useContextMenuCascadeOnListSurroundingsButton
+        (useMenuEntryWithTextContainingFirstOf [ "stations", "structures" ]
+            (useMenuEntryInLastContextMenuInCascade stationMenuEntryChoice
+                (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+            )
+        )
+
+
+useContextMenuCascadeOnListSurroundingsButton : UseContextMenuCascadeNode -> ReadingFromGameClient -> DecisionPathNode
+useContextMenuCascadeOnListSurroundingsButton useContextMenu readingFromGameClient =
+    case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
+        CanNotSeeIt ->
+            DescribeBranch "I do not see the location info panel." askForHelpToGetUnstuck
+
+        CanSee infoPanelLocationInfo ->
+            useContextMenuCascade
+                ( "surroundings button", infoPanelLocationInfo.listSurroundingsButton )
+                useContextMenu
 
 
 type alias SeeUndockingComplete =

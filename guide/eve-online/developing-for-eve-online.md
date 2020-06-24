@@ -216,15 +216,53 @@ To integrate it with VSCode, navigate again to the `Elm LS` extension settings a
 
 Now you can invoke the formatting using the `Format Document` command in the VSCode editor. An easy way to test if the formatting works is to open an `.elm` file from the example projects and add a blank line between two functions. As we can see in the example projects, the standard format is to have two empty lines between function definitions. When you add a third one in between, you can see it revert to two blank lines as soon as you invoke the formatting.
 
-## App Code Structure
+## App Code Structure and Data Flow
 
 In 'The Simplest Custom App' section, we already changed the code in the `BotEngineApp.elm` file. This section explains how this file is structured, so we better understand what we are doing in there.
 
+The structure of the app code follows the data flow. All data our app processes flows through the `initState` and `processEvent` functions in the `BotEngineApp.elm` file. Any other function is relevant only as far as it is somehow integrated into one of these two, directly or indirectly.
+
 ### Entry Point - `processEvent`
 
-Each time an event happens, the framework calls the function [`processEvent`](https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L63-L68). Because of this unique role, this function is sometimes also referred to as 'entry point'.
+Each time an event happens, the framework calls the function [`processEvent`](https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L63-L68). Because of this unique role, we also call it the 'entry point'.
 
-Let's look at how this function is implemented:
+Let's look at the structure of this function.
+
+```Elm
+processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
+```
+
+In the type annotation above, we can see a type `State` used twice. This `State` is specific to each app. Each app can use it's own `State` structure, it just have to be the same in all parts of `processEvent`. The `State` appears in one parameter for the first time, meaning the function receives a value of type `State` when it is used. The second time `State` appears in the part after the last arrow, meaning it is part of the return type. So the function also returns a value of type `State` (as part of a tuple).
+
+Each time the engine calls the `processEvent` function, it gives the previous state as the second argument, and receives the new state with the return value. For the first event, the engine takes the `State` from the `initState` value. This passing on of the app state is what allows the engine to show you the current state of the app for inspection.
+
+The other types used in the type annotation above are `InterfaceToHost.AppEvent` and `InterfaceToHost.AppResponse`. These are the same for each app.
+
+The type of `processEvent` is not specific to EVE Online. Apps for other games use the same structure. Apps for the EVE Online client use the `EveOnline.AppFramework.processEvent` function to produce the more general `processEvent` function. We can see this in the example projects, no matter if the app is a mining bot, ratting bot, or just a monitor that watches local chat and alerts the user when a hostile pilot enters. 
+
+Let's have a closer look at `EveOnline.AppFramework.processEvent`:
+
+```Elm
+processEvent :
+    { parseAppSettings : String -> Result String appSettings
+    , processEvent : EveOnline.AppFramework.AppEventContext appSettings -> EveOnline.AppFramework.AppEvent -> appState -> ( appState, EveOnline.AppFramework.AppEventResponse )
+    }
+    -> InterfaceToHost.AppEvent
+    -> EveOnline.AppFramework.StateIncludingFramework appSettings appState
+    -> ( EveOnline.AppFramework.StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
+```
+
+(In the source code, you might see less of the `EveOnline.AppFramework` prefixes because they are implicit for the current module. I added them here to clarify the difference between the ones in `EveOnline.AppFramework` and in `InterfaceToHost`).
+
+This `processEvent` function from the framework for EVE Online gives the event and the response a more specific shape, with a structure that is adapted for working with the game client. It works as a wrapper for the event and response types from the `InterfaceToHost` module. It hides the generic language of the host, so we don't need to learn about it but instead can focus on the language that is specific to EVE Online.
+
+The function type shown above looks big and unwieldy, and the first thing we do is to divide it into two parts: The first parameter and the rest. The first parameter is what we supply when we build our app. This is a record with fields named `parseAppSettings` and `processEvent`.
+
+All the rest describes what we get back after supplying the record for the first parameter. The type of this latter part matches the type constraint for the `processEvent` function in the `BotEngineApp.elm` file (Remember, the state can take any shape). So we don't look closely at the part after the first parameter, we pass it on to the engine.
+
+That leaves only the `parseAppSettings` and `processEvent` fields for us to look at.
+
+Here is how the [autopilot example bot code](https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L63-L68) uses the framework function to connect the app code to the host:
 
 ```Elm
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
@@ -235,17 +273,12 @@ processEvent =
         }
 ```
 
-This function delegates the interesting part to the function `processEveOnlineBotEvent`.
+Using the `parseAppSettings` field, we describe how to translate from the app settings string given by the user to the settings. The framework invokes the `parseAppSettings` function every time the user changes the app-settings. The return type is a kind of `Result` which means we can decide that a given app-settings string is invalid and reject it. The `Err` case uses the `String` type, and we use this to explain to the user what exactly is wrong with the given app-settings string. You don't need to worry about how to generate these error messages, because there is already a framework for this. In our app, we only need to define a list of valid settings, and the framework will generate a precise error message if the user misspells the name of a setting or tries to use a setting with an unsupported value.
 
-Let's look at the type annotation of `processEveOnlineBotEvent`, the first lines of the function's source code:
+Most of the development activity happens in the function that we give to the `processEvent` field:
 
 ```Elm
-processEveOnlineBotEvent :
-    EveOnline.AppFramework.AppEventContext ()
-    -> EveOnline.AppFramework.AppEvent
-    -> BotState
-    -> ( BotState, EveOnline.AppFramework.AppEventResponse )
-[...]
+processEvent : EveOnline.AppFramework.AppEventContext appSettings -> EveOnline.AppFramework.AppEvent -> appState -> ( appState, EveOnline.AppFramework.AppEventResponse )
 ```
 
 I will quickly break down the Elm syntax here: The part after the last arrow (`->`) is the return type. It describes the shape of values returned by the app to the framework. The part between the colon (`:`) and the return type is the list of parameters. So this function has three parameters.
@@ -258,6 +291,61 @@ Let's have a closer look at the parameters:
 All information the app ever receives is coming through the values given with the first and second parameter (`AppEventContext` and `AppEvent`).
 
 Just like the structure of the `BotState` type, its name is also specific for the app. We could as well use another name, as long as we use it consistently in both the last parameter and the return type.
+
+### Data Flow for a New Reading from the Game Client
+
+Getting a new reading from the game client is the most common kind of event. In most sessions, it accounts for more than 99 percent of all events.
+
+The framework delivers the reading with the `ReadingFromGameClientCompleted` event in the form of the UI tree found in the game client process memory. In addition to that, it also provides shortcuts to popular derivations of the UI tree. We can use these prebuilt shortcuts or built our own, using the diverse parsing functions from the `ParseUserInterface.elm` module.
+
+For how to find things in the reading, see the separate guide on the parsed user interface of the EVE Online game client: https://to.botengine.org/guide/parsed-user-interface-of-the-eve-online-game-client
+
+With the `AppEventContext` value, we get some additional context that we might need to decide what the app should do next:
+
+```Elm
+type alias AppEventContext appSettings =
+    { timeInMilliseconds : Int
+    , appSettings : Maybe appSettings
+    , sessionTimeLimitInMilliseconds : Maybe Int
+    }
+```
+
+Using the `appSettings` field, we can read the settings that the framework parsed from the app settings string given by the user. This is a common way to customize app behavior without changing the app code. We can use any type we want for our app settings, and we choose it using the `parseAppSettings` field with `EveOnline.AppFramework.processEvent`.
+
+From the `sessionTimeLimitInMilliseconds` field, we can read the limit for the session duration chosen by the user. By subtracting `timeInMilliseconds`, we can compute the remaining time in the session. Maybe the user has limited the session duration to five hours because they want to shut down their machine then. With the knowledge about the imminent end, the app can then automatically perform preparations, such as bringing an expensive spaceship to a saver place, docking to a structure.
+
+The part above covers the data we receive about the event. Now let's see what we return to the framework when we complete processing the event.
+
+Let's look again at the type of `processEvent`:
+
+```Elm
+processEvent : EveOnline.AppFramework.AppEventContext appSettings -> EveOnline.AppFramework.AppEvent -> appState -> ( appState, EveOnline.AppFramework.AppEventResponse )
+```
+
+The part after the last arrow is what the function ultimately returns. It contains an `appState` and `EveOnline.AppFramework.AppEventResponse`.
+
+```Elm
+type AppEventResponse
+    = ContinueSession ContinueSessionStructure
+    | FinishSession { statusDescriptionText : String }
+
+
+type alias ContinueSessionStructure =
+    { effects : List AppEffect
+    , millisecondsToNextReadingFromGame : Int
+    , statusDescriptionText : String
+    }
+```
+
+With the `AppEventResponse` type, we choose whether to continue or to finish the session. In case we finish the session, we only need to add the `statusDescriptionText` that appears in the session view. If we select the option to continue the session, we can also return a list of effects that the framework should perform. These include effects on the game client, like moving the mouse or pressing a key.
+
+And finally, we can choose when the framework should get the next reading from the game client. Some apps use the same delay all the time, but we can also depend on the current state of the game. Every time we process an event, we can choose again how many milliseconds the framework should wait before taking the next reading from the game client. We specify the time relative to the current time in milliseconds, using the field `millisecondsToNextReadingFromGame`.
+
+We return this value of type `AppEventResponse` as the second element in a tuple. The first element of that tuple is the new state of our app. This value is what we want to remember to make decisions in the future. Since we tell the engine about the new state of the app after each event, the development tools can tell us about each of them, supporting features like time-travel debugging or automated testing.
+
+Here is a concrete example of a complete return value composition, again from the autopilot bot:
+
+https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L109-L115
 
 ## Programming Language
 

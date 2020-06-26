@@ -1,4 +1,7 @@
-{- EVE Online anomaly ratting bot version 2020-06-23 BrianCorner
+{- EVE Online anomaly ratting bot version 2020-06-26 Michael T
+   Adapted to the scenario from Michael T shared at:
+   + https://forum.botengine.org/t/add-some-new-features-to-anomalies-bot/3348/23?u=viir
+
    Adapted to the ideas from BrianCorner shared at:
    + https://forum.botengine.org/t/add-some-new-features-to-anomalies-bot/3348/5?u=viir
    + https://forum.botengine.org/t/add-some-new-features-to-anomalies-bot/3348/14?u=viir
@@ -18,7 +21,7 @@
 -}
 {-
    app-catalog-tags:eve-online,ratting
-   authors-forum-usernames:viir,briancorner
+   authors-forum-usernames:viir,link858,briancorner
 -}
 
 
@@ -65,7 +68,7 @@ import Set
 
 defaultBotSettings : BotSettings
 defaultBotSettings =
-    { anomalyName = ""
+    { anomalyNames = []
     , friendlyAllianceName = Nothing
     , ratNameToGoToNextAnomaly = Nothing
     , maxTargetCount = 3
@@ -78,7 +81,11 @@ parseBotSettings =
     AppSettings.parseSimpleCommaSeparatedList
         {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
         ([ ( "anomaly-name"
-           , AppSettings.ValueTypeString (\anomalyName -> \settings -> { settings | anomalyName = anomalyName })
+           , AppSettings.ValueTypeString
+                (\anomalyName ->
+                    \settings ->
+                        { settings | anomalyNames = anomalyName :: settings.anomalyNames }
+                )
            )
          , ( "friendly-alliance-name"
            , AppSettings.ValueTypeString (\name -> \settings -> { settings | friendlyAllianceName = Just name })
@@ -101,7 +108,7 @@ goodStandingPatterns =
 
 
 type alias BotSettings =
-    { anomalyName : String
+    { anomalyNames : List String
     , friendlyAllianceName : Maybe String
     , ratNameToGoToNextAnomaly : Maybe String
     , maxTargetCount : Int
@@ -166,11 +173,16 @@ probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
         isCombatAnomaly =
             anyContainedTextMatches (String.toLower >> String.contains "combat")
 
-        matchesName =
-            (settings.anomalyName |> String.isEmpty)
-                || anyContainedTextMatches (String.toLower >> String.contains (settings.anomalyName |> String.toLower))
+        matchesNameFromSettings =
+            (settings.anomalyNames |> List.isEmpty)
+                || (settings.anomalyNames
+                        |> List.any
+                            (\anomalyName ->
+                                anyContainedTextMatches (String.toLower >> String.contains (anomalyName |> String.toLower |> String.trim))
+                            )
+                   )
     in
-    isCombatAnomaly && matchesName
+    isCombatAnomaly && matchesNameFromSettings
 
 
 decideNextAction : BotDecisionContext -> DecisionPathNode

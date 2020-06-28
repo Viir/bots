@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-06-27
+{- EVE Online mining bot version 2020-06-28
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
 
@@ -71,6 +71,7 @@ defaultBotSettings =
     , botStepDelayMilliseconds = 2000
     , lastDockedStationNameFromInfoPanel = Nothing
     , oreHoldMaxPercent = 99
+    , selectInstancePilotName = Nothing
     }
 
 
@@ -87,14 +88,17 @@ parseBotSettings =
          , ( "mining-module-range"
            , AppSettings.ValueTypeInteger (\range settings -> { settings | miningModuleRange = range })
            )
-         , ( "bot-step-delay"
-           , AppSettings.ValueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
-           )
          , ( "last-docked-station-name-from-info-panel"
            , AppSettings.ValueTypeString (\stationName -> \settings -> { settings | lastDockedStationNameFromInfoPanel = Just stationName })
            )
          , ( "ore-hold-max-percent"
            , AppSettings.ValueTypeInteger (\percent settings -> { settings | oreHoldMaxPercent = percent })
+           )
+         , ( "select-instance-pilot-name"
+           , AppSettings.ValueTypeString (\pilotName -> \settings -> { settings | selectInstancePilotName = Just pilotName })
+           )
+         , ( "bot-step-delay"
+           , AppSettings.ValueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
          ]
             |> Dict.fromList
@@ -109,6 +113,7 @@ type alias BotSettings =
     , botStepDelayMilliseconds : Int
     , lastDockedStationNameFromInfoPanel : Maybe String
     , oreHoldMaxPercent : Int
+    , selectInstancePilotName : Maybe String
     }
 
 
@@ -774,6 +779,10 @@ processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.App
 processEvent =
     EveOnline.AppFramework.processEvent
         { parseAppSettings = parseBotSettings
+        , selectGameClientInstance =
+            Maybe.andThen .selectInstancePilotName
+                >> Maybe.map EveOnline.AppFramework.selectGameClientInstanceWithPilotName
+                >> Maybe.withDefault EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
         , processEvent = processEveOnlineBotEvent
         }
 

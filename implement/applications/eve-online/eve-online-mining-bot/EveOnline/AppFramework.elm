@@ -11,34 +11,7 @@
 -}
 
 
-module EveOnline.AppFramework exposing
-    ( AppEffect(..)
-    , AppEvent(..)
-    , AppEventContext
-    , AppEventResponse(..)
-    , ReadingFromGameClient
-    , SetupState
-    , ShipModulesMemory
-    , StateIncludingFramework
-    , UIElement
-    , UseContextMenuCascadeNode
-    , clickOnUIElement
-    , getEntropyIntFromReadingFromGameClient
-    , getModuleButtonTooltipFromModuleButton
-    , initShipModulesMemory
-    , initState
-    , integrateCurrentReadingsIntoShipModulesMemory
-    , menuCascadeCompleted
-    , menuEntryMatchesStationNameFromLocationInfoPanel
-    , processEvent
-    , secondsToSessionEnd
-    , unpackContextMenuTreeToListOfActionsDependingOnReadings
-    , useMenuEntryInLastContextMenuInCascade
-    , useMenuEntryWithTextContaining
-    , useMenuEntryWithTextContainingFirstOf
-    , useMenuEntryWithTextEqual
-    , useRandomMenuEntry
-    )
+module EveOnline.AppFramework exposing (..)
 
 import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import Common.Basics
@@ -55,6 +28,13 @@ import EveOnline.ParseUserInterface
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (effectMouseClickAtLocation)
 import EveOnline.VolatileHostScript as VolatileHostScript
 import String.Extra
+
+
+type alias AppConfiguration appSettings appState =
+    { parseAppSettings : String -> Result String appSettings
+    , selectGameClientInstance : Maybe appSettings -> List GameClientProcessSummary -> Result String { selectedProcess : GameClientProcessSummary, report : List String }
+    , processEvent : AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse )
+    }
 
 
 type AppEvent
@@ -111,7 +91,7 @@ type alias SetupState =
     { createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileHostErrorStructure InterfaceToHost.CreateVolatileHostComplete)
     , requestsToVolatileHostCount : Int
     , lastRequestToVolatileHostResult : Maybe (Result String InterfaceToHost.RequestToVolatileHostComplete)
-    , gameClientProcesses : Maybe (List VolatileHostInterface.GameClientProcessSummaryStruct)
+    , gameClientProcesses : Maybe (List GameClientProcessSummary)
     , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
     , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : VolatileHostInterface.GetMemoryReadingResultStructure }
     , memoryReadingDurations : List Int
@@ -140,6 +120,10 @@ type alias ReadingFromGameClient =
 
 type alias UIElement =
     EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
+
+
+type alias GameClientProcessSummary =
+    VolatileHostInterface.GameClientProcessSummaryStruct
 
 
 type alias ShipModulesMemory =
@@ -252,16 +236,14 @@ initState appState =
 
 
 processEvent :
-    { parseAppSettings : String -> Result String appSettings
-    , processEvent : AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse )
-    }
+    AppConfiguration appSettings appState
     -> InterfaceToHost.AppEvent
     -> StateIncludingFramework appSettings appState
     -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
 processEvent appConfiguration fromHostEvent stateBefore =
     let
         continueAfterIntegrateEvent =
-            processEventAfterIntegrateEvent { processEvent = appConfiguration.processEvent }
+            processEventAfterIntegrateEvent appConfiguration
     in
     case fromHostEvent of
         InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
@@ -300,8 +282,7 @@ processEvent appConfiguration fromHostEvent stateBefore =
 
 
 processEventAfterIntegrateEvent :
-    { processEvent : AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse )
-    }
+    AppConfiguration appSettings appState
     -> Maybe AppEvent
     -> StateIncludingFramework appSettings appState
     -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
@@ -311,7 +292,7 @@ processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
             case stateBefore.taskInProgress of
                 Nothing ->
                     processEventNotWaitingForTaskCompletion
-                        appConfiguration.processEvent
+                        appConfiguration
                         (maybeAppEvent
                             |> Maybe.map
                                 (\appEvent ->
@@ -355,12 +336,12 @@ processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
 
 
 processEventNotWaitingForTaskCompletion :
-    (AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse ))
+    AppConfiguration appSettings appState
     -> Maybe ( AppEvent, AppEventContext appSettings )
     -> StateIncludingFramework appSettings appState
     -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
-processEventNotWaitingForTaskCompletion appProcessEvent maybeAppEvent stateBefore =
-    case stateBefore.setup |> getNextSetupTask of
+processEventNotWaitingForTaskCompletion appConfiguration maybeAppEvent stateBefore =
+    case stateBefore.setup |> getNextSetupTask appConfiguration stateBefore.appSettings of
         ContinueSetup setupState setupTask setupTaskDescription ->
             let
                 taskIndex =
@@ -433,7 +414,7 @@ processEventNotWaitingForTaskCompletion appProcessEvent maybeAppEvent stateBefor
                     maybeAppEventResult =
                         maybeAppEvent
                             |> Maybe.map
-                                (\( appEvent, appEventContext ) -> appStateBefore.appState |> appProcessEvent appEventContext appEvent)
+                                (\( appEvent, appEventContext ) -> appStateBefore.appState |> appConfiguration.processEvent appEventContext appEvent)
 
                     appStateBeforeProcessEffects =
                         case maybeAppEventResult of
@@ -682,8 +663,12 @@ dequeueNextEffectFromAppState { currentTimeInMs } effectQueueBefore =
                 }
 
 
-getNextSetupTask : SetupState -> SetupTask
-getNextSetupTask stateBefore =
+getNextSetupTask :
+    AppConfiguration appSettings appState
+    -> Maybe appSettings
+    -> SetupState
+    -> SetupTask
+getNextSetupTask appConfiguration appSettings stateBefore =
     case stateBefore.createVolatileHostResult of
         Nothing ->
             ContinueSetup
@@ -695,11 +680,16 @@ getNextSetupTask stateBefore =
             FrameworkStopSession ("Create volatile host failed with exception: " ++ error.exceptionToString)
 
         Just (Ok createVolatileHostComplete) ->
-            getSetupTaskWhenVolatileHostSetupCompleted stateBefore createVolatileHostComplete.hostId
+            getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBefore createVolatileHostComplete.hostId
 
 
-getSetupTaskWhenVolatileHostSetupCompleted : SetupState -> InterfaceToHost.VolatileHostId -> SetupTask
-getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
+getSetupTaskWhenVolatileHostSetupCompleted :
+    AppConfiguration appSettings appState
+    -> Maybe appSettings
+    -> SetupState
+    -> InterfaceToHost.VolatileHostId
+    -> SetupTask
+getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBefore volatileHostId =
     case stateBefore.searchUIRootAddressResult of
         Nothing ->
             case stateBefore.gameClientProcesses of
@@ -715,7 +705,7 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                         "Get list of EVE Online client processes."
 
                 Just gameClientProcesses ->
-                    case gameClientProcesses |> selectGameClientProcess of
+                    case gameClientProcesses |> appConfiguration.selectGameClientInstance appSettings of
                         Err selectGameClientProcessError ->
                             FrameworkStopSession ("Failed to select the game client process: " ++ selectGameClientProcessError)
 
@@ -791,10 +781,10 @@ getSetupTaskWhenVolatileHostSetupCompleted stateBefore volatileHostId =
                                         }
 
 
-selectGameClientProcess :
-    List VolatileHostInterface.GameClientProcessSummaryStruct
-    -> Result String { selectedProcess : VolatileHostInterface.GameClientProcessSummaryStruct, report : List String }
-selectGameClientProcess gameClientProcesses =
+selectGameClientInstanceWithTopmostWindow :
+    List GameClientProcessSummary
+    -> Result String { selectedProcess : GameClientProcessSummary, report : List String }
+selectGameClientInstanceWithTopmostWindow gameClientProcesses =
     case gameClientProcesses |> List.sortBy .mainWindowZIndex |> List.head of
         Nothing ->
             Err "I did not find an EVE Online client process."
@@ -816,6 +806,47 @@ selectGameClientProcess gameClientProcesses =
                         ]
             in
             Ok { selectedProcess = selectedProcess, report = report }
+
+
+selectGameClientInstanceWithPilotName :
+    String
+    -> List GameClientProcessSummary
+    -> Result String { selectedProcess : GameClientProcessSummary, report : List String }
+selectGameClientInstanceWithPilotName pilotName gameClientProcesses =
+    if gameClientProcesses |> List.isEmpty then
+        Err "I did not find an EVE Online client process."
+
+    else
+        case
+            gameClientProcesses
+                |> List.filter (.mainWindowTitle >> String.toLower >> String.contains (pilotName |> String.toLower))
+                |> List.head
+        of
+            Nothing ->
+                Err
+                    ("I did not find an EVE Online client process for the pilot name '"
+                        ++ pilotName
+                        ++ "'. Here is a list of window names of the visible game client instances: "
+                        ++ (gameClientProcesses |> List.map (.mainWindowTitle >> String.Extra.surround "'") |> String.join ", ")
+                    )
+
+            Just selectedProcess ->
+                let
+                    report =
+                        if [ selectedProcess ] == gameClientProcesses then
+                            []
+
+                        else
+                            [ "I found "
+                                ++ (gameClientProcesses |> List.length |> String.fromInt)
+                                ++ " game client processes. I selected process "
+                                ++ (selectedProcess.processId |> String.fromInt)
+                                ++ " ('"
+                                ++ selectedProcess.mainWindowTitle
+                                ++ "') because its main window title matches the given pilot name."
+                            ]
+                in
+                Ok { selectedProcess = selectedProcess, report = report }
 
 
 requestToVolatileHostResultDisplayString : Result String InterfaceToHost.RequestToVolatileHostComplete -> { string : String, isErr : Bool }

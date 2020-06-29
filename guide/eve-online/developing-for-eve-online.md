@@ -26,7 +26,7 @@ In this section, we take the fastest way to a custom app.
 First, let's look at one of the EVE Online apps in the example projects. Run this autopilot bot:
 
 ```cmd
-botengine  run  "https://github.com/Viir/bots/tree/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+botengine  run  "https://github.com/Viir/bots/tree/e1ed34842ab6ba6980684ae957c2c7d8b7e94903/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
 If the botengine program is not yet installed on your system, you need to install it first, as described in the guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
@@ -40,21 +40,21 @@ When the bot has started, it will display this message:
 That is unless you have set a route in the autopilot.
 
 To customize this bot, we change the app code. The app code is made up of the files behind the address we gave to the botengine program.
-To edit the app code files, we download them first. Use this link to download all the files packaged in a zip-archive: https://github.com/Viir/bots/archive/39afeba4ca24884666a8e473a9d7ae6842ee6227.zip
+To edit the app code files, we download them first. Use this link to download all the files packaged in a zip-archive: https://github.com/Viir/bots/archive/e1ed34842ab6ba6980684ae957c2c7d8b7e94903.zip
 
 Extract the downloaded zip-archive, and you will find the same subdirectory we used in the command to run the app: `implement\applications\eve-online\eve-online-warp-to-0-autopilot`.
 
 Now you can use the `botengine run` command on this directory as well:
 
 ```cmd
-botengine  run  "C:\Users\John\Downloads\bots-39afeba4ca24884666a8e473a9d7ae6842ee6227\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
+botengine  run  "C:\Users\John\Downloads\bots-e1ed34842ab6ba6980684ae957c2c7d8b7e94903\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
 ```
 
 Running this command gives you the same app with the same behavior because the app code files are still the same.
 
 To change the app code, open the file `BotEngineApp.elm` in this directory in a text editor. For now, the Windows Notepad app is sufficient as an editor.
 
-On [line 120](https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L120), you find the text that we saw in the bots status message earlier, enclosed in double-quotes:
+On [line 121](https://github.com/Viir/bots/blob/e1ed34842ab6ba6980684ae957c2c7d8b7e94903/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L121), you find the text that we saw in the bots status message earlier, enclosed in double-quotes:
 
 ![EVE Online autopilot bot code in Notepad](./image/2020-06-10-eve-online-autopilot-bot-code-in-notepad.png)
 
@@ -113,7 +113,7 @@ The structure of the app code follows the data flow. All data our app processes 
 
 ### Entry Point - `processEvent`
 
-Each time an event happens, the framework calls the function [`processEvent`](https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L63-L68). Because of this unique role, we also call it the 'entry point'.
+Each time an event happens, the framework calls the function [`processEvent`](https://github.com/Viir/bots/blob/e1ed34842ab6ba6980684ae957c2c7d8b7e94903/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L63-L69). Because of this unique role, we also call it the 'entry point'.
 
 Let's look at the structure of this function.
 
@@ -133,9 +133,7 @@ Let's have a closer look at `EveOnline.AppFramework.processEvent`:
 
 ```Elm
 processEvent :
-    { parseAppSettings : String -> Result String appSettings
-    , processEvent : EveOnline.AppFramework.AppEventContext appSettings -> EveOnline.AppFramework.AppEvent -> appState -> ( appState, EveOnline.AppFramework.AppEventResponse )
-    }
+    EveOnline.AppFramework.AppConfiguration appSettings appState
     -> InterfaceToHost.AppEvent
     -> EveOnline.AppFramework.StateIncludingFramework appSettings appState
     -> ( EveOnline.AppFramework.StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
@@ -145,20 +143,30 @@ processEvent :
 
 This `processEvent` function from the framework for EVE Online gives the event and the response a more specific shape, with a structure that is adapted for working with the game client. It works as a wrapper for the event and response types from the `InterfaceToHost` module. It hides the generic language of the host, so we don't need to learn about it but instead can focus on the language that is specific to EVE Online.
 
-The function type shown above looks big and unwieldy, and the first thing we do is to divide it into two parts: The first parameter and the rest. The first parameter is what we supply when we build our app. This is a record with fields named `parseAppSettings` and `processEvent`.
+The function type shown above looks big and unwieldy, and the first thing we do is to divide it into two parts: The first parameter and the rest. The first parameter is what we supply when we build our app.
 
 All the rest describes what we get back after supplying the record for the first parameter. The type of this latter part matches the type constraint for the `processEvent` function in the `BotEngineApp.elm` file (Remember, the state can take any shape). So we don't look closely at the part after the first parameter, we pass it on to the engine.
 
-That leaves only the `parseAppSettings` and `processEvent` fields for us to look at.
+That leaves only the first parameter of `processEvent` for us to look at.
+The `EveOnline.AppFramework.AppConfiguration` is a record with fields named `parseAppSettings`, `selectGameClientInstance` and `processEvent`:
 
-Here is how the [autopilot example bot code](https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L63-L68) uses the framework function to connect the app code to the host:
+```Elm
+type alias AppConfiguration appSettings appState =
+    { parseAppSettings : String -> Result String appSettings
+    , selectGameClientInstance : Maybe appSettings -> List GameClientProcessSummary -> Result String { selectedProcess : GameClientProcessSummary, report : List String }
+    , processEvent : AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse )
+    }
+```
+
+Here is how the [autopilot example bot code](https://github.com/Viir/bots/blob/e1ed34842ab6ba6980684ae957c2c7d8b7e94903/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L63-L69) uses the framework function to configure the app:
 
 ```Elm
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent =
     EveOnline.AppFramework.processEvent
-        { processEvent = processEveOnlineBotEvent
-        , parseAppSettings = AppSettings.parseAllowOnlyEmpty ()
+        { parseAppSettings = AppSettings.parseAllowOnlyEmpty ()
+        , selectGameClientInstance = always EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
+        , processEvent = processEveOnlineBotEvent
         }
 ```
 
@@ -235,7 +243,7 @@ We return this value of type `AppEventResponse` as the second element in a tuple
 
 Here is a concrete example of a complete return value composition, again from the autopilot bot:
 
-https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L109-L115
+https://github.com/Viir/bots/blob/e1ed34842ab6ba6980684ae957c2c7d8b7e94903/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L110-L116
 
 
 ## Programming Language
@@ -289,7 +297,7 @@ To achieve this, we combine the following tools:
 
 The following subsections explain in detail how to set up these tools.
 
-To test and verify that the setup works, you need the source files of an app on your system. You can use the files from https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
+To test and verify that the setup works, you need the source files of an app on your system. You can use the files from https://github.com/Viir/bots/blob/e1ed34842ab6ba6980684ae957c2c7d8b7e94903/implement/applications/eve-online/eve-online-warp-to-0-autopilot for this purpose.
 
 ### Elm command line program
 
@@ -322,7 +330,7 @@ Success!
 
 That number of modules it mentions can vary;
 
-To see the detection of errors in action, we can now make some destructive change to the `BotEngineApp.elm` file. For example, simulate a typing mistake, on [line 123](https://github.com/Viir/bots/blob/39afeba4ca24884666a8e473a9d7ae6842ee6227/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L123), replace `shipUI` with `shipUi`.
+To see the detection of errors in action, we can now make some destructive change to the `BotEngineApp.elm` file. For example, simulate a typing mistake, on [line 124](https://github.com/Viir/bots/blob/e1ed34842ab6ba6980684ae957c2c7d8b7e94903/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L124), replace `shipUI` with `shipUi`.
 After saving the changed file, invoke Elm with the same command again. Now we get a different output, informing us about a problem in the code:
 ![Elm compilation detected a problem in the app code](./../image/2020-06-10-elm-make-detected-problem.png)
 

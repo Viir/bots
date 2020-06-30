@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-06-10
+{- Tribal Wars 2 farmbot version 2020-06-30 for Caleb
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -91,7 +91,7 @@ restartGameClientInterval =
 
 gameRootInformationQueryInterval : Int
 gameRootInformationQueryInterval =
-    20
+    60
 
 
 waitDurationAfterReloadWebPage : Int
@@ -106,12 +106,12 @@ numberOfAttacksLimitPerVillage =
 
 ownVillageInfoMaxAge : Int
 ownVillageInfoMaxAge =
-    240
+    600
 
 
 selectedVillageInfoMaxAge : Int
 selectedVillageInfoMaxAge =
-    20
+    30
 
 
 readFromGameTimeoutCountThresholdToRestart : Int

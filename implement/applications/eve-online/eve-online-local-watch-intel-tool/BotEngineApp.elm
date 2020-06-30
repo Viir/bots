@@ -1,5 +1,7 @@
 {- EVE Online Intel Bot - Local Watch Script
-   This app watches local and plays an alarm sound when a pilot with bad standing appears.
+   This app watches local and counts the number of pilots that are hostile or neutral.
+   It plays an alarm sound when the number of hostile or neutral pilots increases.
+   See the discussion at https://forum.botengine.org/t/local-intel-bot/3413/6?u=viir
 
    The detection code below works for English language in the game client.
    To use another language, adapt the `goodStandingPatterns` list below.
@@ -25,6 +27,8 @@ import EveOnline.ParseUserInterface
         ( MaybeVisible(..)
         , canNotSeeItFromMaybeNothing
         )
+import Set
+import String.Extra
 
 
 type alias ReadingFromGameClient =
@@ -32,7 +36,8 @@ type alias ReadingFromGameClient =
 
 
 type alias AppState =
-    {}
+    { lastReadingPilotsWithNoGoodStanding : Set.Set String
+    }
 
 
 type alias State =
@@ -46,7 +51,7 @@ goodStandingPatterns =
 
 initState : State
 initState =
-    EveOnline.AppFramework.initState {}
+    EveOnline.AppFramework.initState { lastReadingPilotsWithNoGoodStanding = Set.empty }
 
 
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
@@ -67,30 +72,33 @@ processEveOnlineBotEvent eventContext event stateBefore =
     case event of
         EveOnline.AppFramework.ReadingFromGameClientCompleted readingFromGameClient ->
             let
-                ( effects, statusMessage ) =
-                    botEffectsFromGameClientState readingFromGameClient
+                ( state, response ) =
+                    stateBefore |> processReadingFromGameClient readingFromGameClient
             in
-            ( stateBefore
+            ( state
             , EveOnline.AppFramework.ContinueSession
-                { effects = effects
+                { effects = response.effects
                 , millisecondsToNextReadingFromGame = 2000
-                , statusDescriptionText = statusMessage
+                , statusDescriptionText = response.statusDescriptionText
                 }
             )
 
 
-botEffectsFromGameClientState : ReadingFromGameClient -> ( List AppEffect, String )
-botEffectsFromGameClientState readingFromGameClient =
+processReadingFromGameClient : ReadingFromGameClient -> AppState -> ( AppState, { effects : List AppEffect, statusDescriptionText : String } )
+processReadingFromGameClient readingFromGameClient stateBefore =
     case readingFromGameClient |> localChatWindowFromUserInterface of
         CanNotSeeIt ->
-            ( [ EveOnline.AppFramework.EffectConsoleBeepSequence
-                    [ { frequency = 700, durationInMs = 100 }
-                    , { frequency = 0, durationInMs = 100 }
-                    , { frequency = 700, durationInMs = 100 }
-                    , { frequency = 400, durationInMs = 100 }
+            ( stateBefore
+            , { effects =
+                    [ EveOnline.AppFramework.EffectConsoleBeepSequence
+                        [ { frequency = 700, durationInMs = 100 }
+                        , { frequency = 0, durationInMs = 100 }
+                        , { frequency = 700, durationInMs = 100 }
+                        , { frequency = 400, durationInMs = 100 }
+                        ]
                     ]
-              ]
-            , "I don't see the local chat window."
+              , statusDescriptionText = "I don't see the local chat window."
+              }
             )
 
         CanSee localChatWindow ->
@@ -104,19 +112,28 @@ botEffectsFromGameClientState readingFromGameClient =
                                     |> Maybe.withDefault False
                             )
 
-                subsetOfUsersWithNoGoodStanding =
+                pilotsWithNoGoodStanding =
                     localChatWindow.visibleUsers
                         |> List.filter (chatUserHasGoodStanding >> not)
+                        |> List.map (.name >> Maybe.withDefault "")
+                        |> Set.fromList
+
+                newPilotsWithNoGoodStanding =
+                    Set.diff pilotsWithNoGoodStanding stateBefore.lastReadingPilotsWithNoGoodStanding
 
                 chatWindowReport =
                     "I see "
                         ++ (localChatWindow.visibleUsers |> List.length |> String.fromInt)
                         ++ " users in the local chat. "
-                        ++ (subsetOfUsersWithNoGoodStanding |> List.length |> String.fromInt)
-                        ++ " with no good standing."
+                        ++ (pilotsWithNoGoodStanding |> Set.size |> String.fromInt)
+                        ++ " with no good standing, "
+                        ++ (newPilotsWithNoGoodStanding |> Set.size |> String.fromInt)
+                        ++ " of which are new: "
+                        ++ (newPilotsWithNoGoodStanding |> Set.toList |> List.map (String.Extra.surround "'") |> String.join ", ")
+                        ++ "."
 
                 alarmRequests =
-                    if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                    if newPilotsWithNoGoodStanding /= Set.empty then
                         [ EveOnline.AppFramework.EffectConsoleBeepSequence
                             [ { frequency = 700, durationInMs = 100 }
                             , { frequency = 0, durationInMs = 100 }
@@ -127,7 +144,9 @@ botEffectsFromGameClientState readingFromGameClient =
                     else
                         []
             in
-            ( alarmRequests, chatWindowReport )
+            ( { stateBefore | lastReadingPilotsWithNoGoodStanding = pilotsWithNoGoodStanding }
+            , { effects = alarmRequests, statusDescriptionText = chatWindowReport }
+            )
 
 
 localChatWindowFromUserInterface : ReadingFromGameClient -> MaybeVisible EveOnline.ParseUserInterface.ChatWindow

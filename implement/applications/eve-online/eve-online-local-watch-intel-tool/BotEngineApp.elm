@@ -126,11 +126,18 @@ processReadingFromGameClient readingFromGameClient stateBefore =
                         ++ (localChatWindow.visibleUsers |> List.length |> String.fromInt)
                         ++ " users in the local chat. "
                         ++ (pilotsWithNoGoodStanding |> Set.size |> String.fromInt)
-                        ++ " with no good standing, "
-                        ++ (newPilotsWithNoGoodStanding |> Set.size |> String.fromInt)
-                        ++ " of which are new: "
-                        ++ (newPilotsWithNoGoodStanding |> Set.toList |> List.map (String.Extra.surround "'") |> String.join ", ")
-                        ++ "."
+                        ++ " with no good standing."
+
+                newArrivalsReport =
+                    if newPilotsWithNoGoodStanding == Set.empty then
+                        "There are no new pilots that are hostile or neutral."
+
+                    else
+                        "There are "
+                            ++ (newPilotsWithNoGoodStanding |> Set.size |> String.fromInt)
+                            ++ " new pilots that are hostile or neutral: "
+                            ++ (newPilotsWithNoGoodStanding |> Set.toList |> List.map (String.Extra.surround "'") |> String.join ", ")
+                            ++ "."
 
                 alarmRequests =
                     if newPilotsWithNoGoodStanding /= Set.empty then
@@ -145,7 +152,9 @@ processReadingFromGameClient readingFromGameClient stateBefore =
                         []
             in
             ( { stateBefore | lastReadingPilotsWithNoGoodStanding = pilotsWithNoGoodStanding }
-            , { effects = alarmRequests, statusDescriptionText = chatWindowReport }
+            , { effects = alarmRequests
+              , statusDescriptionText = [ chatWindowReport, newArrivalsReport ] |> String.join "\n"
+              }
             )
 
 

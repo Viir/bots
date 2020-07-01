@@ -64,7 +64,7 @@ type alias State =
 
 badStandingPatterns : List String
 badStandingPatterns =
-    [ "bad standing", "terrible standing", "no standing", "neutral standing", "is at war", "below -5", "criminal", "kill right", ]
+    [ "bad standing", "terrible standing", "no standing", "neutral standing", "is at war", "below -5", "criminal", "kill right" ]
 
 
 initState : State

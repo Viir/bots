@@ -12,3 +12,11 @@ Origin and discussion: https://forum.botengine.org/t/local-intel-bot/3413/6?u=vi
 
 https://github.com/Viir/bots/commit/d01478b69a9e71ac7bffc34c25585723d3abf28e
 
+## 2020-07-01 - Cameron Urnes - EVE Online - local watch
+
+Origin and discussion: https://github.com/Viir/bots/pull/15
+
+> Uses whitelist instead of blacklist for determining the trigger list. Allows selection of character during launch, still supports auto-picking top window. Beep a bit more.
+
+https://github.com/Viir/bots/commit/acf8c8c34dfe910f19bd838236e845d51bafb7e2
+

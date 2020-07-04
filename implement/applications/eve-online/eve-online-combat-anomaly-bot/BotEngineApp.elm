@@ -15,6 +15,7 @@
    All settings are optional; you only need them in case the defaults don't fit your use-case.
 
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
+   + `friendly-alliance-name` : Name of the alliance to classify as friendly.
 
    Here is an example of a complete app-settings string:
    --app-settings="anomaly-name=Drone Patrol,anomaly-name=Drone Horde"
@@ -66,6 +67,7 @@ import Set
 defaultBotSettings : BotSettings
 defaultBotSettings =
     { anomalyNames = []
+    , friendlyAllianceName = Nothing
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1300
     }
@@ -82,6 +84,9 @@ parseBotSettings =
                         { settings | anomalyNames = anomalyName :: settings.anomalyNames }
                 )
            )
+         , ( "friendly-alliance-name"
+           , AppSettings.ValueTypeString (\name -> \settings -> { settings | friendlyAllianceName = Just name })
+           )
          , ( "bot-step-delay"
            , AppSettings.ValueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
@@ -93,6 +98,7 @@ parseBotSettings =
 
 type alias BotSettings =
     { anomalyNames : List String
+    , friendlyAllianceName : Maybe String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
@@ -223,6 +229,20 @@ combat context seeUndockingComplete continueIfCombatComplete =
             else
                 context.readingFromGameClient.targets |> List.filter .isActiveTarget
 
+        seeingFriendlyPilotInOverview =
+            case (context |> botSettingsFromDecisionContext).friendlyAllianceName of
+                Nothing ->
+                    False
+
+                Just friendlyAllianceName ->
+                    seeUndockingComplete.overviewWindow.entries
+                        |> List.any
+                            (.objectAlliance
+                                >> Maybe.map
+                                    (String.trim >> String.toLower >> String.contains (friendlyAllianceName |> String.toLower |> String.trim))
+                                >> Maybe.withDefault False
+                            )
+
         ensureShipIsOrbitingDecision =
             overviewEntriesToAttack
                 |> List.head
@@ -293,8 +313,17 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             )
                                 )
     in
-    ensureShipIsOrbitingDecision
-        |> Maybe.withDefault decisionIfAlreadyOrbiting
+    if seeingFriendlyPilotInOverview then
+        DescribeBranch
+            "I see a friendly pilot in the overview. Skip this anomaly."
+            (returnDronesToBay context.readingFromGameClient
+                |> Maybe.withDefault
+                    (DescribeBranch "No drones to return." (continueIfCombatComplete context))
+            )
+
+    else
+        ensureShipIsOrbitingDecision
+            |> Maybe.withDefault decisionIfAlreadyOrbiting
 
 
 enterAnomaly : BotDecisionContext -> DecisionPathNode

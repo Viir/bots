@@ -155,18 +155,21 @@ type alias State =
 probeScanResultsRepresentsMatchingAnomaly : BotSettings -> EveOnline.ParseUserInterface.ProbeScanResult -> Bool
 probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
     let
-        anyContainedTextMatches predicate =
-            probeScanResult.textsLeftToRight |> List.any predicate
-
         isCombatAnomaly =
-            anyContainedTextMatches (String.toLower >> String.contains "combat")
+            probeScanResult.cellsTexts
+                |> Dict.get "Group"
+                |> Maybe.map (String.toLower >> String.contains "combat")
+                |> Maybe.withDefault False
 
         matchesNameFromSettings =
             (settings.anomalyNames |> List.isEmpty)
                 || (settings.anomalyNames
                         |> List.any
                             (\anomalyName ->
-                                anyContainedTextMatches (String.toLower >> String.contains (anomalyName |> String.toLower |> String.trim))
+                                probeScanResult.cellsTexts
+                                    |> Dict.get "Name"
+                                    |> Maybe.map (String.toLower >> (==) (anomalyName |> String.toLower |> String.trim))
+                                    |> Maybe.withDefault False
                             )
                    )
     in

@@ -1,6 +1,6 @@
-# EVE Online Anomaly Ratting Bot
+# EVE Online Combat Anomaly Bot
 
-This bot uses the probe scanner to warp to anomalies and kills rats using drones and weapon modules. 
+This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
 ## Features
 
@@ -21,9 +21,9 @@ Despite being quite robust, this bot is far from being as smart as a human. For 
   + Hide passive modules by disabling the check-box `Display Passive Modules`.
 + Configure the keyboard key 'W' to make the ship orbit.
 
-## Starting the Ratting Bot
+## Starting the Bot
 
-To start the bot, download the script from https://catalog.botengine.org/696f09be6825ba89f4e1e78973877a99d5803245c26f507d3839f04858c0574d and then run it.
+To start the bot, download the script from https://catalog.botengine.org/5e1f84aac005d4f3c6c307f0e499237abab8414723d31eab602c6a47dccba6bb and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 

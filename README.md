@@ -26,9 +26,9 @@ What is more interesting than playing video games? - Training artificial intelli
   + User guide: [./guide/eve-online/eve-online-mining-bot.md](./guide/eve-online/eve-online-mining-bot.md)
   + Program code: [./implement/applications/eve-online/eve-online-mining-bot](./implement/applications/eve-online/eve-online-mining-bot)
 
-+ EVE Online anomaly ratting bot
-  + User guide: [./guide/eve-online/eve-online-anomaly-ratting-bot.md](./guide/eve-online/eve-online-anomaly-ratting-bot.md)
-  + Program code: [./implement/applications/eve-online/eve-online-anomaly-ratting-bot](./implement/applications/eve-online/eve-online-anomaly-ratting-bot)
++ EVE Online combat anomaly bot
+  + User guide: [./guide/eve-online/eve-online-combat-anomaly-bot.md](./guide/eve-online/eve-online-combat-anomaly-bot.md)
+  + Program code: [./implement/applications/eve-online/eve-online-combat-anomaly-bot](./implement/applications/eve-online/eve-online-combat-anomaly-bot)
 
 + Tribal Wars 2 farmbot
   + User guide: [./guide/tribal-wars-2/farm-manager-tribal-wars-2-farmbot.md](./guide/tribal-wars-2/farm-manager-tribal-wars-2-farmbot.md)

@@ -1,5 +1,5 @@
-{- EVE Online anomaly ratting bot version 2020-06-28
-   This bot uses the probe scanner to warp to anomalies and kills rats using drones and weapon modules.
+{- EVE Online combat anomaly bot version 2020-07-04
+   This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -12,7 +12,7 @@
    + Configure the keyboard key 'W' to make the ship orbit.
 -}
 {-
-   app-catalog-tags:eve-online,ratting
+   app-catalog-tags:eve-online,anomaly,ratting
    authors-forum-usernames:viir
 -}
 

@@ -19,7 +19,7 @@ Wondering what outcome you can expect from following the guides? Below is a list
 
 + [EVE Online autopilot](https://to.botengine.org/guide/app/eve-online-autopilot-bot)
 
-+ [EVE Online anomaly ratting bot](https://to.botengine.org/guide/app/eve-online-anomaly-ratting-bot)
++ [EVE Online combat anomaly bot](https://to.botengine.org/guide/app/eve-online-combat-anomaly-bot)
 
 + [Tribal Wars 2 farmbot](https://to.botengine.org/guide/app/tribal-wars-2-farmbot)
 

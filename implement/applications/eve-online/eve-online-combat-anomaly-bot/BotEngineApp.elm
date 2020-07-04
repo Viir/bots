@@ -10,6 +10,14 @@
      + Place modules that should always be active in the middle row.
      + Hide passive modules by disabling the check-box `Display Passive Modules`.
    + Configure the keyboard key 'W' to make the ship orbit.
+
+   ## Configuration Settings
+   All settings are optional; you only need them in case the defaults don't fit your use-case.
+
+   + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
+
+   Here is an example of a complete app-settings string:
+   --app-settings="anomaly-name=Drone Patrol,anomaly-name=Drone Horde"
 -}
 {-
    app-catalog-tags:eve-online,anomaly,ratting
@@ -57,7 +65,7 @@ import Set
 
 defaultBotSettings : BotSettings
 defaultBotSettings =
-    { anomalyName = ""
+    { anomalyNames = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1300
     }
@@ -68,7 +76,11 @@ parseBotSettings =
     AppSettings.parseSimpleCommaSeparatedList
         {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
         ([ ( "anomaly-name"
-           , AppSettings.ValueTypeString (\anomalyName -> \settings -> { settings | anomalyName = anomalyName })
+           , AppSettings.ValueTypeString
+                (\anomalyName ->
+                    \settings ->
+                        { settings | anomalyNames = anomalyName :: settings.anomalyNames }
+                )
            )
          , ( "bot-step-delay"
            , AppSettings.ValueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
@@ -80,7 +92,7 @@ parseBotSettings =
 
 
 type alias BotSettings =
-    { anomalyName : String
+    { anomalyNames : List String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
@@ -143,11 +155,16 @@ probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
         isCombatAnomaly =
             anyContainedTextMatches (String.toLower >> String.contains "combat")
 
-        matchesName =
-            (settings.anomalyName |> String.isEmpty)
-                || anyContainedTextMatches (String.toLower >> String.contains (settings.anomalyName |> String.toLower))
+        matchesNameFromSettings =
+            (settings.anomalyNames |> List.isEmpty)
+                || (settings.anomalyNames
+                        |> List.any
+                            (\anomalyName ->
+                                anyContainedTextMatches (String.toLower >> String.contains (anomalyName |> String.toLower |> String.trim))
+                            )
+                   )
     in
-    isCombatAnomaly && matchesName
+    isCombatAnomaly && matchesNameFromSettings
 
 
 decideNextAction : BotDecisionContext -> DecisionPathNode

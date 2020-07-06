@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-07-04
+{- EVE Online combat anomaly bot version 2020-07-06
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -67,7 +67,6 @@ import Set
 defaultBotSettings : BotSettings
 defaultBotSettings =
     { anomalyNames = []
-    , friendlyAllianceName = Nothing
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1300
     }
@@ -84,9 +83,6 @@ parseBotSettings =
                         { settings | anomalyNames = anomalyName :: settings.anomalyNames }
                 )
            )
-         , ( "friendly-alliance-name"
-           , AppSettings.ValueTypeString (\name -> \settings -> { settings | friendlyAllianceName = Just name })
-           )
          , ( "bot-step-delay"
            , AppSettings.ValueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
@@ -98,7 +94,6 @@ parseBotSettings =
 
 type alias BotSettings =
     { anomalyNames : List String
-    , friendlyAllianceName : Maybe String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
@@ -232,19 +227,9 @@ combat context seeUndockingComplete continueIfCombatComplete =
             else
                 context.readingFromGameClient.targets |> List.filter .isActiveTarget
 
-        seeingFriendlyPilotInOverview =
-            case (context |> botSettingsFromDecisionContext).friendlyAllianceName of
-                Nothing ->
-                    False
-
-                Just friendlyAllianceName ->
-                    seeUndockingComplete.overviewWindow.entries
-                        |> List.any
-                            (.objectAlliance
-                                >> Maybe.map
-                                    (String.trim >> String.toLower >> String.contains (friendlyAllianceName |> String.toLower |> String.trim))
-                                >> Maybe.withDefault False
-                            )
+        seeingOtherPilotInOverview =
+            seeUndockingComplete.overviewWindow.entries
+                |> List.any (.objectAlliance >> Maybe.map (String.isEmpty >> not) >> Maybe.withDefault False)
 
         ensureShipIsOrbitingDecision =
             overviewEntriesToAttack
@@ -316,9 +301,9 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             )
                                 )
     in
-    if seeingFriendlyPilotInOverview then
+    if seeingOtherPilotInOverview then
         DescribeBranch
-            "I see a friendly pilot in the overview. Skip this anomaly."
+            "I see another pilot in the overview. Skip this anomaly."
             (returnDronesToBay context.readingFromGameClient
                 |> Maybe.withDefault
                     (DescribeBranch "No drones to return." (continueIfCombatComplete context))

@@ -6,6 +6,16 @@ If you think a change should be merged into the main branch, you can post on the
 If a majority of users choose to apply a change to an app, that change is more likely to be merged into the main branch. You can see the popularity displayed at `Total running time in hours` on the apps catalog entry.
 To find an app on the catalog, you can also enter the commit as a search term, or use the `botengine  describe` command.
 
+## 2020-04-21 - Caleb Tribal Wars 2 - Support Multiple Instances
+
+https://github.com/Viir/bots/tree/9b623a9cc678de660e3aa57b3e1b131da3ad54f9/implement/applications/tribal-wars-2/tribal-wars-2-farmbot
+
+> Support scenario shared by Caleb at https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/3038/62?u=viir
+
+2020-07-06 From the catalog entry at https://catalog.botengine.org/fd575d579bc77305a45495b862f060206e93bc26f3ed39cec87c5f05c74e4928
+
+> Total running time in hours: 162
+
 ## 2020-06-30 - Cam lastelement - EVE Online - local watch
 
 Origin and discussion: https://forum.botengine.org/t/local-intel-bot/3413/6?u=viir

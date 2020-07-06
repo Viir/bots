@@ -103,7 +103,7 @@ You can adjust five settings:
 + 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
 + 'farm-avoid-coordinates': List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
 
-To configure settings, open the configuration page at https://catalog.botengine.org/64AAE01CE30C88F2973264AC3F357943F3D640472E4A2DE64155016B4F83A498 in a web browser.
+To configure settings, open the configuration page at https://catalog.botengine.org/9b91042ca2578f9f7dfe83b9d0093a7ae527c6707ea11f6e59f5a753d5d29b5a in a web browser.
 
 On this page, scroll down to the button `Configure app`.
 

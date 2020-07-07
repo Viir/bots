@@ -15,6 +15,7 @@ module EveOnline.AppFramework exposing (..)
 
 import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import Common.Basics
+import Common.DecisionTree
 import Common.EffectOnWindow
 import Common.FNV
 import Dict
@@ -1110,3 +1111,139 @@ pickEntryFromLastContextMenuInCascade pickEntry =
 lastContextMenuOrSubmenu : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ContextMenu
 lastContextMenuOrSubmenu =
     .contextMenus >> List.head
+
+
+type alias TreeLeafAct =
+    { actionsAlreadyDecided : ( String, List VolatileHostInterface.EffectOnWindowStructure )
+    , actionsDependingOnNewReadings : List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+    }
+
+
+type EndDecisionPathStructure
+    = Wait
+    | Act TreeLeafAct
+
+
+type alias DecisionPathNode =
+    Common.DecisionTree.DecisionPathNode EndDecisionPathStructure
+
+
+type alias StepDecisionContext appSettings appMemory =
+    { eventContext : AppEventContext appSettings
+    , readingFromGameClient : ReadingFromGameClient
+    , memory : appMemory
+    }
+
+
+type alias AppStateWithMemoryAndDecisionTree appMemory =
+    { programState :
+        Maybe
+            { originalDecision : DecisionPathNode
+            , remainingActions : List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+            }
+    , appMemory : appMemory
+    }
+
+
+actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
+actWithoutFurtherReadings actionsAlreadyDecided =
+    Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
+
+
+initStateWithMemoryAndDecisionTree : appMemory -> AppStateWithMemoryAndDecisionTree appMemory
+initStateWithMemoryAndDecisionTree appMemory =
+    { programState = Nothing
+    , appMemory = appMemory
+    }
+
+
+processEveOnlineAppEventWithMemoryAndDecisionTree :
+    { updateMemoryForNewReadingFromGame : ReadingFromGameClient -> appMemory -> appMemory
+    , statusTextFromState : StepDecisionContext appSettings appMemory -> String
+    , decisionTreeRoot : StepDecisionContext appSettings appMemory -> DecisionPathNode
+    , millisecondsToNextReadingFromGame : StepDecisionContext appSettings appMemory -> Int
+    }
+    -> AppEventContext appSettings
+    -> AppEvent
+    -> AppStateWithMemoryAndDecisionTree appMemory
+    -> ( AppStateWithMemoryAndDecisionTree appMemory, AppEventResponse )
+processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stateBefore =
+    case event of
+        ReadingFromGameClientCompleted readingFromGameClient ->
+            let
+                appMemory =
+                    stateBefore.appMemory |> config.updateMemoryForNewReadingFromGame readingFromGameClient
+
+                decisionContext =
+                    { eventContext = eventContext
+                    , memory = appMemory
+                    , readingFromGameClient = readingFromGameClient
+                    }
+
+                programStateIfEvalDecisionTreeNew =
+                    let
+                        originalDecision =
+                            config.decisionTreeRoot decisionContext
+
+                        originalRemainingActions =
+                            case Common.DecisionTree.unpackToDecisionStagesDescriptionsAndLeaf originalDecision |> Tuple.second of
+                                Wait ->
+                                    []
+
+                                Act act ->
+                                    (act.actionsAlreadyDecided |> Tuple.mapSecond (Just >> always))
+                                        :: act.actionsDependingOnNewReadings
+                    in
+                    { originalDecision = originalDecision, remainingActions = originalRemainingActions }
+
+                programStateToContinue =
+                    stateBefore.programState
+                        |> Maybe.andThen
+                            (\previousProgramState ->
+                                if 0 < (previousProgramState.remainingActions |> List.length) then
+                                    Just previousProgramState
+
+                                else
+                                    Nothing
+                            )
+                        |> Maybe.withDefault programStateIfEvalDecisionTreeNew
+
+                ( originalDecisionStagesDescriptions, _ ) =
+                    Common.DecisionTree.unpackToDecisionStagesDescriptionsAndLeaf programStateToContinue.originalDecision
+
+                ( currentStepDescription, effectsOnGameClientWindow, programState ) =
+                    case programStateToContinue.remainingActions of
+                        [] ->
+                            ( "Wait", [], Nothing )
+
+                        ( nextActionDescription, nextActionEffectFromGameClient ) :: remainingActions ->
+                            case readingFromGameClient |> nextActionEffectFromGameClient of
+                                Nothing ->
+                                    ( "Failed step: " ++ nextActionDescription, [], Nothing )
+
+                                Just effects ->
+                                    ( nextActionDescription
+                                    , effects
+                                    , Just { programStateToContinue | remainingActions = remainingActions }
+                                    )
+
+                effectsRequests =
+                    effectsOnGameClientWindow |> List.map EffectOnGameClientWindow
+
+                describeActivity =
+                    (originalDecisionStagesDescriptions ++ [ currentStepDescription ])
+                        |> List.indexedMap
+                            (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
+                        |> String.join "\n"
+
+                statusMessage =
+                    [ config.statusTextFromState decisionContext, describeActivity ]
+                        |> String.join "\n"
+            in
+            ( { stateBefore | appMemory = appMemory, programState = programState }
+            , ContinueSession
+                { effects = effectsRequests
+                , millisecondsToNextReadingFromGame = config.millisecondsToNextReadingFromGame decisionContext
+                , statusDescriptionText = statusMessage
+                }
+            )

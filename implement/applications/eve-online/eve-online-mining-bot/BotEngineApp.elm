@@ -131,10 +131,7 @@ type alias BotMemory =
 
 
 type alias BotDecisionContext =
-    { eventContext : EveOnline.AppFramework.AppEventContext BotSettings
-    , memory : BotMemory
-    , readingFromGameClient : ReadingFromGameClient
-    }
+    EveOnline.AppFramework.StepDecisionContext BotSettings BotMemory
 
 
 botSettingsFromDecisionContext : BotDecisionContext -> BotSettings
@@ -773,11 +770,7 @@ processEveOnlineBotEvent =
         { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
         , statusTextFromState = statusTextFromState
         , decisionTreeRoot = miningBotDecisionRoot
-        , millisecondsToNextReadingFromGame =
-            .eventContext
-                >> .appSettings
-                >> Maybe.withDefault defaultBotSettings
-                >> .botStepDelayMilliseconds
+        , millisecondsToNextReadingFromGame = botSettingsFromDecisionContext >> .botStepDelayMilliseconds
         }
 
 

@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-07-06
+{- EVE Online combat anomaly bot version 2020-07-07
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -35,15 +35,19 @@ module BotEngineApp exposing
 import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex)
+import Common.DecisionTree exposing (describeBranch, endDecisionPath)
 import Common.EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.AppFramework
     exposing
         ( AppEffect(..)
+        , DecisionPathNode
+        , EndDecisionPathStructure(..)
         , ReadingFromGameClient
         , ShipModulesMemory
         , UIElement
         , UseContextMenuCascadeNode
+        , actWithoutFurtherReadings
         , clickOnUIElement
         , getEntropyIntFromReadingFromGameClient
         , menuCascadeCompleted
@@ -99,30 +103,8 @@ type alias BotSettings =
     }
 
 
-type alias TreeLeafAct =
-    { actionsAlreadyDecided : ( String, List VolatileHostInterface.EffectOnWindowStructure )
-    , actionsDependingOnNewReadings : List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
-    }
-
-
-type EndDecisionPathStructure
-    = Wait
-    | Act TreeLeafAct
-
-
-type DecisionPathNode
-    = DescribeBranch String DecisionPathNode
-    | EndDecisionPath EndDecisionPathStructure
-
-
 type alias BotState =
-    { programState :
-        Maybe
-            { originalDecision : DecisionPathNode
-            , remainingActions : List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
-            }
-    , botMemory : BotMemory
-    }
+    EveOnline.AppFramework.AppStateWithMemoryAndDecisionTree BotMemory
 
 
 type alias BotMemory =
@@ -132,10 +114,7 @@ type alias BotMemory =
 
 
 type alias BotDecisionContext =
-    { eventContext : EveOnline.AppFramework.AppEventContext BotSettings
-    , memory : BotMemory
-    , readingFromGameClient : ReadingFromGameClient
-    }
+    EveOnline.AppFramework.StepDecisionContext BotSettings BotMemory
 
 
 botSettingsFromDecisionContext : BotDecisionContext -> BotSettings
@@ -171,13 +150,13 @@ probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
     isCombatAnomaly && matchesNameFromSettings
 
 
-decideNextAction : BotDecisionContext -> DecisionPathNode
-decideNextAction context =
+anomalyBotDecisionRoot : BotDecisionContext -> DecisionPathNode
+anomalyBotDecisionRoot context =
     branchDependingOnDockedOrInSpace
-        (DescribeBranch "I see no ship UI, assume we are docked." askForHelpToGetUnstuck)
+        (describeBranch "I see no ship UI, assume we are docked." askForHelpToGetUnstuck)
         (always Nothing)
         (\seeUndockingComplete ->
-            DescribeBranch "I see we are in space, undocking complete." (decideNextActionWhenInSpace context seeUndockingComplete)
+            describeBranch "I see we are in space, undocking complete." (decideNextActionWhenInSpace context seeUndockingComplete)
         )
         context.readingFromGameClient
 
@@ -185,7 +164,7 @@ decideNextAction context =
 decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
 decideNextActionWhenInSpace context seeUndockingComplete =
     if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
-        DescribeBranch "I see we are warping."
+        describeBranch "I see we are warping."
             ([ returnDronesToBay context.readingFromGameClient
              , readShipUIModuleButtonTooltips context
              ]
@@ -197,8 +176,8 @@ decideNextActionWhenInSpace context seeUndockingComplete =
     else
         case seeUndockingComplete |> shipUIModulesToActivateAlways |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
             Just inactiveModule ->
-                DescribeBranch "I see an inactive module in the middle row. Activate the module."
-                    (EndDecisionPath
+                describeBranch "I see an inactive module in the middle row. Activate the module."
+                    (endDecisionPath
                         (actWithoutFurtherReadings
                             ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
                         )
@@ -239,7 +218,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
         decisionIfAlreadyOrbiting =
             case targetsToUnlock |> List.head of
                 Just targetToUnlock ->
-                    DescribeBranch "I see a target to unlock."
+                    describeBranch "I see a target to unlock."
                         (useContextMenuCascade
                             ( "locked target", targetToUnlock.barAndImageCont |> Maybe.withDefault targetToUnlock.uiNode )
                             (useMenuEntryWithTextContaining "unlock" menuCascadeCompleted)
@@ -248,51 +227,51 @@ combat context seeUndockingComplete continueIfCombatComplete =
                 Nothing ->
                     case context.readingFromGameClient.targets |> List.head of
                         Nothing ->
-                            DescribeBranch "I see no locked target."
+                            describeBranch "I see no locked target."
                                 (case overviewEntriesToLock of
                                     [] ->
-                                        DescribeBranch "I see no overview entry to lock."
+                                        describeBranch "I see no overview entry to lock."
                                             (if overviewEntriesToAttack |> List.isEmpty then
                                                 returnDronesToBay context.readingFromGameClient
                                                     |> Maybe.withDefault
-                                                        (DescribeBranch "No drones to return." (continueIfCombatComplete context))
+                                                        (describeBranch "No drones to return." (continueIfCombatComplete context))
 
                                              else
-                                                DescribeBranch "Wait for target locking to complete." waitForProgressInGame
+                                                describeBranch "Wait for target locking to complete." waitForProgressInGame
                                             )
 
                                     nextOverviewEntryToLock :: _ ->
-                                        DescribeBranch "I see an overview entry to lock."
+                                        describeBranch "I see an overview entry to lock."
                                             (lockTargetFromOverviewEntry nextOverviewEntryToLock)
                                 )
 
                         Just _ ->
-                            DescribeBranch "I see a locked target."
+                            describeBranch "I see a locked target."
                                 (case seeUndockingComplete |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                     -- TODO: Check previous memory reading too for module activity.
                                     Nothing ->
-                                        DescribeBranch "All attack modules are active."
+                                        describeBranch "All attack modules are active."
                                             (launchAndEngageDrones context.readingFromGameClient
                                                 |> Maybe.withDefault
-                                                    (DescribeBranch "No idling drones."
+                                                    (describeBranch "No idling drones."
                                                         (if (context |> botSettingsFromDecisionContext).maxTargetCount <= (context.readingFromGameClient.targets |> List.length) then
-                                                            DescribeBranch "Enough locked targets." waitForProgressInGame
+                                                            describeBranch "Enough locked targets." waitForProgressInGame
 
                                                          else
                                                             case overviewEntriesToLock of
                                                                 [] ->
-                                                                    DescribeBranch "I see no more overview entries to lock." waitForProgressInGame
+                                                                    describeBranch "I see no more overview entries to lock." waitForProgressInGame
 
                                                                 nextOverviewEntryToLock :: _ ->
-                                                                    DescribeBranch "Lock more targets."
+                                                                    describeBranch "Lock more targets."
                                                                         (lockTargetFromOverviewEntry nextOverviewEntryToLock)
                                                         )
                                                     )
                                             )
 
                                     Just inactiveModule ->
-                                        DescribeBranch "I see an inactive module to activate on targets. Activate it."
-                                            (EndDecisionPath
+                                        describeBranch "I see an inactive module to activate on targets. Activate it."
+                                            (endDecisionPath
                                                 (actWithoutFurtherReadings
                                                     ( "Click on the module."
                                                     , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
@@ -302,11 +281,11 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                 )
     in
     if seeingOtherPilotInOverview then
-        DescribeBranch
+        describeBranch
             "I see another pilot in the overview. Skip this anomaly."
             (returnDronesToBay context.readingFromGameClient
                 |> Maybe.withDefault
-                    (DescribeBranch "No drones to return." (continueIfCombatComplete context))
+                    (describeBranch "No drones to return." (continueIfCombatComplete context))
             )
 
     else
@@ -318,7 +297,7 @@ enterAnomaly : BotDecisionContext -> DecisionPathNode
 enterAnomaly context =
     case context.readingFromGameClient.probeScannerWindow of
         CanNotSeeIt ->
-            DescribeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
+            describeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
 
         CanSee probeScannerWindow ->
             let
@@ -331,7 +310,7 @@ enterAnomaly context =
                     |> listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
             of
                 Nothing ->
-                    DescribeBranch
+                    describeBranch
                         ("I see "
                             ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt)
                             ++ " scan results, and no matching anomaly. Wait for a matching anomaly to appear."
@@ -339,7 +318,7 @@ enterAnomaly context =
                         waitForProgressInGame
 
                 Just anomalyScanResult ->
-                    DescribeBranch "Warp to anomaly."
+                    describeBranch "Warp to anomaly."
                         (useContextMenuCascade
                             ( "Scan result", anomalyScanResult.uiNode )
                             (useMenuEntryWithTextContaining "Warp to Within"
@@ -355,7 +334,7 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
 
     else
         Just
-            (EndDecisionPath
+            (endDecisionPath
                 (actWithoutFurtherReadings
                     ( "Click on the overview entry and press the 'W' key."
                     , [ overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
@@ -393,7 +372,7 @@ launchAndEngageDrones readingFromGameClient =
                         in
                         if 0 < (idlingDrones |> List.length) then
                             Just
-                                (DescribeBranch "Engage idling drone(s)"
+                                (describeBranch "Engage idling drone(s)"
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                         (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
@@ -402,7 +381,7 @@ launchAndEngageDrones readingFromGameClient =
 
                         else if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
                             Just
-                                (DescribeBranch "Launch drones"
+                                (describeBranch "Launch drones"
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInBay.header.uiNode )
                                         (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
@@ -429,7 +408,7 @@ returnDronesToBay parsedUserInterface =
 
                 else
                     Just
-                        (DescribeBranch "I see there are drones in local space. Return those to bay."
+                        (describeBranch "I see there are drones in local space. Return those to bay."
                             (useContextMenuCascade
                                 ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                 (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
@@ -440,7 +419,7 @@ returnDronesToBay parsedUserInterface =
 
 lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
 lockTargetFromOverviewEntry overviewEntry =
-    DescribeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
+    describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
         (useContextMenuCascadeOnOverviewEntry overviewEntry
             (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
         )
@@ -456,7 +435,7 @@ readShipUIModuleButtonTooltips context =
         |> List.head
         |> Maybe.map
             (\moduleButtonWithoutMemoryOfTooltip ->
-                EndDecisionPath
+                endDecisionPath
                     (actWithoutFurtherReadings
                         ( "Read tooltip for module button"
                         , [ VolatileHostInterface.MouseMoveTo
@@ -465,11 +444,6 @@ readShipUIModuleButtonTooltips context =
                         )
                     )
             )
-
-
-actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
-actWithoutFurtherReadings actionsAlreadyDecided =
-    Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
 
 
 useContextMenuCascadeOnOverviewEntry :
@@ -504,7 +478,7 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
                 |> Maybe.withDefault
                     (case readingFromGameClient.overviewWindow of
                         CanNotSeeIt ->
-                            DescribeBranch "I see no overview window, wait until undocking completed." waitForProgressInGame
+                            describeBranch "I see no overview window, wait until undocking completed." waitForProgressInGame
 
                         CanSee overviewWindow ->
                             branchIfUndockingComplete
@@ -514,23 +488,22 @@ branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUnd
 
 waitForProgressInGame : DecisionPathNode
 waitForProgressInGame =
-    EndDecisionPath Wait
+    endDecisionPath Wait
 
 
 askForHelpToGetUnstuck : DecisionPathNode
 askForHelpToGetUnstuck =
-    DescribeBranch "I am stuck here and need help to continue." (EndDecisionPath Wait)
+    describeBranch "I am stuck here and need help to continue." (endDecisionPath Wait)
 
 
 initState : State
 initState =
     EveOnline.AppFramework.initState
-        { programState = Nothing
-        , botMemory =
+        (EveOnline.AppFramework.initStateWithMemoryAndDecisionTree
             { lastDockedStationNameFromInfoPanel = Nothing
             , shipModules = EveOnline.AppFramework.initShipModulesMemory
             }
-        }
+        )
 
 
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
@@ -547,91 +520,21 @@ processEveOnlineBotEvent :
     -> EveOnline.AppFramework.AppEvent
     -> BotState
     -> ( BotState, EveOnline.AppFramework.AppEventResponse )
-processEveOnlineBotEvent eventContext event stateBefore =
-    case event of
-        EveOnline.AppFramework.ReadingFromGameClientCompleted readingFromGameClient ->
-            let
-                botMemory =
-                    stateBefore.botMemory |> integrateCurrentReadingsIntoBotMemory readingFromGameClient
-
-                decisionContext =
-                    { eventContext = eventContext
-                    , memory = botMemory
-                    , readingFromGameClient = readingFromGameClient
-                    }
-
-                programStateIfEvalDecisionTreeNew =
-                    let
-                        originalDecision =
-                            decideNextAction decisionContext
-
-                        originalRemainingActions =
-                            case unpackToDecisionStagesDescriptionsAndLeaf originalDecision |> Tuple.second of
-                                Wait ->
-                                    []
-
-                                Act act ->
-                                    (act.actionsAlreadyDecided |> Tuple.mapSecond (Just >> always))
-                                        :: act.actionsDependingOnNewReadings
-                    in
-                    { originalDecision = originalDecision, remainingActions = originalRemainingActions }
-
-                programStateToContinue =
-                    stateBefore.programState
-                        |> Maybe.andThen
-                            (\previousProgramState ->
-                                if 0 < (previousProgramState.remainingActions |> List.length) then
-                                    Just previousProgramState
-
-                                else
-                                    Nothing
-                            )
-                        |> Maybe.withDefault programStateIfEvalDecisionTreeNew
-
-                ( originalDecisionStagesDescriptions, _ ) =
-                    unpackToDecisionStagesDescriptionsAndLeaf programStateToContinue.originalDecision
-
-                ( currentStepDescription, effectsOnGameClientWindow, programState ) =
-                    case programStateToContinue.remainingActions of
-                        [] ->
-                            ( "Wait", [], Nothing )
-
-                        ( nextActionDescription, nextActionEffectFromUserInterface ) :: remainingActions ->
-                            case readingFromGameClient |> nextActionEffectFromUserInterface of
-                                Nothing ->
-                                    ( "Failed step: " ++ nextActionDescription, [], Nothing )
-
-                                Just effects ->
-                                    ( nextActionDescription
-                                    , effects
-                                    , Just { programStateToContinue | remainingActions = remainingActions }
-                                    )
-
-                effectsRequests =
-                    effectsOnGameClientWindow |> List.map EveOnline.AppFramework.EffectOnGameClientWindow
-
-                describeActivity =
-                    (originalDecisionStagesDescriptions ++ [ currentStepDescription ])
-                        |> List.indexedMap
-                            (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
-                        |> String.join "\n"
-
-                statusMessage =
-                    [ readingFromGameClient |> describeReadingFromGameClientForMonitoring, describeActivity ]
-                        |> String.join "\n"
-            in
-            ( { stateBefore | botMemory = botMemory, programState = programState }
-            , EveOnline.AppFramework.ContinueSession
-                { effects = effectsRequests
-                , millisecondsToNextReadingFromGame = (decisionContext |> botSettingsFromDecisionContext).botStepDelayMilliseconds
-                , statusDescriptionText = statusMessage
-                }
-            )
+processEveOnlineBotEvent =
+    EveOnline.AppFramework.processEveOnlineAppEventWithMemoryAndDecisionTree
+        { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
+        , statusTextFromState = statusTextFromState
+        , decisionTreeRoot = anomalyBotDecisionRoot
+        , millisecondsToNextReadingFromGame = botSettingsFromDecisionContext >> .botStepDelayMilliseconds
+        }
 
 
-describeReadingFromGameClientForMonitoring : ReadingFromGameClient -> String
-describeReadingFromGameClientForMonitoring readingFromGameClient =
+statusTextFromState : BotDecisionContext -> String
+statusTextFromState context =
     let
+        readingFromGameClient =
+            context.readingFromGameClient
+
         combatInfoLines =
             [ "Overview entries to attack: " ++ (readingFromGameClient |> allOverviewEntriesToAttack |> Maybe.map (List.length >> String.fromInt) |> Maybe.withDefault "Nothing") ]
 
@@ -691,8 +594,8 @@ iconSpriteHasColorOfRat =
         >> Maybe.withDefault False
 
 
-integrateCurrentReadingsIntoBotMemory : ReadingFromGameClient -> BotMemory -> BotMemory
-integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
+updateMemoryForNewReadingFromGame : ReadingFromGameClient -> BotMemory -> BotMemory
+updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
     let
         currentStationNameFromInfoPanel =
             currentReading.infoPanelContainer
@@ -709,20 +612,6 @@ integrateCurrentReadingsIntoBotMemory currentReading botMemoryBefore =
         botMemoryBefore.shipModules
             |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
     }
-
-
-unpackToDecisionStagesDescriptionsAndLeaf : DecisionPathNode -> ( List String, EndDecisionPathStructure )
-unpackToDecisionStagesDescriptionsAndLeaf node =
-    case node of
-        EndDecisionPath leaf ->
-            ( [], leaf )
-
-        DescribeBranch branchDescription childNode ->
-            let
-                ( childDecisionsDescriptions, leaf ) =
-                    unpackToDecisionStagesDescriptionsAndLeaf childNode
-            in
-            ( branchDescription :: childDecisionsDescriptions, leaf )
 
 
 shipUIModulesToActivateOnTarget : SeeUndockingComplete -> List ShipUIModuleButton
@@ -745,7 +634,7 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
     , actionsDependingOnNewReadings = useContextMenu |> EveOnline.AppFramework.unpackContextMenuTreeToListOfActionsDependingOnReadings
     }
         |> Act
-        |> EndDecisionPath
+        |> endDecisionPath
 
 
 isShipWarpingOrJumping : EveOnline.ParseUserInterface.ShipUI -> Bool

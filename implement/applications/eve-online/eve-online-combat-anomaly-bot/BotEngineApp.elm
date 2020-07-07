@@ -62,6 +62,7 @@ import EveOnline.ParseUserInterface
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
+        , maybeVisibleMap
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import Set
@@ -109,6 +110,8 @@ type alias BotState =
 type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
     , shipModules : ShipModulesMemory
+    , shipWarpingInLastReading : MaybeVisible Bool
+    , visitedAnomalies : Dict.Dict String { otherPilotsFoundOnArrival : List String }
     }
 
 
@@ -125,9 +128,12 @@ type alias State =
     EveOnline.AppFramework.StateIncludingFramework BotSettings BotState
 
 
-probeScanResultsRepresentsMatchingAnomaly : BotSettings -> EveOnline.ParseUserInterface.ProbeScanResult -> Bool
-probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
+scanResultRepresentsAcceptableAnomaly : BotDecisionContext -> EveOnline.ParseUserInterface.ProbeScanResult -> Bool
+scanResultRepresentsAcceptableAnomaly context probeScanResult =
     let
+        settings =
+            context |> botSettingsFromDecisionContext
+
         isCombatAnomaly =
             probeScanResult.cellsTexts
                 |> Dict.get "Group"
@@ -145,8 +151,17 @@ probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
                                     |> Maybe.withDefault False
                             )
                    )
+
+        notOccupiedByOthers =
+            probeScanResult.cellsTexts
+                |> Dict.get "ID"
+                |> Maybe.map
+                    (\scanResultID ->
+                        context.memory |> getAnomalyIDsWithOtherPilotsFoundOnArrival |> Set.member scanResultID |> not
+                    )
+                |> Maybe.withDefault False
     in
-    isCombatAnomaly && matchesNameFromSettings
+    isCombatAnomaly && matchesNameFromSettings && notOccupiedByOthers
 
 
 anomalyBotDecisionRoot : BotDecisionContext -> DecisionPathNode
@@ -205,9 +220,11 @@ combat context seeUndockingComplete continueIfCombatComplete =
             else
                 context.readingFromGameClient.targets |> List.filter .isActiveTarget
 
-        seeingOtherPilotInOverview =
-            seeUndockingComplete.overviewWindow.entries
-                |> List.any (.objectAlliance >> Maybe.map (String.isEmpty >> not) >> Maybe.withDefault False)
+        foundOtherPilotWhenArrivedInCurrentAnomaly =
+            context.readingFromGameClient
+                |> getCurrentAnomalyIDAsSeenInProbeScanner
+                |> Maybe.map (\currentAnomalyID -> context.memory |> getAnomalyIDsWithOtherPilotsFoundOnArrival |> Set.member currentAnomalyID)
+                |> Maybe.withDefault False
 
         ensureShipIsOrbitingDecision =
             overviewEntriesToAttack
@@ -279,9 +296,9 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             )
                                 )
     in
-    if seeingOtherPilotInOverview then
+    if foundOtherPilotWhenArrivedInCurrentAnomaly then
         describeBranch
-            "I see another pilot in the overview. Skip this anomaly."
+            "I found another pilot when arriving in the current anomaly. Skip this anomaly."
             (returnDronesToBay context.readingFromGameClient
                 |> Maybe.withDefault
                     (describeBranch "No drones to return." (continueIfCombatComplete context))
@@ -302,7 +319,7 @@ enterAnomaly context =
             let
                 matchingScanResults =
                     probeScannerWindow.scanResults
-                        |> List.filter (probeScanResultsRepresentsMatchingAnomaly (context |> botSettingsFromDecisionContext))
+                        |> List.filter (scanResultRepresentsAcceptableAnomaly context)
             in
             case
                 matchingScanResults
@@ -501,6 +518,8 @@ initState =
         (EveOnline.AppFramework.initStateWithMemoryAndDecisionTree
             { lastDockedStationNameFromInfoPanel = Nothing
             , shipModules = EveOnline.AppFramework.initShipModulesMemory
+            , shipWarpingInLastReading = CanNotSeeIt
+            , visitedAnomalies = Dict.empty
             }
         )
 
@@ -534,6 +553,9 @@ statusTextFromState context =
         readingFromGameClient =
             context.readingFromGameClient
 
+        describePerformance =
+            "Visited anomalies: " ++ (context.memory.visitedAnomalies |> Dict.size |> String.fromInt)
+
         combatInfoLines =
             [ "Overview entries to attack: " ++ (readingFromGameClient |> allOverviewEntriesToAttack |> Maybe.map (List.length >> String.fromInt) |> Maybe.withDefault "Nothing") ]
 
@@ -556,8 +578,32 @@ statusTextFromState context =
                         ++ ", in local space: "
                         ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
                         ++ "."
+
+        namesOfOtherPilotsInOverview =
+            readingFromGameClient |> getNamesOfOtherPilotsInOverview
+
+        describeOverview =
+            ("Seeing "
+                ++ (namesOfOtherPilotsInOverview |> List.length |> String.fromInt)
+                ++ " other pilots in the overview"
+            )
+                ++ (if namesOfOtherPilotsInOverview == [] then
+                        ""
+
+                    else
+                        ": " ++ (namesOfOtherPilotsInOverview |> String.join ", ")
+                   )
+                ++ "."
     in
-    [ describeShip ] ++ combatInfoLines ++ [ describeDrones ] |> String.join " "
+    [ describePerformance, describeShip ] ++ combatInfoLines ++ [ describeDrones, describeOverview ] |> String.join "\n"
+
+
+getAnomalyIDsWithOtherPilotsFoundOnArrival : BotMemory -> Set.Set String
+getAnomalyIDsWithOtherPilotsFoundOnArrival =
+    .visitedAnomalies
+        >> Dict.filter (always (.otherPilotsFoundOnArrival >> List.isEmpty >> not))
+        >> Dict.keys
+        >> Set.fromList
 
 
 allOverviewEntriesToAttack : ReadingFromGameClient -> Maybe (List EveOnline.ParseUserInterface.OverviewWindowEntry)
@@ -602,6 +648,39 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
                 |> maybeVisibleAndThen .expandedContent
                 |> maybeNothingFromCanNotSeeIt
                 |> Maybe.andThen .currentStationName
+
+        shipIsWarping =
+            currentReading.shipUI
+                |> maybeVisibleAndThen .indication
+                |> maybeVisibleAndThen .maneuverType
+                |> maybeVisibleMap ((==) EveOnline.ParseUserInterface.ManeuverWarp)
+
+        weJustArrivedOnGrid =
+            (botMemoryBefore.shipWarpingInLastReading == CanSee True)
+                && (shipIsWarping == CanSee False)
+
+        visitedAnomalies =
+            case currentReading |> getCurrentAnomalyIDAsSeenInProbeScanner of
+                Nothing ->
+                    botMemoryBefore.visitedAnomalies
+
+                Just currentAnomalyID ->
+                    let
+                        anomalyMemoryBefore =
+                            botMemoryBefore.visitedAnomalies
+                                |> Dict.get currentAnomalyID
+                                |> Maybe.withDefault { otherPilotsFoundOnArrival = [] }
+
+                        anomalyMemory =
+                            if weJustArrivedOnGrid then
+                                { anomalyMemoryBefore
+                                    | otherPilotsFoundOnArrival = currentReading |> getNamesOfOtherPilotsInOverview
+                                }
+
+                            else
+                                anomalyMemoryBefore
+                    in
+                    botMemoryBefore.visitedAnomalies |> Dict.insert currentAnomalyID anomalyMemory
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
@@ -610,7 +689,42 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
     , shipModules =
         botMemoryBefore.shipModules
             |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
+    , shipWarpingInLastReading = shipIsWarping
+    , visitedAnomalies = visitedAnomalies
     }
+
+
+getNamesOfOtherPilotsInOverview : ReadingFromGameClient -> List String
+getNamesOfOtherPilotsInOverview =
+    .overviewWindow
+        >> maybeNothingFromCanNotSeeIt
+        >> Maybe.map .entries
+        >> Maybe.withDefault []
+        >> List.filter (.objectAlliance >> Maybe.map (String.isEmpty >> not) >> Maybe.withDefault False)
+        >> List.map (.objectName >> Maybe.withDefault "do not see name of overview entry")
+
+
+getCurrentAnomalyIDAsSeenInProbeScanner : ReadingFromGameClient -> Maybe String
+getCurrentAnomalyIDAsSeenInProbeScanner =
+    .probeScannerWindow
+        >> maybeNothingFromCanNotSeeIt
+        >> Maybe.map getScanResultsForSitesOnGrid
+        >> Maybe.withDefault []
+        >> List.head
+        >> Maybe.andThen (.cellsTexts >> Dict.get "ID")
+
+
+getScanResultsForSitesOnGrid : EveOnline.ParseUserInterface.ProbeScannerWindow -> List EveOnline.ParseUserInterface.ProbeScanResult
+getScanResultsForSitesOnGrid probeScannerWindow =
+    probeScannerWindow.scanResults
+        |> List.filter (scanResultLooksLikeItIsOnGrid >> Maybe.withDefault False)
+
+
+scanResultLooksLikeItIsOnGrid : EveOnline.ParseUserInterface.ProbeScanResult -> Maybe Bool
+scanResultLooksLikeItIsOnGrid =
+    .cellsTexts
+        >> Dict.get "Distance"
+        >> Maybe.map (\text -> (text |> String.contains " m") || (text |> String.contains " km"))
 
 
 shipUIModulesToActivateOnTarget : SeeUndockingComplete -> List ShipUIModuleButton

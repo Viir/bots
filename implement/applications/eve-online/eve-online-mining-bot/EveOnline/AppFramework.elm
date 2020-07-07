@@ -1128,10 +1128,10 @@ type alias DecisionPathNode =
     Common.DecisionTree.DecisionPathNode EndDecisionPathStructure
 
 
-type alias DecisionTreeContext appSettings appMemory =
+type alias StepDecisionContext appSettings appMemory =
     { eventContext : AppEventContext appSettings
-    , memory : appMemory
     , readingFromGameClient : ReadingFromGameClient
+    , memory : appMemory
     }
 
 
@@ -1159,9 +1159,9 @@ initStateWithMemoryAndDecisionTree appMemory =
 
 processEveOnlineAppEventWithMemoryAndDecisionTree :
     { updateMemoryForNewReadingFromGame : ReadingFromGameClient -> appMemory -> appMemory
-    , statusTextFromState : DecisionTreeContext appSettings appMemory -> String
-    , decisionTreeRoot : DecisionTreeContext appSettings appMemory -> DecisionPathNode
-    , millisecondsToNextReadingFromGame : Maybe appSettings -> Int
+    , statusTextFromState : StepDecisionContext appSettings appMemory -> String
+    , decisionTreeRoot : StepDecisionContext appSettings appMemory -> DecisionPathNode
+    , millisecondsToNextReadingFromGame : StepDecisionContext appSettings appMemory -> Int
     }
     -> AppEventContext appSettings
     -> AppEvent
@@ -1243,7 +1243,7 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
             ( { stateBefore | appMemory = appMemory, programState = programState }
             , ContinueSession
                 { effects = effectsRequests
-                , millisecondsToNextReadingFromGame = config.millisecondsToNextReadingFromGame eventContext.appSettings
+                , millisecondsToNextReadingFromGame = config.millisecondsToNextReadingFromGame decisionContext
                 , statusDescriptionText = statusMessage
                 }
             )

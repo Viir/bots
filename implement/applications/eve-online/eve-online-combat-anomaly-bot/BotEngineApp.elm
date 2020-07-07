@@ -15,7 +15,6 @@
    All settings are optional; you only need them in case the defaults don't fit your use-case.
 
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
-   + `friendly-alliance-name` : Name of the alliance to classify as friendly.
 
    Here is an example of a complete app-settings string:
    --app-settings="anomaly-name=Drone Patrol,anomaly-name=Drone Horde"

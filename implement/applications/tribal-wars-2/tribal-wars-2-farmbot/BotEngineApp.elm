@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-06-10
+{- Tribal Wars 2 farmbot version 2020-07-06
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -91,7 +91,7 @@ restartGameClientInterval =
 
 gameRootInformationQueryInterval : Int
 gameRootInformationQueryInterval =
-    20
+    60
 
 
 waitDurationAfterReloadWebPage : Int
@@ -106,12 +106,12 @@ numberOfAttacksLimitPerVillage =
 
 ownVillageInfoMaxAge : Int
 ownVillageInfoMaxAge =
-    240
+    600
 
 
 selectedVillageInfoMaxAge : Int
 selectedVillageInfoMaxAge =
-    20
+    30
 
 
 readFromGameTimeoutCountThresholdToRestart : Int
@@ -205,6 +205,7 @@ type alias RootInformationStructure =
 type alias TribalWars2RootInformation =
     { readyVillages : List Int
     , selectedVillageId : Int
+    , getTotalVillagesResult : Int
     }
 
 
@@ -929,7 +930,8 @@ decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState =
     let
         sufficientlyNewGameRootInformation =
             botState.gameRootInformationResult
-                |> Maybe.andThen
+                |> Result.fromMaybe "did not receive any yet"
+                |> Result.andThen
                     (\gameRootInformationResult ->
                         let
                             updateTimeMinimumMilli =
@@ -937,19 +939,22 @@ decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState =
                                     |> max (botState.timeInMilliseconds - gameRootInformationQueryInterval * 1000)
                         in
                         if gameRootInformationResult.timeInMilliseconds <= updateTimeMinimumMilli then
-                            Nothing
+                            Err "last received is not recent enough"
+
+                        else if areAllVillagesLoaded gameRootInformationResult.gameRootInformation then
+                            Ok gameRootInformationResult.gameRootInformation
 
                         else
-                            Just gameRootInformationResult.gameRootInformation
+                            Err
+                                "last received has not all villages loaded yet"
                     )
     in
     case sufficientlyNewGameRootInformation of
-        Nothing ->
-            DescribeBranch
-                "Game root information is not recent enough."
-                (DescribeBranch "Read root info." (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest)))))
+        Err error ->
+            DescribeBranch ("Read game root info (" ++ error ++ ")")
+                (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
 
-        Just gameRootInformation ->
+        Ok gameRootInformation ->
             decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInformation
 
 
@@ -1490,9 +1495,13 @@ tribalWars2 = (function(){
     if (selectedCharacter == null)
         return { NotInTribalWars: true};
 
-    return { InTribalWars2 :
-        { readyVillages : selectedCharacter.data.readyVillages
-        , selectedVillageId : selectedCharacter.data.selectedVillage.data.villageId }
+    // Adapted formatting to strange syntax in google Chrome ->
+
+    return { InTribalWars2 : {
+            readyVillages : selectedCharacter.data.readyVillages
+            , selectedVillageId : selectedCharacter.data.selectedVillage.data.villageId
+            , getTotalVillagesResult : selectedCharacter.getTotalVillages()
+            }
         };
 })();
 
@@ -1529,9 +1538,10 @@ decodeRootInformation =
 
 decodeTribalWars2RootInformation : Json.Decode.Decoder TribalWars2RootInformation
 decodeTribalWars2RootInformation =
-    Json.Decode.map2 TribalWars2RootInformation
+    Json.Decode.map3 TribalWars2RootInformation
         (Json.Decode.field "readyVillages" (Json.Decode.list Json.Decode.int))
         (Json.Decode.field "selectedVillageId" Json.Decode.int)
+        (Json.Decode.field "getTotalVillagesResult" Json.Decode.int)
 
 
 readSelectedCharacterVillageDetailsScript : Int -> String
@@ -2027,8 +2037,15 @@ statusMessageFromState state { activityDecisionStages } =
 
                                 ownVillagesReport =
                                     "Found "
-                                        ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt)
-                                        ++ " own villages."
+                                        ++ (gameRootInformation.getTotalVillagesResult |> String.fromInt)
+                                        ++ " own villages"
+                                        ++ (if areAllVillagesLoaded gameRootInformation then
+                                                ""
+
+                                            else
+                                                ", but only " ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt) ++ " loaded yet"
+                                           )
+                                        ++ "."
                             in
                             ownVillagesReport
 
@@ -2115,6 +2132,11 @@ statusMessageFromState state { activityDecisionStages } =
             ]
                 |> List.concat
                 |> String.join "\n"
+
+
+areAllVillagesLoaded : TribalWars2RootInformation -> Bool
+areAllVillagesLoaded rootInfo =
+    rootInfo.getTotalVillagesResult == (rootInfo.readyVillages |> List.length)
 
 
 describeOrdinalNumber : Int -> String

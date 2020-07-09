@@ -1147,6 +1147,7 @@ type alias TreeLeafAct =
 type EndDecisionPathStructure
     = Wait
     | Act TreeLeafAct
+    | DecideFinishSession
 
 
 type alias DecisionPathNode =
@@ -1306,6 +1307,9 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                                 Act act ->
                                     (act.actionsAlreadyDecided |> Tuple.mapSecond (Just >> always))
                                         :: act.actionsDependingOnNewReadings
+
+                                DecideFinishSession ->
+                                    []
                     in
                     { originalDecision = originalDecision, remainingActions = originalRemainingActions }
 
@@ -1321,7 +1325,7 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                             )
                         |> Maybe.withDefault programStateIfEvalDecisionTreeNew
 
-                ( originalDecisionStagesDescriptions, _ ) =
+                ( originalDecisionStagesDescriptions, originalDecisionLeaf ) =
                     Common.DecisionTree.unpackToDecisionStagesDescriptionsAndLeaf programStateToContinue.originalDecision
 
                 ( currentStepDescription, effectsOnGameClientWindow, programState ) =
@@ -1354,9 +1358,13 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                         |> String.join "\n"
             in
             ( { stateBefore | appMemory = appMemory, programState = programState }
-            , ContinueSession
-                { effects = effectsRequests
-                , millisecondsToNextReadingFromGame = config.millisecondsToNextReadingFromGame decisionContext
-                , statusDescriptionText = statusMessage
-                }
+            , if originalDecisionLeaf == DecideFinishSession then
+                FinishSession { statusDescriptionText = statusMessage }
+
+              else
+                ContinueSession
+                    { effects = effectsRequests
+                    , millisecondsToNextReadingFromGame = config.millisecondsToNextReadingFromGame decisionContext
+                    , statusDescriptionText = statusMessage
+                    }
             )

@@ -652,7 +652,7 @@ type NextAppEffectFromQueue
 
 
 dequeueNextEffectFromAppState : { currentTimeInMs : Int } -> AppEffectQueue -> NextAppEffectFromQueue
-dequeueNextEffectFromAppState { currentTimeInMs } effectQueueBefore =
+dequeueNextEffectFromAppState _ effectQueueBefore =
     case effectQueueBefore of
         [] ->
             NoEffect
@@ -898,19 +898,20 @@ statusReportFromState state =
         appEffectQueueLength =
             state.appState.effectQueue |> List.length
 
-        memoryReadingDurations =
-            state.setup.memoryReadingDurations
-                -- Don't consider the first memory reading because it takes much longer.
-                |> List.reverse
-                |> List.drop 1
+        {-
+           memoryReadingDurations =
+               state.setup.memoryReadingDurations
+                   -- Don't consider the first memory reading because it takes much longer.
+                   |> List.reverse
+                   |> List.drop 1
 
-        averageMemoryReadingDuration =
-            (memoryReadingDurations |> List.sum)
-                // (memoryReadingDurations |> List.length)
+           averageMemoryReadingDuration =
+               (memoryReadingDurations |> List.sum)
+                   // (memoryReadingDurations |> List.length)
 
-        runtimeExpensesReport =
-            "amrd=" ++ (averageMemoryReadingDuration |> String.fromInt) ++ "ms"
-
+           runtimeExpensesReport =
+               "amrd=" ++ (averageMemoryReadingDuration |> String.fromInt) ++ "ms"
+        -}
         appEffectQueueLengthWarning =
             if appEffectQueueLength < 6 then
                 []

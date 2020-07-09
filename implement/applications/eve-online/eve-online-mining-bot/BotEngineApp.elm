@@ -37,19 +37,26 @@ import EveOnline.AppFramework
         , DecisionPathNode
         , EndDecisionPathStructure(..)
         , ReadingFromGameClient
+        , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
         , UseContextMenuCascadeNode
         , actWithoutFurtherReadings
+        , askForHelpToGetUnstuck
+        , branchDependingOnDockedOrInSpace
         , clickOnUIElement
+        , ensureInfoPanelLocationInfoIsExpanded
         , getEntropyIntFromReadingFromGameClient
         , menuCascadeCompleted
         , menuEntryMatchesStationNameFromLocationInfoPanel
+        , useContextMenuCascade
+        , useContextMenuCascadeOnOverviewEntry
         , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
         , useMenuEntryWithTextContainingFirstOf
         , useMenuEntryWithTextEqual
         , useRandomMenuEntry
+        , waitForProgressInGame
         )
 import EveOnline.ParseUserInterface
     exposing
@@ -59,7 +66,7 @@ import EveOnline.ParseUserInterface
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
-import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (effectMouseClickAtLocation)
+import EveOnline.VolatileHostInterface as VolatileHostInterface
 
 
 {-| Sources for the defaults:
@@ -154,20 +161,18 @@ miningBotDecisionRoot context =
     generalSetupInUserInterface context.readingFromGameClient
         |> Maybe.withDefault
             (branchDependingOnDockedOrInSpace
-                (describeBranch "I see no ship UI, assume we are docked."
-                    (ensureOreHoldIsSelectedInInventoryWindow
+                { ifDocked =
+                    ensureOreHoldIsSelectedInInventoryWindow
                         context.readingFromGameClient
                         dockedWithOreHoldSelected
-                    )
-                )
-                (returnDronesAndRunAwayIfHitpointsAreTooLow context)
-                (\seeUndockingComplete ->
-                    describeBranch "I see we are in space, undocking complete."
-                        (ensureOreHoldIsSelectedInInventoryWindow
+                , ifSeeShipUI =
+                    returnDronesAndRunAwayIfHitpointsAreTooLow context
+                , ifUndockingComplete =
+                    \seeUndockingComplete ->
+                        ensureOreHoldIsSelectedInInventoryWindow
                             context.readingFromGameClient
                             (inSpaceWithOreHoldSelected context seeUndockingComplete)
-                        )
-                )
+                }
                 context.readingFromGameClient
             )
 
@@ -235,48 +240,6 @@ closeMessageBox readingFromGameClient =
                                 )
                     )
             )
-
-
-ensureInfoPanelLocationInfoIsExpanded : ReadingFromGameClient -> Maybe DecisionPathNode
-ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
-    case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
-        CanNotSeeIt ->
-            Just
-                (describeBranch "I do not see the location info panel. Enable the info panel."
-                    (case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .icons |> maybeVisibleAndThen .locationInfo of
-                        CanNotSeeIt ->
-                            describeBranch "I do not see the icon for the location info panel." askForHelpToGetUnstuck
-
-                        CanSee iconLocationInfoPanel ->
-                            endDecisionPath
-                                (actWithoutFurtherReadings
-                                    ( "Click on the icon to enable the info panel."
-                                    , [ iconLocationInfoPanel |> clickOnUIElement MouseButtonLeft ]
-                                    )
-                                )
-                    )
-                )
-
-        CanSee infoPanelLocationInfo ->
-            if 35 < infoPanelLocationInfo.uiNode.totalDisplayRegion.height then
-                Nothing
-
-            else
-                Just
-                    (describeBranch "Location info panel seems collapsed."
-                        (endDecisionPath
-                            (actWithoutFurtherReadings
-                                ( "Click to expand the info panel."
-                                , [ effectMouseClickAtLocation
-                                        MouseButtonLeft
-                                        { x = infoPanelLocationInfo.uiNode.totalDisplayRegion.x + 8
-                                        , y = infoPanelLocationInfo.uiNode.totalDisplayRegion.y + 8
-                                        }
-                                  ]
-                                )
-                            )
-                        )
-                    )
 
 
 dockedWithOreHoldSelected : EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
@@ -699,46 +662,6 @@ readShipUIModuleButtonTooltips context =
             )
 
 
-useContextMenuCascadeOnOverviewEntry :
-    OverviewWindowEntry
-    -> UseContextMenuCascadeNode
-    -> DecisionPathNode
-useContextMenuCascadeOnOverviewEntry overviewEntry useContextMenu =
-    useContextMenuCascade
-        ( "overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'", overviewEntry.uiNode )
-        useContextMenu
-
-
-type alias SeeUndockingComplete =
-    { shipUI : EveOnline.ParseUserInterface.ShipUI
-    , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
-    }
-
-
-branchDependingOnDockedOrInSpace :
-    DecisionPathNode
-    -> (EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode)
-    -> (SeeUndockingComplete -> DecisionPathNode)
-    -> ReadingFromGameClient
-    -> DecisionPathNode
-branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUndockingComplete readingFromGameClient =
-    case readingFromGameClient.shipUI of
-        CanNotSeeIt ->
-            branchIfDocked
-
-        CanSee shipUI ->
-            branchIfCanSeeShipUI shipUI
-                |> Maybe.withDefault
-                    (case readingFromGameClient.overviewWindow of
-                        CanNotSeeIt ->
-                            describeBranch "I see no overview window, wait until undocking completed." waitForProgressInGame
-
-                        CanSee overviewWindow ->
-                            branchIfUndockingComplete
-                                { shipUI = shipUI, overviewWindow = overviewWindow }
-                    )
-
-
 useContextMenuCascadeOnListSurroundingsButton : UseContextMenuCascadeNode -> ReadingFromGameClient -> DecisionPathNode
 useContextMenuCascadeOnListSurroundingsButton useContextMenu readingFromGameClient =
     case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
@@ -749,16 +672,6 @@ useContextMenuCascadeOnListSurroundingsButton useContextMenu readingFromGameClie
             useContextMenuCascade
                 ( "surroundings button", infoPanelLocationInfo.listSurroundingsButton )
                 useContextMenu
-
-
-waitForProgressInGame : DecisionPathNode
-waitForProgressInGame =
-    endDecisionPath Wait
-
-
-askForHelpToGetUnstuck : DecisionPathNode
-askForHelpToGetUnstuck =
-    describeBranch "I am stuck here and need help to continue." (endDecisionPath Wait)
 
 
 initState : State
@@ -926,19 +839,6 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
         botMemoryBefore.shipModules
             |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
     }
-
-
-useContextMenuCascade : ( String, UIElement ) -> UseContextMenuCascadeNode -> DecisionPathNode
-useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu =
-    { actionsAlreadyDecided =
-        ( "Open context menu on " ++ initialUIElementName
-        , [ initialUIElement |> clickOnUIElement MouseButtonRight
-          ]
-        )
-    , actionsDependingOnNewReadings = useContextMenu |> EveOnline.AppFramework.unpackContextMenuTreeToListOfActionsDependingOnReadings
-    }
-        |> Act
-        |> endDecisionPath
 
 
 activeShipTreeEntryFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry

@@ -25,6 +25,7 @@ import EveOnline.ParseUserInterface
         ( MaybeVisible(..)
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
+        , maybeVisibleAndThen
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (effectMouseClickAtLocation)
 import EveOnline.VolatileHostScript as VolatileHostScript
@@ -930,6 +931,29 @@ statusReportFromState state =
         |> String.join "\n"
 
 
+useContextMenuCascadeOnOverviewEntry :
+    EveOnline.ParseUserInterface.OverviewWindowEntry
+    -> UseContextMenuCascadeNode
+    -> DecisionPathNode
+useContextMenuCascadeOnOverviewEntry overviewEntry useContextMenu =
+    useContextMenuCascade
+        ( "overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'", overviewEntry.uiNode )
+        useContextMenu
+
+
+useContextMenuCascade : ( String, UIElement ) -> UseContextMenuCascadeNode -> DecisionPathNode
+useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu =
+    { actionsAlreadyDecided =
+        ( "Open context menu on " ++ initialUIElementName
+        , [ initialUIElement |> clickOnUIElement Common.EffectOnWindow.MouseButtonRight
+          ]
+        )
+    , actionsDependingOnNewReadings = useContextMenu |> unpackContextMenuTreeToListOfActionsDependingOnReadings
+    }
+        |> Act
+        |> Common.DecisionTree.endDecisionPath
+
+
 getEntropyIntFromReadingFromGameClient : EveOnline.ParseUserInterface.ParsedUserInterface -> Int
 getEntropyIntFromReadingFromGameClient readingFromGameClient =
     let
@@ -1144,6 +1168,94 @@ type alias AppStateWithMemoryAndDecisionTree appMemory =
             }
     , appMemory : appMemory
     }
+
+
+type alias SeeUndockingComplete =
+    { shipUI : EveOnline.ParseUserInterface.ShipUI
+    , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
+    }
+
+
+ensureInfoPanelLocationInfoIsExpanded : ReadingFromGameClient -> Maybe DecisionPathNode
+ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
+    case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
+        CanNotSeeIt ->
+            Just
+                (Common.DecisionTree.describeBranch "I do not see the location info panel. Enable the info panel."
+                    (case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .icons |> maybeVisibleAndThen .locationInfo of
+                        CanNotSeeIt ->
+                            Common.DecisionTree.describeBranch "I do not see the icon for the location info panel." askForHelpToGetUnstuck
+
+                        CanSee iconLocationInfoPanel ->
+                            Common.DecisionTree.endDecisionPath
+                                (actWithoutFurtherReadings
+                                    ( "Click on the icon to enable the info panel."
+                                    , [ iconLocationInfoPanel |> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft ]
+                                    )
+                                )
+                    )
+                )
+
+        CanSee infoPanelLocationInfo ->
+            if 35 < infoPanelLocationInfo.uiNode.totalDisplayRegion.height then
+                Nothing
+
+            else
+                Just
+                    (Common.DecisionTree.describeBranch "Location info panel seems collapsed."
+                        (Common.DecisionTree.endDecisionPath
+                            (actWithoutFurtherReadings
+                                ( "Click to expand the info panel."
+                                , [ effectMouseClickAtLocation
+                                        Common.EffectOnWindow.MouseButtonLeft
+                                        { x = infoPanelLocationInfo.uiNode.totalDisplayRegion.x + 8
+                                        , y = infoPanelLocationInfo.uiNode.totalDisplayRegion.y + 8
+                                        }
+                                  ]
+                                )
+                            )
+                        )
+                    )
+
+
+branchDependingOnDockedOrInSpace :
+    { ifDocked : DecisionPathNode
+    , ifSeeShipUI : EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
+    , ifUndockingComplete : SeeUndockingComplete -> DecisionPathNode
+    }
+    -> ReadingFromGameClient
+    -> DecisionPathNode
+branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI, ifUndockingComplete } readingFromGameClient =
+    case readingFromGameClient.shipUI of
+        CanNotSeeIt ->
+            Common.DecisionTree.describeBranch "I see no ship UI, assume we are docked." ifDocked
+
+        CanSee shipUI ->
+            ifSeeShipUI shipUI
+                |> Maybe.withDefault
+                    (case readingFromGameClient.overviewWindow of
+                        CanNotSeeIt ->
+                            Common.DecisionTree.describeBranch
+                                "I see no overview window, wait until undocking completed."
+                                waitForProgressInGame
+
+                        CanSee overviewWindow ->
+                            Common.DecisionTree.describeBranch "I see ship UI and overview, undocking complete."
+                                (ifUndockingComplete
+                                    { shipUI = shipUI, overviewWindow = overviewWindow }
+                                )
+                    )
+
+
+waitForProgressInGame : DecisionPathNode
+waitForProgressInGame =
+    Common.DecisionTree.endDecisionPath Wait
+
+
+askForHelpToGetUnstuck : DecisionPathNode
+askForHelpToGetUnstuck =
+    Common.DecisionTree.describeBranch "I am stuck here and need help to continue."
+        (Common.DecisionTree.endDecisionPath Wait)
 
 
 actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure

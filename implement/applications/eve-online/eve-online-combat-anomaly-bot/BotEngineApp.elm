@@ -43,15 +43,19 @@ import EveOnline.AppFramework
         , DecisionPathNode
         , EndDecisionPathStructure(..)
         , ReadingFromGameClient
+        , SeeUndockingComplete
         , ShipModulesMemory
-        , UIElement
-        , UseContextMenuCascadeNode
         , actWithoutFurtherReadings
+        , askForHelpToGetUnstuck
+        , branchDependingOnDockedOrInSpace
         , clickOnUIElement
         , getEntropyIntFromReadingFromGameClient
         , menuCascadeCompleted
+        , useContextMenuCascade
+        , useContextMenuCascadeOnOverviewEntry
         , useMenuEntryWithTextContaining
         , useMenuEntryWithTextEqual
+        , waitForProgressInGame
         )
 import EveOnline.ParseUserInterface
     exposing
@@ -152,11 +156,10 @@ probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
 anomalyBotDecisionRoot : BotDecisionContext -> DecisionPathNode
 anomalyBotDecisionRoot context =
     branchDependingOnDockedOrInSpace
-        (describeBranch "I see no ship UI, assume we are docked." askForHelpToGetUnstuck)
-        (always Nothing)
-        (\seeUndockingComplete ->
-            describeBranch "I see we are in space, undocking complete." (decideNextActionWhenInSpace context seeUndockingComplete)
-        )
+        { ifDocked = askForHelpToGetUnstuck
+        , ifSeeShipUI = always Nothing
+        , ifUndockingComplete = decideNextActionWhenInSpace context
+        }
         context.readingFromGameClient
 
 
@@ -444,56 +447,6 @@ readShipUIModuleButtonTooltips context =
             )
 
 
-useContextMenuCascadeOnOverviewEntry :
-    OverviewWindowEntry
-    -> UseContextMenuCascadeNode
-    -> DecisionPathNode
-useContextMenuCascadeOnOverviewEntry overviewEntry useContextMenu =
-    useContextMenuCascade
-        ( "overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'", overviewEntry.uiNode )
-        useContextMenu
-
-
-type alias SeeUndockingComplete =
-    { shipUI : EveOnline.ParseUserInterface.ShipUI
-    , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
-    }
-
-
-branchDependingOnDockedOrInSpace :
-    DecisionPathNode
-    -> (EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode)
-    -> (SeeUndockingComplete -> DecisionPathNode)
-    -> ReadingFromGameClient
-    -> DecisionPathNode
-branchDependingOnDockedOrInSpace branchIfDocked branchIfCanSeeShipUI branchIfUndockingComplete readingFromGameClient =
-    case readingFromGameClient.shipUI of
-        CanNotSeeIt ->
-            branchIfDocked
-
-        CanSee shipUI ->
-            branchIfCanSeeShipUI shipUI
-                |> Maybe.withDefault
-                    (case readingFromGameClient.overviewWindow of
-                        CanNotSeeIt ->
-                            describeBranch "I see no overview window, wait until undocking completed." waitForProgressInGame
-
-                        CanSee overviewWindow ->
-                            branchIfUndockingComplete
-                                { shipUI = shipUI, overviewWindow = overviewWindow }
-                    )
-
-
-waitForProgressInGame : DecisionPathNode
-waitForProgressInGame =
-    endDecisionPath Wait
-
-
-askForHelpToGetUnstuck : DecisionPathNode
-askForHelpToGetUnstuck =
-    describeBranch "I am stuck here and need help to continue." (endDecisionPath Wait)
-
-
 initState : State
 initState =
     EveOnline.AppFramework.initState
@@ -620,19 +573,6 @@ shipUIModulesToActivateOnTarget =
 shipUIModulesToActivateAlways : SeeUndockingComplete -> List ShipUIModuleButton
 shipUIModulesToActivateAlways =
     .shipUI >> .moduleButtonsRows >> .middle
-
-
-useContextMenuCascade : ( String, UIElement ) -> UseContextMenuCascadeNode -> DecisionPathNode
-useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu =
-    { actionsAlreadyDecided =
-        ( "Open context menu on " ++ initialUIElementName
-        , [ initialUIElement |> clickOnUIElement MouseButtonRight
-          ]
-        )
-    , actionsDependingOnNewReadings = useContextMenu |> EveOnline.AppFramework.unpackContextMenuTreeToListOfActionsDependingOnReadings
-    }
-        |> Act
-        |> endDecisionPath
 
 
 isShipWarpingOrJumping : EveOnline.ParseUserInterface.ShipUI -> Bool

@@ -22,15 +22,17 @@ module BotEngineApp exposing
 import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.EffectOnWindow exposing (MouseButton(..))
-import EveOnline.AppFramework exposing (AppEffect(..))
+import EveOnline.AppFramework
+    exposing
+        ( AppEffect(..)
+        , infoPanelRouteFirstMarkerFromReadingFromGameClient
+        , shipUIIndicatesShipIsWarpingOrJumping
+        )
 import EveOnline.ParseUserInterface
     exposing
         ( InfoPanelRouteRouteElementMarker
         , MaybeVisible(..)
-        , ShipUI
         , centerFromDisplayRegion
-        , maybeNothingFromCanNotSeeIt
-        , maybeVisibleAndThen
         )
 import EveOnline.VolatileHostInterface exposing (effectMouseClickAtLocation)
 
@@ -127,7 +129,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
                                 ( [], "I do not see the ship UI. Looks like we are docked." )
 
                         CanSee shipUi ->
-                            if shipUi |> isShipWarpingOrJumping then
+                            if shipUi |> shipUIIndicatesShipIsWarpingOrJumping then
                                 continueWaiting
                                     "I see the ship is warping or jumping. I wait until that maneuver ends."
 
@@ -179,27 +181,3 @@ botEffectsWhenNotWaitingForShipManeuver readingFromGameClient infoPanelRouteFirs
                     ( [ EffectOnGameClientWindow (effectMouseClickAtLocation MouseButtonLeft (menuEntryToClick.uiNode.totalDisplayRegion |> centerFromDisplayRegion)) ]
                     , "I click on the menu entry '" ++ menuEntryToClick.text ++ "' to start the next ship maneuver."
                     )
-
-
-infoPanelRouteFirstMarkerFromReadingFromGameClient : ReadingFromGameClient -> Maybe InfoPanelRouteRouteElementMarker
-infoPanelRouteFirstMarkerFromReadingFromGameClient =
-    .infoPanelContainer
-        >> maybeVisibleAndThen .infoPanelRoute
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.map .routeElementMarker
-        >> Maybe.map (List.sortBy (\routeMarker -> routeMarker.uiNode.totalDisplayRegion.x + routeMarker.uiNode.totalDisplayRegion.y))
-        >> Maybe.andThen List.head
-
-
-isShipWarpingOrJumping : ShipUI -> Bool
-isShipWarpingOrJumping =
-    .indication
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
-        >> Maybe.map
-            (\maneuverType ->
-                [ EveOnline.ParseUserInterface.ManeuverWarp, EveOnline.ParseUserInterface.ManeuverJump ]
-                    |> List.member maneuverType
-            )
-        -- If the ship is just floating in space, there might be no indication displayed.
-        >> Maybe.withDefault False

@@ -51,6 +51,7 @@ import EveOnline.AppFramework
         , clickOnUIElement
         , getEntropyIntFromReadingFromGameClient
         , menuCascadeCompleted
+        , shipUIIndicatesShipIsWarpingOrJumping
         , useContextMenuCascade
         , useContextMenuCascadeOnOverviewEntry
         , useMenuEntryWithTextContaining
@@ -164,7 +165,7 @@ anomalyBotDecisionRoot context =
 
 decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
 decideNextActionWhenInSpace context seeUndockingComplete =
-    if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
+    if seeUndockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
         describeBranch "I see we are warping."
             ([ returnDronesToBay context.readingFromGameClient
              , readShipUIModuleButtonTooltips context
@@ -572,17 +573,3 @@ shipUIModulesToActivateOnTarget =
 shipUIModulesToActivateAlways : SeeUndockingComplete -> List ShipUIModuleButton
 shipUIModulesToActivateAlways =
     .shipUI >> .moduleButtonsRows >> .middle
-
-
-isShipWarpingOrJumping : EveOnline.ParseUserInterface.ShipUI -> Bool
-isShipWarpingOrJumping =
-    .indication
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
-        >> Maybe.map
-            (\maneuverType ->
-                [ EveOnline.ParseUserInterface.ManeuverWarp, EveOnline.ParseUserInterface.ManeuverJump ]
-                    |> List.member maneuverType
-            )
-        -- If the ship is just floating in space, there might be no indication displayed.
-        >> Maybe.withDefault False

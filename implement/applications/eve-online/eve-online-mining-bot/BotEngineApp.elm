@@ -40,7 +40,6 @@ import EveOnline.AppFramework
         , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
-        , UseContextMenuCascadeNode
         , actWithoutFurtherReadings
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
@@ -49,7 +48,9 @@ import EveOnline.AppFramework
         , getEntropyIntFromReadingFromGameClient
         , menuCascadeCompleted
         , menuEntryMatchesStationNameFromLocationInfoPanel
+        , shipUIIndicatesShipIsWarpingOrJumping
         , useContextMenuCascade
+        , useContextMenuCascadeOnListSurroundingsButton
         , useContextMenuCascadeOnOverviewEntry
         , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
@@ -291,7 +292,7 @@ lastDockedStationNameFromInfoPanelFromMemoryOrSettings context =
 
 inSpaceWithOreHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
 inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHoldSelected =
-    if seeUndockingComplete.shipUI |> isShipWarpingOrJumping then
+    if seeUndockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
         describeBranch "I see we are warping."
             ([ returnDronesToBay context.readingFromGameClient
              , readShipUIModuleButtonTooltips context
@@ -662,18 +663,6 @@ readShipUIModuleButtonTooltips context =
             )
 
 
-useContextMenuCascadeOnListSurroundingsButton : UseContextMenuCascadeNode -> ReadingFromGameClient -> DecisionPathNode
-useContextMenuCascadeOnListSurroundingsButton useContextMenu readingFromGameClient =
-    case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
-        CanNotSeeIt ->
-            describeBranch "I do not see the location info panel." askForHelpToGetUnstuck
-
-        CanSee infoPanelLocationInfo ->
-            useContextMenuCascade
-                ( "surroundings button", infoPanelLocationInfo.listSurroundingsButton )
-                useContextMenu
-
-
 initState : State
 initState =
     EveOnline.AppFramework.initState
@@ -930,20 +919,6 @@ predictUIElementInventoryShipEntry treeEntry =
             { originalTotalDisplayRegion | height = 10 }
     in
     { originalUIElement | totalDisplayRegion = totalDisplayRegion }
-
-
-isShipWarpingOrJumping : EveOnline.ParseUserInterface.ShipUI -> Bool
-isShipWarpingOrJumping =
-    .indication
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
-        >> Maybe.map
-            (\maneuverType ->
-                [ EveOnline.ParseUserInterface.ManeuverWarp, EveOnline.ParseUserInterface.ManeuverJump ]
-                    |> List.member maneuverType
-            )
-        -- If the ship is just floating in space, there might be no indication displayed.
-        >> Maybe.withDefault False
 
 
 shipManeuverIsApproaching : ReadingFromGameClient -> Bool

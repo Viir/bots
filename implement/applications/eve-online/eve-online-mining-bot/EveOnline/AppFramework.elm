@@ -941,6 +941,18 @@ useContextMenuCascadeOnOverviewEntry overviewEntry useContextMenu =
         useContextMenu
 
 
+useContextMenuCascadeOnListSurroundingsButton : UseContextMenuCascadeNode -> ReadingFromGameClient -> DecisionPathNode
+useContextMenuCascadeOnListSurroundingsButton useContextMenu readingFromGameClient =
+    case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
+        CanNotSeeIt ->
+            Common.DecisionTree.describeBranch "I do not see the location info panel." askForHelpToGetUnstuck
+
+        CanSee infoPanelLocationInfo ->
+            useContextMenuCascade
+                ( "surroundings button", infoPanelLocationInfo.listSurroundingsButton )
+                useContextMenu
+
+
 useContextMenuCascade : ( String, UIElement ) -> UseContextMenuCascadeNode -> DecisionPathNode
 useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu =
     { actionsAlreadyDecided =
@@ -1136,6 +1148,39 @@ pickEntryFromLastContextMenuInCascade pickEntry =
 lastContextMenuOrSubmenu : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ContextMenu
 lastContextMenuOrSubmenu =
     .contextMenus >> List.head
+
+
+infoPanelRouteFirstMarkerFromReadingFromGameClient : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.InfoPanelRouteRouteElementMarker
+infoPanelRouteFirstMarkerFromReadingFromGameClient =
+    .infoPanelContainer
+        >> maybeVisibleAndThen .infoPanelRoute
+        >> maybeNothingFromCanNotSeeIt
+        >> Maybe.map .routeElementMarker
+        >> Maybe.map (List.sortBy (\routeMarker -> routeMarker.uiNode.totalDisplayRegion.x + routeMarker.uiNode.totalDisplayRegion.y))
+        >> Maybe.andThen List.head
+
+
+localChatWindowFromUserInterface : ReadingFromGameClient -> MaybeVisible EveOnline.ParseUserInterface.ChatWindow
+localChatWindowFromUserInterface =
+    .chatWindowStacks
+        >> List.filterMap .chatWindow
+        >> List.filter (.name >> Maybe.map (String.endsWith "_local") >> Maybe.withDefault False)
+        >> List.head
+        >> EveOnline.ParseUserInterface.canNotSeeItFromMaybeNothing
+
+
+shipUIIndicatesShipIsWarpingOrJumping : EveOnline.ParseUserInterface.ShipUI -> Bool
+shipUIIndicatesShipIsWarpingOrJumping =
+    .indication
+        >> maybeNothingFromCanNotSeeIt
+        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
+        >> Maybe.map
+            (\maneuverType ->
+                [ EveOnline.ParseUserInterface.ManeuverWarp, EveOnline.ParseUserInterface.ManeuverJump ]
+                    |> List.member maneuverType
+            )
+        -- If the ship is just floating in space, there might be no indication displayed.
+        >> Maybe.withDefault False
 
 
 type alias TreeLeafAct =

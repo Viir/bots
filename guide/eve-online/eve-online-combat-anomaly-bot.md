@@ -23,7 +23,7 @@ Despite being quite robust, this bot is far from being as smart as a human. For 
 
 ## Starting the Bot
 
-To start the bot, download the script from https://catalog.botengine.org/c3bd07cc47c848ed546bba39f757a58f64c11d0971704d48d1e96d4284d3263e and then run it.
+To start the bot, download the script from https://catalog.botengine.org/09e9f15c1f56e552e3db88d4d4460de7c56dbbe15db005ad79c333cd9cd5f8ce and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 
@@ -34,6 +34,19 @@ The bot needs a few seconds to start and find the EVE Online client process. It 
 ![EVE Online App Starting](./image/2019-10-08.eve-online-autopilot-bot-startup.png)
 
 From here on, the bot works automatically. It detects the topmost game client window and starts working in that game client.
+
+## Configuration Settings
+
+All settings are optional; you only need them in case the defaults don't fit your use-case.
+
++ `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
++ `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
+
+Here is an example of a complete app-settings string:
+
+```
+--app-settings="anomaly-name=Drone Patrol,anomaly-name=Drone Horde"
+```
 
 ----
 

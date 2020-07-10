@@ -15,6 +15,7 @@
    All settings are optional; you only need them in case the defaults don't fit your use-case.
 
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
+   + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
 
    Here is an example of a complete app-settings string:
    --app-settings="anomaly-name=Drone Patrol,anomaly-name=Drone Horde"
@@ -50,11 +51,15 @@ import EveOnline.AppFramework
         , branchDependingOnDockedOrInSpace
         , clickOnUIElement
         , getEntropyIntFromReadingFromGameClient
+        , localChatWindowFromUserInterface
         , menuCascadeCompleted
         , shipUIIndicatesShipIsWarpingOrJumping
         , useContextMenuCascade
+        , useContextMenuCascadeOnListSurroundingsButton
         , useContextMenuCascadeOnOverviewEntry
+        , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
+        , useMenuEntryWithTextContainingFirstOf
         , useMenuEntryWithTextEqual
         , waitForProgressInGame
         )
@@ -74,7 +79,8 @@ import Set
 
 defaultBotSettings : BotSettings
 defaultBotSettings =
-    { anomalyNames = []
+    { hideWhenNeutralInLocal = AppSettings.No
+    , anomalyNames = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1300
     }
@@ -84,7 +90,11 @@ parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
     AppSettings.parseSimpleCommaSeparatedList
         {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
-        ([ ( "anomaly-name"
+        ([ ( "hide-when-neutral-in-local"
+           , AppSettings.valueTypeYesOrNo
+                (\hide -> \settings -> { settings | hideWhenNeutralInLocal = hide })
+           )
+         , ( "anomaly-name"
            , AppSettings.valueTypeString
                 (\anomalyName ->
                     \settings -> { settings | anomalyNames = anomalyName :: settings.anomalyNames }
@@ -99,8 +109,14 @@ parseBotSettings =
         defaultBotSettings
 
 
+goodStandingPatterns : List String
+goodStandingPatterns =
+    [ "good standing", "excellent standing", "is in your" ]
+
+
 type alias BotSettings =
-    { anomalyNames : List String
+    { hideWhenNeutralInLocal : AppSettings.YesOrNo
+    , anomalyNames : List String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
@@ -157,10 +173,79 @@ anomalyBotDecisionRoot : BotDecisionContext -> DecisionPathNode
 anomalyBotDecisionRoot context =
     branchDependingOnDockedOrInSpace
         { ifDocked = askForHelpToGetUnstuck
-        , ifSeeShipUI = always Nothing
+        , ifSeeShipUI =
+            always
+                (if (context |> botSettingsFromDecisionContext).hideWhenNeutralInLocal == AppSettings.Yes then
+                    retreatIfNeutralOrEnemyInLocalChat context
+
+                 else
+                    Nothing
+                )
         , ifUndockingComplete = decideNextActionWhenInSpace context
         }
         context.readingFromGameClient
+
+
+retreatIfNeutralOrEnemyInLocalChat : BotDecisionContext -> Maybe DecisionPathNode
+retreatIfNeutralOrEnemyInLocalChat context =
+    case context.readingFromGameClient |> localChatWindowFromUserInterface of
+        CanNotSeeIt ->
+            Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
+
+        CanSee localChatWindow ->
+            let
+                chatUserHasGoodStanding chatUser =
+                    goodStandingPatterns
+                        |> List.any
+                            (\goodStandingPattern ->
+                                chatUser.standingIconHint
+                                    |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
+                                    |> Maybe.withDefault False
+                            )
+
+                subsetOfUsersWithNoGoodStanding =
+                    localChatWindow.visibleUsers
+                        |> List.filter (chatUserHasGoodStanding >> not)
+            in
+            if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                Just
+                    (describeBranch
+                        "There is an enemy or neutral in local chat. Dock to station or structure."
+                        (dockToStationOrStructureUsingSurroundingsButtonMenu
+                            { prioritizeStructures = False
+                            , describeChoice = "First station or structure"
+                            , chooseEntry = List.head
+                            }
+                            context.readingFromGameClient
+                        )
+                    )
+
+            else
+                Nothing
+
+
+dockToStationOrStructureUsingSurroundingsButtonMenu :
+    { prioritizeStructures : Bool
+    , describeChoice : String
+    , chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry
+    }
+    -> ReadingFromGameClient
+    -> DecisionPathNode
+dockToStationOrStructureUsingSurroundingsButtonMenu { prioritizeStructures, describeChoice, chooseEntry } =
+    useContextMenuCascadeOnListSurroundingsButton
+        (useMenuEntryWithTextContainingFirstOf
+            ([ "stations", "structures" ]
+                |> (if prioritizeStructures then
+                        List.reverse
+
+                    else
+                        identity
+                   )
+            )
+            (useMenuEntryInLastContextMenuInCascade { describeChoice = describeChoice, chooseEntry = chooseEntry }
+                (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+            )
+        )
 
 
 decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode

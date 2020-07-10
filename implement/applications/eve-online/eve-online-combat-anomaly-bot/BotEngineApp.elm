@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-07-10
+{- EVE Online combat anomaly bot version 2020-07-10 Usewewe Osas
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -297,11 +297,6 @@ combat context seeUndockingComplete continueIfCombatComplete =
             seeUndockingComplete.overviewWindow.entries
                 |> List.any (.objectAlliance >> Maybe.map (String.isEmpty >> not) >> Maybe.withDefault False)
 
-        ensureShipIsOrbitingDecision =
-            overviewEntriesToAttack
-                |> List.head
-                |> Maybe.andThen (\overviewEntryToAttack -> ensureShipIsOrbiting seeUndockingComplete.shipUI overviewEntryToAttack)
-
         decisionIfAlreadyOrbiting =
             case targetsToUnlock |> List.head of
                 Just targetToUnlock ->
@@ -375,8 +370,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
             )
 
     else
-        ensureShipIsOrbitingDecision
-            |> Maybe.withDefault decisionIfAlreadyOrbiting
+        decisionIfAlreadyOrbiting
 
 
 enterAnomaly : BotDecisionContext -> DecisionPathNode

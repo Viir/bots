@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-07-09
+{- EVE Online combat anomaly bot version 2020-07-10
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -84,14 +84,13 @@ parseBotSettings =
     AppSettings.parseSimpleCommaSeparatedList
         {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
         ([ ( "anomaly-name"
-           , AppSettings.ValueTypeString
+           , AppSettings.valueTypeString
                 (\anomalyName ->
-                    \settings ->
-                        { settings | anomalyNames = anomalyName :: settings.anomalyNames }
+                    \settings -> { settings | anomalyNames = anomalyName :: settings.anomalyNames }
                 )
            )
          , ( "bot-step-delay"
-           , AppSettings.ValueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
+           , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
          ]
             |> Dict.fromList

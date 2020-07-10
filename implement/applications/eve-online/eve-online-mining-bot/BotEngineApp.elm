@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-07-09
+{- EVE Online mining bot version 2020-07-10
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
    It remembers the station in which it was last docked, and docks again at the same station.
 
@@ -91,25 +91,25 @@ parseBotSettings =
     AppSettings.parseSimpleCommaSeparatedList
         {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
         ([ ( "run-away-shield-hitpoints-threshold-percent"
-           , AppSettings.ValueTypeInteger (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
+           , AppSettings.valueTypeInteger (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
            )
          , ( "targeting-range"
-           , AppSettings.ValueTypeInteger (\range settings -> { settings | targetingRange = range })
+           , AppSettings.valueTypeInteger (\range settings -> { settings | targetingRange = range })
            )
          , ( "mining-module-range"
-           , AppSettings.ValueTypeInteger (\range settings -> { settings | miningModuleRange = range })
+           , AppSettings.valueTypeInteger (\range settings -> { settings | miningModuleRange = range })
            )
          , ( "last-docked-station-name-from-info-panel"
-           , AppSettings.ValueTypeString (\stationName -> \settings -> { settings | lastDockedStationNameFromInfoPanel = Just stationName })
+           , AppSettings.valueTypeString (\stationName -> \settings -> { settings | lastDockedStationNameFromInfoPanel = Just stationName })
            )
          , ( "ore-hold-max-percent"
-           , AppSettings.ValueTypeInteger (\percent settings -> { settings | oreHoldMaxPercent = percent })
+           , AppSettings.valueTypeInteger (\percent settings -> { settings | oreHoldMaxPercent = percent })
            )
          , ( "select-instance-pilot-name"
-           , AppSettings.ValueTypeString (\pilotName -> \settings -> { settings | selectInstancePilotName = Just pilotName })
+           , AppSettings.valueTypeString (\pilotName -> \settings -> { settings | selectInstancePilotName = Just pilotName })
            )
          , ( "bot-step-delay"
-           , AppSettings.ValueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
+           , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
          ]
             |> Dict.fromList

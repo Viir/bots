@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-07-06
+{- Tribal Wars 2 farmbot version 2020-07-10
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -68,11 +68,21 @@ parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
     AppSettings.parseSimpleCommaSeparatedList
         {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
-        ([ ( "number-of-farm-cycles", AppSettings.ValueTypeInteger (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles }) )
-         , ( "break-duration", AppSettings.ValueTypeCustom parseBotSettingBreakDurationMinutes )
-         , ( "farm-barb-min-points", AppSettings.ValueTypeInteger (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }) )
-         , ( "farm-barb-max-distance", AppSettings.ValueTypeInteger (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance }) )
-         , ( "farm-avoid-coordinates", AppSettings.ValueTypeCustom parseSettingFarmAvoidCoordinates )
+        ([ ( "number-of-farm-cycles"
+           , AppSettings.valueTypeInteger (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles })
+           )
+         , ( "break-duration"
+           , parseBotSettingBreakDurationMinutes
+           )
+         , ( "farm-barb-min-points"
+           , AppSettings.valueTypeInteger (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints })
+           )
+         , ( "farm-barb-max-distance"
+           , AppSettings.valueTypeInteger (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance })
+           )
+         , ( "farm-avoid-coordinates"
+           , parseSettingFarmAvoidCoordinates
+           )
          ]
             |> Dict.fromList
         )

@@ -229,13 +229,19 @@ dockAtRandomStationOrStructure readingFromGameClient =
         withTextContainingIgnoringCase textToSearch =
             List.filter (.text >> String.toLower >> (==) (textToSearch |> String.toLower)) >> List.head
 
+        menuEntryIsSuitable menuEntry =
+            [ "cyno beacon", "jump gate" ]
+                |> List.any (\toAvoid -> menuEntry.text |> String.toLower |> String.contains toAvoid)
+                |> not
+
         chooseNextMenuEntry =
             { describeChoice = "Use 'Dock' if available or a random entry."
             , chooseEntry =
                 pickEntryFromLastContextMenuInCascade
                     (\menuEntries ->
                         [ withTextContainingIgnoringCase "dock"
-                        , Common.Basics.listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient)
+                        , List.filter menuEntryIsSuitable
+                            >> Common.Basics.listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient)
                         ]
                             |> List.filterMap (\priority -> menuEntries |> priority)
                             |> List.head

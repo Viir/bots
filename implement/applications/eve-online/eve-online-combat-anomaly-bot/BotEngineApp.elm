@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-07-10
+{- EVE Online combat anomaly bot version 2020-07-11
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -46,6 +46,7 @@ import EveOnline.AppFramework
         , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
+        , UseContextMenuCascadeNode(..)
         , actWithoutFurtherReadings
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
@@ -53,11 +54,11 @@ import EveOnline.AppFramework
         , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
+        , pickEntryFromLastContextMenuInCascade
         , shipUIIndicatesShipIsWarpingOrJumping
         , useContextMenuCascade
         , useContextMenuCascadeOnListSurroundingsButton
         , useContextMenuCascadeOnOverviewEntry
-        , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
         , useMenuEntryWithTextContainingFirstOf
         , useMenuEntryWithTextEqual
@@ -211,41 +212,45 @@ retreatIfNeutralOrEnemyInLocalChat context =
                 Just
                     (describeBranch
                         "There is an enemy or neutral in local chat. Dock to station or structure."
-                        (dockToStationOrStructureUsingSurroundingsButtonMenu
-                            { prioritizeStructures = False
-                            , describeChoice = "First station or structure"
-                            , chooseEntry = List.head
-                            }
-                            context.readingFromGameClient
-                        )
+                        (dockAtRandomStationOrStructure context.readingFromGameClient)
                     )
 
             else
                 Nothing
 
 
-dockToStationOrStructureUsingSurroundingsButtonMenu :
-    { prioritizeStructures : Bool
-    , describeChoice : String
-    , chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry
-    }
-    -> ReadingFromGameClient
-    -> DecisionPathNode
-dockToStationOrStructureUsingSurroundingsButtonMenu { prioritizeStructures, describeChoice, chooseEntry } =
-    useContextMenuCascadeOnListSurroundingsButton
-        (useMenuEntryWithTextContainingFirstOf
-            ([ "stations", "structures" ]
-                |> (if prioritizeStructures then
-                        List.reverse
+{-| 2020-07-11 Discovery by Viktor:
+The entries for structures in the menu from the SurroundingsButton can be nested one level deeper than the ones for stations.
+In other words, not all structures appear directly under the "structures" entry.
+-}
+dockAtRandomStationOrStructure : ReadingFromGameClient -> DecisionPathNode
+dockAtRandomStationOrStructure readingFromGameClient =
+    let
+        withTextContainingIgnoringCase textToSearch =
+            List.filter (.text >> String.toLower >> (==) (textToSearch |> String.toLower)) >> List.head
 
-                    else
-                        identity
-                   )
-            )
-            (useMenuEntryInLastContextMenuInCascade { describeChoice = describeChoice, chooseEntry = chooseEntry }
-                (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+        chooseNextMenuEntry =
+            { describeChoice = "Use 'Dock' if available or a random entry."
+            , chooseEntry =
+                pickEntryFromLastContextMenuInCascade
+                    (\menuEntries ->
+                        [ withTextContainingIgnoringCase "dock"
+                        , Common.Basics.listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient)
+                        ]
+                            |> List.filterMap (\priority -> menuEntries |> priority)
+                            |> List.head
+                    )
+            }
+    in
+    useContextMenuCascadeOnListSurroundingsButton
+        (useMenuEntryWithTextContainingFirstOf [ "stations", "structures" ]
+            (MenuEntryWithCustomChoice chooseNextMenuEntry
+                (MenuEntryWithCustomChoice chooseNextMenuEntry
+                    (MenuEntryWithCustomChoice chooseNextMenuEntry MenuCascadeCompleted)
+                )
             )
         )
+        readingFromGameClient
 
 
 decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode

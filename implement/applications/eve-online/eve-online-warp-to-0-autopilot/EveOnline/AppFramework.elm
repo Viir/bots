@@ -1057,8 +1057,8 @@ useMenuEntryWithTextContainingFirstOf priorities =
                         (\textToSearch ->
                             menuEntries
                                 |> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
+                                |> List.sortBy (.text >> String.trim >> String.length)
                         )
-                    |> List.sortBy (.text >> String.trim >> String.length)
                     |> List.head
         }
 

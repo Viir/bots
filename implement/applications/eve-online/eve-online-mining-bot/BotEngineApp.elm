@@ -1,6 +1,6 @@
 {- EVE Online mining bot version 2020-07-11
-   The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
-   It remembers the station in which it was last docked, and docks again at the same station.
+   The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
+   If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
    Setup instructions for the EVE Online client:
    + Set the UI language to English.
@@ -12,6 +12,12 @@
      + Place modules that should always be active in the middle row.
      + Hide passive modules by disabling the check-box `Display Passive Modules`.
    + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
+
+   ## Configuration Settings
+   All settings are optional; you only need them in case the defaults don't fit your use-case.
+
+   + `unload-station-name` : Name of a station to dock to when the ore hold is full.
+   + `unload-structure-name` : Name of a structure to dock to when the ore hold is full.
 -}
 {-
    app-catalog-tags:eve-online,mining
@@ -78,10 +84,11 @@ import EveOnline.VolatileHostInterface as VolatileHostInterface
 defaultBotSettings : BotSettings
 defaultBotSettings =
     { runAwayShieldHitpointsThresholdPercent = 70
+    , unloadStationName = Nothing
+    , unloadStructureName = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 2000
-    , lastDockedStationNameFromInfoPanel = Nothing
     , oreHoldMaxPercent = 99
     , selectInstancePilotName = Nothing
     }
@@ -94,14 +101,17 @@ parseBotSettings =
         ([ ( "run-away-shield-hitpoints-threshold-percent"
            , AppSettings.valueTypeInteger (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
            )
+         , ( "unload-station-name"
+           , AppSettings.valueTypeString (\stationName -> \settings -> { settings | unloadStationName = Just stationName })
+           )
+         , ( "unload-structure-name"
+           , AppSettings.valueTypeString (\structureName -> \settings -> { settings | unloadStructureName = Just structureName })
+           )
          , ( "targeting-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | targetingRange = range })
            )
          , ( "mining-module-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | miningModuleRange = range })
-           )
-         , ( "last-docked-station-name-from-info-panel"
-           , AppSettings.valueTypeString (\stationName -> \settings -> { settings | lastDockedStationNameFromInfoPanel = Just stationName })
            )
          , ( "ore-hold-max-percent"
            , AppSettings.valueTypeInteger (\percent settings -> { settings | oreHoldMaxPercent = percent })
@@ -120,10 +130,11 @@ parseBotSettings =
 
 type alias BotSettings =
     { runAwayShieldHitpointsThresholdPercent : Int
+    , unloadStationName : Maybe String
+    , unloadStructureName : Maybe String
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
-    , lastDockedStationNameFromInfoPanel : Maybe String
     , oreHoldMaxPercent : Int
     , selectInstancePilotName : Maybe String
     }
@@ -280,16 +291,6 @@ dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
                         )
 
 
-lastDockedStationNameFromInfoPanelFromMemoryOrSettings : BotDecisionContext -> Maybe String
-lastDockedStationNameFromInfoPanelFromMemoryOrSettings context =
-    case context.memory.lastDockedStationNameFromInfoPanel of
-        Just stationName ->
-            Just stationName
-
-        Nothing ->
-            (context |> botSettingsFromDecisionContext).lastDockedStationNameFromInfoPanel
-
-
 inSpaceWithOreHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
 inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHoldSelected =
     if seeUndockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
@@ -325,16 +326,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                         if (context |> botSettingsFromDecisionContext).oreHoldMaxPercent <= fillPercent then
                             describeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
                                 (returnDronesToBay context.readingFromGameClient
-                                    |> Maybe.withDefault
-                                        (case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
-                                            Nothing ->
-                                                describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
-
-                                            Just lastDockedStationNameFromInfoPanel ->
-                                                dockToStationMatchingNameSeenInInfoPanel
-                                                    { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
-                                                    context.readingFromGameClient
-                                        )
+                                    |> Maybe.withDefault (dockToUnloadOre context)
                                 )
 
                         else
@@ -535,23 +527,38 @@ lockTargetFromOverviewEntry overviewEntry =
         )
 
 
-dockToStationMatchingNameSeenInInfoPanel : { stationNameFromInfoPanel : String } -> ReadingFromGameClient -> DecisionPathNode
-dockToStationMatchingNameSeenInInfoPanel { stationNameFromInfoPanel } =
-    dockToStationUsingSurroundingsButtonMenu
-        { describeChoice = "representing the station '" ++ stationNameFromInfoPanel ++ "'."
+dockToStationOrStructureMatchingNameSeenInInfoPanel :
+    { prioritizeStructures : Bool, stationNameFromInfoPanel : String }
+    -> ReadingFromGameClient
+    -> DecisionPathNode
+dockToStationOrStructureMatchingNameSeenInInfoPanel { prioritizeStructures, stationNameFromInfoPanel } =
+    dockToStationOrStructureUsingSurroundingsButtonMenu
+        { prioritizeStructures = prioritizeStructures
+        , describeChoice = "representing the station or structure '" ++ stationNameFromInfoPanel ++ "'."
         , chooseEntry =
             List.filter (menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel) >> List.head
         }
 
 
-dockToStationUsingSurroundingsButtonMenu :
-    { describeChoice : String, chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry }
+dockToStationOrStructureUsingSurroundingsButtonMenu :
+    { prioritizeStructures : Bool
+    , describeChoice : String
+    , chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry
+    }
     -> ReadingFromGameClient
     -> DecisionPathNode
-dockToStationUsingSurroundingsButtonMenu stationMenuEntryChoice =
+dockToStationOrStructureUsingSurroundingsButtonMenu { prioritizeStructures, describeChoice, chooseEntry } =
     useContextMenuCascadeOnListSurroundingsButton
-        (useMenuEntryWithTextContainingFirstOf [ "stations", "structures" ]
-            (useMenuEntryInLastContextMenuInCascade stationMenuEntryChoice
+        (useMenuEntryWithTextContainingFirstOf
+            ([ "stations", "structures" ]
+                |> (if prioritizeStructures then
+                        List.reverse
+
+                    else
+                        identity
+                   )
+            )
+            (useMenuEntryInLastContextMenuInCascade { describeChoice = describeChoice, chooseEntry = chooseEntry }
                 (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
             )
         )
@@ -572,20 +579,39 @@ warpToMiningSite readingFromGameClient =
 
 runAway : BotDecisionContext -> DecisionPathNode
 runAway context =
-    case context |> lastDockedStationNameFromInfoPanelFromMemoryOrSettings of
-        Nothing ->
-            dockToRandomStation context.readingFromGameClient
+    dockToRandomStationOrStructure context.readingFromGameClient
 
-        Just lastDockedStationNameFromInfoPanel ->
-            dockToStationMatchingNameSeenInInfoPanel
-                { stationNameFromInfoPanel = lastDockedStationNameFromInfoPanel }
+
+dockToUnloadOre : BotDecisionContext -> DecisionPathNode
+dockToUnloadOre context =
+    let
+        settings =
+            context |> botSettingsFromDecisionContext
+    in
+    case settings.unloadStationName of
+        Just unloadStationName ->
+            dockToStationOrStructureMatchingNameSeenInInfoPanel
+                { prioritizeStructures = False, stationNameFromInfoPanel = unloadStationName }
                 context.readingFromGameClient
 
+        Nothing ->
+            case settings.unloadStructureName of
+                Just unloadStructureName ->
+                    dockToStationOrStructureMatchingNameSeenInInfoPanel
+                        { prioritizeStructures = True, stationNameFromInfoPanel = unloadStructureName }
+                        context.readingFromGameClient
 
-dockToRandomStation : ReadingFromGameClient -> DecisionPathNode
-dockToRandomStation readingFromGameClient =
-    dockToStationUsingSurroundingsButtonMenu
-        { describeChoice = "Pick random station", chooseEntry = listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient) }
+                Nothing ->
+                    describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
+
+
+dockToRandomStationOrStructure : ReadingFromGameClient -> DecisionPathNode
+dockToRandomStationOrStructure readingFromGameClient =
+    dockToStationOrStructureUsingSurroundingsButtonMenu
+        { prioritizeStructures = False
+        , describeChoice = "Pick random station"
+        , chooseEntry = listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient)
+        }
         readingFromGameClient
 
 

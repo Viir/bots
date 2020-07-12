@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-07-11
+{- EVE Online mining bot version 2020-07-12 🧱
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -53,7 +53,6 @@ import EveOnline.AppFramework
         , ensureInfoPanelLocationInfoIsExpanded
         , getEntropyIntFromReadingFromGameClient
         , menuCascadeCompleted
-        , menuEntryMatchesStationNameFromLocationInfoPanel
         , shipUIIndicatesShipIsWarpingOrJumping
         , useContextMenuCascade
         , useContextMenuCascadeOnListSurroundingsButton
@@ -527,17 +526,38 @@ lockTargetFromOverviewEntry overviewEntry =
         )
 
 
-dockToStationOrStructureMatchingNameSeenInInfoPanel :
-    { prioritizeStructures : Bool, stationNameFromInfoPanel : String }
+dockToStationOrStructureWithMatchingName :
+    { prioritizeStructures : Bool, nameFromSettingOrInfoPanel : String }
     -> ReadingFromGameClient
     -> DecisionPathNode
-dockToStationOrStructureMatchingNameSeenInInfoPanel { prioritizeStructures, stationNameFromInfoPanel } =
+dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSettingOrInfoPanel } =
+    let
+        entryRepresentsMatchingStation =
+            .text
+                >> simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
+                >> String.startsWith (nameFromSettingOrInfoPanel |> simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry)
+    in
     dockToStationOrStructureUsingSurroundingsButtonMenu
         { prioritizeStructures = prioritizeStructures
-        , describeChoice = "representing the station or structure '" ++ stationNameFromInfoPanel ++ "'."
+        , describeChoice = "representing the station or structure '" ++ nameFromSettingOrInfoPanel ++ "'."
         , chooseEntry =
-            List.filter (menuEntryMatchesStationNameFromLocationInfoPanel stationNameFromInfoPanel) >> List.head
+            List.filter entryRepresentsMatchingStation >> List.head
         }
+
+
+{-| Prepare a station name or structure name coming from app-settings for comparing with menu entries.
+
+  - The user could take the name from the info panel:
+    The names sometimes differ between info panel and menu entries: 'Moon 7' can become 'M7'.
+
+  - Do not distinguish between the comma and period characters:
+    Besides the similar visual appearance, also because of the limitations of popular app-settings parsing frameworks.
+    The user can remove a comma or replace it with a full stop/period, whatever looks better.
+
+-}
+simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry : String -> String
+simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry =
+    String.toLower >> String.replace "moon " "m" >> String.replace "," "" >> String.replace "." "" >> String.trim
 
 
 dockToStationOrStructureUsingSurroundingsButtonMenu :
@@ -590,15 +610,15 @@ dockToUnloadOre context =
     in
     case settings.unloadStationName of
         Just unloadStationName ->
-            dockToStationOrStructureMatchingNameSeenInInfoPanel
-                { prioritizeStructures = False, stationNameFromInfoPanel = unloadStationName }
+            dockToStationOrStructureWithMatchingName
+                { prioritizeStructures = False, nameFromSettingOrInfoPanel = unloadStationName }
                 context.readingFromGameClient
 
         Nothing ->
             case settings.unloadStructureName of
                 Just unloadStructureName ->
-                    dockToStationOrStructureMatchingNameSeenInInfoPanel
-                        { prioritizeStructures = True, stationNameFromInfoPanel = unloadStructureName }
+                    dockToStationOrStructureWithMatchingName
+                        { prioritizeStructures = True, nameFromSettingOrInfoPanel = unloadStructureName }
                         context.readingFromGameClient
 
                 Nothing ->

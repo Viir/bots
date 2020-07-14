@@ -273,7 +273,7 @@ processEvent appConfiguration fromHostEvent stateBefore =
                     , InterfaceToHost.ContinueSession
                         { statusDescriptionText = "Succeeded parsing these app-settings."
                         , startTasks = []
-                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
+                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
                         }
                     )
 
@@ -311,7 +311,7 @@ processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
                 Just taskInProgress ->
                     ( stateBefore
                     , { statusDescriptionText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
-                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
+                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
                       , startTasks = []
                       }
                         |> InterfaceToHost.ContinueSession

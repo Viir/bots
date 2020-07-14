@@ -1,7 +1,8 @@
-{- EVE Online combat anomaly bot version 2020-07-11
+{- EVE Online combat anomaly bot version 2020-07-14
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
+
    + Set the UI language to English.
    + Undock, open probe scanner, overview window and drones window.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
@@ -12,6 +13,7 @@
    + Configure the keyboard key 'W' to make the ship orbit.
 
    ## Configuration Settings
+
    All settings are optional; you only need them in case the defaults don't fit your use-case.
 
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.

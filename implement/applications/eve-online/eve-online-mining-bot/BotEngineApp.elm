@@ -1,8 +1,9 @@
-{- EVE Online mining bot version 2020-07-12 🧱
+{- EVE Online mining bot version 2020-07-14
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
    Setup instructions for the EVE Online client:
+
    + Set the UI language to English.
    + In Overview window, make asteroids visible.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
@@ -14,6 +15,7 @@
    + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
 
    ## Configuration Settings
+
    All settings are optional; you only need them in case the defaults don't fit your use-case.
 
    + `unload-station-name` : Name of a station to dock to when the ore hold is full.

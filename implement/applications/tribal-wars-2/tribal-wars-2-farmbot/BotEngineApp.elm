@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-07-12
+{- Tribal Wars 2 farmbot version 2020-07-14
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -20,13 +20,14 @@
    ## Configuration Settings
 
    All settings are optional; you only need them in case the defaults don't fit your use-case.
-   You can adjust five settings:
+   You can adjust six settings:
 
-   + 'number-of-farm-cycles' : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
-   + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
-   + 'farm-barb-min-points': Minimum points of barbarian villages to attack.
-   + 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
-   + 'farm-avoid-coordinates': List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
+   + `number-of-farm-cycles` : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
+   + `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
+   + `farm-barb-min-points`: Minimum points of barbarian villages to attack.
+   + `farm-barb-max-distance`: Maximum distance of barbarian villages to attack.
+   + `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
+   + `character-to-farm`: Name of a (player) character to farm like barbarians.
 
    Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
    --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
@@ -69,6 +70,7 @@ defaultBotSettings =
     , farmBarbarianVillageMinimumPoints = Nothing
     , farmBarbarianVillageMaximumDistance = 50
     , farmAvoidCoordinates = []
+    , charactersToFarm = []
     }
 
 
@@ -90,6 +92,13 @@ parseBotSettings =
            )
          , ( "farm-avoid-coordinates"
            , parseSettingFarmAvoidCoordinates
+           )
+         , ( "character-to-farm"
+           , AppSettings.valueTypeString
+                (\characterName ->
+                    \settings ->
+                        { settings | charactersToFarm = characterName :: settings.charactersToFarm }
+                )
            )
          ]
             |> Dict.fromList
@@ -179,6 +188,7 @@ type alias BotSettings =
     , farmBarbarianVillageMinimumPoints : Maybe Int
     , farmBarbarianVillageMaximumDistance : Int
     , farmAvoidCoordinates : List VillageCoordinates
+    , charactersToFarm : List String
     }
 
 
@@ -301,6 +311,7 @@ type alias VillageByCoordinatesDetails =
     { villageId : Int
     , affiliation : VillageByCoordinatesAffiliation
     , points : Maybe Int
+    , characterName : Maybe String
     }
 
 
@@ -1351,7 +1362,20 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
 
 villageMatchesSettingsForFarm : BotSettings -> VillageCoordinates -> VillageByCoordinatesDetails -> Bool
 villageMatchesSettingsForFarm settings villageCoordinates village =
-    (village.affiliation == AffiliationBarbarian)
+    let
+        ownedByCharacterToFarm =
+            case village.characterName of
+                Nothing ->
+                    False
+
+                Just characterName ->
+                    if characterName == "" then
+                        False
+
+                    else
+                        settings.charactersToFarm |> List.member characterName
+    in
+    ((village.affiliation == AffiliationBarbarian) || ownedByCharacterToFarm)
         && (settings.farmBarbarianVillageMinimumPoints
                 |> Maybe.map
                     (\farmBarbarianVillageMinimumPoints ->
@@ -1715,7 +1739,7 @@ decodeVillageByCoordinatesResult =
 -}
 decodeVillageByCoordinatesDetails : Json.Decode.Decoder VillageByCoordinatesDetails
 decodeVillageByCoordinatesDetails =
-    Json.Decode.map3 VillageByCoordinatesDetails
+    Json.Decode.map4 VillageByCoordinatesDetails
         (Json.Decode.field "id" Json.Decode.int)
         (Json.Decode.field "affiliation" Json.Decode.string
             |> Json.Decode.map
@@ -1729,6 +1753,7 @@ decodeVillageByCoordinatesDetails =
                 )
         )
         (Json.Decode.maybe (Json.Decode.field "points" Json.Decode.int))
+        (Json.Decode.maybe (Json.Decode.field "character_name" Json.Decode.string))
 
 
 getPresetsScript : String
@@ -1988,7 +2013,7 @@ statusMessageFromState state { activityDecisionStages } =
                         ++ (villagesByCoordinates |> Dict.size |> String.fromInt)
                         ++ " villages, "
                         ++ (barbarianVillages |> Dict.size |> String.fromInt)
-                        ++ " of wich are barbarian villages"
+                        ++ " of which are barbarian villages"
                         ++ (if numberOfVillagesAvoidedBySettings < 1 then
                                 ""
 

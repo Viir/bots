@@ -36,6 +36,7 @@ type alias ParsedUserInterface =
 type alias UITreeNodeWithDisplayRegion =
     { uiNode : EveOnline.MemoryReading.UITreeNode
     , children : Maybe (List ChildOfNodeWithDisplayRegion)
+    , selfDisplayRegion : DisplayRegion
     , totalDisplayRegion : DisplayRegion
     }
 
@@ -195,6 +196,7 @@ type alias OverviewWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , entriesHeaders : List ( String, UITreeNodeWithDisplayRegion )
     , entries : List OverviewWindowEntry
+    , scrollControls : Maybe ScrollControls
     }
 
 
@@ -310,6 +312,7 @@ type alias InventoryWindow =
 type alias Inventory =
     { uiNode : UITreeNodeWithDisplayRegion
     , itemsView : Maybe InventoryItemsView
+    , scrollControls : Maybe ScrollControls
     }
 
 
@@ -346,7 +349,14 @@ type alias ChatWindowStack =
 type alias ChatWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , name : Maybe String
+    , userlist : Maybe ChatWindowUserlist
+    }
+
+
+type alias ChatWindowUserlist =
+    { uiNode : UITreeNodeWithDisplayRegion
     , visibleUsers : List ChatUserEntry
+    , scrollControls : Maybe ScrollControls
     }
 
 
@@ -395,6 +405,12 @@ type alias MessageBox =
     }
 
 
+type alias ScrollControls =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , scrollHandle : Maybe UITreeNodeWithDisplayRegion
+    }
+
+
 type MaybeVisible feature
     = CanNotSeeIt
     | CanSee feature
@@ -402,7 +418,15 @@ type MaybeVisible feature
 
 parseUITreeWithDisplayRegionFromUITree : EveOnline.MemoryReading.UITreeNode -> UITreeNodeWithDisplayRegion
 parseUITreeWithDisplayRegionFromUITree uiTree =
-    uiTree |> asUITreeNodeWithTotalDisplayRegion (uiTree |> getDisplayRegionFromDictEntries |> Maybe.withDefault { x = 0, y = 0, width = 0, height = 0 })
+    let
+        selfDisplayRegion =
+            uiTree |> getDisplayRegionFromDictEntries |> Maybe.withDefault { x = 0, y = 0, width = 0, height = 0 }
+    in
+    uiTree
+        |> asUITreeNodeWithDisplayRegion
+            { selfDisplayRegion = selfDisplayRegion
+            , totalDisplayRegion = selfDisplayRegion
+            }
 
 
 parseUserInterfaceFromUITree : UITreeNodeWithDisplayRegion -> ParsedUserInterface
@@ -430,10 +454,11 @@ parseUserInterfaceFromUITree uiTree =
     }
 
 
-asUITreeNodeWithTotalDisplayRegion : DisplayRegion -> EveOnline.MemoryReading.UITreeNode -> UITreeNodeWithDisplayRegion
-asUITreeNodeWithTotalDisplayRegion totalDisplayRegion uiNode =
+asUITreeNodeWithDisplayRegion : { selfDisplayRegion : DisplayRegion, totalDisplayRegion : DisplayRegion } -> EveOnline.MemoryReading.UITreeNode -> UITreeNodeWithDisplayRegion
+asUITreeNodeWithDisplayRegion { selfDisplayRegion, totalDisplayRegion } uiNode =
     { uiNode = uiNode
     , children = uiNode.children |> Maybe.map (List.map (EveOnline.MemoryReading.unwrapUITreeNodeChild >> asUITreeNodeWithInheritedOffset { x = totalDisplayRegion.x, y = totalDisplayRegion.y }))
+    , selfDisplayRegion = selfDisplayRegion
     , totalDisplayRegion = totalDisplayRegion
     }
 
@@ -446,8 +471,11 @@ asUITreeNodeWithInheritedOffset inheritedOffset rawNode =
 
         Just selfRegion ->
             ChildWithRegion
-                (asUITreeNodeWithTotalDisplayRegion
-                    { selfRegion | x = inheritedOffset.x + selfRegion.x, y = inheritedOffset.y + selfRegion.y }
+                (asUITreeNodeWithDisplayRegion
+                    { selfDisplayRegion = selfRegion
+                    , totalDisplayRegion =
+                        { selfRegion | x = inheritedOffset.x + selfRegion.x, y = inheritedOffset.y + selfRegion.y }
+                    }
                     rawNode
                 )
 
@@ -1007,6 +1035,13 @@ parseOverviewWindowFromUITreeRoot uiTreeRoot =
                         |> List.filter (.uiNode >> .pythonObjectTypeName >> String.toLower >> String.contains "scroll")
                         |> List.head
 
+                scrollControlsNode =
+                    scrollNode
+                        |> Maybe.map listDescendantsWithDisplayRegion
+                        |> Maybe.withDefault []
+                        |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "ScrollControls")
+                        |> List.head
+
                 headersContainerNode =
                     scrollNode
                         |> Maybe.map listDescendantsWithDisplayRegion
@@ -1025,7 +1060,12 @@ parseOverviewWindowFromUITreeRoot uiTreeRoot =
                         |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "OverviewScrollEntry")
                         |> List.map (parseOverviewWindowEntry entriesHeaders)
             in
-            CanSee { uiNode = overviewWindowNode, entriesHeaders = entriesHeaders, entries = entries }
+            CanSee
+                { uiNode = overviewWindowNode
+                , entriesHeaders = entriesHeaders
+                , entries = entries
+                , scrollControls = scrollControlsNode |> Maybe.map parseScrollControls
+                }
 
 
 parseOverviewWindowEntry : List ( String, UITreeNodeWithDisplayRegion ) -> UITreeNodeWithDisplayRegion -> OverviewWindowEntry
@@ -1529,6 +1569,12 @@ parseInventoryWindow windowUiNode =
                                     |> listDescendantsWithDisplayRegion
                                     |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Item")
 
+                            scrollControlsNode =
+                                selectedContainerInventoryNode
+                                    |> listDescendantsWithDisplayRegion
+                                    |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "ScrollControls")
+                                    |> List.head
+
                             notListViewItemNodes =
                                 selectedContainerInventoryNode
                                     |> listDescendantsWithDisplayRegion
@@ -1546,6 +1592,7 @@ parseInventoryWindow windowUiNode =
                         in
                         { uiNode = selectedContainerInventoryNode
                         , itemsView = itemsView
+                        , scrollControls = scrollControlsNode |> Maybe.map parseScrollControls
                         }
                     )
 
@@ -1827,16 +1874,35 @@ parseChatWindowStack chatWindowStackUiNode =
 parseChatWindow : UITreeNodeWithDisplayRegion -> ChatWindow
 parseChatWindow chatWindowUiNode =
     let
-        visibleUsers =
+        userlistNode =
             chatWindowUiNode
                 |> listDescendantsWithDisplayRegion
-                |> List.filter (\uiNode -> [ "XmppChatSimpleUserEntry", "XmppChatUserEntry" ] |> List.member uiNode.uiNode.pythonObjectTypeName)
-                |> List.map parseChatUserEntry
+                |> List.filter (.uiNode >> getNameFromDictEntries >> Maybe.map (String.toLower >> String.contains "userlist") >> Maybe.withDefault False)
+                |> List.head
     in
     { uiNode = chatWindowUiNode
     , name = getNameFromDictEntries chatWindowUiNode.uiNode
-    , visibleUsers = visibleUsers
+    , userlist = userlistNode |> Maybe.map parseChatWindowUserlist
     }
+
+
+parseChatWindowUserlist : UITreeNodeWithDisplayRegion -> ChatWindowUserlist
+parseChatWindowUserlist userlistNode =
+    let
+        visibleUsers =
+            userlistNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (\uiNode -> [ "XmppChatSimpleUserEntry", "XmppChatUserEntry" ] |> List.member uiNode.uiNode.pythonObjectTypeName)
+                |> List.map parseChatUserEntry
+
+        scrollControls =
+            userlistNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "ScrollControls")
+                |> List.head
+                |> Maybe.map parseScrollControls
+    in
+    { uiNode = userlistNode, visibleUsers = visibleUsers, scrollControls = scrollControls }
 
 
 parseChatUserEntry : UITreeNodeWithDisplayRegion -> ChatUserEntry
@@ -2053,6 +2119,20 @@ parseMessageBox uiNode =
     in
     { buttons = buttons
     , uiNode = uiNode
+    }
+
+
+parseScrollControls : UITreeNodeWithDisplayRegion -> ScrollControls
+parseScrollControls scrollControlsNode =
+    let
+        scrollHandle =
+            scrollControlsNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "ScrollHandle")
+                |> List.head
+    in
+    { uiNode = scrollControlsNode
+    , scrollHandle = scrollHandle
     }
 
 

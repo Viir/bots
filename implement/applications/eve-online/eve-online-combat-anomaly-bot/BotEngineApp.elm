@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-07-14
+{- EVE Online combat anomaly bot version 2020-07-15
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -207,7 +207,9 @@ retreatIfNeutralOrEnemyInLocalChat context =
                             )
 
                 subsetOfUsersWithNoGoodStanding =
-                    localChatWindow.visibleUsers
+                    localChatWindow.userlist
+                        |> Maybe.map .visibleUsers
+                        |> Maybe.withDefault []
                         |> List.filter (chatUserHasGoodStanding >> not)
             in
             if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then

@@ -428,10 +428,10 @@ warpToOverviewEntryIfFarEnough context destinationOverviewEntry =
                         (returnDronesToBay context.readingFromGameClient
                             |> Maybe.withDefault
                                 (useContextMenuCascadeOnOverviewEntry
-                                    destinationOverviewEntry
                                     (useMenuEntryWithTextContaining "Warp to Within"
                                         (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
                                     )
+                                    destinationOverviewEntry
                                 )
                         )
                     )
@@ -512,8 +512,8 @@ lockTargetFromOverviewEntryAndEnsureIsInRange readingFromGameClient rangeInMeter
 
                      else
                         useContextMenuCascadeOnOverviewEntry
-                            overviewEntry
                             (useMenuEntryWithTextContaining "approach" menuCascadeCompleted)
+                            overviewEntry
                     )
 
         Err error ->
@@ -523,8 +523,9 @@ lockTargetFromOverviewEntryAndEnsureIsInRange readingFromGameClient rangeInMeter
 lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
 lockTargetFromOverviewEntry overviewEntry =
     describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
-        (useContextMenuCascadeOnOverviewEntry overviewEntry
+        (useContextMenuCascadeOnOverviewEntry
             (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
+            overviewEntry
         )
 
 
@@ -532,19 +533,86 @@ dockToStationOrStructureWithMatchingName :
     { prioritizeStructures : Bool, nameFromSettingOrInfoPanel : String }
     -> ReadingFromGameClient
     -> DecisionPathNode
-dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSettingOrInfoPanel } =
+dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSettingOrInfoPanel } readingFromGameClient =
     let
-        entryRepresentsMatchingStation =
-            .text
-                >> simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
+        displayTextRepresentsMatchingStation =
+            simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
                 >> String.startsWith (nameFromSettingOrInfoPanel |> simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry)
+
+        matchingOverviewEntry =
+            readingFromGameClient.overviewWindow
+                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.map .entries
+                |> Maybe.withDefault []
+                |> List.filter (.objectName >> Maybe.map displayTextRepresentsMatchingStation >> Maybe.withDefault False)
+                |> List.head
+
+        overviewWindowScrollControls =
+            readingFromGameClient.overviewWindow
+                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.andThen .scrollControls
     in
-    dockToStationOrStructureUsingSurroundingsButtonMenu
-        { prioritizeStructures = prioritizeStructures
-        , describeChoice = "representing the station or structure '" ++ nameFromSettingOrInfoPanel ++ "'."
-        , chooseEntry =
-            List.filter entryRepresentsMatchingStation >> List.head
-        }
+    matchingOverviewEntry
+        |> Maybe.map
+            (EveOnline.AppFramework.useContextMenuCascadeOnOverviewEntry
+                (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+            )
+        |> Maybe.withDefault
+            (overviewWindowScrollControls
+                |> Maybe.andThen scrollDown
+                |> Maybe.withDefault
+                    (describeBranch "I do not see the station in the overview window. I use the menu from the surroundings button."
+                        (dockToStationOrStructureUsingSurroundingsButtonMenu
+                            { prioritizeStructures = prioritizeStructures
+                            , describeChoice = "representing the station or structure '" ++ nameFromSettingOrInfoPanel ++ "'."
+                            , chooseEntry =
+                                List.filter (.text >> displayTextRepresentsMatchingStation) >> List.head
+                            }
+                            readingFromGameClient
+                        )
+                    )
+            )
+
+
+scrollDown : EveOnline.ParseUserInterface.ScrollControls -> Maybe DecisionPathNode
+scrollDown scrollControls =
+    case scrollControls.scrollHandle of
+        Nothing ->
+            Nothing
+
+        Just scrollHandle ->
+            let
+                scrollControlsTotalDisplayRegion =
+                    scrollControls.uiNode.totalDisplayRegion
+
+                scrollControlsBottom =
+                    scrollControlsTotalDisplayRegion.y + scrollControlsTotalDisplayRegion.height
+
+                freeHeightAtBottom =
+                    scrollControlsBottom
+                        - (scrollHandle.totalDisplayRegion.y + scrollHandle.totalDisplayRegion.height)
+
+                endKey =
+                    Common.EffectOnWindow.VirtualKeyCodeFromInt 0x23
+            in
+            if 10 < freeHeightAtBottom then
+                Just
+                    (endDecisionPath
+                        (actWithoutFurtherReadings
+                            ( "Click at scroll control bottom"
+                            , [ VolatileHostInterface.effectMouseClickAtLocation Common.EffectOnWindow.MouseButtonLeft
+                                    { x = scrollControlsTotalDisplayRegion.x + 3
+                                    , y = scrollControlsBottom - 8
+                                    }
+                              , VolatileHostInterface.KeyDown endKey
+                              , VolatileHostInterface.KeyUp endKey
+                              ]
+                            )
+                        )
+                    )
+
+            else
+                Nothing
 
 
 {-| Prepare a station name or structure name coming from app-settings for comparing with menu entries.

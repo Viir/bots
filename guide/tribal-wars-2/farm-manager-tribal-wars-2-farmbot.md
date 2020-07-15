@@ -95,15 +95,16 @@ When all your villages are out of units or at the attack limit, the bot stops wi
 ## Configuration Settings
 
 All settings are optional; you only need them in case the defaults don't fit your use-case.
-You can adjust five settings:
+You can adjust six settings:
 
-+ 'number-of-farm-cycles' : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
-+ 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
-+ 'farm-barb-min-points': Minimum points of barbarian villages to attack.
-+ 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
-+ 'farm-avoid-coordinates': List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
++ `number-of-farm-cycles` : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
++ `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
++ `farm-barb-min-points` : Minimum points of barbarian villages to attack.
++ `farm-barb-max-distance` : Maximum distance of barbarian villages to attack.
++ `farm-avoid-coordinates` : List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
++ `character-to-farm` : Name of a (player) character to farm like barbarians.
 
-To configure settings, open the configuration page at https://catalog.botengine.org/5a177043492f14a0a73d589a304aab414fa59493ddb5936d373011a9601c1c61 in a web browser.
+To configure settings, open the configuration page at https://catalog.botengine.org/6672a6df4f510d0ea63f05e63e149277115ccaf847f75c7d748f33779a294f02 in a web browser.
 
 On this page, scroll down to the button `Configure app`.
 
@@ -141,12 +142,21 @@ For more about purchasing and using credits, see the guide at [https://forum.bot
 
 ### How can I make the bot remember the locations of the barbarian villages?
 
-To make it remember the farm locations, configure more farm cycles. The bot remembers all those coordinates within the same session, so it can reuse this knowledge, starting with the second farm cycle. It sends only one attack per target per farm cycle, so the remembering does not affect the first farm cycle. If you don't use any configuration, the bot only performs one farm cycle and then stops.
+To make it remember the farm locations, configure the number of farm cycles to be at least two. The bot automatically remembers all locations of barbarian villages within the same session, so it can reuse this knowledge, starting with the second farm cycle. It sends only one attack per target per farm cycle, so the remembering does not affect the first farm cycle. If you don't use any configuration, the bot only performs one farm cycle and then stops.
 
 ### How much time does this bot need to send all attacks on my account?
 
 Sending one attack takes less than four seconds. The bot can cover 800 farms per hour. The first farm cycle per session is a special case: For the first cycle, it needs additional time to find the farm villages. The game limits us to 50 concurrent attacks per village, and the bot switches to the next village when the currently selected village hits that limit. One farm cycle is complete when all your villages are at the limit, either because of the attack limit or because no matching units are remaining.
 
+### How can I farm (multiple) inactive players?
+
+To select multiple player characters for farming, use the `character-to-farm` setting name multiple times. Here is an example of a complete app-settings string with multiple `character-to-farm`:
+
+```text
+number-of-farm-cycles = 36, break-duration = 30 - 60, character-to-farm = player character one, character-to-farm = player character two, character-to-farm = player character three
+```
+
+There is no limit to the number of characters here, you can add as many `character-to-farm` as you want.
 
 ## Getting Help
 

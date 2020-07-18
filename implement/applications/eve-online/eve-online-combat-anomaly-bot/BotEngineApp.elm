@@ -178,7 +178,7 @@ anomalyBotDecisionRoot context =
         { ifDocked =
             continueIfShouldHide
                 { ifShouldHide =
-                    describeBranch "Stay docked." (endDecisionPath Wait)
+                    describeBranch "Stay docked." waitForProgressInGame
                 }
                 context
                 |> Maybe.withDefault (undockUsingStationWindow context)
@@ -299,17 +299,27 @@ decideNextActionWhenInSpace context seeUndockingComplete =
 
 undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
 undockUsingStationWindow context =
-    case context.readingFromGameClient.stationWindow |> maybeNothingFromCanNotSeeIt |> Maybe.andThen .undockButton of
-        Nothing ->
-            describeBranch "I do not see the undock button." askForHelpToGetUnstuck
+    case context.readingFromGameClient.stationWindow of
+        CanNotSeeIt ->
+            describeBranch "I do not see the station window." askForHelpToGetUnstuck
 
-        Just undockButton ->
-            endDecisionPath
-                (actWithoutFurtherReadings
-                    ( "Click on the undock button."
-                    , [ clickOnUIElement MouseButtonLeft undockButton ]
-                    )
-                )
+        CanSee stationWindow ->
+            case stationWindow.undockButton of
+                Nothing ->
+                    case stationWindow.abortUndockButton of
+                        Nothing ->
+                            describeBranch "I do not see the undock button." askForHelpToGetUnstuck
+
+                        Just _ ->
+                            describeBranch "I see we are already undocking." waitForProgressInGame
+
+                Just undockButton ->
+                    endDecisionPath
+                        (actWithoutFurtherReadings
+                            ( "Click on the button to undock."
+                            , [ clickOnUIElement MouseButtonLeft undockButton ]
+                            )
+                        )
 
 
 combat : BotDecisionContext -> SeeUndockingComplete -> (BotDecisionContext -> DecisionPathNode) -> DecisionPathNode

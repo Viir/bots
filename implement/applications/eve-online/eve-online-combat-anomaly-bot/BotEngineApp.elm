@@ -175,52 +175,60 @@ probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
 anomalyBotDecisionRoot : BotDecisionContext -> DecisionPathNode
 anomalyBotDecisionRoot context =
     branchDependingOnDockedOrInSpace
-        { ifDocked = askForHelpToGetUnstuck
+        { ifDocked =
+            continueIfShouldHide
+                { ifShouldHide =
+                    describeBranch "Stay docked." (endDecisionPath Wait)
+                }
+                context
+                |> Maybe.withDefault (undockUsingStationWindow context)
         , ifSeeShipUI =
             always
-                (if (context |> botSettingsFromDecisionContext).hideWhenNeutralInLocal == AppSettings.Yes then
-                    retreatIfNeutralOrEnemyInLocalChat context
-
-                 else
-                    Nothing
+                (continueIfShouldHide
+                    { ifShouldHide =
+                        describeBranch
+                            "Dock to station or structure."
+                            (dockAtRandomStationOrStructure context.readingFromGameClient)
+                    }
+                    context
                 )
         , ifUndockingComplete = decideNextActionWhenInSpace context
         }
         context.readingFromGameClient
 
 
-retreatIfNeutralOrEnemyInLocalChat : BotDecisionContext -> Maybe DecisionPathNode
-retreatIfNeutralOrEnemyInLocalChat context =
-    case context.readingFromGameClient |> localChatWindowFromUserInterface of
-        CanNotSeeIt ->
-            Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
+continueIfShouldHide : { ifShouldHide : DecisionPathNode } -> BotDecisionContext -> Maybe DecisionPathNode
+continueIfShouldHide config context =
+    if (context |> botSettingsFromDecisionContext).hideWhenNeutralInLocal /= AppSettings.Yes then
+        Nothing
 
-        CanSee localChatWindow ->
-            let
-                chatUserHasGoodStanding chatUser =
-                    goodStandingPatterns
-                        |> List.any
-                            (\goodStandingPattern ->
-                                chatUser.standingIconHint
-                                    |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
-                                    |> Maybe.withDefault False
-                            )
+    else
+        case context.readingFromGameClient |> localChatWindowFromUserInterface of
+            CanNotSeeIt ->
+                Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
 
-                subsetOfUsersWithNoGoodStanding =
-                    localChatWindow.userlist
-                        |> Maybe.map .visibleUsers
-                        |> Maybe.withDefault []
-                        |> List.filter (chatUserHasGoodStanding >> not)
-            in
-            if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
-                Just
-                    (describeBranch
-                        "There is an enemy or neutral in local chat. Dock to station or structure."
-                        (dockAtRandomStationOrStructure context.readingFromGameClient)
-                    )
+            CanSee localChatWindow ->
+                let
+                    chatUserHasGoodStanding chatUser =
+                        goodStandingPatterns
+                            |> List.any
+                                (\goodStandingPattern ->
+                                    chatUser.standingIconHint
+                                        |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
+                                        |> Maybe.withDefault False
+                                )
 
-            else
-                Nothing
+                    subsetOfUsersWithNoGoodStanding =
+                        localChatWindow.userlist
+                            |> Maybe.map .visibleUsers
+                            |> Maybe.withDefault []
+                            |> List.filter (chatUserHasGoodStanding >> not)
+                in
+                if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                    Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+
+                else
+                    Nothing
 
 
 {-| 2020-07-11 Discovery by Viktor:
@@ -287,6 +295,21 @@ decideNextActionWhenInSpace context seeUndockingComplete =
 
             Nothing ->
                 combat context seeUndockingComplete enterAnomaly
+
+
+undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
+undockUsingStationWindow context =
+    case context.readingFromGameClient.stationWindow |> maybeNothingFromCanNotSeeIt |> Maybe.andThen .undockButton of
+        Nothing ->
+            describeBranch "I do not see the undock button." askForHelpToGetUnstuck
+
+        Just undockButton ->
+            endDecisionPath
+                (actWithoutFurtherReadings
+                    ( "Click on the undock button."
+                    , [ clickOnUIElement MouseButtonLeft undockButton ]
+                    )
+                )
 
 
 combat : BotDecisionContext -> SeeUndockingComplete -> (BotDecisionContext -> DecisionPathNode) -> DecisionPathNode

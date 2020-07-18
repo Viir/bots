@@ -265,7 +265,8 @@ processEvent appConfiguration fromHostEvent stateBefore =
             case appConfiguration.parseAppSettings appSettings of
                 Err parseSettingsError ->
                     ( stateBefore
-                    , InterfaceToHost.FinishSession { statusDescriptionText = "Failed to parse these app-settings: " ++ parseSettingsError }
+                    , InterfaceToHost.FinishSession
+                        { statusDescriptionText = "Failed to parse these app-settings: " ++ parseSettingsError }
                     )
 
                 Ok parsedAppSettings ->
@@ -273,7 +274,7 @@ processEvent appConfiguration fromHostEvent stateBefore =
                     , InterfaceToHost.ContinueSession
                         { statusDescriptionText = "Succeeded parsing these app-settings."
                         , startTasks = []
-                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
+                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = 0 }
                         }
                     )
 
@@ -311,7 +312,7 @@ processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
                 Just taskInProgress ->
                     ( stateBefore
                     , { statusDescriptionText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
-                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
+                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
                       , startTasks = []
                       }
                         |> InterfaceToHost.ContinueSession
@@ -320,11 +321,22 @@ processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
         statusMessagePrefix =
             (state |> statusReportFromState) ++ "\nCurrent activity: "
 
+        notifyWhenArrivedAtTimeUpperBound =
+            stateBefore.timeInMilliseconds + 2000
+
         response =
             case responseBeforeAddingStatusMessage of
                 InterfaceToHost.ContinueSession continueSession ->
                     { continueSession
                         | statusDescriptionText = statusMessagePrefix ++ continueSession.statusDescriptionText
+                        , notifyWhenArrivedAtTime =
+                            Just
+                                { timeInMilliseconds =
+                                    continueSession.notifyWhenArrivedAtTime
+                                        |> Maybe.map .timeInMilliseconds
+                                        |> Maybe.withDefault notifyWhenArrivedAtTimeUpperBound
+                                        |> min notifyWhenArrivedAtTimeUpperBound
+                                }
                     }
                         |> InterfaceToHost.ContinueSession
 
@@ -364,7 +376,7 @@ processEventNotWaitingForTaskCompletion appConfiguration maybeAppEvent stateBefo
               }
             , { startTasks = [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = setupTask } ]
               , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
-              , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
+              , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
               }
                 |> InterfaceToHost.ContinueSession
             )
@@ -403,7 +415,7 @@ processEventNotWaitingForTaskCompletion appConfiguration maybeAppEvent stateBefo
                           }
                         ]
                   , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
-                  , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
+                  , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
                   }
                     |> InterfaceToHost.ContinueSession
                 )
@@ -457,10 +469,10 @@ processEventNotWaitingForTaskCompletion appConfiguration maybeAppEvent stateBefo
                     appState =
                         { appStateBeforeProcessEffects | effectQueue = appEffectQueue }
 
-                    timeForNextMemoryReadingGeneral =
+                    timeForNextReadingFromGameGeneral =
                         (stateBefore.setup.lastMemoryReading |> Maybe.map .timeInMilliseconds |> Maybe.withDefault 0) + 10000
 
-                    timeForNextMemoryReadingFromApp =
+                    timeForNextReadingFromGameFromApp =
                         appState.lastEvent
                             |> Maybe.andThen
                                 (\appLastEvent ->
@@ -473,11 +485,14 @@ processEventNotWaitingForTaskCompletion appConfiguration maybeAppEvent stateBefo
                                 )
                             |> Maybe.withDefault 0
 
-                    timeForNextMemoryReading =
-                        min timeForNextMemoryReadingGeneral timeForNextMemoryReadingFromApp
+                    timeForNextReadingFromGame =
+                        min timeForNextReadingFromGameGeneral timeForNextReadingFromGameFromApp
+
+                    remainingTimeToNextReadingFromGame =
+                        timeForNextReadingFromGame - stateBefore.timeInMilliseconds
 
                     memoryReadingTasks =
-                        if timeForNextMemoryReading < stateBefore.timeInMilliseconds then
+                        if remainingTimeToNextReadingFromGame <= 0 then
                             [ operateApp.getMemoryReadingTask ]
 
                         else
@@ -534,7 +549,12 @@ processEventNotWaitingForTaskCompletion appConfiguration maybeAppEvent stateBefo
                     ( state
                     , { startTasks = startTasks
                       , statusDescriptionText = "Operate app."
-                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
+                      , notifyWhenArrivedAtTime =
+                            if taskInProgress == Nothing then
+                                Just { timeInMilliseconds = timeForNextReadingFromGame }
+
+                            else
+                                Nothing
                       }
                         |> InterfaceToHost.ContinueSession
                     )

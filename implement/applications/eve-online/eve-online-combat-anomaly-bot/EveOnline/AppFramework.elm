@@ -932,10 +932,10 @@ statusReportFromState state =
 
 
 useContextMenuCascadeOnOverviewEntry :
-    EveOnline.ParseUserInterface.OverviewWindowEntry
-    -> UseContextMenuCascadeNode
+    UseContextMenuCascadeNode
+    -> EveOnline.ParseUserInterface.OverviewWindowEntry
     -> DecisionPathNode
-useContextMenuCascadeOnOverviewEntry overviewEntry useContextMenu =
+useContextMenuCascadeOnOverviewEntry useContextMenu overviewEntry =
     useContextMenuCascade
         ( "overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'", overviewEntry.uiNode )
         useContextMenu

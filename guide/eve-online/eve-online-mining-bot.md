@@ -9,8 +9,8 @@ Before going into the setup, a quick overview of this bot and what it does:
 + When the ore hold is not full, warps to an asteroid belt.
 + Uses drones to defend against rats if available.
 + Mines from asteroids.
-+ When the ore hold is full, warps and docks to a station to unload the ore into the item hangar. (It remembers the station in which it was last docked, and docks again at the same station.)
-+ Runs away if shield hitpoints drop too low (The default threshold is 50%).
++ When the ore hold is full, warps and docks to a station or structure to unload the ore into the item hangar. (It remembers the station in which it was last docked, and docks again at the same station.)
++ Runs away if shield hitpoints drop too low (The default threshold is 70%).
 + Displays statistics such as the total volume of unloaded ore, so that you can easily track performance.
 + Closes message boxes that could pop up sometimes during gameplay.
 
@@ -30,7 +30,7 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from https://catalog.botengine.org/d45cb70ce5de7bd30fdf8775a6f9c31c3abdc3ce11041ce1c44b01d4c1da259f and then run it.
+To start the mining bot, download the script from https://catalog.botengine.org/4928a8dcf815dea288e2b5300edd1e817f9490247be982b589c10129dc350b7a and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 
@@ -50,6 +50,15 @@ The bot repeats the cycle of mining and unloading until you tell it to pause (`S
 To give an overview of the performance of the bot, it displays statistics like this:
 
 > Session performance: times unloaded: 13, volume unloaded / m³: 351706
+
+## Configuration Settings
+
+All settings are optional; you only need them in case the defaults don't fit your use-case.
+
++ `unload-station-name` : Name of a station to dock to when the ore hold is full.
++ `unload-structure-name` : Name of a structure to dock to when the ore hold is full.
+
+----
 
 If you want to learn how this bot or other apps for EVE Online are developed, have a look at the directory of development guides at https://to.botengine.org/guide/overview
 

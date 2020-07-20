@@ -12,7 +12,6 @@ This bot uses the probe scanner to warp to combat anomalies and kills rats using
 Despite being quite robust, this bot is far from being as smart as a human. For example, its perception is more limited than ours, so we need to set up the game to make sure that the bot can see everything it needs to. Following is the list of setup instructions for the EVE Online client:
 
 + Set the UI language to English.
-+ Enable the info panel 'System info'.
 + Undock, open probe scanner, overview window and drones window.
 + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
 + In the ship UI, arrange the modules:
@@ -23,7 +22,7 @@ Despite being quite robust, this bot is far from being as smart as a human. For 
 
 ## Starting the Bot
 
-To start the bot, download the script from https://catalog.botengine.org/c3da1a4598e930f5f9257cb350a18a9696bc85b6d739dd7d78cb92505a4f0446 and then run it.
+To start the bot, download the script from https://catalog.botengine.org/792ca32cd5216639c6266ddf2940e08b8c460dd1488e6768a3d30cfb0557cb31 and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 

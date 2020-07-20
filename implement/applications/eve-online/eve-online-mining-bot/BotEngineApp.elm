@@ -177,7 +177,7 @@ miningBotDecisionRoot context =
                 { ifDocked =
                     ensureOreHoldIsSelectedInInventoryWindow
                         context.readingFromGameClient
-                        dockedWithOreHoldSelected
+                        (dockedWithOreHoldSelected context)
                 , ifSeeShipUI =
                     returnDronesAndRunAwayIfHitpointsAreTooLow context
                 , ifUndockingComplete =
@@ -255,8 +255,8 @@ closeMessageBox readingFromGameClient =
             )
 
 
-dockedWithOreHoldSelected : EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
-dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
+dockedWithOreHoldSelected : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
+dockedWithOreHoldSelected context inventoryWindowWithOreHoldSelected =
     case inventoryWindowWithOreHoldSelected |> itemHangarFromInventoryWindow of
         Nothing ->
             describeBranch "I do not see the item hangar in the inventory." askForHelpToGetUnstuck
@@ -265,17 +265,7 @@ dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
             case inventoryWindowWithOreHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
                     describeBranch "I see no item in the ore hold. Time to undock."
-                        (case inventoryWindowWithOreHoldSelected |> activeShipTreeEntryFromInventoryWindow of
-                            Nothing ->
-                                describeBranch "I do not see the active ship in the inventory." askForHelpToGetUnstuck
-
-                            Just activeShipEntry ->
-                                useContextMenuCascade
-                                    ( "ship in the inventory window"
-                                    , activeShipEntry |> predictUIElementInventoryShipEntry
-                                    )
-                                    (useMenuEntryWithTextContaining "Undock" menuCascadeCompleted)
-                        )
+                        (undockUsingStationWindow context)
 
                 Just itemInInventory ->
                     describeBranch "I see at least one item in the ore hold. Move this to the item hangar."
@@ -288,6 +278,31 @@ dockedWithOreHoldSelected inventoryWindowWithOreHoldSelected =
                                     , mouseButton = MouseButtonLeft
                                     }
                                 )
+                            )
+                        )
+
+
+undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
+undockUsingStationWindow context =
+    case context.readingFromGameClient.stationWindow of
+        CanNotSeeIt ->
+            describeBranch "I do not see the station window." askForHelpToGetUnstuck
+
+        CanSee stationWindow ->
+            case stationWindow.undockButton of
+                Nothing ->
+                    case stationWindow.abortUndockButton of
+                        Nothing ->
+                            describeBranch "I do not see the undock button." askForHelpToGetUnstuck
+
+                        Just _ ->
+                            describeBranch "I see we are already undocking." waitForProgressInGame
+
+                Just undockButton ->
+                    endDecisionPath
+                        (actWithoutFurtherReadings
+                            ( "Click on the button to undock."
+                            , [ clickOnUIElement MouseButtonLeft undockButton ]
                             )
                         )
 

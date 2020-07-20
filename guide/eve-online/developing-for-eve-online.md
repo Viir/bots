@@ -122,6 +122,18 @@ Some events inform the app about the completion of reading from the game client.
 This visualization shows the display regions of UI elements and some of the display texts. Using the button "Download reading as JSON file", we can export this memory reading for further examination. The inspection tools found in the alternate UI for EVE Online help us with that. You can find those tools at https://botengine.blob.core.windows.net/blob-library/by-name/2020-07-15-eve-online-alternate-ui.html
 (If you want to enable the Elm inspector ('debugger') tool too, you can use the variant at https://botengine.blob.core.windows.net/blob-library/by-name/2020-07-15-eve-online-alternate-ui-with-inspector.html)
 
+### Sharing Observations
+
+To collaborate on the development of a bot, we often need to communicate scenarios, situations in which we want the bot to work. One way to describe such a scenario is to use the recording of an actual session as it happened. To export any session displayed in the DevTools, use the "Download session archive" button. This gets you a zip-archive that you can then share with other people. Now you can get help from other developers for your exact situation, no matter if the solution requires a change in program code or just different app-settings.
+
+To import such a session archive in DevTools, use the `botengine  devtools` command with the path to the zip-archive as an additional argument:
+
+![Opening DevTools from the command-line](./../image/2020-07-18-open-botengine-devtools-additional-source.png)
+
+When you start DevTools this way, the session from the specified path will show up at the top of the list of sessions in the DevTools UI:
+
+![DevTools - choose a session to inspect](./../image/2020-07-18-botengine-devtools-choose-session-additional-source.png)
+
 ## Overall App Code Structure and Data Flow
 
 In 'The Simplest Custom App' section, we changed the code in the `BotEngineApp.elm` file to customize an app. Because we only made a simple change, we could do it without understanding the app code's overall structure. The more we want to change, the more we will benefit from understanding how everything works together.

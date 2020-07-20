@@ -284,7 +284,7 @@ decideNextActionWhenInSpace context seeUndockingComplete =
             )
 
     else
-        case seeUndockingComplete |> shipUIModulesToActivateAlways |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+        case seeUndockingComplete |> shipUIModulesToActivateAlways |> List.filter (moduleIsActiveOrReloading >> not) |> List.head of
             Just inactiveModule ->
                 describeBranch "I see an inactive module in the middle row. Activate the module."
                     (endDecisionPath
@@ -667,6 +667,12 @@ overviewEntryIsActiveTarget =
 shouldAttackOverviewEntry : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
 shouldAttackOverviewEntry =
     iconSpriteHasColorOfRat
+
+
+moduleIsActiveOrReloading : EveOnline.ParseUserInterface.ShipUIModuleButton -> Bool
+moduleIsActiveOrReloading moduleButton =
+    (moduleButton.isActive |> Maybe.withDefault False)
+        || ((moduleButton.rampRotationMilli |> Maybe.withDefault 0) /= 0)
 
 
 iconSpriteHasColorOfRat : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool

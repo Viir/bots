@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-07-20
+{- EVE Online mining bot version 2020-07-21
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -9,9 +9,7 @@
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + Open one inventory window.
    + In the ship UI, arrange the modules:
-     + Place all mining modules (to activate on targets) in the top row.
      + Place modules that should always be active in the middle row.
-     + Hide passive modules by disabling the check-box `Display Passive Modules`.
    + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
 
    ## Configuration Settings
@@ -71,10 +69,12 @@ import EveOnline.ParseUserInterface
         ( MaybeVisible(..)
         , OverviewWindowEntry
         , centerFromDisplayRegion
+        , getAllContainedDisplayTexts
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface
+import Regex
 
 
 {-| Sources for the defaults:
@@ -359,9 +359,9 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                         unlockTargetsNotForMining context
                                             |> Maybe.withDefault
                                                 (describeBranch "I see a locked target."
-                                                    (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                    (case context |> knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                                         Nothing ->
-                                                            describeBranch "All mining laser modules are active."
+                                                            describeBranch "All known mining modules are active."
                                                                 (readShipUIModuleButtonTooltips context
                                                                     |> Maybe.withDefault waitForProgressInGame
                                                                 )
@@ -794,6 +794,28 @@ readShipUIModuleButtonTooltips context =
             )
 
 
+knownMiningModules : BotDecisionContext -> List EveOnline.ParseUserInterface.ShipUIModuleButton
+knownMiningModules context =
+    context.readingFromGameClient.shipUI
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filter
+            (EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                >> Maybe.map tooltipLooksLikeMiningModule
+                >> Maybe.withDefault False
+            )
+
+
+tooltipLooksLikeMiningModule : EveOnline.ParseUserInterface.ModuleButtonTooltip -> Bool
+tooltipLooksLikeMiningModule =
+    .uiNode
+        >> .uiNode
+        >> getAllContainedDisplayTexts
+        >> List.any
+            (Regex.fromString "\\d\\s*m3\\s*\\/\\s*s" |> Maybe.map Regex.contains |> Maybe.withDefault (always False))
+
+
 initState : State
 initState =
     EveOnline.AppFramework.initState
@@ -849,7 +871,10 @@ statusTextFromState context =
         describeShip =
             case readingFromGameClient.shipUI of
                 CanSee shipUI ->
-                    "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
+                    [ "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
+                    , "Found " ++ (context |> knownMiningModules |> List.length |> String.fromInt) ++ " mining modules."
+                    ]
+                        |> String.join " "
 
                 CanNotSeeIt ->
                     case

@@ -17,6 +17,7 @@
    + `unload-station-name` : Name of a station to dock to when the ore hold is full.
    + `unload-structure-name` : Name of a structure to dock to when the ore hold is full.
    + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
+   + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
 
    To combine multiple settings, use a comma (,) to separate the individual assignments. Here is an example of a complete settings string:
    unload-station-name = Noghere VII - Moon 15, module-to-activate-always = shield hardener, module-to-activate-always = afterburner
@@ -54,6 +55,7 @@ import EveOnline.AppFramework
         , clickOnUIElement
         , ensureInfoPanelLocationInfoIsExpanded
         , getEntropyIntFromReadingFromGameClient
+        , localChatWindowFromUserInterface
         , menuCascadeCompleted
         , shipUIIndicatesShipIsWarpingOrJumping
         , useContextMenuCascade
@@ -90,6 +92,7 @@ defaultBotSettings =
     , unloadStationName = Nothing
     , unloadStructureName = Nothing
     , modulesToActivateAlways = []
+    , hideWhenNeutralInLocal = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 2000
@@ -114,6 +117,10 @@ parseBotSettings =
          , ( "module-to-activate-always"
            , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
            )
+         , ( "hide-when-neutral-in-local"
+           , AppSettings.valueTypeYesOrNo
+                (\hide -> \settings -> { settings | hideWhenNeutralInLocal = Just hide })
+           )
          , ( "targeting-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | targetingRange = range })
            )
@@ -135,11 +142,17 @@ parseBotSettings =
         defaultBotSettings
 
 
+goodStandingPatterns : List String
+goodStandingPatterns =
+    [ "good standing", "excellent standing", "is in your" ]
+
+
 type alias BotSettings =
     { runAwayShieldHitpointsThresholdPercent : Int
     , unloadStationName : Maybe String
     , unloadStructureName : Maybe String
     , modulesToActivateAlways : List String
+    , hideWhenNeutralInLocal : Maybe AppSettings.YesOrNo
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
@@ -189,12 +202,73 @@ miningBotDecisionRoot context =
                     returnDronesAndRunAwayIfHitpointsAreTooLow context
                 , ifUndockingComplete =
                     \seeUndockingComplete ->
-                        ensureOreHoldIsSelectedInInventoryWindow
-                            context.readingFromGameClient
-                            (inSpaceWithOreHoldSelected context seeUndockingComplete)
+                        continueIfShouldHide
+                            { ifShouldHide =
+                                returnDronesToBay context.readingFromGameClient
+                                    |> Maybe.withDefault (dockToUnloadOre context)
+                            }
+                            context
+                            |> Maybe.withDefault
+                                (ensureOreHoldIsSelectedInInventoryWindow
+                                    context.readingFromGameClient
+                                    (inSpaceWithOreHoldSelected context seeUndockingComplete)
+                                )
                 }
                 context.readingFromGameClient
             )
+
+
+continueIfShouldHide : { ifShouldHide : DecisionPathNode } -> BotDecisionContext -> Maybe DecisionPathNode
+continueIfShouldHide config context =
+    if not (context |> shouldHideWhenNeutralInLocal) then
+        Nothing
+
+    else
+        case context.readingFromGameClient |> localChatWindowFromUserInterface of
+            CanNotSeeIt ->
+                Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
+
+            CanSee localChatWindow ->
+                let
+                    chatUserHasGoodStanding chatUser =
+                        goodStandingPatterns
+                            |> List.any
+                                (\goodStandingPattern ->
+                                    chatUser.standingIconHint
+                                        |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
+                                        |> Maybe.withDefault False
+                                )
+
+                    subsetOfUsersWithNoGoodStanding =
+                        localChatWindow.userlist
+                            |> Maybe.map .visibleUsers
+                            |> Maybe.withDefault []
+                            |> List.filter (chatUserHasGoodStanding >> not)
+                in
+                if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                    Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+
+                else
+                    Nothing
+
+
+shouldHideWhenNeutralInLocal : BotDecisionContext -> Bool
+shouldHideWhenNeutralInLocal context =
+    case (context |> botSettingsFromDecisionContext).hideWhenNeutralInLocal of
+        Just AppSettings.No ->
+            False
+
+        Just AppSettings.Yes ->
+            True
+
+        Nothing ->
+            (context.readingFromGameClient.infoPanelContainer
+                |> maybeVisibleAndThen .infoPanelLocationInfo
+                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.andThen .securityStatusPercent
+                |> Maybe.withDefault 0
+            )
+                < 50
 
 
 returnDronesAndRunAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
@@ -271,8 +345,14 @@ dockedWithOreHoldSelected context inventoryWindowWithOreHoldSelected =
         Just itemHangar ->
             case inventoryWindowWithOreHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
-                    describeBranch "I see no item in the ore hold. Time to undock."
-                        (undockUsingStationWindow context)
+                    describeBranch "I see no item in the ore hold. Check if we can undock."
+                        (continueIfShouldHide
+                            { ifShouldHide =
+                                describeBranch "Stay docked." waitForProgressInGame
+                            }
+                            context
+                            |> Maybe.withDefault (undockUsingStationWindow context)
+                        )
 
                 Just itemInInventory ->
                     describeBranch "I see at least one item in the ore hold. Move this to the item hangar."

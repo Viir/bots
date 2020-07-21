@@ -8,8 +8,6 @@
    + In Overview window, make asteroids visible.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + Open one inventory window.
-   + In the ship UI, arrange the modules:
-     + Place modules that should always be active in the middle row.
    + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
 
    ## Configuration Settings
@@ -18,6 +16,10 @@
 
    + `unload-station-name` : Name of a station to dock to when the ore hold is full.
    + `unload-structure-name` : Name of a structure to dock to when the ore hold is full.
+   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
+
+   To combine multiple settings, use a comma (,) to separate the individual assignments. Here is an example of a complete settings string:
+   unload-station-name = Noghere VII - Moon 15, module-to-activate-always = shield hardener, module-to-activate-always = afterburner
 -}
 {-
    app-catalog-tags:eve-online,mining
@@ -87,6 +89,7 @@ defaultBotSettings =
     { runAwayShieldHitpointsThresholdPercent = 70
     , unloadStationName = Nothing
     , unloadStructureName = Nothing
+    , modulesToActivateAlways = []
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 2000
@@ -107,6 +110,9 @@ parseBotSettings =
            )
          , ( "unload-structure-name"
            , AppSettings.valueTypeString (\structureName -> \settings -> { settings | unloadStructureName = Just structureName })
+           )
+         , ( "module-to-activate-always"
+           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
            )
          , ( "targeting-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | targetingRange = range })
@@ -133,6 +139,7 @@ type alias BotSettings =
     { runAwayShieldHitpointsThresholdPercent : Int
     , unloadStationName : Maybe String
     , unloadStructureName : Maybe String
+    , modulesToActivateAlways : List String
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
@@ -320,9 +327,9 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
             )
 
     else
-        case seeUndockingComplete.shipUI.moduleButtonsRows.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-            Just inactiveModule ->
-                describeBranch "I see an inactive module in the middle row. Activate it."
+        case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> .isActive >> Maybe.withDefault False >> not) |> List.head of
+            Just ( inactiveModuleMatchingText, inactiveModule ) ->
+                describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
                     (endDecisionPath
                         (actWithoutFurtherReadings
                             ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
@@ -807,6 +814,21 @@ knownMiningModules context =
             )
 
 
+knownModulesToActivateAlways : BotDecisionContext -> List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
+knownModulesToActivateAlways context =
+    context.readingFromGameClient.shipUI
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filterMap
+            (\moduleButton ->
+                moduleButton
+                    |> EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                    |> Maybe.andThen (tooltipLooksLikeModuleToActivateAlways context)
+                    |> Maybe.map (\moduleName -> ( moduleName, moduleButton ))
+            )
+
+
 tooltipLooksLikeMiningModule : EveOnline.ParseUserInterface.ModuleButtonTooltip -> Bool
 tooltipLooksLikeMiningModule =
     .uiNode
@@ -814,6 +836,27 @@ tooltipLooksLikeMiningModule =
         >> getAllContainedDisplayTexts
         >> List.any
             (Regex.fromString "\\d\\s*m3\\s*\\/\\s*s" |> Maybe.map Regex.contains |> Maybe.withDefault (always False))
+
+
+tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> EveOnline.ParseUserInterface.ModuleButtonTooltip -> Maybe String
+tooltipLooksLikeModuleToActivateAlways context =
+    .uiNode
+        >> .uiNode
+        >> getAllContainedDisplayTexts
+        >> List.filterMap
+            (\tooltipText ->
+                (context |> botSettingsFromDecisionContext).modulesToActivateAlways
+                    |> List.filterMap
+                        (\moduleToActivateAlways ->
+                            if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
+                                Just tooltipText
+
+                            else
+                                Nothing
+                        )
+                    |> List.head
+            )
+        >> List.head
 
 
 initState : State

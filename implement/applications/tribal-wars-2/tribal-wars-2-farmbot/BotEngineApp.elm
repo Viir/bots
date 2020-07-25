@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-07-14
+{- Tribal Wars 2 farmbot version 2020-07-25
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -1375,7 +1375,7 @@ villageMatchesSettingsForFarm settings villageCoordinates village =
                     else
                         settings.charactersToFarm |> List.member characterName
     in
-    ((village.affiliation == AffiliationBarbarian) || ownedByCharacterToFarm)
+    (((village.affiliation == AffiliationBarbarian)
         && (settings.farmBarbarianVillageMinimumPoints
                 |> Maybe.map
                     (\farmBarbarianVillageMinimumPoints ->
@@ -1388,6 +1388,9 @@ villageMatchesSettingsForFarm settings villageCoordinates village =
                     )
                 |> Maybe.withDefault True
            )
+     )
+        || ownedByCharacterToFarm
+    )
         && (settings.farmAvoidCoordinates |> List.member villageCoordinates |> not)
 
 

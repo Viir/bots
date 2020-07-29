@@ -1,6 +1,8 @@
 
 ## Guides
 
++ How to report an issue with an app or request a new feature: https://to.botengine.org/guide/how-to-report-an-issue-with-an-app-or-request-a-new-feature
+
 + [Developing for EVE Online](https://to.botengine.org/guide/developing-for-eve-online): Learn how bots and intel tools are developed. Discover the engineering methods and tools behind the most advanced EVE Online bots.
 
 + [Parsed User Interface of the EVE Online Game Client](https://to.botengine.org/guide/parsed-user-interface-of-the-eve-online-game-client): Find things faster in the EVE Online game client user interface.

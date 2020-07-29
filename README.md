@@ -4,6 +4,8 @@ What is more interesting than playing video games? - Training artificial intelli
 
 + How to install/register the `botengine` command: [./guide/failed-run-did-not-find-botengine-program.md](./guide/failed-run-did-not-find-botengine-program.md)
 
++ How to report a bug or problem or request a new feature for a bot: [./guide/how-to-report-an-issue-with-an-app-or-request-a-new-feature.md](./guide/how-to-report-an-issue-with-an-app-or-request-a-new-feature.md)
+
 + Developing for EVE Online: [./guide/eve-online/developing-for-eve-online.md](./guide/eve-online/developing-for-eve-online.md)
 
 + Find things faster in the EVE Online game client user interface: [./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md](./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md)

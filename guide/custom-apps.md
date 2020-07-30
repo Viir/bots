@@ -30,3 +30,18 @@ Origin and discussion: https://github.com/Viir/bots/pull/15
 
 https://github.com/Viir/bots/commit/acf8c8c34dfe910f19bd838236e845d51bafb7e2
 
+## 2020-07-30 - TheRealManiac - EVE Online - hiding when neutral or hostile appears in local chat
+
+On 2020-07-30, the catalog entry at https://catalog.botengine.org/782844bb5667da19d2dec276b3afd9d0a2e381c7e5011f837752c4a0d523e110 shows:
+
+> Total running time in hours: 4
+
+Program code change at https://github.com/Viir/bots/commit/42819720f12f34658d88e29ff0e55d158869568d
+
+> Support hiding when neutral or hostile appears in local chat
+> 
+> Add a setting to enable this behavior.
+> If conditions are met for hiding, do not undock anymore. If conditions are met for hiding, return drones to bay and dock to station or structure.
+> 
+> Original discussion at https://forum.botengine.org/t/mining-bot-master-branch/3463?u=viir
+

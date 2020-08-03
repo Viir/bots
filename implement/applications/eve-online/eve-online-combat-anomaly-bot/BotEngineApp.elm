@@ -199,36 +199,46 @@ anomalyBotDecisionRoot context =
 
 continueIfShouldHide : { ifShouldHide : DecisionPathNode } -> BotDecisionContext -> Maybe DecisionPathNode
 continueIfShouldHide config context =
-    if (context |> botSettingsFromDecisionContext).hideWhenNeutralInLocal /= AppSettings.Yes then
-        Nothing
+    case
+        context.eventContext |> EveOnline.AppFramework.secondsToSessionEnd |> Maybe.andThen (nothingFromIntIfGreaterThan 200)
+    of
+        Just secondsToSessionEnd ->
+            Just
+                (describeBranch ("Session ends in " ++ (secondsToSessionEnd |> String.fromInt) ++ " seconds.")
+                    config.ifShouldHide
+                )
 
-    else
-        case context.readingFromGameClient |> localChatWindowFromUserInterface of
-            CanNotSeeIt ->
-                Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
+        Nothing ->
+            if (context |> botSettingsFromDecisionContext).hideWhenNeutralInLocal /= AppSettings.Yes then
+                Nothing
 
-            CanSee localChatWindow ->
-                let
-                    chatUserHasGoodStanding chatUser =
-                        goodStandingPatterns
-                            |> List.any
-                                (\goodStandingPattern ->
-                                    chatUser.standingIconHint
-                                        |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
-                                        |> Maybe.withDefault False
-                                )
+            else
+                case context.readingFromGameClient |> localChatWindowFromUserInterface of
+                    CanNotSeeIt ->
+                        Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
 
-                    subsetOfUsersWithNoGoodStanding =
-                        localChatWindow.userlist
-                            |> Maybe.map .visibleUsers
-                            |> Maybe.withDefault []
-                            |> List.filter (chatUserHasGoodStanding >> not)
-                in
-                if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
-                    Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+                    CanSee localChatWindow ->
+                        let
+                            chatUserHasGoodStanding chatUser =
+                                goodStandingPatterns
+                                    |> List.any
+                                        (\goodStandingPattern ->
+                                            chatUser.standingIconHint
+                                                |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
+                                                |> Maybe.withDefault False
+                                        )
 
-                else
-                    Nothing
+                            subsetOfUsersWithNoGoodStanding =
+                                localChatWindow.userlist
+                                    |> Maybe.map .visibleUsers
+                                    |> Maybe.withDefault []
+                                    |> List.filter (chatUserHasGoodStanding >> not)
+                        in
+                        if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                            Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+
+                        else
+                            Nothing
 
 
 {-| 2020-07-11 Discovery by Viktor:
@@ -713,3 +723,12 @@ shipUIModulesToActivateOnTarget =
 shipUIModulesToActivateAlways : SeeUndockingComplete -> List ShipUIModuleButton
 shipUIModulesToActivateAlways =
     .shipUI >> .moduleButtonsRows >> .middle
+
+
+nothingFromIntIfGreaterThan : Int -> Int -> Maybe Int
+nothingFromIntIfGreaterThan limit originalInt =
+    if limit < originalInt then
+        Nothing
+
+    else
+        Just originalInt

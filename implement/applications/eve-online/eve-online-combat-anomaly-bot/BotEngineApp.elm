@@ -186,9 +186,12 @@ anomalyBotDecisionRoot context =
             always
                 (continueIfShouldHide
                     { ifShouldHide =
-                        describeBranch
-                            "Dock to station or structure."
-                            (dockAtRandomStationOrStructure context.readingFromGameClient)
+                        returnDronesToBay context.readingFromGameClient
+                            |> Maybe.withDefault
+                                (describeBranch
+                                    "Dock to station or structure."
+                                    (dockAtRandomStationOrStructure context.readingFromGameClient)
+                                )
                     }
                     context
                 )

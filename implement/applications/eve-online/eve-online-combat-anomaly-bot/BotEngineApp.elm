@@ -655,8 +655,26 @@ statusTextFromState context =
                         ++ ", in local space: "
                         ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
                         ++ "."
+
+        namesOfOtherPilotsInOverview =
+            getNamesOfOtherPilotsInOverview readingFromGameClient
+
+        describeOverview =
+            ("Seeing "
+                ++ (namesOfOtherPilotsInOverview |> List.length |> String.fromInt)
+                ++ " other pilots in the overview"
+            )
+                ++ (if namesOfOtherPilotsInOverview == [] then
+                        ""
+
+                    else
+                        ": " ++ (namesOfOtherPilotsInOverview |> String.join ", ")
+                   )
+                ++ "."
     in
-    [ describeShip ] ++ combatInfoLines ++ [ describeDrones ] |> String.join " "
+    [ [ describeShip ] ++ combatInfoLines ++ [ describeDrones ], [ describeOverview ] ]
+        |> List.map (String.join " ")
+        |> String.join "\n"
 
 
 allOverviewEntriesToAttack : ReadingFromGameClient -> Maybe (List EveOnline.ParseUserInterface.OverviewWindowEntry)
@@ -716,6 +734,30 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
         botMemoryBefore.shipModules
             |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
     }
+
+
+getNamesOfOtherPilotsInOverview : ReadingFromGameClient -> List String
+getNamesOfOtherPilotsInOverview readingFromGameClient =
+    let
+        pilotNamesFromLocalChat =
+            readingFromGameClient
+                |> localChatWindowFromUserInterface
+                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.andThen .userlist
+                |> Maybe.map .visibleUsers
+                |> Maybe.withDefault []
+                |> List.filterMap .name
+
+        overviewEntryRepresentsOtherPilot overviewEntry =
+            (overviewEntry.objectName |> Maybe.map (\objectName -> pilotNamesFromLocalChat |> List.member objectName))
+                |> Maybe.withDefault False
+    in
+    readingFromGameClient.overviewWindow
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.map .entries
+        |> Maybe.withDefault []
+        |> List.filter overviewEntryRepresentsOtherPilot
+        |> List.map (.objectName >> Maybe.withDefault "do not see name of overview entry")
 
 
 shipUIModulesToActivateOnTarget : SeeUndockingComplete -> List ShipUIModuleButton

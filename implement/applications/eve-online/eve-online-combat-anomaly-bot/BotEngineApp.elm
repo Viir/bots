@@ -659,6 +659,11 @@ statusTextFromState context =
         namesOfOtherPilotsInOverview =
             getNamesOfOtherPilotsInOverview readingFromGameClient
 
+        describeAnomaly =
+            "Current anomaly: "
+                ++ (getCurrentAnomalyIDAsSeenInProbeScanner readingFromGameClient |> Maybe.withDefault "None")
+                ++ "."
+
         describeOverview =
             ("Seeing "
                 ++ (namesOfOtherPilotsInOverview |> List.length |> String.fromInt)
@@ -672,7 +677,7 @@ statusTextFromState context =
                    )
                 ++ "."
     in
-    [ [ describeShip ] ++ combatInfoLines ++ [ describeDrones ], [ describeOverview ] ]
+    [ [ describeShip ] ++ combatInfoLines ++ [ describeDrones ], [ describeAnomaly, describeOverview ] ]
         |> List.map (String.join " ")
         |> String.join "\n"
 
@@ -734,6 +739,29 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
         botMemoryBefore.shipModules
             |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
     }
+
+
+getCurrentAnomalyIDAsSeenInProbeScanner : ReadingFromGameClient -> Maybe String
+getCurrentAnomalyIDAsSeenInProbeScanner =
+    .probeScannerWindow
+        >> maybeNothingFromCanNotSeeIt
+        >> Maybe.map getScanResultsForSitesOnGrid
+        >> Maybe.withDefault []
+        >> List.head
+        >> Maybe.andThen (.cellsTexts >> Dict.get "ID")
+
+
+getScanResultsForSitesOnGrid : EveOnline.ParseUserInterface.ProbeScannerWindow -> List EveOnline.ParseUserInterface.ProbeScanResult
+getScanResultsForSitesOnGrid probeScannerWindow =
+    probeScannerWindow.scanResults
+        |> List.filter (scanResultLooksLikeItIsOnGrid >> Maybe.withDefault False)
+
+
+scanResultLooksLikeItIsOnGrid : EveOnline.ParseUserInterface.ProbeScanResult -> Maybe Bool
+scanResultLooksLikeItIsOnGrid =
+    .cellsTexts
+        >> Dict.get "Distance"
+        >> Maybe.map (\text -> (text |> String.contains " m") || (text |> String.contains " km"))
 
 
 getNamesOfOtherPilotsInOverview : ReadingFromGameClient -> List String

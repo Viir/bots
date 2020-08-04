@@ -75,6 +75,7 @@ import EveOnline.ParseUserInterface
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
+        , maybeVisibleMap
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import Set
@@ -132,6 +133,8 @@ type alias BotState =
 type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
     , shipModules : ShipModulesMemory
+    , shipWarpingInLastReading : MaybeVisible Bool
+    , visitedAnomalies : Dict.Dict String { otherPilotsFoundOnArrival : List String }
     }
 
 
@@ -600,6 +603,8 @@ initState =
         (EveOnline.AppFramework.initStateWithMemoryAndDecisionTree
             { lastDockedStationNameFromInfoPanel = Nothing
             , shipModules = EveOnline.AppFramework.initShipModulesMemory
+            , shipWarpingInLastReading = CanNotSeeIt
+            , visitedAnomalies = Dict.empty
             }
         )
 
@@ -632,6 +637,9 @@ statusTextFromState context =
     let
         readingFromGameClient =
             context.readingFromGameClient
+
+        describePerformance =
+            "Visited anomalies: " ++ (context.memory.visitedAnomalies |> Dict.size |> String.fromInt) ++ "."
 
         combatInfoLines =
             [ "Overview entries to attack: " ++ (readingFromGameClient |> allOverviewEntriesToAttack |> Maybe.map (List.length >> String.fromInt) |> Maybe.withDefault "Nothing") ]
@@ -677,7 +685,10 @@ statusTextFromState context =
                    )
                 ++ "."
     in
-    [ [ describeShip ] ++ combatInfoLines ++ [ describeDrones ], [ describeAnomaly, describeOverview ] ]
+    [ [ describePerformance ]
+    , [ describeShip ] ++ combatInfoLines ++ [ describeDrones ]
+    , [ describeAnomaly, describeOverview ]
+    ]
         |> List.map (String.join " ")
         |> String.join "\n"
 
@@ -730,6 +741,43 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
                 |> maybeVisibleAndThen .expandedContent
                 |> maybeNothingFromCanNotSeeIt
                 |> Maybe.andThen .currentStationName
+
+        shipIsWarping =
+            currentReading.shipUI
+                |> maybeVisibleAndThen .indication
+                |> maybeVisibleAndThen .maneuverType
+                |> maybeVisibleMap ((==) EveOnline.ParseUserInterface.ManeuverWarp)
+
+        weJustArrivedOnGrid =
+            (botMemoryBefore.shipWarpingInLastReading == CanSee True)
+                && (shipIsWarping == CanSee False)
+
+        visitedAnomalies =
+            if shipIsWarping == CanSee True then
+                botMemoryBefore.visitedAnomalies
+
+            else
+                case currentReading |> getCurrentAnomalyIDAsSeenInProbeScanner of
+                    Nothing ->
+                        botMemoryBefore.visitedAnomalies
+
+                    Just currentAnomalyID ->
+                        let
+                            anomalyMemoryBefore =
+                                botMemoryBefore.visitedAnomalies
+                                    |> Dict.get currentAnomalyID
+                                    |> Maybe.withDefault { otherPilotsFoundOnArrival = [] }
+
+                            anomalyMemory =
+                                if weJustArrivedOnGrid then
+                                    { anomalyMemoryBefore
+                                        | otherPilotsFoundOnArrival = getNamesOfOtherPilotsInOverview currentReading
+                                    }
+
+                                else
+                                    anomalyMemoryBefore
+                        in
+                        botMemoryBefore.visitedAnomalies |> Dict.insert currentAnomalyID anomalyMemory
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
@@ -738,6 +786,8 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
     , shipModules =
         botMemoryBefore.shipModules
             |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
+    , shipWarpingInLastReading = shipIsWarping
+    , visitedAnomalies = visitedAnomalies
     }
 
 

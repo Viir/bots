@@ -12,6 +12,8 @@ What is more interesting than playing video games? - Training artificial intelli
 
 + Find things faster in the EVE Online game client user interface: [./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md](./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md)
 
++ [Walkthrough, Programming]: Making an EVE Online bot see anomalies and other pilots: [https://youtu.be/pL1zLGYn8jQ](https://youtu.be/pL1zLGYn8jQ)
+
 + [Walkthrough, Programming]: Programming an EVE Online mining bot to defend against rats: [https://youtu.be/dgV9Ce7f03I](https://youtu.be/dgV9Ce7f03I)
 
 + [Walkthrough, Programming]: Adding a counter to an EVE Online bot: [https://youtu.be/HLerePMeD3w](https://youtu.be/HLerePMeD3w)

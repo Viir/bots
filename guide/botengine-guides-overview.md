@@ -9,6 +9,8 @@
 
 + [Parsed User Interface of the EVE Online Game Client](https://to.botengine.org/guide/parsed-user-interface-of-the-eve-online-game-client): Find things faster in the EVE Online game client user interface.
 
++ [Walkthrough, Programming]: Making an EVE Online bot see anomalies and other pilots: [https://youtu.be/pL1zLGYn8jQ](https://youtu.be/pL1zLGYn8jQ)
+
 + [Walkthrough, Programming]: Programming an EVE Online mining bot to defend against rats: [https://youtu.be/dgV9Ce7f03I](https://youtu.be/dgV9Ce7f03I)
 
 + [Walkthrough, Programming]: Adding a counter to an EVE Online bot: [https://youtu.be/HLerePMeD3w](https://youtu.be/HLerePMeD3w)

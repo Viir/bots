@@ -77,7 +77,7 @@ In the remainder of this guide, I show how to speed up this process of discoveri
 
 ## Observing and Inspecting an App
 
-One way of observing an app is to watch the botengine window and the game client on a screen. That is what you see anyway when running a bot. The engine window displays the status text from the app and thus helps with inspection to some degree.
+One way of observing an app is to watch the botengine window and the game client on a screen. That is what you see anyway when running a bot. The engine window displays the status text from the app and thus helps with the inspection.
 
 But this mode of observing an app is limiting in two ways.
 
@@ -105,7 +105,7 @@ Running this command opens a web browser window. We continue in the web browser,
 
 On that web page, we find a list of recent app-sessions, the last one at the top.
 
-Clicking on one of the sessions names brings us into the view of this particular session:
+Clicking on one of the sessions' names brings us into the view of this particular session:
 
 ![DevTools - initial view of a session](./../image/2020-07-18-botengine-devtools-session-init.png)
 

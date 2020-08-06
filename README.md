@@ -6,6 +6,8 @@ What is more interesting than playing video games? - Training artificial intelli
 
 + How to report an issue with an app or request a new feature: https://to.botengine.org/guide/how-to-report-an-issue-with-an-app-or-request-a-new-feature
 
++ Observing and inspecting (aka 'debugging') an app: https://to.botengine.org/guide/observing-and-inspecting-an-app
+
 + Developing for EVE Online: [./guide/eve-online/developing-for-eve-online.md](./guide/eve-online/developing-for-eve-online.md)
 
 + Find things faster in the EVE Online game client user interface: [./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md](./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md)

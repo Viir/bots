@@ -124,7 +124,7 @@ As you can also see in the screenshot of the live inspector, we get the used, se
 
 ## Repairshop Window
 
-In Repairshop window you can repair your ship.
+In the 'Repairshop'/'Repair Facilities' window, you can repair your ship.
 
 ```
 type alias RepairShopWindow =

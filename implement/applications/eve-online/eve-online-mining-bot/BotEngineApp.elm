@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-08-03
+{- EVE Online mining bot version 2020-08-07
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -8,10 +8,6 @@
    + In Overview window, make asteroids visible.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + Open one inventory window.
-   + In the ship UI, arrange the modules:
-     + Place all mining modules (to activate on targets) in the top row.
-     + Place modules that should always be active in the middle row.
-     + Hide passive modules by disabling the check-box `Display Passive Modules`.
    + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
 
    ## Configuration Settings
@@ -20,6 +16,11 @@
 
    + `unload-station-name` : Name of a station to dock to when the ore hold is full.
    + `unload-structure-name` : Name of a structure to dock to when the ore hold is full.
+   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
+   + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
+
+   To combine multiple settings, use a comma (,) to separate the individual assignments. Here is an example of a complete settings string:
+   unload-station-name = Noghere VII - Moon 15, module-to-activate-always = shield hardener, module-to-activate-always = afterburner
 -}
 {-
    app-catalog-tags:eve-online,mining
@@ -54,6 +55,7 @@ import EveOnline.AppFramework
         , clickOnUIElement
         , ensureInfoPanelLocationInfoIsExpanded
         , getEntropyIntFromReadingFromGameClient
+        , localChatWindowFromUserInterface
         , menuCascadeCompleted
         , shipUIIndicatesShipIsWarpingOrJumping
         , useContextMenuCascade
@@ -71,10 +73,12 @@ import EveOnline.ParseUserInterface
         ( MaybeVisible(..)
         , OverviewWindowEntry
         , centerFromDisplayRegion
+        , getAllContainedDisplayTexts
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface
+import Regex
 
 
 {-| Sources for the defaults:
@@ -87,6 +91,8 @@ defaultBotSettings =
     { runAwayShieldHitpointsThresholdPercent = 70
     , unloadStationName = Nothing
     , unloadStructureName = Nothing
+    , modulesToActivateAlways = []
+    , hideWhenNeutralInLocal = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 2000
@@ -107,6 +113,13 @@ parseBotSettings =
            )
          , ( "unload-structure-name"
            , AppSettings.valueTypeString (\structureName -> \settings -> { settings | unloadStructureName = Just structureName })
+           )
+         , ( "module-to-activate-always"
+           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
+           )
+         , ( "hide-when-neutral-in-local"
+           , AppSettings.valueTypeYesOrNo
+                (\hide -> \settings -> { settings | hideWhenNeutralInLocal = Just hide })
            )
          , ( "targeting-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | targetingRange = range })
@@ -129,10 +142,17 @@ parseBotSettings =
         defaultBotSettings
 
 
+goodStandingPatterns : List String
+goodStandingPatterns =
+    [ "good standing", "excellent standing", "is in your" ]
+
+
 type alias BotSettings =
     { runAwayShieldHitpointsThresholdPercent : Int
     , unloadStationName : Maybe String
     , unloadStructureName : Maybe String
+    , modulesToActivateAlways : List String
+    , hideWhenNeutralInLocal : Maybe AppSettings.YesOrNo
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
@@ -182,12 +202,73 @@ miningBotDecisionRoot context =
                     returnDronesAndRunAwayIfHitpointsAreTooLow context
                 , ifUndockingComplete =
                     \seeUndockingComplete ->
-                        ensureOreHoldIsSelectedInInventoryWindow
-                            context.readingFromGameClient
-                            (inSpaceWithOreHoldSelected context seeUndockingComplete)
+                        continueIfShouldHide
+                            { ifShouldHide =
+                                returnDronesToBay context.readingFromGameClient
+                                    |> Maybe.withDefault (dockToUnloadOre context)
+                            }
+                            context
+                            |> Maybe.withDefault
+                                (ensureOreHoldIsSelectedInInventoryWindow
+                                    context.readingFromGameClient
+                                    (inSpaceWithOreHoldSelected context seeUndockingComplete)
+                                )
                 }
                 context.readingFromGameClient
             )
+
+
+continueIfShouldHide : { ifShouldHide : DecisionPathNode } -> BotDecisionContext -> Maybe DecisionPathNode
+continueIfShouldHide config context =
+    if not (context |> shouldHideWhenNeutralInLocal) then
+        Nothing
+
+    else
+        case context.readingFromGameClient |> localChatWindowFromUserInterface of
+            CanNotSeeIt ->
+                Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
+
+            CanSee localChatWindow ->
+                let
+                    chatUserHasGoodStanding chatUser =
+                        goodStandingPatterns
+                            |> List.any
+                                (\goodStandingPattern ->
+                                    chatUser.standingIconHint
+                                        |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
+                                        |> Maybe.withDefault False
+                                )
+
+                    subsetOfUsersWithNoGoodStanding =
+                        localChatWindow.userlist
+                            |> Maybe.map .visibleUsers
+                            |> Maybe.withDefault []
+                            |> List.filter (chatUserHasGoodStanding >> not)
+                in
+                if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                    Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+
+                else
+                    Nothing
+
+
+shouldHideWhenNeutralInLocal : BotDecisionContext -> Bool
+shouldHideWhenNeutralInLocal context =
+    case (context |> botSettingsFromDecisionContext).hideWhenNeutralInLocal of
+        Just AppSettings.No ->
+            False
+
+        Just AppSettings.Yes ->
+            True
+
+        Nothing ->
+            (context.readingFromGameClient.infoPanelContainer
+                |> maybeVisibleAndThen .infoPanelLocationInfo
+                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.andThen .securityStatusPercent
+                |> Maybe.withDefault 0
+            )
+                < 50
 
 
 returnDronesAndRunAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
@@ -264,8 +345,14 @@ dockedWithOreHoldSelected context inventoryWindowWithOreHoldSelected =
         Just itemHangar ->
             case inventoryWindowWithOreHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
-                    describeBranch "I see no item in the ore hold. Time to undock."
-                        (undockUsingStationWindow context)
+                    describeBranch "I see no item in the ore hold. Check if we should undock."
+                        (continueIfShouldHide
+                            { ifShouldHide =
+                                describeBranch "Stay docked." waitForProgressInGame
+                            }
+                            context
+                            |> Maybe.withDefault (undockUsingStationWindow context)
+                        )
 
                 Just itemInInventory ->
                     describeBranch "I see at least one item in the ore hold. Move this to the item hangar."
@@ -320,9 +407,9 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
             )
 
     else
-        case seeUndockingComplete.shipUI.moduleButtonsRows.middle |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-            Just inactiveModule ->
-                describeBranch "I see an inactive module in the middle row. Activate it."
+        case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> .isActive >> Maybe.withDefault False >> not) |> List.head of
+            Just ( inactiveModuleMatchingText, inactiveModule ) ->
+                describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
                     (endDecisionPath
                         (actWithoutFurtherReadings
                             ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
@@ -359,9 +446,9 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                         unlockTargetsNotForMining context
                                             |> Maybe.withDefault
                                                 (describeBranch "I see a locked target."
-                                                    (case seeUndockingComplete.shipUI.moduleButtonsRows.top |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                    (case context |> knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                                         Nothing ->
-                                                            describeBranch "All mining laser modules are active."
+                                                            describeBranch "All known mining modules are active."
                                                                 (readShipUIModuleButtonTooltips context
                                                                     |> Maybe.withDefault waitForProgressInGame
                                                                 )
@@ -794,6 +881,64 @@ readShipUIModuleButtonTooltips context =
             )
 
 
+knownMiningModules : BotDecisionContext -> List EveOnline.ParseUserInterface.ShipUIModuleButton
+knownMiningModules context =
+    context.readingFromGameClient.shipUI
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filter
+            (EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                >> Maybe.map tooltipLooksLikeMiningModule
+                >> Maybe.withDefault False
+            )
+
+
+knownModulesToActivateAlways : BotDecisionContext -> List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
+knownModulesToActivateAlways context =
+    context.readingFromGameClient.shipUI
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filterMap
+            (\moduleButton ->
+                moduleButton
+                    |> EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                    |> Maybe.andThen (tooltipLooksLikeModuleToActivateAlways context)
+                    |> Maybe.map (\moduleName -> ( moduleName, moduleButton ))
+            )
+
+
+tooltipLooksLikeMiningModule : EveOnline.ParseUserInterface.ModuleButtonTooltip -> Bool
+tooltipLooksLikeMiningModule =
+    .uiNode
+        >> .uiNode
+        >> getAllContainedDisplayTexts
+        >> List.any
+            (Regex.fromString "\\d\\s*m3\\s*\\/\\s*s" |> Maybe.map Regex.contains |> Maybe.withDefault (always False))
+
+
+tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> EveOnline.ParseUserInterface.ModuleButtonTooltip -> Maybe String
+tooltipLooksLikeModuleToActivateAlways context =
+    .uiNode
+        >> .uiNode
+        >> getAllContainedDisplayTexts
+        >> List.filterMap
+            (\tooltipText ->
+                (context |> botSettingsFromDecisionContext).modulesToActivateAlways
+                    |> List.filterMap
+                        (\moduleToActivateAlways ->
+                            if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
+                                Just tooltipText
+
+                            else
+                                Nothing
+                        )
+                    |> List.head
+            )
+        >> List.head
+
+
 initState : State
 initState =
     EveOnline.AppFramework.initState
@@ -849,7 +994,10 @@ statusTextFromState context =
         describeShip =
             case readingFromGameClient.shipUI of
                 CanSee shipUI ->
-                    "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
+                    [ "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
+                    , "Found " ++ (context |> knownMiningModules |> List.length |> String.fromInt) ++ " mining modules."
+                    ]
+                        |> String.join " "
 
                 CanNotSeeIt ->
                     case

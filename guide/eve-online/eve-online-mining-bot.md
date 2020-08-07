@@ -22,15 +22,11 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 + In Overview window, make asteroids visible.
 + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
 + Open one inventory window.
-+ In the ship UI, arrange the modules:
-    + Place all mining modules (to activate on targets) in the top row.
-    + Place modules that should always be active in the middle row.
-    + Hide passive modules by disabling the check-box `Display Passive Modules`.
 + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from https://catalog.botengine.org/4928a8dcf815dea288e2b5300edd1e817f9490247be982b589c10129dc350b7a and then run it.
+To start the mining bot, download the script from https://catalog.botengine.org/d158e05a9c6746625ce7c170113cace74d2c8681c2e7dbbd71b03104a90f49e8 and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 
@@ -57,6 +53,13 @@ All settings are optional; you only need them in case the defaults don't fit you
 
 + `unload-station-name` : Name of a station to dock to when the ore hold is full.
 + `unload-structure-name` : Name of a structure to dock to when the ore hold is full.
++ `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
++ `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
+
+To combine multiple settings, use a comma (,) to separate the individual assignments. Here is an example of a complete settings string:
+```
+unload-station-name = Noghere VII - Moon 15, module-to-activate-always = shield hardener, module-to-activate-always = afterburner
+```
 
 ----
 

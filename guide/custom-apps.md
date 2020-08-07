@@ -45,3 +45,8 @@ Program code change at https://github.com/Viir/bots/commit/42819720f12f34658d88e
 > 
 > Original discussion at https://forum.botengine.org/t/mining-bot-master-branch/3463?u=viir
 
+On 2020-08-07, the catalog entry at https://catalog.botengine.org/782844bb5667da19d2dec276b3afd9d0a2e381c7e5011f837752c4a0d523e110 shows:
+
+> Total running time in hours: 119
+
+Therefore integrate these into the recommendation on the main branch.

@@ -1,6 +1,6 @@
 # Parsed User Interface of the EVE Online Game Client
 
-The parsed user interface is a common way to access parts of the user interface of the game client. It helps you navigate and find things faster.
+The parsed user interface is a common way to access parts of the user interface of the game client. It guides you while writing code by providing Elm types and functions for popular derivations from the UI tree.
 
 The UI tree in the EVE Online client can contain thousands of nodes and tens of thousands of individual properties. Because of this large amount of data, navigating in there can be time-consuming. To make this easier, this library filters and transforms the memory reading result into a form that contains less redundant information and uses names more closely related to the experience of players; for example, the overview window or ship modules.
 

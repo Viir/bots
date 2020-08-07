@@ -7,7 +7,9 @@
 
 + [Developing for EVE Online](https://to.botengine.org/guide/developing-for-eve-online): Learn how bots and intel tools are developed. Discover the engineering methods and tools behind the most advanced EVE Online bots.
 
-+ [Parsed User Interface of the EVE Online Game Client](https://to.botengine.org/guide/parsed-user-interface-of-the-eve-online-game-client): Find things faster in the EVE Online game client user interface.
++ Get a guide for writing Elm code that reads from the EVE Online game client's user interface: Using types from the parsed user interface: https://to.botengine.org/guide/parsed-user-interface-of-the-eve-online-game-client
+
++ Inspect the UI tree of an EVE Online game client process (live or from archived samples): [Alternate UI for EVE Online](https://to.botengine.org/guide/alternate-ui-for-eve-online)
 
 + [Walkthrough, Programming]: Making an EVE Online bot see anomalies and other pilots: [https://youtu.be/pL1zLGYn8jQ](https://youtu.be/pL1zLGYn8jQ)
 

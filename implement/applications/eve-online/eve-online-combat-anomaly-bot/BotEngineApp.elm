@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-08-03
+{- EVE Online combat anomaly bot version 2020-08-07
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -307,7 +307,7 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                     )
 
             Nothing ->
-                combat context seeUndockingComplete enterAnomaly
+                combat context seeUndockingComplete (enterAnomaly context)
 
 
 undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
@@ -335,7 +335,7 @@ undockUsingStationWindow context =
                         )
 
 
-combat : BotDecisionContext -> SeeUndockingComplete -> (BotDecisionContext -> DecisionPathNode) -> DecisionPathNode
+combat : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode -> DecisionPathNode
 combat context seeUndockingComplete continueIfCombatComplete =
     let
         overviewEntriesToAttack =
@@ -382,7 +382,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             (if overviewEntriesToAttack |> List.isEmpty then
                                                 returnDronesToBay context.readingFromGameClient
                                                     |> Maybe.withDefault
-                                                        (describeBranch "No drones to return." (continueIfCombatComplete context))
+                                                        (describeBranch "No drones to return." continueIfCombatComplete)
 
                                              else
                                                 describeBranch "Wait for target locking to complete." waitForProgressInGame
@@ -432,7 +432,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
             "I see another pilot in the overview. Skip this anomaly."
             (returnDronesToBay context.readingFromGameClient
                 |> Maybe.withDefault
-                    (describeBranch "No drones to return." (continueIfCombatComplete context))
+                    (describeBranch "No drones to return." continueIfCombatComplete)
             )
 
     else

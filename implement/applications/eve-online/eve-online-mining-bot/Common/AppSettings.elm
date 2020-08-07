@@ -45,10 +45,17 @@ parseAllowOnlyEmpty appSettings appSettingsString =
 
 
 parseSimpleCommaSeparatedList : Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
-parseSimpleCommaSeparatedList namedSettings defaultSettings settingsString =
+parseSimpleCommaSeparatedList =
+    parseSimpleList { assignmentsSeparators = [ "," ] }
+
+
+parseSimpleList : { assignmentsSeparators : List String } -> Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
+parseSimpleList { assignmentsSeparators } namedSettings defaultSettings settingsString =
     let
         assignments =
-            settingsString |> String.split ","
+            assignmentsSeparators
+                |> List.foldl (\assignmentSeparator -> List.concatMap (String.split assignmentSeparator))
+                    [ settingsString ]
 
         assignmentFunctionResults =
             assignments

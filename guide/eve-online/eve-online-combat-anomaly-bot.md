@@ -41,10 +41,10 @@ All settings are optional; you only need them in case the defaults don't fit you
 + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
 + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
 
-Here is an example of a complete app-settings string:
+To combine multiple settings, use a comma (,) to separate the individual assignments. Here is an example of a complete settings string:
 
 ```
---app-settings="anomaly-name=Drone Patrol,anomaly-name=Drone Horde"
+--app-settings="anomaly-name = Drone Patrol, anomaly-name = Drone Horde, hide-when-neutral-in-local = yes"
 ```
 
 ----

@@ -1,4 +1,4 @@
-## Observing and Inspecting an App
+# Observing and Inspecting an App
 
 Observations are the basis for improving an app.
 
@@ -14,7 +14,7 @@ While this simple way of observing is severely limiting, it can work. We can off
 
 But we don't have to make it so difficult for ourselves. These problems with observability are not new, and there are tools to help us overcome these limitations.
 
-### DevTools and Time Travel
+## DevTools and Time Travel
 
 The first step to enable observability is to decouple the observation time from the app running time. Our development tools allow us to go back to any point in time and see everything as it was back then.
 
@@ -47,7 +47,7 @@ Some events inform the app about the completion of reading from the game client.
 This visualization shows the display regions of UI elements and some of the display texts. Using the button "Download reading as JSON file", we can export this memory reading for further examination. The inspection tools found in the alternate UI for EVE Online help us with that. You can find those tools at https://botengine.blob.core.windows.net/blob-library/by-name/2020-07-15-eve-online-alternate-ui.html
 (If you want to enable the Elm inspector ('debugger') tool too, you can use the variant at https://botengine.blob.core.windows.net/blob-library/by-name/2020-07-15-eve-online-alternate-ui-with-inspector.html)
 
-### Sharing Observations
+## Sharing Observations
 
 To collaborate on the development of a bot, we often need to communicate scenarios, situations in which we want the bot to work. One way to describe such a scenario is to use the recording of an actual session as it happened. To export any session displayed in the DevTools, use the "Download session archive" button. This gets you a zip-archive that you can then share with other people. Now you can get help from other developers for your exact situation, no matter if the solution requires a change in program code or just different app-settings.
 

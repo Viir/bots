@@ -8,6 +8,8 @@ What is more interesting than playing video games? - Training artificial intelli
 
 + Observing and inspecting (aka 'debugging') an app: https://to.botengine.org/guide/observing-and-inspecting-an-app
 
++ Testing an app using simulations: https://to.botengine.org/guide/testing-an-app-using-simulations
+
 + Developing for EVE Online: [./guide/eve-online/developing-for-eve-online.md](./guide/eve-online/developing-for-eve-online.md)
 
 + Get a guide for writing Elm code that reads from the EVE Online game client's user interface: Using types from the parsed user interface: https://to.botengine.org/guide/parsed-user-interface-of-the-eve-online-game-client

@@ -1,4 +1,4 @@
-What is more interesting than playing video games? - Training artificial intelligence to play video games!
+What is more interesting than playing video games? - Programming bots to play video games!
 
 ## Guides
 

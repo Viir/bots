@@ -6,7 +6,9 @@ When we run an app for productive use, we want it to interface with a real game 
 
 During development, our goals are different. We are confronted with a vast amount of possible program codes and want to test and compare those. There are various ways to find program codes. We could write it ourselves or copy it from somewhere else. But no matter how we find program code, we want to test it before letting it run unattended for hours. We want to check if it works for our scenarios. For these tests, we often want to run different program codes in the same scenario, to compare their fitness. Setting up a game client for each test would be a distraction and would slow us down.
 
-To test and compare apps faster and in a repeatable way, we use simulations. Simulations allow us to test different apps in the same scenario, without using a live game client.
+But even after the setup, testing a new bot on a real game client can still require further work. If we let a new, previously untested bot run unattended, it might put in-game resources at risk.
+
+To test and compare apps faster and without risk, we use simulations. Simulations allow us to test different apps in the same scenario, without using a live game client.
 
 How does this work? It is helpful to remember that all information that an app receives comes through events. This also implies that the sequence of events in a session determines all outputs of an app.
 

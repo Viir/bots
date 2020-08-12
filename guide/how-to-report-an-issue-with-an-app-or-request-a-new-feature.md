@@ -7,7 +7,7 @@ Improving an app starts with documenting the scenario(s) in which we want the ap
 
 These scenarios are the fuel for bot development. Developing these apps is very much an incremental process. A bot evolves as we collect more scenarios describing the desired behavior.
 
-Explaining your use-case in natural language is a good start, but usually, a developer will ask for more data.
+Explaining your use-case in human language is a good start, but usually, a developer will ask for more data.
 
 ## App Session Recording and Archive
 
@@ -18,7 +18,7 @@ The artifact of the app session recording allows us to:
 + See which app was used in the session and how it was configured (including app-settings).
 + Travel back in time and see what the bot saw in the past.
 + Understand why our bot did what it did.
-+ Create simulations to test new program codes.
++ Create simulations to test new program codes. ([Testing an app using simulations](https://to.botengine.org/guide/testing-an-app-using-simulations))
 
 In summary, by providing a session recording, you answer a lot of questions from people that want to help you.
 

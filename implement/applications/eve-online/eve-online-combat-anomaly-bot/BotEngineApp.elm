@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version Dante 2020-08-07
+{- EVE Online combat anomaly bot version Dante 2020-08-13
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -19,6 +19,7 @@
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
    + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
    + `scary-rat` : Name of rat to avoid. You can use this setting multiple times to select multiple names.
+   + `priority-rat`
 
    To combine multiple settings, use a comma (,) to separate the individual assignments. Here is an example of a complete settings string:
    --app-settings="anomaly-name = Drone Patrol, anomaly-name = Drone Horde, hide-when-neutral-in-local = yes"
@@ -87,6 +88,7 @@ defaultBotSettings =
     { hideWhenNeutralInLocal = AppSettings.No
     , anomalyNames = []
     , scaryRats = []
+    , priorityRats = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1300
     }
@@ -112,6 +114,12 @@ parseBotSettings =
                     \settings -> { settings | scaryRats = scaryRat :: settings.scaryRats }
                 )
            )
+         , ( "priority-rat"
+           , AppSettings.valueTypeString
+                (\ratName ->
+                    \settings -> { settings | priorityRats = String.trim ratName :: settings.priorityRats }
+                )
+           )
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
@@ -130,6 +138,7 @@ type alias BotSettings =
     { hideWhenNeutralInLocal : AppSettings.YesOrNo
     , anomalyNames : List String
     , scaryRats : List String
+    , priorityRats : List String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
@@ -432,9 +441,30 @@ undockUsingStationWindow context =
 combat : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode -> DecisionPathNode
 combat context seeUndockingComplete continueIfCombatComplete =
     let
+        settings =
+            context |> botSettingsFromDecisionContext
+
+        isPriorityRat overviewEntry =
+            settings.priorityRats
+                |> List.map (String.trim >> String.toLower)
+                |> List.any
+                    (\priorityRat ->
+                        overviewEntry.objectName
+                            |> Maybe.map (String.toLower >> String.contains priorityRat)
+                            |> Maybe.withDefault False
+                    )
+
+        attackPriority overviewEntry =
+            if isPriorityRat overviewEntry then
+                0
+
+            else
+                1
+
         overviewEntriesToAttack =
             seeUndockingComplete.overviewWindow.entries
                 |> List.sortBy (.objectDistanceInMeters >> Result.withDefault 999999)
+                |> List.sortBy attackPriority
                 |> List.filter shouldAttackOverviewEntry
 
         overviewEntriesToLock =

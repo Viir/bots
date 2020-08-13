@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-08-11
+{- EVE Online combat anomaly bot version Dante 2020-08-07
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -18,6 +18,7 @@
 
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
    + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
+   + `scary-rat` : Name of rat to avoid. You can use this setting multiple times to select multiple names.
 
    To combine multiple settings, use a comma (,) to separate the individual assignments. Here is an example of a complete settings string:
    --app-settings="anomaly-name = Drone Patrol, anomaly-name = Drone Horde, hide-when-neutral-in-local = yes"
@@ -75,6 +76,7 @@ import EveOnline.ParseUserInterface
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
+        , maybeVisibleMap
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import Set
@@ -84,6 +86,7 @@ defaultBotSettings : BotSettings
 defaultBotSettings =
     { hideWhenNeutralInLocal = AppSettings.No
     , anomalyNames = []
+    , scaryRats = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1300
     }
@@ -103,6 +106,12 @@ parseBotSettings =
                     \settings -> { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
                 )
            )
+         , ( "scary-rat"
+           , AppSettings.valueTypeString
+                (\scaryRat ->
+                    \settings -> { settings | scaryRats = scaryRat :: settings.scaryRats }
+                )
+           )
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
@@ -120,6 +129,7 @@ goodStandingPatterns =
 type alias BotSettings =
     { hideWhenNeutralInLocal : AppSettings.YesOrNo
     , anomalyNames : List String
+    , scaryRats : List String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
@@ -132,7 +142,13 @@ type alias BotState =
 type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
     , shipModules : ShipModulesMemory
+    , shipWarpingInLastReading : MaybeVisible Bool
+    , visitedAnomalies : Dict.Dict String MemoryOfAnomaly
     }
+
+
+type alias MemoryOfAnomaly =
+    { otherPilotsFoundOnArrival : List String, ratsSeen : Set.Set String }
 
 
 type alias BotDecisionContext =
@@ -148,28 +164,74 @@ type alias State =
     EveOnline.AppFramework.StateIncludingFramework BotSettings BotState
 
 
-probeScanResultsRepresentsMatchingAnomaly : BotSettings -> EveOnline.ParseUserInterface.ProbeScanResult -> Bool
-probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
-    let
-        isCombatAnomaly =
-            probeScanResult.cellsTexts
-                |> Dict.get "Group"
-                |> Maybe.map (String.toLower >> String.contains "combat")
-                |> Maybe.withDefault False
+scanResultRepresentsAcceptableAnomaly : BotDecisionContext -> EveOnline.ParseUserInterface.ProbeScanResult -> Bool
+scanResultRepresentsAcceptableAnomaly context probeScanResult =
+    case probeScanResult.cellsTexts |> Dict.get "ID" of
+        Nothing ->
+            False
 
-        matchesNameFromSettings =
-            (settings.anomalyNames |> List.isEmpty)
-                || (settings.anomalyNames
-                        |> List.any
-                            (\anomalyName ->
-                                probeScanResult.cellsTexts
-                                    |> Dict.get "Name"
-                                    |> Maybe.map (String.toLower >> (==) (anomalyName |> String.toLower |> String.trim))
-                                    |> Maybe.withDefault False
-                            )
-                   )
-    in
-    isCombatAnomaly && matchesNameFromSettings
+        Just scanResultID ->
+            let
+                settings =
+                    context |> botSettingsFromDecisionContext
+
+                isCombatAnomaly =
+                    probeScanResult.cellsTexts
+                        |> Dict.get "Group"
+                        |> Maybe.map (String.toLower >> String.contains "combat")
+                        |> Maybe.withDefault False
+
+                matchesNameFromSettings =
+                    (settings.anomalyNames |> List.isEmpty)
+                        || (settings.anomalyNames
+                                |> List.any
+                                    (\anomalyName ->
+                                        probeScanResult.cellsTexts
+                                            |> Dict.get "Name"
+                                            |> Maybe.map (String.toLower >> (==) (anomalyName |> String.toLower |> String.trim))
+                                            |> Maybe.withDefault False
+                                    )
+                           )
+            in
+            isCombatAnomaly
+                && matchesNameFromSettings
+                && (reasonToIgnoreAnomalyFromMemory context { anomalyID = scanResultID } == Nothing)
+
+
+reasonToIgnoreAnomalyFromMemory : BotDecisionContext -> { anomalyID : String } -> Maybe String
+reasonToIgnoreAnomalyFromMemory context { anomalyID } =
+    case memoryOfAnomalyWithID anomalyID context.memory of
+        Nothing ->
+            Nothing
+
+        Just memoryOfAnomaly ->
+            let
+                scaryRatsSeen =
+                    getScaryRatsSeenInAnomaly (botSettingsFromDecisionContext context) memoryOfAnomaly
+            in
+            if scaryRatsSeen /= Set.empty then
+                Just ("Seen scary rat in there: " ++ (scaryRatsSeen |> Set.toList |> String.join ", "))
+
+            else if not (List.isEmpty memoryOfAnomaly.otherPilotsFoundOnArrival) then
+                Just ("Found other pilot on arrival: " ++ (memoryOfAnomaly.otherPilotsFoundOnArrival |> String.join ", "))
+
+            else
+                Nothing
+
+
+getScaryRatsSeenInAnomaly : BotSettings -> MemoryOfAnomaly -> Set.Set String
+getScaryRatsSeenInAnomaly settings =
+    .ratsSeen >> Set.filter (ratIsScaryBySettings settings)
+
+
+ratIsScaryBySettings : BotSettings -> String -> Bool
+ratIsScaryBySettings settings ratName =
+    settings.scaryRats |> List.map String.toLower |> List.member (ratName |> String.toLower)
+
+
+memoryOfAnomalyWithID : String -> BotMemory -> Maybe MemoryOfAnomaly
+memoryOfAnomalyWithID anomalyID =
+    .visitedAnomalies >> Dict.get anomalyID
 
 
 anomalyBotDecisionRoot : BotDecisionContext -> DecisionPathNode
@@ -307,7 +369,39 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                     )
 
             Nothing ->
-                combat context seeUndockingComplete (enterAnomaly context)
+                let
+                    returnDronesAndEnterAnomaly { ifNoAcceptableAnomalyAvailable } =
+                        returnDronesToBay context.readingFromGameClient
+                            |> Maybe.withDefault
+                                (describeBranch "No drones to return."
+                                    (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable } context)
+                                )
+
+                    returnDronesAndEnterAnomalyOrWait =
+                        returnDronesAndEnterAnomaly
+                            { ifNoAcceptableAnomalyAvailable =
+                                describeBranch "Wait for a matching anomaly to appear." waitForProgressInGame
+                            }
+                in
+                case context.readingFromGameClient |> getCurrentAnomalyIDAsSeenInProbeScanner of
+                    Nothing ->
+                        describeBranch "Looks like we are not in an anomaly." returnDronesAndEnterAnomalyOrWait
+
+                    Just anomalyID ->
+                        describeBranch ("We are in anomaly '" ++ anomalyID ++ "'")
+                            (case reasonToIgnoreAnomalyFromMemory context { anomalyID = anomalyID } of
+                                Just reasonToIgnoreAnomaly ->
+                                    describeBranch ("Found a reason to skip this anomaly: " ++ reasonToIgnoreAnomaly)
+                                        (returnDronesAndEnterAnomaly
+                                            { ifNoAcceptableAnomalyAvailable =
+                                                describeBranch "Get out of this anomaly."
+                                                    (dockAtRandomStationOrStructure context.readingFromGameClient)
+                                            }
+                                        )
+
+                                Nothing ->
+                                    combat context seeUndockingComplete returnDronesAndEnterAnomalyOrWait
+                            )
 
 
 undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
@@ -353,10 +447,6 @@ combat context seeUndockingComplete continueIfCombatComplete =
 
             else
                 context.readingFromGameClient.targets |> List.filter .isActiveTarget
-
-        seeingOtherPilotInOverview =
-            seeUndockingComplete.overviewWindow.entries
-                |> List.any (.objectAlliance >> Maybe.map (String.isEmpty >> not) >> Maybe.withDefault False)
 
         ensureShipIsOrbitingDecision =
             overviewEntriesToAttack
@@ -427,21 +517,12 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             )
                                 )
     in
-    if seeingOtherPilotInOverview then
-        describeBranch
-            "I see another pilot in the overview. Skip this anomaly."
-            (returnDronesToBay context.readingFromGameClient
-                |> Maybe.withDefault
-                    (describeBranch "No drones to return." continueIfCombatComplete)
-            )
-
-    else
-        ensureShipIsOrbitingDecision
-            |> Maybe.withDefault decisionIfAlreadyOrbiting
+    ensureShipIsOrbitingDecision
+        |> Maybe.withDefault decisionIfAlreadyOrbiting
 
 
-enterAnomaly : BotDecisionContext -> DecisionPathNode
-enterAnomaly context =
+enterAnomaly : { ifNoAcceptableAnomalyAvailable : DecisionPathNode } -> BotDecisionContext -> DecisionPathNode
+enterAnomaly { ifNoAcceptableAnomalyAvailable } context =
     case context.readingFromGameClient.probeScannerWindow of
         CanNotSeeIt ->
             describeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
@@ -450,7 +531,7 @@ enterAnomaly context =
             let
                 matchingScanResults =
                     probeScannerWindow.scanResults
-                        |> List.filter (probeScanResultsRepresentsMatchingAnomaly (context |> botSettingsFromDecisionContext))
+                        |> List.filter (scanResultRepresentsAcceptableAnomaly context)
             in
             case
                 matchingScanResults
@@ -460,9 +541,9 @@ enterAnomaly context =
                     describeBranch
                         ("I see "
                             ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt)
-                            ++ " scan results, and no matching anomaly. Wait for a matching anomaly to appear."
+                            ++ " scan results, and no matching anomaly."
                         )
-                        waitForProgressInGame
+                        ifNoAcceptableAnomalyAvailable
 
                 Just anomalyScanResult ->
                     describeBranch "Warp to anomaly."
@@ -600,6 +681,8 @@ initState =
         (EveOnline.AppFramework.initStateWithMemoryAndDecisionTree
             { lastDockedStationNameFromInfoPanel = Nothing
             , shipModules = EveOnline.AppFramework.initShipModulesMemory
+            , shipWarpingInLastReading = CanNotSeeIt
+            , visitedAnomalies = Dict.empty
             }
         )
 
@@ -633,6 +716,9 @@ statusTextFromState context =
         readingFromGameClient =
             context.readingFromGameClient
 
+        describePerformance =
+            "Visited anomalies: " ++ (context.memory.visitedAnomalies |> Dict.size |> String.fromInt) ++ "."
+
         combatInfoLines =
             [ "Overview entries to attack: " ++ (readingFromGameClient |> allOverviewEntriesToAttack |> Maybe.map (List.length >> String.fromInt) |> Maybe.withDefault "Nothing") ]
 
@@ -659,16 +745,41 @@ statusTextFromState context =
         namesOfOtherPilotsInOverview =
             getNamesOfOtherPilotsInOverview readingFromGameClient
 
+        namesOfScaryRatsInOverview =
+            getNamesOfScaryRatsInOverview context
+
+        describeCurrentAnomaly =
+            case getCurrentAnomalyIDAsSeenInProbeScanner readingFromGameClient of
+                Nothing ->
+                    "None"
+
+                Just currentAnomalyID ->
+                    let
+                        describeMemory =
+                            case memoryOfAnomalyWithID currentAnomalyID context.memory of
+                                Nothing ->
+                                    "No memory"
+
+                                Just memory ->
+                                    case getScaryRatsSeenInAnomaly (context |> botSettingsFromDecisionContext) memory |> Set.toList of
+                                        [] ->
+                                            "No scary rats"
+
+                                        scaryRats ->
+                                            "Scary rats: " ++ (scaryRats |> String.join ", ")
+                    in
+                    currentAnomalyID ++ " (" ++ describeMemory ++ ")"
+
         describeAnomaly =
             "Current anomaly: "
-                ++ (getCurrentAnomalyIDAsSeenInProbeScanner readingFromGameClient |> Maybe.withDefault "None")
+                ++ describeCurrentAnomaly
                 ++ "."
 
         describeOverview =
-            ("Seeing "
+            [ ("Seeing "
                 ++ (namesOfOtherPilotsInOverview |> List.length |> String.fromInt)
                 ++ " other pilots in the overview"
-            )
+              )
                 ++ (if namesOfOtherPilotsInOverview == [] then
                         ""
 
@@ -676,8 +787,24 @@ statusTextFromState context =
                         ": " ++ (namesOfOtherPilotsInOverview |> String.join ", ")
                    )
                 ++ "."
+            , ("Seeing "
+                ++ (namesOfScaryRatsInOverview |> List.length |> String.fromInt)
+                ++ " scary rats in the overview"
+              )
+                ++ (if namesOfScaryRatsInOverview == [] then
+                        ""
+
+                    else
+                        ": " ++ (namesOfScaryRatsInOverview |> String.join ", ")
+                   )
+                ++ "."
+            ]
+                |> String.join " "
     in
-    [ [ describeShip ] ++ combatInfoLines ++ [ describeDrones ], [ describeAnomaly, describeOverview ] ]
+    [ [ describePerformance ]
+    , [ describeShip ] ++ combatInfoLines ++ [ describeDrones ]
+    , [ describeAnomaly, describeOverview ]
+    ]
         |> List.map (String.join " ")
         |> String.join "\n"
 
@@ -730,6 +857,52 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
                 |> maybeVisibleAndThen .expandedContent
                 |> maybeNothingFromCanNotSeeIt
                 |> Maybe.andThen .currentStationName
+
+        shipIsWarping =
+            currentReading.shipUI
+                |> maybeVisibleAndThen .indication
+                |> maybeVisibleAndThen .maneuverType
+                |> maybeVisibleMap ((==) EveOnline.ParseUserInterface.ManeuverWarp)
+
+        weJustArrivedOnGrid =
+            (botMemoryBefore.shipWarpingInLastReading == CanSee True)
+                && (shipIsWarping == CanSee False)
+
+        namesOfRatsInOverview =
+            getNamesOfRatsInOverview currentReading
+
+        visitedAnomalies =
+            if shipIsWarping == CanSee True then
+                botMemoryBefore.visitedAnomalies
+
+            else
+                case currentReading |> getCurrentAnomalyIDAsSeenInProbeScanner of
+                    Nothing ->
+                        botMemoryBefore.visitedAnomalies
+
+                    Just currentAnomalyID ->
+                        let
+                            anomalyMemoryBefore =
+                                botMemoryBefore.visitedAnomalies
+                                    |> Dict.get currentAnomalyID
+                                    |> Maybe.withDefault { otherPilotsFoundOnArrival = [], ratsSeen = Set.empty }
+
+                            anomalyMemoryWithOtherPilotsOnArrival =
+                                if weJustArrivedOnGrid then
+                                    { anomalyMemoryBefore
+                                        | otherPilotsFoundOnArrival = getNamesOfOtherPilotsInOverview currentReading
+                                    }
+
+                                else
+                                    anomalyMemoryBefore
+
+                            anomalyMemoryWithScaryRats =
+                                { anomalyMemoryWithOtherPilotsOnArrival
+                                    | ratsSeen =
+                                        Set.union anomalyMemoryBefore.ratsSeen (Set.fromList namesOfRatsInOverview)
+                                }
+                        in
+                        botMemoryBefore.visitedAnomalies |> Dict.insert currentAnomalyID anomalyMemoryWithScaryRats
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
@@ -738,6 +911,8 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
     , shipModules =
         botMemoryBefore.shipModules
             |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
+    , shipWarpingInLastReading = shipIsWarping
+    , visitedAnomalies = visitedAnomalies
     }
 
 
@@ -785,6 +960,30 @@ getNamesOfOtherPilotsInOverview readingFromGameClient =
         |> Maybe.map .entries
         |> Maybe.withDefault []
         |> List.filter overviewEntryRepresentsOtherPilot
+        |> List.map (.objectName >> Maybe.withDefault "do not see name of overview entry")
+
+
+getNamesOfScaryRatsInOverview : BotDecisionContext -> List String
+getNamesOfScaryRatsInOverview context =
+    getNamesOfRatsInOverview context.readingFromGameClient
+        |> List.filter (ratIsScaryBySettings (context |> botSettingsFromDecisionContext))
+
+
+getNamesOfRatsInOverview : ReadingFromGameClient -> List String
+getNamesOfRatsInOverview readingFromGameClient =
+    let
+        overviewEntryRepresentsRatOnGrid overviewEntry =
+            iconSpriteHasColorOfRat overviewEntry
+                && (overviewEntry.objectDistanceInMeters
+                        |> Result.map (\distanceInMeters -> distanceInMeters < 300000)
+                        |> Result.withDefault False
+                   )
+    in
+    readingFromGameClient.overviewWindow
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.map .entries
+        |> Maybe.withDefault []
+        |> List.filter overviewEntryRepresentsRatOnGrid
         |> List.map (.objectName >> Maybe.withDefault "do not see name of overview entry")
 
 

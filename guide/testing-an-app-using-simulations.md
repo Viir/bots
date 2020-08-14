@@ -37,6 +37,12 @@ The simulation runs faster than the original session because it never has to wai
 
 When the simulation is complete, we find the recording in the list of sessions shown in DevTools. (You might have to restart DevTools to make a new session visible). By selecting the session recording in DevTools, you can inspect it the same way as any other session recording. The guide on observing and inspecting an app explains how this works: https://to.botengine.org/guide/observing-and-inspecting-an-app
 
+### Replacing App-Settings in a Session Replay
+
+When developing a new feature for your app, you sometimes want to add a new app-setting to let users configure that feature. But how do you test this with a session replay? The app-settings are defined in the session events, so we don't want an exact replay but one with modified events.
+
+To make modifying the app-settings events easy, the `simulate-run` command offers the `--replace-app-settings` option. When you use this option, the engine replaces the app-settings string with the new value for each app-settings event in the loaded session, before giving it to the app.
+
 ## Related Resources
 
 You can see an example of simulations in action in this video: https://youtu.be/pL1zLGYn8jQ?t=583

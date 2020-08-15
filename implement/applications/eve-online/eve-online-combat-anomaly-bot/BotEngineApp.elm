@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-08-11
+{- EVE Online combat anomaly bot version 2020-08-15
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -38,7 +38,7 @@ import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex)
 import Common.DecisionTree exposing (describeBranch, endDecisionPath)
-import Common.EffectOnWindow exposing (MouseButton(..))
+import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.AppFramework
     exposing
@@ -484,18 +484,13 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
             (endDecisionPath
                 (actWithoutFurtherReadings
                     ( "Press the 'W' key and click on the overview entry."
-                    , [ VolatileHostInterface.KeyDown keyCodeLetterW
+                    , [ VolatileHostInterface.KeyDown EffectOnWindow.vkey_W
                       , overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
-                      , VolatileHostInterface.KeyUp keyCodeLetterW
+                      , VolatileHostInterface.KeyUp EffectOnWindow.vkey_W
                       ]
                     )
                 )
             )
-
-
-keyCodeLetterW : Common.EffectOnWindow.VirtualKeyCode
-keyCodeLetterW =
-    Common.EffectOnWindow.VirtualKeyCodeFromInt 0x57
 
 
 launchAndEngageDrones : ReadingFromGameClient -> Maybe DecisionPathNode

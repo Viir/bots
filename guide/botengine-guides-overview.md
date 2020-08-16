@@ -1,6 +1,8 @@
 
 ## Guides
 
++ Video on how to start a bot or botengine app: https://youtu.be/Q44uTEKw_aA
+
 + How to report an issue with an app or request a new feature: https://to.botengine.org/guide/how-to-report-an-issue-with-an-app-or-request-a-new-feature
 
 + Observing and inspecting (aka 'debugging') an app: https://to.botengine.org/guide/observing-and-inspecting-an-app

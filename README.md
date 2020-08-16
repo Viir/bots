@@ -4,6 +4,8 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + How to install/register the `botengine` command: [./guide/failed-run-did-not-find-botengine-program.md](./guide/failed-run-did-not-find-botengine-program.md)
 
++ Video on how to start a bot or botengine app: https://youtu.be/Q44uTEKw_aA
+
 + How to report an issue with an app or request a new feature: https://to.botengine.org/guide/how-to-report-an-issue-with-an-app-or-request-a-new-feature
 
 + Observing and inspecting (aka 'debugging') an app: https://to.botengine.org/guide/observing-and-inspecting-an-app

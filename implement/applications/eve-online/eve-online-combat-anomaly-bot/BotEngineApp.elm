@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-08-15
+{- EVE Online combat anomaly bot version Hi Fi hifig 2020-08-17
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -72,6 +72,7 @@ import EveOnline.ParseUserInterface
         , OverviewWindowEntry
         , ShipUI
         , ShipUIModuleButton
+        , UITreeNodeWithDisplayRegion
         , centerFromDisplayRegion
         , maybeNothingFromCanNotSeeIt
         , maybeVisibleAndThen
@@ -800,3 +801,30 @@ nothingFromIntIfGreaterThan limit originalInt =
 
     else
         Just originalInt
+
+
+type alias DirectionalScannerWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , scanResults : List UITreeNodeWithDisplayRegion
+    }
+
+
+parseDirectionalScannerWindowFromUITreeRoot : UITreeNodeWithDisplayRegion -> MaybeVisible DirectionalScannerWindow
+parseDirectionalScannerWindowFromUITreeRoot uiTreeRoot =
+    case
+        uiTreeRoot
+            |> EveOnline.ParseUserInterface.listDescendantsWithDisplayRegion
+            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "DirectionalScanner")
+            |> List.head
+    of
+        Nothing ->
+            CanNotSeeIt
+
+        Just windowNode ->
+            let
+                scanResultsNodes =
+                    windowNode
+                        |> EveOnline.ParseUserInterface.listDescendantsWithDisplayRegion
+                        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "DirectionalScanResultEntry")
+            in
+            CanSee { uiNode = windowNode, scanResults = scanResultsNodes }

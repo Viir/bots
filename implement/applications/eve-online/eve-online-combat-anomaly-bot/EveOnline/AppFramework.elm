@@ -1233,6 +1233,7 @@ type alias AppStateWithMemoryAndDecisionTree appMemory =
             , remainingActions : List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
             }
     , appMemory : appMemory
+    , lastStepsEffects : List (List VolatileHostInterface.EffectOnWindowStructure)
     }
 
 
@@ -1333,6 +1334,7 @@ initStateWithMemoryAndDecisionTree : appMemory -> AppStateWithMemoryAndDecisionT
 initStateWithMemoryAndDecisionTree appMemory =
     { programState = Nothing
     , appMemory = appMemory
+    , lastStepsEffects = []
     }
 
 
@@ -1422,7 +1424,11 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                     [ config.statusTextFromState decisionContext, describeActivity ]
                         |> String.join "\n"
             in
-            ( { stateBefore | appMemory = appMemory, programState = programState }
+            ( { stateBefore
+                | appMemory = appMemory
+                , programState = programState
+                , lastStepsEffects = effectsOnGameClientWindow :: stateBefore.lastStepsEffects |> List.take 4
+              }
             , if originalDecisionLeaf == DecideFinishSession then
                 FinishSession { statusDescriptionText = statusMessage }
 

@@ -453,10 +453,7 @@ enterAnomaly context =
                     probeScannerWindow.scanResults
                         |> List.filter (probeScanResultsRepresentsMatchingAnomaly (context |> botSettingsFromDecisionContext))
             in
-            case
-                matchingScanResults
-                    |> listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
-            of
+            case matchingScanResults |> List.head of
                 Nothing ->
                     describeBranch
                         ("I see "
@@ -466,13 +463,42 @@ enterAnomaly context =
                         waitForProgressInGame
 
                 Just anomalyScanResult ->
-                    describeBranch "Warp to anomaly."
-                        (useContextMenuCascade
-                            ( "Scan result", anomalyScanResult.uiNode )
-                            (useMenuEntryWithTextContaining "Warp to Within"
-                                (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
+                    if
+                        context.lastStepsEffects
+                            |> List.head
+                            |> Maybe.withDefault []
+                            |> List.member (VolatileHostInterface.KeyDown EffectOnWindow.vkey_V)
+                    then
+                        describeBranch "Did use 'V' key in last step"
+                            (if directionalScannerWindowContainsNoScanResults context.readingFromGameClient /= Just True then
+                                describeBranch "Warp to anomaly."
+                                    (useContextMenuCascade
+                                        ( "Scan result", anomalyScanResult.uiNode )
+                                        (useMenuEntryWithTextContaining "Warp to Within"
+                                            (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
+                                        )
+                                    )
+
+                             else
+                                describeBranch "Open context menu on anomaly and use 'Ignore Result'."
+                                    (useContextMenuCascade
+                                        ( "Scan result", anomalyScanResult.uiNode )
+                                        (useMenuEntryWithTextContaining "Ignore Result" menuCascadeCompleted)
+                                    )
                             )
-                        )
+
+                    else
+                        describeBranch "Did not use 'V' key in last step"
+                            (endDecisionPath
+                                (actWithoutFurtherReadings
+                                    ( "Press the 'W' key and click on the overview entry."
+                                    , [ VolatileHostInterface.KeyDown EffectOnWindow.vkey_V
+                                      , anomalyScanResult.uiNode |> clickOnUIElement MouseButtonLeft
+                                      , VolatileHostInterface.KeyUp EffectOnWindow.vkey_V
+                                      ]
+                                    )
+                                )
+                            )
 
 
 ensureShipIsOrbiting : ShipUI -> OverviewWindowEntry -> Maybe DecisionPathNode
@@ -807,6 +833,14 @@ type alias DirectionalScannerWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , scanResults : List UITreeNodeWithDisplayRegion
     }
+
+
+directionalScannerWindowContainsNoScanResults : ReadingFromGameClient -> Maybe Bool
+directionalScannerWindowContainsNoScanResults readingFromGameClient =
+    readingFromGameClient.uiTree
+        |> parseDirectionalScannerWindowFromUITreeRoot
+        |> maybeNothingFromCanNotSeeIt
+        |> Maybe.map (.uiNode >> .uiNode >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts >> List.any (String.contains "No Scan Results"))
 
 
 parseDirectionalScannerWindowFromUITreeRoot : UITreeNodeWithDisplayRegion -> MaybeVisible DirectionalScannerWindow

@@ -1223,6 +1223,7 @@ type alias StepDecisionContext appSettings appMemory =
     { eventContext : AppEventContext appSettings
     , readingFromGameClient : ReadingFromGameClient
     , memory : appMemory
+    , lastStepsEffects : List (List VolatileHostInterface.EffectOnWindowStructure)
     }
 
 
@@ -1359,6 +1360,7 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                     { eventContext = eventContext
                     , memory = appMemory
                     , readingFromGameClient = readingFromGameClient
+                    , lastStepsEffects = stateBefore.lastStepsEffects
                     }
 
                 programStateIfEvalDecisionTreeNew =

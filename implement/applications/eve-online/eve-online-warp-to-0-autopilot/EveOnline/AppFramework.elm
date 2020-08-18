@@ -20,13 +20,7 @@ import Common.EffectOnWindow
 import Common.FNV
 import Dict
 import EveOnline.MemoryReading
-import EveOnline.ParseUserInterface
-    exposing
-        ( MaybeVisible(..)
-        , centerFromDisplayRegion
-        , maybeNothingFromCanNotSeeIt
-        , maybeVisibleAndThen
-        )
+import EveOnline.ParseUserInterface exposing (centerFromDisplayRegion)
 import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (effectMouseClickAtLocation)
 import EveOnline.VolatileHostScript as VolatileHostScript
 import String.Extra
@@ -130,7 +124,7 @@ type alias GameClientProcessSummary =
 
 type alias ShipModulesMemory =
     { tooltipFromModuleButton : Dict.Dict String EveOnline.ParseUserInterface.ModuleButtonTooltip
-    , lastReadingTooltip : MaybeVisible EveOnline.ParseUserInterface.ModuleButtonTooltip
+    , lastReadingTooltip : Maybe EveOnline.ParseUserInterface.ModuleButtonTooltip
     }
 
 
@@ -142,7 +136,7 @@ volatileHostRecycleInterval =
 initShipModulesMemory : ShipModulesMemory
 initShipModulesMemory =
     { tooltipFromModuleButton = Dict.empty
-    , lastReadingTooltip = CanNotSeeIt
+    , lastReadingTooltip = Nothing
     }
 
 
@@ -157,7 +151,7 @@ integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
         {- To ensure robustness, we store a new tooltip only when the display texts match in two consecutive readings from the game client. -}
         tooltipAvailableToStore =
             case ( memoryBefore.lastReadingTooltip, currentReading.moduleButtonTooltip ) of
-                ( CanSee previousTooltip, CanSee currentTooltip ) ->
+                ( Just previousTooltip, Just currentTooltip ) ->
                     if getTooltipDataForEqualityComparison previousTooltip == getTooltipDataForEqualityComparison currentTooltip then
                         Just currentTooltip
 
@@ -169,7 +163,6 @@ integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
 
         visibleModuleButtons =
             currentReading.shipUI
-                |> maybeNothingFromCanNotSeeIt
                 |> Maybe.map .moduleButtons
                 |> Maybe.withDefault []
 
@@ -963,11 +956,11 @@ useContextMenuCascadeOnOverviewEntry useContextMenu overviewEntry =
 
 useContextMenuCascadeOnListSurroundingsButton : UseContextMenuCascadeNode -> ReadingFromGameClient -> DecisionPathNode
 useContextMenuCascadeOnListSurroundingsButton useContextMenu readingFromGameClient =
-    case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
-        CanNotSeeIt ->
+    case readingFromGameClient.infoPanelContainer |> Maybe.andThen .infoPanelLocationInfo of
+        Nothing ->
             Common.DecisionTree.describeBranch "I do not see the location info panel." askForHelpToGetUnstuck
 
-        CanSee infoPanelLocationInfo ->
+        Just infoPanelLocationInfo ->
             useContextMenuCascade
                 ( "surroundings button", infoPanelLocationInfo.listSurroundingsButton )
                 useContextMenu
@@ -1015,14 +1008,12 @@ getEntropyIntFromReadingFromGameClient readingFromGameClient =
 
         fromOverview =
             readingFromGameClient.overviewWindow
-                |> EveOnline.ParseUserInterface.maybeNothingFromCanNotSeeIt
                 |> Maybe.map .entries
                 |> Maybe.withDefault []
                 |> List.concatMap entropyFromOverviewEntry
 
         fromProbeScanner =
             readingFromGameClient.probeScannerWindow
-                |> EveOnline.ParseUserInterface.maybeNothingFromCanNotSeeIt
                 |> Maybe.map .scanResults
                 |> Maybe.withDefault []
                 |> List.concatMap entropyFromProbeScanResult
@@ -1173,27 +1164,24 @@ lastContextMenuOrSubmenu =
 infoPanelRouteFirstMarkerFromReadingFromGameClient : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.InfoPanelRouteRouteElementMarker
 infoPanelRouteFirstMarkerFromReadingFromGameClient =
     .infoPanelContainer
-        >> maybeVisibleAndThen .infoPanelRoute
-        >> maybeNothingFromCanNotSeeIt
+        >> Maybe.andThen .infoPanelRoute
         >> Maybe.map .routeElementMarker
         >> Maybe.map (List.sortBy (\routeMarker -> routeMarker.uiNode.totalDisplayRegion.x + routeMarker.uiNode.totalDisplayRegion.y))
         >> Maybe.andThen List.head
 
 
-localChatWindowFromUserInterface : ReadingFromGameClient -> MaybeVisible EveOnline.ParseUserInterface.ChatWindow
+localChatWindowFromUserInterface : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ChatWindow
 localChatWindowFromUserInterface =
     .chatWindowStacks
         >> List.filterMap .chatWindow
         >> List.filter (.name >> Maybe.map (String.endsWith "_local") >> Maybe.withDefault False)
         >> List.head
-        >> EveOnline.ParseUserInterface.canNotSeeItFromMaybeNothing
 
 
 shipUIIndicatesShipIsWarpingOrJumping : EveOnline.ParseUserInterface.ShipUI -> Bool
 shipUIIndicatesShipIsWarpingOrJumping =
     .indication
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
+        >> Maybe.andThen .maneuverType
         >> Maybe.map
             (\maneuverType ->
                 [ EveOnline.ParseUserInterface.ManeuverWarp, EveOnline.ParseUserInterface.ManeuverJump ]
@@ -1244,15 +1232,15 @@ type alias SeeUndockingComplete =
 
 ensureInfoPanelLocationInfoIsExpanded : ReadingFromGameClient -> Maybe DecisionPathNode
 ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
-    case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .infoPanelLocationInfo of
-        CanNotSeeIt ->
+    case readingFromGameClient.infoPanelContainer |> Maybe.andThen .infoPanelLocationInfo of
+        Nothing ->
             Just
                 (Common.DecisionTree.describeBranch "I do not see the location info panel. Enable the info panel."
-                    (case readingFromGameClient.infoPanelContainer |> maybeVisibleAndThen .icons |> maybeVisibleAndThen .locationInfo of
-                        CanNotSeeIt ->
+                    (case readingFromGameClient.infoPanelContainer |> Maybe.andThen .icons |> Maybe.andThen .locationInfo of
+                        Nothing ->
                             Common.DecisionTree.describeBranch "I do not see the icon for the location info panel." askForHelpToGetUnstuck
 
-                        CanSee iconLocationInfoPanel ->
+                        Just iconLocationInfoPanel ->
                             Common.DecisionTree.endDecisionPath
                                 (actWithoutFurtherReadings
                                     ( "Click on the icon to enable the info panel."
@@ -1262,7 +1250,7 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
                     )
                 )
 
-        CanSee infoPanelLocationInfo ->
+        Just infoPanelLocationInfo ->
             if 35 < infoPanelLocationInfo.uiNode.totalDisplayRegion.height then
                 Nothing
 
@@ -1293,19 +1281,19 @@ branchDependingOnDockedOrInSpace :
     -> DecisionPathNode
 branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI, ifUndockingComplete } readingFromGameClient =
     case readingFromGameClient.shipUI of
-        CanNotSeeIt ->
+        Nothing ->
             Common.DecisionTree.describeBranch "I see no ship UI, assume we are docked." ifDocked
 
-        CanSee shipUI ->
+        Just shipUI ->
             ifSeeShipUI shipUI
                 |> Maybe.withDefault
                     (case readingFromGameClient.overviewWindow of
-                        CanNotSeeIt ->
+                        Nothing ->
                             Common.DecisionTree.describeBranch
                                 "I see no overview window, wait until undocking completed."
                                 waitForProgressInGame
 
-                        CanSee overviewWindow ->
+                        Just overviewWindow ->
                             Common.DecisionTree.describeBranch "I see ship UI and overview, undocking complete."
                                 (ifUndockingComplete
                                     { shipUI = shipUI, overviewWindow = overviewWindow }

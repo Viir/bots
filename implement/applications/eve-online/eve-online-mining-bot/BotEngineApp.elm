@@ -70,12 +70,9 @@ import EveOnline.AppFramework
         )
 import EveOnline.ParseUserInterface
     exposing
-        ( MaybeVisible(..)
-        , OverviewWindowEntry
+        ( OverviewWindowEntry
         , centerFromDisplayRegion
         , getAllContainedDisplayTexts
-        , maybeNothingFromCanNotSeeIt
-        , maybeVisibleAndThen
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import Regex
@@ -225,10 +222,10 @@ continueIfShouldHide config context =
 
     else
         case context.readingFromGameClient |> localChatWindowFromUserInterface of
-            CanNotSeeIt ->
+            Nothing ->
                 Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
 
-            CanSee localChatWindow ->
+            Just localChatWindow ->
                 let
                     chatUserHasGoodStanding chatUser =
                         goodStandingPatterns
@@ -263,8 +260,7 @@ shouldHideWhenNeutralInLocal context =
 
         Nothing ->
             (context.readingFromGameClient.infoPanelContainer
-                |> maybeVisibleAndThen .infoPanelLocationInfo
-                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.andThen .infoPanelLocationInfo
                 |> Maybe.andThen .securityStatusPercent
                 |> Maybe.withDefault 0
             )
@@ -372,10 +368,10 @@ dockedWithOreHoldSelected context inventoryWindowWithOreHoldSelected =
 undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
 undockUsingStationWindow context =
     case context.readingFromGameClient.stationWindow of
-        CanNotSeeIt ->
+        Nothing ->
             describeBranch "I do not see the station window." askForHelpToGetUnstuck
 
-        CanSee stationWindow ->
+        Just stationWindow ->
             case stationWindow.undockButton of
                 Nothing ->
                     case stationWindow.abortUndockButton of
@@ -643,7 +639,6 @@ dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSetting
 
         matchingOverviewEntry =
             readingFromGameClient.overviewWindow
-                |> maybeNothingFromCanNotSeeIt
                 |> Maybe.map .entries
                 |> Maybe.withDefault []
                 |> List.filter (.objectName >> Maybe.map displayTextRepresentsMatchingStation >> Maybe.withDefault False)
@@ -651,7 +646,6 @@ dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSetting
 
         overviewWindowScrollControls =
             readingFromGameClient.overviewWindow
-                |> maybeNothingFromCanNotSeeIt
                 |> Maybe.andThen .scrollControls
     in
     matchingOverviewEntry
@@ -810,7 +804,6 @@ dockToRandomStationOrStructure readingFromGameClient =
 launchDrones : ReadingFromGameClient -> Maybe DecisionPathNode
 launchDrones readingFromGameClient =
     readingFromGameClient.dronesWindow
-        |> maybeNothingFromCanNotSeeIt
         |> Maybe.andThen
             (\dronesWindow ->
                 case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
@@ -842,7 +835,6 @@ launchDrones readingFromGameClient =
 returnDronesToBay : ReadingFromGameClient -> Maybe DecisionPathNode
 returnDronesToBay readingFromGameClient =
     readingFromGameClient.dronesWindow
-        |> maybeNothingFromCanNotSeeIt
         |> Maybe.andThen .droneGroupInLocalSpace
         |> Maybe.andThen
             (\droneGroupInLocalSpace ->
@@ -863,7 +855,6 @@ returnDronesToBay readingFromGameClient =
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
 readShipUIModuleButtonTooltips context =
     context.readingFromGameClient.shipUI
-        |> maybeNothingFromCanNotSeeIt
         |> Maybe.map .moduleButtons
         |> Maybe.withDefault []
         |> List.filter (EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules >> (==) Nothing)
@@ -884,7 +875,6 @@ readShipUIModuleButtonTooltips context =
 knownMiningModules : BotDecisionContext -> List EveOnline.ParseUserInterface.ShipUIModuleButton
 knownMiningModules context =
     context.readingFromGameClient.shipUI
-        |> maybeNothingFromCanNotSeeIt
         |> Maybe.map .moduleButtons
         |> Maybe.withDefault []
         |> List.filter
@@ -897,7 +887,6 @@ knownMiningModules context =
 knownModulesToActivateAlways : BotDecisionContext -> List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
 knownModulesToActivateAlways context =
     context.readingFromGameClient.shipUI
-        |> maybeNothingFromCanNotSeeIt
         |> Maybe.map .moduleButtons
         |> Maybe.withDefault []
         |> List.filterMap
@@ -993,18 +982,17 @@ statusTextFromState context =
 
         describeShip =
             case readingFromGameClient.shipUI of
-                CanSee shipUI ->
+                Just shipUI ->
                     [ "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
                     , "Found " ++ (context |> knownMiningModules |> List.length |> String.fromInt) ++ " mining modules."
                     ]
                         |> String.join " "
 
-                CanNotSeeIt ->
+                Nothing ->
                     case
                         readingFromGameClient.infoPanelContainer
-                            |> maybeVisibleAndThen .infoPanelLocationInfo
-                            |> maybeVisibleAndThen .expandedContent
-                            |> maybeNothingFromCanNotSeeIt
+                            |> Maybe.andThen .infoPanelLocationInfo
+                            |> Maybe.andThen .expandedContent
                             |> Maybe.andThen .currentStationName
                     of
                         Just stationName ->
@@ -1015,10 +1003,10 @@ statusTextFromState context =
 
         describeDrones =
             case readingFromGameClient.dronesWindow of
-                CanNotSeeIt ->
+                Nothing ->
                     "I do not see the drones window."
 
-                CanSee dronesWindow ->
+                Just dronesWindow ->
                     "I see the drones window: In bay: "
                         ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
                         ++ ", in local space: "
@@ -1050,9 +1038,8 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
     let
         currentStationNameFromInfoPanel =
             currentReading.infoPanelContainer
-                |> maybeVisibleAndThen .infoPanelLocationInfo
-                |> maybeVisibleAndThen .expandedContent
-                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.andThen .infoPanelLocationInfo
+                |> Maybe.andThen .expandedContent
                 |> Maybe.andThen .currentStationName
 
         lastUsedCapacityInOreHold =
@@ -1127,7 +1114,6 @@ topmostAsteroidFromOverviewWindow =
 overviewWindowEntriesRepresentingAsteroids : ReadingFromGameClient -> List OverviewWindowEntry
 overviewWindowEntriesRepresentingAsteroids =
     .overviewWindow
-        >> maybeNothingFromCanNotSeeIt
         >> Maybe.map (.entries >> List.filter overviewWindowEntryRepresentsAnAsteroid)
         >> Maybe.withDefault []
 
@@ -1203,9 +1189,8 @@ predictUIElementInventoryShipEntry treeEntry =
 shipManeuverIsApproaching : ReadingFromGameClient -> Bool
 shipManeuverIsApproaching =
     .shipUI
-        >> maybeNothingFromCanNotSeeIt
-        >> Maybe.andThen (.indication >> maybeNothingFromCanNotSeeIt)
-        >> Maybe.andThen (.maneuverType >> maybeNothingFromCanNotSeeIt)
+        >> Maybe.andThen .indication
+        >> Maybe.andThen .maneuverType
         >> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverApproach)
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False

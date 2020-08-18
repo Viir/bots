@@ -1,7 +1,7 @@
 module ParseMemoryReadingTest exposing (allTests)
 
 import Common.EffectOnWindow
-import EveOnline.ParseUserInterface exposing (MaybeVisible(..))
+import EveOnline.ParseUserInterface
 import Expect
 import Test
 

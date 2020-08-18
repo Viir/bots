@@ -32,7 +32,6 @@ import EveOnline.AppFramework
 import EveOnline.ParseUserInterface
     exposing
         ( InfoPanelRouteRouteElementMarker
-        , MaybeVisible(..)
         , centerFromDisplayRegion
         )
 import EveOnline.VolatileHostInterface exposing (effectMouseClickAtLocation)
@@ -125,11 +124,11 @@ processEveOnlineBotEvent eventContext event stateBefore =
 
                 Just infoPanelRouteFirstMarker ->
                     case readingFromGameClient.shipUI of
-                        CanNotSeeIt ->
+                        Nothing ->
                             continueWithCurrentEffects
                                 ( [], "I do not see the ship UI. Looks like we are docked." )
 
-                        CanSee shipUi ->
+                        Just shipUi ->
                             if shipUi |> shipUIIndicatesShipIsWarpingOrJumping then
                                 continueWaiting
                                     "I see the ship is warping or jumping. I wait until that maneuver ends."

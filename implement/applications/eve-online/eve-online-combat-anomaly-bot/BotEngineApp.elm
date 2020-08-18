@@ -68,13 +68,10 @@ import EveOnline.AppFramework
         )
 import EveOnline.ParseUserInterface
     exposing
-        ( MaybeVisible(..)
-        , OverviewWindowEntry
+        ( OverviewWindowEntry
         , ShipUI
         , ShipUIModuleButton
         , centerFromDisplayRegion
-        , maybeNothingFromCanNotSeeIt
-        , maybeVisibleAndThen
         )
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import Set
@@ -217,10 +214,10 @@ continueIfShouldHide config context =
 
             else
                 case context.readingFromGameClient |> localChatWindowFromUserInterface of
-                    CanNotSeeIt ->
+                    Nothing ->
                         Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
 
-                    CanSee localChatWindow ->
+                    Just localChatWindow ->
                         let
                             chatUserHasGoodStanding chatUser =
                                 goodStandingPatterns
@@ -313,10 +310,10 @@ decideNextActionWhenInSpace context seeUndockingComplete =
 undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
 undockUsingStationWindow context =
     case context.readingFromGameClient.stationWindow of
-        CanNotSeeIt ->
+        Nothing ->
             describeBranch "I do not see the station window." askForHelpToGetUnstuck
 
-        CanSee stationWindow ->
+        Just stationWindow ->
             case stationWindow.undockButton of
                 Nothing ->
                     case stationWindow.abortUndockButton of
@@ -443,10 +440,10 @@ combat context seeUndockingComplete continueIfCombatComplete =
 enterAnomaly : BotDecisionContext -> DecisionPathNode
 enterAnomaly context =
     case context.readingFromGameClient.probeScannerWindow of
-        CanNotSeeIt ->
+        Nothing ->
             describeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
 
-        CanSee probeScannerWindow ->
+        Just probeScannerWindow ->
             let
                 matchingScanResults =
                     probeScannerWindow.scanResults
@@ -476,7 +473,7 @@ enterAnomaly context =
 
 ensureShipIsOrbiting : ShipUI -> OverviewWindowEntry -> Maybe DecisionPathNode
 ensureShipIsOrbiting shipUI overviewEntryToOrbit =
-    if (shipUI.indication |> maybeVisibleAndThen .maneuverType) == CanSee EveOnline.ParseUserInterface.ManeuverOrbit then
+    if (shipUI.indication |> Maybe.andThen .maneuverType) == Just EveOnline.ParseUserInterface.ManeuverOrbit then
         Nothing
 
     else
@@ -496,7 +493,6 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
 launchAndEngageDrones : ReadingFromGameClient -> Maybe DecisionPathNode
 launchAndEngageDrones readingFromGameClient =
     readingFromGameClient.dronesWindow
-        |> maybeNothingFromCanNotSeeIt
         |> Maybe.andThen
             (\dronesWindow ->
                 case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
@@ -541,7 +537,6 @@ launchAndEngageDrones readingFromGameClient =
 returnDronesToBay : ReadingFromGameClient -> Maybe DecisionPathNode
 returnDronesToBay parsedUserInterface =
     parsedUserInterface.dronesWindow
-        |> maybeNothingFromCanNotSeeIt
         |> Maybe.andThen .droneGroupInLocalSpace
         |> Maybe.andThen
             (\droneGroupInLocalSpace ->
@@ -571,7 +566,6 @@ lockTargetFromOverviewEntry overviewEntry =
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
 readShipUIModuleButtonTooltips context =
     context.readingFromGameClient.shipUI
-        |> maybeNothingFromCanNotSeeIt
         |> Maybe.map .moduleButtons
         |> Maybe.withDefault []
         |> List.filter (EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules >> (==) Nothing)
@@ -633,18 +627,18 @@ statusTextFromState context =
 
         describeShip =
             case readingFromGameClient.shipUI of
-                CanSee shipUI ->
+                Just shipUI ->
                     "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
 
-                CanNotSeeIt ->
+                Nothing ->
                     "I do not see the ship UI. Please set up game client first."
 
         describeDrones =
             case readingFromGameClient.dronesWindow of
-                CanNotSeeIt ->
+                Nothing ->
                     "I do not see the drones window."
 
-                CanSee dronesWindow ->
+                Just dronesWindow ->
                     "I see the drones window: In bay: "
                         ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
                         ++ ", in local space: "
@@ -680,7 +674,6 @@ statusTextFromState context =
 allOverviewEntriesToAttack : ReadingFromGameClient -> Maybe (List EveOnline.ParseUserInterface.OverviewWindowEntry)
 allOverviewEntriesToAttack =
     .overviewWindow
-        >> maybeNothingFromCanNotSeeIt
         >> Maybe.map (.entries >> List.filter shouldAttackOverviewEntry)
 
 
@@ -721,9 +714,8 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
     let
         currentStationNameFromInfoPanel =
             currentReading.infoPanelContainer
-                |> maybeVisibleAndThen .infoPanelLocationInfo
-                |> maybeVisibleAndThen .expandedContent
-                |> maybeNothingFromCanNotSeeIt
+                |> Maybe.andThen .infoPanelLocationInfo
+                |> Maybe.andThen .expandedContent
                 |> Maybe.andThen .currentStationName
     in
     { lastDockedStationNameFromInfoPanel =
@@ -739,7 +731,6 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
 getCurrentAnomalyIDAsSeenInProbeScanner : ReadingFromGameClient -> Maybe String
 getCurrentAnomalyIDAsSeenInProbeScanner =
     .probeScannerWindow
-        >> maybeNothingFromCanNotSeeIt
         >> Maybe.map getScanResultsForSitesOnGrid
         >> Maybe.withDefault []
         >> List.head
@@ -765,7 +756,6 @@ getNamesOfOtherPilotsInOverview readingFromGameClient =
         pilotNamesFromLocalChat =
             readingFromGameClient
                 |> localChatWindowFromUserInterface
-                |> maybeNothingFromCanNotSeeIt
                 |> Maybe.andThen .userlist
                 |> Maybe.map .visibleUsers
                 |> Maybe.withDefault []
@@ -776,7 +766,6 @@ getNamesOfOtherPilotsInOverview readingFromGameClient =
                 |> Maybe.withDefault False
     in
     readingFromGameClient.overviewWindow
-        |> maybeNothingFromCanNotSeeIt
         |> Maybe.map .entries
         |> Maybe.withDefault []
         |> List.filter overviewEntryRepresentsOtherPilot

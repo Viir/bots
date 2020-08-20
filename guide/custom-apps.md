@@ -50,3 +50,14 @@ On 2020-08-07, the catalog entry at https://catalog.botengine.org/782844bb5667da
 > Total running time in hours: 119
 
 Therefore integrate these into the recommendation on the main branch.
+
+## 2020-08-20 - Dante - EVE Online - priority-rat
+
+https://github.com/Viir/bots/tree/95178b9233710d335eedcaf7bd2ac31fffce280f/implement/applications/eve-online/eve-online-combat-anomaly-bot
+
+Original discussion: https://forum.botengine.org/t/let-me-know-how-to-make-my-app/3514
+
+2020-08-20 the catalog entry for [App 8e7e916263...](https://catalog.botengine.org/8e7e916263f4cf75eb2fa7e68fc995fe9932324c2c90c37dcaf2206202117351) shows:
+
+> Total running time in hours: 76
+

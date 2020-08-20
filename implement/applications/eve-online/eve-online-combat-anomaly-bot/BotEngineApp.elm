@@ -789,3 +789,35 @@ nothingFromIntIfGreaterThan limit originalInt =
 
     else
         Just originalInt
+
+
+type alias BookmarkLocationWindow =
+    { uiNode : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
+    , submitButton : Maybe EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
+    , cancelButton : Maybe EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
+    }
+
+
+parseBookmarkLocationWindowFromUITreeRoot : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion -> Maybe BookmarkLocationWindow
+parseBookmarkLocationWindowFromUITreeRoot uiTreeRoot =
+    uiTreeRoot
+        |> EveOnline.ParseUserInterface.listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "BookmarkLocationWindow")
+        |> List.head
+        |> Maybe.map parseBookmarkLocationWindow
+
+
+parseBookmarkLocationWindow : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion -> BookmarkLocationWindow
+parseBookmarkLocationWindow windowUINode =
+    let
+        buttonFromLabelText labelText =
+            windowUINode
+                |> EveOnline.ParseUserInterface.listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "Button")
+                |> List.filter (.uiNode >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts >> List.map (String.trim >> String.toLower) >> List.member (labelText |> String.toLower))
+                |> List.head
+    in
+    { uiNode = windowUINode
+    , submitButton = buttonFromLabelText "submit"
+    , cancelButton = buttonFromLabelText "cancel"
+    }

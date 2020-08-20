@@ -1,5 +1,5 @@
-{- EVE Online combat anomaly bot version 2020-08-24
-   This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
+{- EVE Online combat anomaly bot version Bookmark boss wreck (hifig & briancorner) 2020-08-20
+   Based on thread at https://forum.botengine.org/t/bookmark-boss-wreck/3527
 
    Setup instructions for the EVE Online client:
 
@@ -80,6 +80,7 @@ defaultBotSettings : BotSettings
 defaultBotSettings =
     { hideWhenNeutralInLocal = AppSettings.No
     , anomalyNames = []
+    , overviewObjectsToBookmark = [ "Sentient Matriarch Alvus" ]
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1300
     }
@@ -116,6 +117,7 @@ goodStandingPatterns =
 type alias BotSettings =
     { hideWhenNeutralInLocal : AppSettings.YesOrNo
     , anomalyNames : List String
+    , overviewObjectsToBookmark : List String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
@@ -438,36 +440,98 @@ combat context seeUndockingComplete continueIfCombatComplete =
 
 enterAnomaly : BotDecisionContext -> DecisionPathNode
 enterAnomaly context =
-    case context.readingFromGameClient.probeScannerWindow of
-        Nothing ->
-            describeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
-
-        Just probeScannerWindow ->
-            let
-                matchingScanResults =
-                    probeScannerWindow.scanResults
-                        |> List.filter (probeScanResultsRepresentsMatchingAnomaly (context |> botSettingsFromDecisionContext))
-            in
-            case
-                matchingScanResults
-                    |> listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
-            of
+    bookmarkLocationForMatchingOverviewEntries context
+        |> Maybe.withDefault
+            (case context.readingFromGameClient.probeScannerWindow of
                 Nothing ->
-                    describeBranch
-                        ("I see "
-                            ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt)
-                            ++ " scan results, and no matching anomaly. Wait for a matching anomaly to appear."
-                        )
-                        waitForProgressInGame
+                    describeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
 
-                Just anomalyScanResult ->
-                    describeBranch "Warp to anomaly."
-                        (useContextMenuCascade
-                            ( "Scan result", anomalyScanResult.uiNode )
-                            (useMenuEntryWithTextContaining "Warp to Within"
-                                (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
-                            )
-                        )
+                Just probeScannerWindow ->
+                    let
+                        matchingScanResults =
+                            probeScannerWindow.scanResults
+                                |> List.filter (probeScanResultsRepresentsMatchingAnomaly (context |> botSettingsFromDecisionContext))
+                    in
+                    case
+                        matchingScanResults
+                            |> listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
+                    of
+                        Nothing ->
+                            describeBranch
+                                ("I see "
+                                    ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt)
+                                    ++ " scan results, and no matching anomaly. Wait for a matching anomaly to appear."
+                                )
+                                waitForProgressInGame
+
+                        Just anomalyScanResult ->
+                            describeBranch "Warp to anomaly."
+                                (useContextMenuCascade
+                                    ( "Scan result", anomalyScanResult.uiNode )
+                                    (useMenuEntryWithTextContaining "Warp to Within"
+                                        (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
+                                    )
+                                )
+            )
+
+
+bookmarkLocationForMatchingOverviewEntries : BotDecisionContext -> Maybe DecisionPathNode
+bookmarkLocationForMatchingOverviewEntries context =
+    let
+        settings =
+            context |> botSettingsFromDecisionContext
+
+        matchesNameToBookmark stringToTest =
+            settings.overviewObjectsToBookmark
+                |> List.any
+                    (\overviewObjectToBookmark ->
+                        stringToTest
+                            |> String.toLower
+                            |> String.contains (String.toLower overviewObjectToBookmark)
+                    )
+
+        overviewEntryMatchesNameToBookmark overviewEntry =
+            [ overviewEntry.objectName, overviewEntry.objectType ]
+                |> List.filterMap identity
+                |> List.any matchesNameToBookmark
+
+        overviewEntriesToBookmark =
+            context.readingFromGameClient.overviewWindow
+                |> Maybe.map .entries
+                |> Maybe.withDefault []
+                |> List.filter overviewEntryMatchesNameToBookmark
+    in
+    case overviewEntriesToBookmark |> List.head of
+        Nothing ->
+            Nothing
+
+        Just overviewEntryToBookmark ->
+            Just
+                (describeBranch "Found overview entry to bookmark"
+                    (case context.readingFromGameClient.uiTree |> parseBookmarkLocationWindowFromUITreeRoot of
+                        Nothing ->
+                            describeBranch "I do not see the bookmark location window"
+                                (useContextMenuCascadeOnOverviewEntry
+                                    (useMenuEntryWithTextContaining "Save Location" menuCascadeCompleted)
+                                    overviewEntryToBookmark
+                                )
+
+                        Just bookmarkLocationWindow ->
+                            describeBranch "I see the bookmark location window"
+                                (case bookmarkLocationWindow.submitButton of
+                                    Nothing ->
+                                        describeBranch "Missing submit button" askForHelpToGetUnstuck
+
+                                    Just submitButton ->
+                                        endDecisionPath
+                                            (actWithoutFurtherReadings
+                                                ( "Click on the submit button"
+                                                , [ submitButton |> clickOnUIElement MouseButtonLeft ]
+                                                )
+                                            )
+                                )
+                    )
+                )
 
 
 ensureShipIsOrbiting : ShipUI -> OverviewWindowEntry -> Maybe DecisionPathNode

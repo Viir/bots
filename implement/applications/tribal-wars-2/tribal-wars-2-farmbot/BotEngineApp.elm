@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-07-25
+{- Tribal Wars 2 farmbot version 2020-08-22
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -76,7 +76,7 @@ defaultBotSettings =
 
 parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
-    AppSettings.parseSimpleCommaSeparatedList
+    AppSettings.parseSimpleList { assignmentsSeparators = [ ",", "\n" ] }
         {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
         ([ ( "number-of-farm-cycles"
            , AppSettings.valueTypeInteger (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles })

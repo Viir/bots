@@ -64,6 +64,7 @@ type alias StateIncludingSetup botState =
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
     , taskInProgress : Maybe { startTimeInMilliseconds : Int, taskIdString : String, taskDescription : String }
+    , gotTimeSinceTaskCompleted : Bool
     }
 
 
@@ -107,6 +108,7 @@ initState botState =
     , timeInMilliseconds = 0
     , lastTaskIndex = 0
     , taskInProgress = Nothing
+    , gotTimeSinceTaskCompleted = False
     }
 
 
@@ -133,7 +135,7 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                     )
                 |> Maybe.withDefault False
 
-        ( state, responseBeforeAddingStatusMessage ) =
+        ( state, responseBeforeAddingStatusMessageAndSubscribeToTime ) =
             if botRequestedFinishSession then
                 ( stateBefore
                 , { statusDescriptionText = "The bot finished the session."
@@ -149,7 +151,7 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                     Just taskInProgress ->
                         ( stateBefore
                         , { statusDescriptionText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
-                          , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
+                          , notifyWhenArrivedAtTime = Nothing
                           , startTasks = []
                           }
                             |> InterfaceToHost.ContinueSession
@@ -158,11 +160,21 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
         statusMessagePrefix =
             (state |> statusReportFromState) ++ "\nCurrent activity: "
 
+        notifyWhenArrivedAtTime =
+            stateBefore.timeInMilliseconds
+                + (if state.gotTimeSinceTaskCompleted then
+                    500
+
+                   else
+                    200
+                  )
+
         response =
-            case responseBeforeAddingStatusMessage of
+            case responseBeforeAddingStatusMessageAndSubscribeToTime of
                 InterfaceToHost.ContinueSession continueSession ->
                     { continueSession
                         | statusDescriptionText = statusMessagePrefix ++ continueSession.statusDescriptionText
+                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = notifyWhenArrivedAtTime }
                     }
                         |> InterfaceToHost.ContinueSession
 
@@ -202,7 +214,7 @@ processEventNotWaitingForTask stateBefore =
               }
             , { startTasks = [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = setupTask } ]
               , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
-              , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
+              , notifyWhenArrivedAtTime = Nothing
               }
                 |> InterfaceToHost.ContinueSession
             )
@@ -279,7 +291,7 @@ processEventNotWaitingForTask stateBefore =
             ( state
             , { startTasks = startTasks
               , statusDescriptionText = "Operate bot."
-              , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
+              , notifyWhenArrivedAtTime = Nothing
               }
                 |> InterfaceToHost.ContinueSession
             )
@@ -300,7 +312,10 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBefore =
         ( stateBeforeIntegrateBotEvent, maybeBotEvent ) =
             case fromHostEvent of
                 InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
-                    ( { stateBefore | timeInMilliseconds = timeInMilliseconds }
+                    ( { stateBefore
+                        | timeInMilliseconds = timeInMilliseconds
+                        , gotTimeSinceTaskCompleted = True
+                      }
                     , Just (ArrivedAtTime { timeInMilliseconds = timeInMilliseconds })
                     )
 
@@ -323,6 +338,7 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBefore =
                     ( { stateBefore
                         | setup = setupState
                         , taskInProgress = Nothing
+                        , gotTimeSinceTaskCompleted = False
                         , pendingRequestToRestartWebBrowser = pendingRequestToRestartWebBrowser
                       }
                     , maybeBotEventFromTaskComplete

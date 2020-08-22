@@ -431,10 +431,14 @@ processWebBrowserBotEvent : BotEvent -> BotState -> { newState : BotState, respo
 processWebBrowserBotEvent event stateBeforeIntegrateEvent =
     case stateBeforeIntegrateEvent |> integrateWebBrowserBotEvent event of
         Err integrateEventError ->
-            { newState = stateBeforeIntegrateEvent, response = BotFramework.FinishSession, statusMessage = "Error: " ++ integrateEventError }
+            { newState = stateBeforeIntegrateEvent
+            , response = BotFramework.FinishSession
+            , statusMessage = "Error: " ++ integrateEventError
+            }
 
         Ok stateBefore ->
             let
+                maybeCurrentActivityToWaitFor : Maybe { decisionTree : DecisionPathNode InFarmCycleResponse, activityType : String }
                 maybeCurrentActivityToWaitFor =
                     case stateBefore.currentActivity of
                         Nothing ->
@@ -448,7 +452,7 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                                             Just currentActivity.beginTimeInMilliseconds
 
                                         Just lastRunJavascriptResult ->
-                                            if currentActivity.beginTimeInMilliseconds < lastRunJavascriptResult.timeInMilliseconds then
+                                            if currentActivity.beginTimeInMilliseconds <= lastRunJavascriptResult.timeInMilliseconds then
                                                 Nothing
 
                                             else
@@ -462,25 +466,43 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                                         3000
 
                                 waitTimeLimits =
-                                    [ stateBefore.lastRunJavascriptResult
-                                        |> Maybe.map (.timeInMilliseconds >> (+) waitTimeAfterLastRunJavascriptResult)
-                                    , pendingRequestTimeInMilliseconds
-                                        |> Maybe.map ((+) 3000)
+                                    [ ( "lastRunJavascriptResult"
+                                      , stateBefore.lastRunJavascriptResult
+                                            |> Maybe.map (.timeInMilliseconds >> (+) waitTimeAfterLastRunJavascriptResult)
+                                      )
+                                    , ( "pending request"
+                                      , pendingRequestTimeInMilliseconds |> Maybe.map ((+) 3000)
+                                      )
                                     ]
-                                        |> List.filterMap identity
-                            in
-                            if stateBefore.timeInMilliseconds < (waitTimeLimits |> List.maximum |> Maybe.withDefault 0) then
-                                Just currentActivity.decision
+                                        |> List.filterMap
+                                            (\( activityType, maybeWaitTimeLimit ) ->
+                                                maybeWaitTimeLimit
+                                                    |> Maybe.map (\waitTimeLimit -> ( activityType, waitTimeLimit ))
+                                            )
 
-                            else
-                                Nothing
+                                effectiveWaitTimeLimits =
+                                    waitTimeLimits
+                                        |> List.filter (\( _, waitTimeLimit ) -> stateBefore.timeInMilliseconds < waitTimeLimit)
+                            in
+                            case effectiveWaitTimeLimits |> List.head of
+                                Just ( activityType, _ ) ->
+                                    -- TODO: Forward the time we want to get notified to the framework, based on the remaining time to the limit.
+                                    Just { decisionTree = currentActivity.decision, activityType = activityType }
+
+                                Nothing ->
+                                    Nothing
             in
             let
                 ( activityDecision, maybeUpdatedState ) =
                     case maybeCurrentActivityToWaitFor of
                         Just currentActivityToWaitFor ->
-                            ( currentActivityToWaitFor
-                                |> continueDecisionTree (always (endDecisionPath (BotFramework.ContinueSession Nothing)))
+                            ( currentActivityToWaitFor.decisionTree
+                                |> continueDecisionTree
+                                    (always (endDecisionPath (BotFramework.ContinueSession Nothing)))
+                                |> Common.DecisionTree.mapLastDescriptionBeforeLeaf
+                                    (\originalLeafDescription ->
+                                        originalLeafDescription ++ " waiting for completion (" ++ currentActivityToWaitFor.activityType ++ ")"
+                                    )
                             , Nothing
                             )
 

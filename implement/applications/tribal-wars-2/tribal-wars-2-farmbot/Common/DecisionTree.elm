@@ -38,3 +38,24 @@ continueDecisionTree continueLeaf originalNode =
 
         EndDecisionPath leaf ->
             continueLeaf leaf
+
+
+mapLastDescriptionBeforeLeaf : (String -> String) -> DecisionPathNode leaf -> DecisionPathNode leaf
+mapLastDescriptionBeforeLeaf descriptionMap originalTree =
+    case originalTree of
+        EndDecisionPath _ ->
+            originalTree
+
+        DescribeBranch originalDescription nextNode ->
+            let
+                mappedNextNode =
+                    mapLastDescriptionBeforeLeaf descriptionMap nextNode
+
+                description =
+                    if mappedNextNode == nextNode then
+                        descriptionMap originalDescription
+
+                    else
+                        originalDescription
+            in
+            DescribeBranch description mappedNextNode

@@ -29,8 +29,12 @@
    + `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
    + `character-to-farm`: Name of a (player) character to farm like barbarians.
 
+   When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
-   --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
+
+   number-of-farm-cycles = 3
+   break-duration = 20 - 40
+
 -}
 {-
    app-catalog-tags:tribal-wars-2,farmbot

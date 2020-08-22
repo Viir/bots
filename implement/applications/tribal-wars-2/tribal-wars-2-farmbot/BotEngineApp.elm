@@ -164,6 +164,7 @@ type alias BotState =
     , getArmyPresetsResult : Maybe (List ArmyPreset)
     , lastJumpToCoordinates : Maybe { timeInMilliseconds : Int, coordinates : VillageCoordinates }
     , coordinatesLastCheck : Dict.Dict ( Int, Int ) { timeInMilliseconds : Int, result : VillageByCoordinatesResult }
+    , numberOfReadsFromCoordinates : Int
     , readFromGameConsecutiveTimeoutsCount : Int
     , farmState : FarmState
     , lastAttackTimeInMilliseconds : Maybe Int
@@ -390,6 +391,7 @@ initState =
         , getArmyPresetsResult = Nothing
         , lastJumpToCoordinates = Nothing
         , coordinatesLastCheck = Dict.empty
+        , numberOfReadsFromCoordinates = 0
         , readFromGameConsecutiveTimeoutsCount = 0
         , farmState = InFarmCycle { beginTime = 0 } initFarmCycle
         , lastAttackTimeInMilliseconds = Nothing
@@ -864,6 +866,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                                                     { timeInMilliseconds = stateAfterRememberJump.timeInMilliseconds
                                                     , result = villageByCoordinates
                                                     }
+                                        , numberOfReadsFromCoordinates = stateAfterRememberJump.numberOfReadsFromCoordinates + 1
                                         , readFromGameConsecutiveTimeoutsCount = 0
                                     }
 
@@ -1981,6 +1984,17 @@ statusMessageFromState state { activityDecisionStages } =
 
         Just _ ->
             let
+                sentAttacks =
+                    countSentAttacks state
+
+                describeSessionPerformance =
+                    [ ( "attacks sent", sentAttacks.inSession )
+                    , ( "coordinates read", state.numberOfReadsFromCoordinates )
+                    , ( "completed farm cycles", state.completedFarmCycles |> List.length )
+                    ]
+                        |> List.map (\( metric, amount ) -> metric ++ ": " ++ (amount |> String.fromInt))
+                        |> String.join ", "
+
                 jsRunResult =
                     "lastRunJavascriptResult:\n"
                         ++ (state.lastRunJavascriptResult |> Maybe.map .response |> describeMaybe describeRunJavascriptInCurrentPageResponseStructure)
@@ -2012,7 +2026,7 @@ statusMessageFromState state { activityDecisionStages } =
                 coordinatesChecksReport =
                     "Checked "
                         ++ (state.coordinatesLastCheck |> Dict.size |> String.fromInt)
-                        ++ " coordinates and found "
+                        ++ " unique coordinates and found "
                         ++ (villagesByCoordinates |> Dict.size |> String.fromInt)
                         ++ " villages, "
                         ++ (barbarianVillages |> Dict.size |> String.fromInt)
@@ -2024,9 +2038,6 @@ statusMessageFromState state { activityDecisionStages } =
                                 " (" ++ (numberOfVillagesAvoidedBySettings |> String.fromInt) ++ " avoided by current settings)"
                            )
                         ++ "."
-
-                sentAttacks =
-                    countSentAttacks state
 
                 sentAttacksReportPartSession =
                     "Sent " ++ (sentAttacks.inSession |> String.fromInt) ++ " attacks in this session"
@@ -2155,7 +2166,8 @@ statusMessageFromState state { activityDecisionStages } =
                             (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
                         |> String.join "\n"
             in
-            [ completedFarmCyclesReportLines
+            [ [ "Session performance: " ++ describeSessionPerformance ]
+            , completedFarmCyclesReportLines
             , [ sentAttacksReport ]
             , [ coordinatesChecksReport ]
             , [ inGameReport ]

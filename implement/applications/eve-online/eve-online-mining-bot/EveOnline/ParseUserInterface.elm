@@ -27,6 +27,7 @@ type alias ParsedUserInterface =
     , agentConversationWindows : List AgentConversationWindow
     , marketOrdersWindow : Maybe MarketOrdersWindow
     , surveyScanWindow : Maybe SurveyScanWindow
+    , bookmarkLocationWindow : Maybe BookmarkLocationWindow
     , repairShopWindow : Maybe RepairShopWindow
     , moduleButtonTooltip : Maybe ModuleButtonTooltip
     , neocom : Maybe Neocom
@@ -433,6 +434,13 @@ type alias AgentConversationWindow =
     }
 
 
+type alias BookmarkLocationWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , submitButton : Maybe UITreeNodeWithDisplayRegion
+    , cancelButton : Maybe UITreeNodeWithDisplayRegion
+    }
+
+
 type alias Expander =
     { uiNode : UITreeNodeWithDisplayRegion
     , texturePath : Maybe String
@@ -485,6 +493,7 @@ parseUserInterfaceFromUITree uiTree =
     , agentConversationWindows = parseAgentConversationWindowsFromUITreeRoot uiTree
     , marketOrdersWindow = parseMarketOrdersWindowFromUITreeRoot uiTree
     , surveyScanWindow = parseSurveyScanWindowFromUITreeRoot uiTree
+    , bookmarkLocationWindow = parseBookmarkLocationWindowFromUITreeRoot uiTree
     , repairShopWindow = parseRepairShopWindowFromUITreeRoot uiTree
     , neocom = parseNeocomFromUITreeRoot uiTree
     , messageBoxes = parseMessageBoxesFromUITreeRoot uiTree
@@ -2130,6 +2139,32 @@ parseSurveyScanWindow windowUINode =
     }
 
 
+parseBookmarkLocationWindowFromUITreeRoot : UITreeNodeWithDisplayRegion -> Maybe BookmarkLocationWindow
+parseBookmarkLocationWindowFromUITreeRoot uiTreeRoot =
+    uiTreeRoot
+        |> listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "BookmarkLocationWindow")
+        |> List.head
+        |> Maybe.map parseBookmarkLocationWindow
+
+
+parseBookmarkLocationWindow : UITreeNodeWithDisplayRegion -> BookmarkLocationWindow
+parseBookmarkLocationWindow windowUINode =
+    let
+        buttonFromLabelText labelText =
+            windowUINode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "Button")
+                |> List.filter (.uiNode >> getAllContainedDisplayTexts >> List.map (String.trim >> String.toLower) >> List.member (labelText |> String.toLower))
+                |> List.sortBy (.totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
+                |> List.head
+    in
+    { uiNode = windowUINode
+    , submitButton = buttonFromLabelText "submit"
+    , cancelButton = buttonFromLabelText "cancel"
+    }
+
+
 parseRepairShopWindowFromUITreeRoot : UITreeNodeWithDisplayRegion -> Maybe RepairShopWindow
 parseRepairShopWindowFromUITreeRoot uiTreeRoot =
     uiTreeRoot
@@ -2147,6 +2182,7 @@ parseRepairShopWindow windowUINode =
                 |> listDescendantsWithDisplayRegion
                 |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "Button")
                 |> List.filter (.uiNode >> getAllContainedDisplayTexts >> List.map (String.trim >> String.toLower) >> List.member (labelText |> String.toLower))
+                |> List.sortBy (.totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
                 |> List.head
     in
     { uiNode = windowUINode

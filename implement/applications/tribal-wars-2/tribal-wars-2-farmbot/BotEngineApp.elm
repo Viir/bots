@@ -2061,16 +2061,13 @@ statusMessageFromState state { activityDecisionStages } =
                            )
                         ++ "."
 
-                sentAttacksReportPartSession =
-                    "Sent " ++ (sentAttacks.inSession |> String.fromInt) ++ " attacks in this session"
-
                 sentAttacksReportPartCurrentCycle =
                     case sentAttacks.inCurrentCycle of
                         Nothing ->
-                            "."
+                            []
 
                         Just inCurrentCycle ->
-                            ", " ++ (inCurrentCycle |> String.fromInt) ++ " in the current cycle."
+                            [ "Sent " ++ (inCurrentCycle |> String.fromInt) ++ " attacks in the current cycle." ]
 
                 completedFarmCyclesReportLines =
                     case state.completedFarmCycles |> List.head of
@@ -2095,9 +2092,6 @@ statusMessageFromState state { activityDecisionStages } =
                                 ++ farmCycleConclusionDescription.attacksReport
                             , "---"
                             ]
-
-                sentAttacksReport =
-                    sentAttacksReportPartSession ++ sentAttacksReportPartCurrentCycle
 
                 inGameReport =
                     case state.gameRootInformationResult of
@@ -2190,7 +2184,7 @@ statusMessageFromState state { activityDecisionStages } =
             in
             [ [ "Session performance: " ++ describeSessionPerformance ]
             , completedFarmCyclesReportLines
-            , [ sentAttacksReport ]
+            , sentAttacksReportPartCurrentCycle
             , [ coordinatesChecksReport ]
             , [ inGameReport ]
             , [ readBattleReportsReport ]

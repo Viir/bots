@@ -30,7 +30,7 @@ This video shows the process of starting the farmbot and setting up your Tribal 
 
 https://youtu.be/yzkernqechE
 
-To start the farmbot, download the executable file from [https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-07-09.exe](https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-07-09.exe) and then run it.
+To start the farmbot, download the executable file from [https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-08-22.exe](https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-08-22.exe) and then run it.
 
 The first time you start the bot, it will download a web browser component. This can take some time, depending on your internet connection.
 
@@ -76,8 +76,10 @@ In the console window, you can read about the number of sent attacks and what th
 
 ```text
 [...]
-Sent 129 attacks in this session, 129 in the current cycle.
-Checked 1413 coordinates and found 364 villages, 129 of wich are barbarian villages.
+Session performance: attacks sent: 129, coordinates read: 1478, completed farm cycles: 1
+---
+Sent 129 attacks in the current cycle.
+Checked 1413 unique coordinates and found 364 villages, 129 of wich are barbarian villages.
 Found 3 own villages.
 
 Current activity:  
@@ -104,7 +106,7 @@ You can adjust six settings:
 + `farm-avoid-coordinates` : List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
 + `character-to-farm` : Name of a (player) character to farm like barbarians.
 
-To configure settings, open the configuration page at https://catalog.botengine.org/6672a6df4f510d0ea63f05e63e149277115ccaf847f75c7d748f33779a294f02 in a web browser.
+To configure settings, open the configuration page at https://catalog.botengine.org/e24b2a0af87500987e0f8e06ed014e722cdad843b951408fe0ba38e4d0003003 in a web browser.
 
 On this page, scroll down to the button `Configure app`.
 
@@ -116,10 +118,12 @@ Click this button to navigate into the configuration interface:
 
 Here we have multiple input fields, but to use any of the bot settings mentioned above, we only need the input field right of the `--app-settings` label.
 
+When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
 
 ```text
-number-of-farm-cycles = 3, break-duration = 20 - 40
+number-of-farm-cycles = 3
+break-duration = 20 - 40
 ```
 
 ![Input fields for configuration with app-settings](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-form-with-settings.png)
@@ -153,7 +157,11 @@ Sending one attack takes less than four seconds. The bot can cover 800 farms per
 To select multiple player characters for farming, use the `character-to-farm` setting name multiple times. Here is an example of a complete app-settings string with multiple `character-to-farm`:
 
 ```text
-number-of-farm-cycles = 36, break-duration = 30 - 60, character-to-farm = player character one, character-to-farm = player character two, character-to-farm = player character three
+number-of-farm-cycles = 36
+break-duration = 30 - 60
+character-to-farm = player character one
+character-to-farm = player character two
+character-to-farm = player character three
 ```
 
 There is no limit to the number of characters here, you can add as many `character-to-farm` as you want.

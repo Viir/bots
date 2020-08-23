@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2020-08-22
+{- EVE Online Warp-to-0 auto-pilot version 2020-08-23
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
    Before starting the bot, set up the game client as follows:
@@ -26,15 +26,14 @@ import Common.EffectOnWindow exposing (MouseButton(..))
 import EveOnline.AppFramework
     exposing
         ( AppEffect(..)
+        , clickOnUIElement
         , infoPanelRouteFirstMarkerFromReadingFromGameClient
         , shipUIIndicatesShipIsWarpingOrJumping
         )
 import EveOnline.ParseUserInterface
     exposing
         ( InfoPanelRouteRouteElementMarker
-        , centerFromDisplayRegion
         )
-import EveOnline.VolatileHostInterface exposing (effectMouseClickAtLocation)
 
 
 finishSessionAfterInactivityMinutes : Int
@@ -145,12 +144,8 @@ botEffectsWhenNotWaitingForShipManeuver :
 botEffectsWhenNotWaitingForShipManeuver readingFromGameClient infoPanelRouteFirstMarker =
     let
         openMenuAnnouncementAndEffect =
-            ( [ EffectOnGameClientWindow
-                    (effectMouseClickAtLocation
-                        Common.EffectOnWindow.MouseButtonRight
-                        (infoPanelRouteFirstMarker.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
-                    )
-              ]
+            ( clickOnUIElement Common.EffectOnWindow.MouseButtonRight infoPanelRouteFirstMarker.uiNode
+                |> List.map EffectOnGameClientWindow
             , "I click on the route element icon in the info panel to open the menu."
             )
     in
@@ -178,6 +173,6 @@ botEffectsWhenNotWaitingForShipManeuver readingFromGameClient infoPanelRouteFirs
                     openMenuAnnouncementAndEffect
 
                 Just menuEntryToClick ->
-                    ( [ EffectOnGameClientWindow (effectMouseClickAtLocation MouseButtonLeft (menuEntryToClick.uiNode.totalDisplayRegion |> centerFromDisplayRegion)) ]
+                    ( clickOnUIElement MouseButtonLeft menuEntryToClick.uiNode |> List.map EffectOnGameClientWindow
                     , "I click on the menu entry '" ++ menuEntryToClick.text ++ "' to start the next ship maneuver."
                     )

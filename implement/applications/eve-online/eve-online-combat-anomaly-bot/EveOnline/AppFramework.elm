@@ -21,7 +21,7 @@ import Common.FNV
 import Dict
 import EveOnline.MemoryReading
 import EveOnline.ParseUserInterface exposing (centerFromDisplayRegion)
-import EveOnline.VolatileHostInterface as VolatileHostInterface exposing (effectMouseClickAtLocation)
+import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
 import String.Extra
 
@@ -50,7 +50,7 @@ type alias ContinueSessionStructure =
 
 
 type AppEffect
-    = EffectOnGameClientWindow VolatileHostInterface.EffectOnWindowStructure
+    = EffectOnGameClientWindow Common.EffectOnWindow.EffectOnWindowStructure
     | EffectConsoleBeepSequence (List ConsoleBeepStructure)
 
 
@@ -781,7 +781,7 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                 case effect of
                                                     EffectOnGameClientWindow effectOnWindow ->
                                                         { windowId = lastCompletedMemoryReading.mainWindowId
-                                                        , task = effectOnWindow
+                                                        , task = effectOnWindow |> effectOnWindowAsVolatileHostEffectOnWindow
                                                         , bringWindowToForeground = True
                                                         }
                                                             |> VolatileHostInterface.EffectOnWindow
@@ -794,6 +794,22 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                         , getMemoryReadingTask = getMemoryReadingRequest |> buildTaskFromRequestToVolatileHost
                                         , releaseVolatileHostTask = InterfaceToHost.ReleaseVolatileHost { hostId = volatileHostId }
                                         }
+
+
+effectOnWindowAsVolatileHostEffectOnWindow : Common.EffectOnWindow.EffectOnWindowStructure -> VolatileHostInterface.EffectOnWindowStructure
+effectOnWindowAsVolatileHostEffectOnWindow effectOnWindow =
+    case effectOnWindow of
+        Common.EffectOnWindow.MouseMoveTo mouseMoveTo ->
+            VolatileHostInterface.MouseMoveTo { location = mouseMoveTo }
+
+        Common.EffectOnWindow.SimpleMouseClickAtLocation simpleMouseClickAtLocation ->
+            VolatileHostInterface.SimpleMouseClickAtLocation simpleMouseClickAtLocation
+
+        Common.EffectOnWindow.KeyDown key ->
+            VolatileHostInterface.KeyDown key
+
+        Common.EffectOnWindow.KeyUp key ->
+            VolatileHostInterface.KeyUp key
 
 
 selectGameClientInstanceWithTopmostWindow :
@@ -970,8 +986,7 @@ useContextMenuCascade : ( String, UIElement ) -> UseContextMenuCascadeNode -> De
 useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu =
     { actionsAlreadyDecided =
         ( "Open context menu on " ++ initialUIElementName
-        , [ initialUIElement |> clickOnUIElement Common.EffectOnWindow.MouseButtonRight
-          ]
+        , initialUIElement |> clickOnUIElement Common.EffectOnWindow.MouseButtonRight
         )
     , actionsDependingOnNewReadings = useContextMenu |> unpackContextMenuTreeToListOfActionsDependingOnReadings
     }
@@ -1036,9 +1051,9 @@ secondsToSessionEnd appEventContext =
         |> Maybe.map (\sessionTimeLimitInMilliseconds -> (sessionTimeLimitInMilliseconds - appEventContext.timeInMilliseconds) // 1000)
 
 
-clickOnUIElement : Common.EffectOnWindow.MouseButton -> UIElement -> VolatileHostInterface.EffectOnWindowStructure
+clickOnUIElement : Common.EffectOnWindow.MouseButton -> UIElement -> List Common.EffectOnWindow.EffectOnWindowStructure
 clickOnUIElement mouseButton uiElement =
-    effectMouseClickAtLocation mouseButton (uiElement.totalDisplayRegion |> centerFromDisplayRegion)
+    Common.EffectOnWindow.effectsMouseClickAtLocation mouseButton (uiElement.totalDisplayRegion |> centerFromDisplayRegion)
 
 
 type UseContextMenuCascadeNode
@@ -1116,13 +1131,13 @@ menuCascadeCompleted =
 -}
 unpackContextMenuTreeToListOfActionsDependingOnReadings :
     UseContextMenuCascadeNode
-    -> List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+    -> List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
 unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
     let
         actionFromChoice ( describeChoice, chooseEntry ) =
             ( "Click menu entry " ++ describeChoice ++ "."
             , chooseEntry
-                >> Maybe.map (.uiNode >> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft >> List.singleton)
+                >> Maybe.map (.uiNode >> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft)
             )
 
         listFromNextChoiceAndFollowingNodes nextChoice following =
@@ -1192,8 +1207,8 @@ shipUIIndicatesShipIsWarpingOrJumping =
 
 
 type alias TreeLeafAct =
-    { actionsAlreadyDecided : ( String, List VolatileHostInterface.EffectOnWindowStructure )
-    , actionsDependingOnNewReadings : List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+    { actionsAlreadyDecided : ( String, List Common.EffectOnWindow.EffectOnWindowStructure )
+    , actionsDependingOnNewReadings : List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
     }
 
 
@@ -1218,7 +1233,7 @@ type alias AppStateWithMemoryAndDecisionTree appMemory =
     { programState :
         Maybe
             { originalDecision : DecisionPathNode
-            , remainingActions : List ( String, ReadingFromGameClient -> Maybe (List VolatileHostInterface.EffectOnWindowStructure) )
+            , remainingActions : List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
             }
     , appMemory : appMemory
     }
@@ -1244,7 +1259,7 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
                             Common.DecisionTree.endDecisionPath
                                 (actWithoutFurtherReadings
                                     ( "Click on the icon to enable the info panel."
-                                    , [ iconLocationInfoPanel |> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft ]
+                                    , iconLocationInfoPanel |> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft
                                     )
                                 )
                     )
@@ -1260,12 +1275,11 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
                         (Common.DecisionTree.endDecisionPath
                             (actWithoutFurtherReadings
                                 ( "Click to expand the info panel."
-                                , [ effectMouseClickAtLocation
-                                        Common.EffectOnWindow.MouseButtonLeft
-                                        { x = infoPanelLocationInfo.uiNode.totalDisplayRegion.x + 8
-                                        , y = infoPanelLocationInfo.uiNode.totalDisplayRegion.y + 8
-                                        }
-                                  ]
+                                , Common.EffectOnWindow.effectsMouseClickAtLocation
+                                    Common.EffectOnWindow.MouseButtonLeft
+                                    { x = infoPanelLocationInfo.uiNode.totalDisplayRegion.x + 8
+                                    , y = infoPanelLocationInfo.uiNode.totalDisplayRegion.y + 8
+                                    }
                                 )
                             )
                         )
@@ -1312,7 +1326,7 @@ askForHelpToGetUnstuck =
         (Common.DecisionTree.endDecisionPath Wait)
 
 
-actWithoutFurtherReadings : ( String, List VolatileHostInterface.EffectOnWindowStructure ) -> EndDecisionPathStructure
+actWithoutFurtherReadings : ( String, List Common.EffectOnWindow.EffectOnWindowStructure ) -> EndDecisionPathStructure
 actWithoutFurtherReadings actionsAlreadyDecided =
     Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
 

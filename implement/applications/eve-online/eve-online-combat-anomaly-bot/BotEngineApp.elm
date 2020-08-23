@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-08-22
+{- EVE Online combat anomaly bot version 2020-08-23
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -73,7 +73,6 @@ import EveOnline.ParseUserInterface
         , ShipUIModuleButton
         , centerFromDisplayRegion
         )
-import EveOnline.VolatileHostInterface as VolatileHostInterface
 import Set
 
 
@@ -299,7 +298,7 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                 describeBranch "I see an inactive module in the middle row. Activate the module."
                     (endDecisionPath
                         (actWithoutFurtherReadings
-                            ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
+                            ( "Click on the module.", inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft )
                         )
                     )
 
@@ -327,7 +326,7 @@ undockUsingStationWindow context =
                     endDecisionPath
                         (actWithoutFurtherReadings
                             ( "Click on the button to undock."
-                            , [ clickOnUIElement MouseButtonLeft undockButton ]
+                            , clickOnUIElement MouseButtonLeft undockButton
                             )
                         )
 
@@ -418,7 +417,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             (endDecisionPath
                                                 (actWithoutFurtherReadings
                                                     ( "Click on the module."
-                                                    , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                                    , inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
                                                     )
                                                 )
                                             )
@@ -481,10 +480,11 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
             (endDecisionPath
                 (actWithoutFurtherReadings
                     ( "Press the 'W' key and click on the overview entry."
-                    , [ VolatileHostInterface.KeyDown EffectOnWindow.vkey_W
+                    , [ [ EffectOnWindow.KeyDown EffectOnWindow.vkey_W ]
                       , overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
-                      , VolatileHostInterface.KeyUp EffectOnWindow.vkey_W
+                      , [ EffectOnWindow.KeyUp EffectOnWindow.vkey_W ]
                       ]
+                        |> List.concat
                     )
                 )
             )
@@ -575,8 +575,8 @@ readShipUIModuleButtonTooltips context =
                 endDecisionPath
                     (actWithoutFurtherReadings
                         ( "Read tooltip for module button"
-                        , [ VolatileHostInterface.MouseMoveTo
-                                { location = moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion }
+                        , [ EffectOnWindow.MouseMoveTo
+                                (moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
                           ]
                         )
                     )

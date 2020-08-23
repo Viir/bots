@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-08-22
+{- EVE Online mining bot version 2020-08-23
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -38,7 +38,7 @@ import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex)
 import Common.DecisionTree exposing (describeBranch, endDecisionPath)
-import Common.EffectOnWindow exposing (MouseButton(..))
+import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.AppFramework
     exposing
@@ -74,7 +74,6 @@ import EveOnline.ParseUserInterface
         , centerFromDisplayRegion
         , getAllContainedDisplayTexts
         )
-import EveOnline.VolatileHostInterface as VolatileHostInterface
 import Regex
 
 
@@ -325,7 +324,7 @@ closeMessageBox readingFromGameClient =
                             endDecisionPath
                                 (actWithoutFurtherReadings
                                     ( "Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'."
-                                    , [ buttonToUse.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                    , buttonToUse.uiNode |> clickOnUIElement MouseButtonLeft
                                     )
                                 )
                     )
@@ -355,7 +354,7 @@ dockedWithOreHoldSelected context inventoryWindowWithOreHoldSelected =
                         (endDecisionPath
                             (actWithoutFurtherReadings
                                 ( "Drag and drop."
-                                , VolatileHostInterface.effectsForDragAndDrop
+                                , EffectOnWindow.effectsForDragAndDrop
                                     { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
                                     , endLocation = itemHangar.totalDisplayRegion |> centerFromDisplayRegion
                                     , mouseButton = MouseButtonLeft
@@ -385,7 +384,7 @@ undockUsingStationWindow context =
                     endDecisionPath
                         (actWithoutFurtherReadings
                             ( "Click on the button to undock."
-                            , [ clickOnUIElement MouseButtonLeft undockButton ]
+                            , clickOnUIElement MouseButtonLeft undockButton
                             )
                         )
 
@@ -408,7 +407,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                 describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
                     (endDecisionPath
                         (actWithoutFurtherReadings
-                            ( "Click on the module.", [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ] )
+                            ( "Click on the module.", inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft )
                         )
                     )
 
@@ -454,7 +453,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                                                 (endDecisionPath
                                                                     (actWithoutFurtherReadings
                                                                         ( "Click on the module."
-                                                                        , [ inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                                                        , inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
                                                                         )
                                                                     )
                                                                 )
@@ -576,7 +575,7 @@ ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInven
                                                     endDecisionPath
                                                         (actWithoutFurtherReadings
                                                             ( "Click the toggle button to expand."
-                                                            , [ toggleBtn |> clickOnUIElement MouseButtonLeft ]
+                                                            , toggleBtn |> clickOnUIElement MouseButtonLeft
                                                             )
                                                         )
                                             )
@@ -585,7 +584,7 @@ ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInven
                                         endDecisionPath
                                             (actWithoutFurtherReadings
                                                 ( "Click the tree entry representing the ore hold."
-                                                , [ oreHoldTreeEntry.uiNode |> clickOnUIElement MouseButtonLeft ]
+                                                , oreHoldTreeEntry.uiNode |> clickOnUIElement MouseButtonLeft
                                                 )
                                             )
                         )
@@ -687,22 +686,19 @@ scrollDown scrollControls =
                 freeHeightAtBottom =
                     scrollControlsBottom
                         - (scrollHandle.totalDisplayRegion.y + scrollHandle.totalDisplayRegion.height)
-
-                endKey =
-                    Common.EffectOnWindow.VirtualKeyCodeFromInt 0x23
             in
             if 10 < freeHeightAtBottom then
                 Just
                     (endDecisionPath
                         (actWithoutFurtherReadings
                             ( "Click at scroll control bottom"
-                            , [ VolatileHostInterface.effectMouseClickAtLocation Common.EffectOnWindow.MouseButtonLeft
-                                    { x = scrollControlsTotalDisplayRegion.x + 3
-                                    , y = scrollControlsBottom - 8
-                                    }
-                              , VolatileHostInterface.KeyDown endKey
-                              , VolatileHostInterface.KeyUp endKey
-                              ]
+                            , EffectOnWindow.effectsMouseClickAtLocation EffectOnWindow.MouseButtonLeft
+                                { x = scrollControlsTotalDisplayRegion.x + 3
+                                , y = scrollControlsBottom - 8
+                                }
+                                ++ [ EffectOnWindow.KeyDown EffectOnWindow.vkey_END
+                                   , EffectOnWindow.KeyUp EffectOnWindow.vkey_END
+                                   ]
                             )
                         )
                     )
@@ -864,8 +860,8 @@ readShipUIModuleButtonTooltips context =
                 endDecisionPath
                     (actWithoutFurtherReadings
                         ( "Read tooltip for module button"
-                        , [ VolatileHostInterface.MouseMoveTo
-                                { location = moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion }
+                        , [ EffectOnWindow.MouseMoveTo
+                                (moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
                           ]
                         )
                     )

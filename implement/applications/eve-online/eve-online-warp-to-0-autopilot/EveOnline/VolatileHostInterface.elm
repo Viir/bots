@@ -12,12 +12,10 @@ module EveOnline.VolatileHostInterface exposing
     , buildRequestStringToGetResponseFromVolatileHost
     , decodeRequestToVolatileHost
     , deserializeResponseFromVolatileHost
-    , effectMouseClickAtLocation
-    , effectsForDragAndDrop
     , encodeRequestToVolatileHost
     )
 
-import Common.EffectOnWindow exposing (MouseButton(..), VirtualKeyCode(..), virtualKeyCodeAsInteger, virtualKeyCodeFromMouseButton)
+import Common.EffectOnWindow exposing (MouseButton(..), VirtualKeyCode(..), virtualKeyCodeAsInteger)
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
@@ -121,15 +119,6 @@ type alias ConsoleBeepStructure =
     { frequency : Int
     , durationInMs : Int
     }
-
-
-effectsForDragAndDrop : { startLocation : Location2d, mouseButton : MouseButton, endLocation : Location2d } -> List EffectOnWindowStructure
-effectsForDragAndDrop { startLocation, mouseButton, endLocation } =
-    [ MouseMoveTo { location = startLocation }
-    , KeyDown (virtualKeyCodeFromMouseButton mouseButton)
-    , MouseMoveTo { location = endLocation }
-    , KeyUp (virtualKeyCodeFromMouseButton mouseButton)
-    ]
 
 
 deserializeResponseFromVolatileHost : String -> Result Json.Decode.Error ResponseFromVolatileHost
@@ -375,12 +364,6 @@ decodeConsoleBeep =
     Json.Decode.map2 ConsoleBeepStructure
         (Json.Decode.field "frequency" Json.Decode.int)
         (Json.Decode.field "durationInMs" Json.Decode.int)
-
-
-effectMouseClickAtLocation : MouseButton -> Location2d -> EffectOnWindowStructure
-effectMouseClickAtLocation mouseButton location =
-    SimpleMouseClickAtLocation
-        { location = location, mouseButton = mouseButton }
 
 
 jsonDecodeSucceedWhenNotNull : a -> Json.Decode.Decoder a

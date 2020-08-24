@@ -26,6 +26,7 @@ import EveOnline.AppFramework
     exposing
         ( AppEffect(..)
         , DecisionPathNode
+        , ReadingFromGameClient
         , SeeUndockingComplete
         , branchDependingOnDockedOrInSpace
         , infoPanelRouteFirstMarkerFromReadingFromGameClient
@@ -37,8 +38,14 @@ import EveOnline.AppFramework
         )
 
 
+type alias BotMemory =
+    { lastSolarSystemName : Maybe String
+    , jumpsCompleted : Int
+    }
+
+
 type alias StateMemoryAndDecisionTree =
-    EveOnline.AppFramework.AppStateWithMemoryAndDecisionTree ()
+    EveOnline.AppFramework.AppStateWithMemoryAndDecisionTree BotMemory
 
 
 type alias State =
@@ -46,13 +53,33 @@ type alias State =
 
 
 type alias BotDecisionContext =
-    EveOnline.AppFramework.StepDecisionContext () ()
+    EveOnline.AppFramework.StepDecisionContext () BotMemory
 
 
 initState : State
 initState =
     EveOnline.AppFramework.initState
-        (EveOnline.AppFramework.initStateWithMemoryAndDecisionTree ())
+        (EveOnline.AppFramework.initStateWithMemoryAndDecisionTree
+            { lastSolarSystemName = Nothing
+            , jumpsCompleted = 0
+            }
+        )
+
+
+statusTextFromState : BotDecisionContext -> String
+statusTextFromState context =
+    let
+        describeSessionPerformance =
+            "jumps completed: " ++ (context.memory.jumpsCompleted |> String.fromInt)
+
+        describeCurrentReading =
+            "current solar system: "
+                ++ (currentSolarSystemNameFromReading context.readingFromGameClient |> Maybe.withDefault "Unknown")
+    in
+    [ describeSessionPerformance
+    , describeCurrentReading
+    ]
+        |> String.join "\n"
 
 
 autopilotBotDecisionRoot : BotDecisionContext -> DecisionPathNode
@@ -86,6 +113,31 @@ decisionTreeWhenInSpace context undockingComplete =
                     )
 
 
+updateMemoryForNewReadingFromGame : ReadingFromGameClient -> BotMemory -> BotMemory
+updateMemoryForNewReadingFromGame currentReading memoryBefore =
+    let
+        ( lastSolarSystemName, newJumpsCompleted ) =
+            case currentSolarSystemNameFromReading currentReading of
+                Nothing ->
+                    ( memoryBefore.lastSolarSystemName, 0 )
+
+                Just currentSolarSystemName ->
+                    ( Just currentSolarSystemName
+                    , if
+                        (memoryBefore.lastSolarSystemName /= Nothing)
+                            && (memoryBefore.lastSolarSystemName /= Just currentSolarSystemName)
+                      then
+                        1
+
+                      else
+                        0
+                    )
+    in
+    { jumpsCompleted = memoryBefore.jumpsCompleted + newJumpsCompleted
+    , lastSolarSystemName = lastSolarSystemName
+    }
+
+
 processEveOnlineBotEvent :
     EveOnline.AppFramework.AppEventContext ()
     -> EveOnline.AppFramework.AppEvent
@@ -93,9 +145,9 @@ processEveOnlineBotEvent :
     -> ( StateMemoryAndDecisionTree, EveOnline.AppFramework.AppEventResponse )
 processEveOnlineBotEvent =
     EveOnline.AppFramework.processEveOnlineAppEventWithMemoryAndDecisionTree
-        { updateMemoryForNewReadingFromGame = always identity
+        { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
         , decisionTreeRoot = autopilotBotDecisionRoot
-        , statusTextFromState = always ""
+        , statusTextFromState = statusTextFromState
         , millisecondsToNextReadingFromGame = always 2000
         }
 
@@ -107,3 +159,10 @@ processEvent =
         , selectGameClientInstance = always EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
         , processEvent = processEveOnlineBotEvent
         }
+
+
+currentSolarSystemNameFromReading : ReadingFromGameClient -> Maybe String
+currentSolarSystemNameFromReading readingFromGameClient =
+    readingFromGameClient.infoPanelContainer
+        |> Maybe.andThen .infoPanelLocationInfo
+        |> Maybe.andThen .currentSolarSystemName

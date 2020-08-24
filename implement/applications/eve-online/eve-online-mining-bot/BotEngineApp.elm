@@ -849,23 +849,8 @@ returnDronesToBay readingFromGameClient =
 
 
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
-readShipUIModuleButtonTooltips context =
-    context.readingFromGameClient.shipUI
-        |> Maybe.map .moduleButtons
-        |> Maybe.withDefault []
-        |> List.filter (EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules >> (==) Nothing)
-        |> List.head
-        |> Maybe.map
-            (\moduleButtonWithoutMemoryOfTooltip ->
-                endDecisionPath
-                    (actWithoutFurtherReadings
-                        ( "Read tooltip for module button"
-                        , [ EffectOnWindow.MouseMoveTo
-                                (moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
-                          ]
-                        )
-                    )
-            )
+readShipUIModuleButtonTooltips =
+    EveOnline.AppFramework.readShipUIModuleButtonTooltipWhereNotYetInMemory
 
 
 knownMiningModules : BotDecisionContext -> List EveOnline.ParseUserInterface.ShipUIModuleButton

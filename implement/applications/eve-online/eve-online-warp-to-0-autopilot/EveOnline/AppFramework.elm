@@ -1329,6 +1329,31 @@ askForHelpToGetUnstuck =
         (Common.DecisionTree.endDecisionPath Wait)
 
 
+readShipUIModuleButtonTooltipWhereNotYetInMemory :
+    { a
+        | readingFromGameClient : ReadingFromGameClient
+        , memory : { b | shipModules : ShipModulesMemory }
+    }
+    -> Maybe DecisionPathNode
+readShipUIModuleButtonTooltipWhereNotYetInMemory context =
+    context.readingFromGameClient.shipUI
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filter (getModuleButtonTooltipFromModuleButton context.memory.shipModules >> (==) Nothing)
+        |> List.head
+        |> Maybe.map
+            (\moduleButtonWithoutMemoryOfTooltip ->
+                Common.DecisionTree.endDecisionPath
+                    (actWithoutFurtherReadings
+                        ( "Read tooltip for module button"
+                        , [ Common.EffectOnWindow.MouseMoveTo
+                                (moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
+                          ]
+                        )
+                    )
+            )
+
+
 actWithoutFurtherReadings : ( String, List Common.EffectOnWindow.EffectOnWindowStructure ) -> EndDecisionPathStructure
 actWithoutFurtherReadings actionsAlreadyDecided =
     Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }

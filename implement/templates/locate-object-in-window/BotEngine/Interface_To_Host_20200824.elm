@@ -3,8 +3,9 @@
 -}
 
 
-module BotEngine.Interface_To_Host_20200610 exposing
-    ( AppEvent(..)
+module BotEngine.Interface_To_Host_20200824 exposing
+    ( AppEvent
+    , AppEventAtTime(..)
     , AppResponse(..)
     , CreateVolatileHostComplete
     , CreateVolatileHostErrorStructure
@@ -16,6 +17,8 @@ module BotEngine.Interface_To_Host_20200610 exposing
     , TaskId
     , TaskResultStructure(..)
     , VolatileHostId
+    , decodeAppEvent
+    , decodeAppEventAtTime
     , deserializeAppEvent
     , elmEntryPoint
     , taskIdFromString
@@ -26,11 +29,17 @@ import Json.Decode
 import Json.Encode
 
 
-type AppEvent
-    = ArrivedAtTime { timeInMilliseconds : Int }
-    | SetAppSettings String
-    | CompletedTask CompletedTaskStructure
-    | SetSessionTimeLimit { timeInMilliseconds : Int }
+type alias AppEvent =
+    { timeInMilliseconds : Int
+    , eventAtTime : AppEventAtTime
+    }
+
+
+type AppEventAtTime
+    = TimeArrivedEvent
+    | AppSettingsChangedEvent String
+    | SessionDurationPlannedEvent { timeInMilliseconds : Int }
+    | TaskCompletedEvent CompletedTaskStructure
 
 
 type AppResponse
@@ -154,19 +163,21 @@ deserializeAppEvent =
 
 decodeAppEvent : Json.Decode.Decoder AppEvent
 decodeAppEvent =
-    Json.Decode.oneOf
-        [ Json.Decode.field "ArrivedAtTime" jsonDecodeRecordTimeInMilliseconds
-            |> Json.Decode.map ArrivedAtTime
-        , Json.Decode.field "SetAppSettings" Json.Decode.string
-            |> Json.Decode.map SetAppSettings
+    Json.Decode.map2 AppEvent
+        (Json.Decode.field "timeInMilliseconds" Json.Decode.int)
+        (Json.Decode.field "eventAtTime" decodeAppEventAtTime)
 
-        -- 2020-03-18 Maintain backwards compatibility: Map from 'SetBotConfiguration' to 'SetAppSettings'.
-        , Json.Decode.field "SetBotConfiguration" Json.Decode.string
-            |> Json.Decode.map SetAppSettings
-        , Json.Decode.field "CompletedTask" decodeCompletedTaskStructure
-            |> Json.Decode.map CompletedTask
-        , Json.Decode.field "SetSessionTimeLimit" jsonDecodeRecordTimeInMilliseconds
-            |> Json.Decode.map SetSessionTimeLimit
+
+decodeAppEventAtTime : Json.Decode.Decoder AppEventAtTime
+decodeAppEventAtTime =
+    Json.Decode.oneOf
+        [ Json.Decode.field "TimeArrivedEvent" (Json.Decode.index 0 (Json.Decode.succeed TimeArrivedEvent))
+        , Json.Decode.field "AppSettingsChangedEvent" (Json.Decode.index 0 Json.Decode.string)
+            |> Json.Decode.map AppSettingsChangedEvent
+        , Json.Decode.field "SessionDurationPlannedEvent" (Json.Decode.index 0 jsonDecodeRecordTimeInMilliseconds)
+            |> Json.Decode.map SessionDurationPlannedEvent
+        , Json.Decode.field "TaskCompletedEvent" (Json.Decode.index 0 decodeCompletedTaskStructure)
+            |> Json.Decode.map TaskCompletedEvent
         ]
 
 

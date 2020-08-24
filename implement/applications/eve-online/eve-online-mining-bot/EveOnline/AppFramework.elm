@@ -13,7 +13,7 @@
 
 module EveOnline.AppFramework exposing (..)
 
-import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
 import Common.Basics
 import Common.DecisionTree
 import Common.EffectOnWindow
@@ -235,16 +235,19 @@ processEvent :
     -> InterfaceToHost.AppEvent
     -> StateIncludingFramework appSettings appState
     -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
-processEvent appConfiguration fromHostEvent stateBefore =
+processEvent appConfiguration fromHostEvent stateBeforeUpdateTime =
     let
+        stateBefore =
+            { stateBeforeUpdateTime | timeInMilliseconds = fromHostEvent.timeInMilliseconds }
+
         continueAfterIntegrateEvent =
             processEventAfterIntegrateEvent appConfiguration
     in
-    case fromHostEvent of
-        InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
-            continueAfterIntegrateEvent Nothing { stateBefore | timeInMilliseconds = timeInMilliseconds }
+    case fromHostEvent.eventAtTime of
+        InterfaceToHost.TimeArrivedEvent ->
+            continueAfterIntegrateEvent Nothing stateBefore
 
-        InterfaceToHost.CompletedTask taskComplete ->
+        InterfaceToHost.TaskCompletedEvent taskComplete ->
             let
                 ( setupState, maybeAppEventFromTaskComplete ) =
                     stateBefore.setup
@@ -254,7 +257,7 @@ processEvent appConfiguration fromHostEvent stateBefore =
                 maybeAppEventFromTaskComplete
                 { stateBefore | setup = setupState, taskInProgress = Nothing }
 
-        InterfaceToHost.SetAppSettings appSettings ->
+        InterfaceToHost.AppSettingsChangedEvent appSettings ->
             case appConfiguration.parseAppSettings appSettings of
                 Err parseSettingsError ->
                     ( stateBefore
@@ -271,7 +274,7 @@ processEvent appConfiguration fromHostEvent stateBefore =
                         }
                     )
 
-        InterfaceToHost.SetSessionTimeLimit sessionTimeLimit ->
+        InterfaceToHost.SessionDurationPlannedEvent sessionTimeLimit ->
             continueAfterIntegrateEvent
                 Nothing
                 { stateBefore | sessionTimeLimitInMilliseconds = Just sessionTimeLimit.timeInMilliseconds }

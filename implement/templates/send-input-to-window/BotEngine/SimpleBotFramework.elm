@@ -12,48 +12,25 @@
 -}
 
 
-module BotEngine.SimpleBotFramework exposing
-    ( BotEvent(..)
-    , BotResponse(..)
-    , ImageSearchRegion(..)
-    , ImageStructure
-    , KeyboardKey
-    , LocatePatternInImageApproach(..)
-    , MouseButton
-    , PixelValue
-    , State
-    , Task
-    , TaskId
-    , TaskResultStructure(..)
-    , bringWindowToForeground
-    , dictWithTupleKeyFromIndicesInNestedList
-    , initState
-    , keyboardKeyDown
-    , keyboardKeyFromVirtualKeyCode
-    , keyboardKeyUp
-    , keyboardKey_space
-    , locatePatternInImage
-    , mouseButtonDown
-    , mouseButtonLeft
-    , mouseButtonRight
-    , mouseButtonUp
-    , moveMouseToLocation
-    , processEvent
-    , takeScreenshot
-    , taskIdFromString
-    )
+module BotEngine.SimpleBotFramework exposing (..)
 
-import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
 import BotEngine.VolatileHostWindowsApi as VolatileHostWindowsApi
 import Dict
 import Json.Decode
 
 
-type BotEvent
-    = ArrivedAtTime { timeInMilliseconds : Int }
-    | SetAppSettings String
-    | SetSessionTimeLimit { timeInMilliseconds : Int }
-    | CompletedTask CompletedTaskStructure
+type alias BotEvent =
+    { timeInMilliseconds : Int
+    , eventAtTime : BotEventAtTime
+    }
+
+
+type BotEventAtTime
+    = TimeArrivedEvent
+    | AppSettingsChangedEvent String
+    | SessionDurationPlannedEvent { timeInMilliseconds : Int }
+    | TaskCompletedEvent CompletedTaskStructure
 
 
 type BotResponse
@@ -224,11 +201,11 @@ processEvent simpleBotProcessEvent event stateBefore =
                                                     []
 
                                                 Just settingsString ->
-                                                    [ SetAppSettings settingsString ]
+                                                    [ AppSettingsChangedEvent settingsString ]
                                     in
                                     ( stateBefore.simpleBotInitState
                                     , configurationEvents
-                                        ++ [ ArrivedAtTime { timeInMilliseconds = state.timeInMilliseconds } ]
+                                        ++ [ TimeArrivedEvent ]
                                     )
 
                                 Just simpleBot ->
@@ -252,23 +229,23 @@ processEvent simpleBotProcessEvent event stateBefore =
 
                                 Just notifyWhenArrivedAtTime ->
                                     if notifyWhenArrivedAtTime.timeInMilliseconds <= state.timeInMilliseconds then
-                                        [ ArrivedAtTime { timeInMilliseconds = state.timeInMilliseconds } ]
+                                        [ TimeArrivedEvent ]
 
                                     else
                                         []
 
                         mapCurrentEventToSimpleBotEventsResult =
-                            case event of
-                                InterfaceToHost.ArrivedAtTime arrivedAtTime ->
+                            case event.eventAtTime of
+                                InterfaceToHost.TimeArrivedEvent ->
                                     Ok ( [], state.simpleBotTasksInProgress )
 
-                                InterfaceToHost.SetAppSettings settingsString ->
-                                    Ok ( [ SetAppSettings settingsString ], state.simpleBotTasksInProgress )
+                                InterfaceToHost.AppSettingsChangedEvent settingsString ->
+                                    Ok ( [ AppSettingsChangedEvent settingsString ], state.simpleBotTasksInProgress )
 
-                                InterfaceToHost.SetSessionTimeLimit setSessionTimeLimit ->
-                                    Ok ( [ SetSessionTimeLimit setSessionTimeLimit ], state.simpleBotTasksInProgress )
+                                InterfaceToHost.SessionDurationPlannedEvent sessionDurationPlannedEvent ->
+                                    Ok ( [ SessionDurationPlannedEvent sessionDurationPlannedEvent ], state.simpleBotTasksInProgress )
 
-                                InterfaceToHost.CompletedTask completedTask ->
+                                InterfaceToHost.TaskCompletedEvent completedTask ->
                                     case state.simpleBotTasksInProgress |> List.filter (\( key, _ ) -> key == completedTask.taskId) |> List.head of
                                         Nothing ->
                                             Ok ( [], state.simpleBotTasksInProgress )
@@ -333,7 +310,9 @@ processEvent simpleBotProcessEvent event stateBefore =
 
                                                 Ok taskResultOk ->
                                                     Ok
-                                                        ( [ CompletedTask { taskId = simpleBotTask.taskId, taskResult = taskResultOk } ]
+                                                        ( [ TaskCompletedEvent
+                                                                { taskId = simpleBotTask.taskId, taskResult = taskResultOk }
+                                                          ]
                                                         , state.simpleBotTasksInProgress
                                                             |> List.filter (Tuple.first >> (/=) completedTaskInterfaceId)
                                                         )
@@ -347,11 +326,20 @@ processEvent simpleBotProcessEvent event stateBefore =
 
                                 Ok ( simpleBotEventsFromCurrentEvent, simpleBotTasksInProgressAfterRemoval ) ->
                                     let
+                                        botEvents =
+                                            (simpleBotEventsBefore ++ arriveAtTimeEvents ++ simpleBotEventsFromCurrentEvent)
+                                                |> List.map
+                                                    (\eventAtTime ->
+                                                        { timeInMilliseconds = state.timeInMilliseconds
+                                                        , eventAtTime = eventAtTime
+                                                        }
+                                                    )
+
                                         ( simpleBotState, simpleBotResponse ) =
                                             simpleBotStateBefore
                                                 |> processSequenceOfSimpleBotEventsAndCombineResponses
                                                     simpleBotProcessEvent
-                                                    (simpleBotEventsBefore ++ arriveAtTimeEvents ++ simpleBotEventsFromCurrentEvent)
+                                                    botEvents
 
                                         simpleBotLastResponse =
                                             [ simpleBotResponse, state.simpleBotLastResponse ]
@@ -605,15 +593,19 @@ taskOnWindowFromSimpleBotTask simpleBotTask =
 
 
 integrateEvent : InterfaceToHost.AppEvent -> State simpleBotState -> State simpleBotState
-integrateEvent event stateBefore =
-    case event of
-        InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
-            { stateBefore | timeInMilliseconds = timeInMilliseconds }
+integrateEvent event stateBeforeUpdateTime =
+    let
+        stateBefore =
+            { stateBeforeUpdateTime | timeInMilliseconds = event.timeInMilliseconds }
+    in
+    case event.eventAtTime of
+        InterfaceToHost.TimeArrivedEvent ->
+            stateBefore
 
-        InterfaceToHost.SetAppSettings settingsString ->
+        InterfaceToHost.AppSettingsChangedEvent settingsString ->
             { stateBefore | settingsString = Just settingsString }
 
-        InterfaceToHost.CompletedTask { taskId, taskResult } ->
+        InterfaceToHost.TaskCompletedEvent { taskId, taskResult } ->
             case taskResult of
                 InterfaceToHost.CreateVolatileHostResponse createVolatileHostResult ->
                     { stateBefore | createVolatileHostResult = Just createVolatileHostResult }
@@ -664,7 +656,7 @@ integrateEvent event stateBefore =
                 InterfaceToHost.CompleteWithoutResult ->
                     stateBefore
 
-        InterfaceToHost.SetSessionTimeLimit _ ->
+        InterfaceToHost.SessionDurationPlannedEvent _ ->
             stateBefore
 
 

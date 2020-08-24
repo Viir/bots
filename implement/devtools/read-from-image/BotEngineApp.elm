@@ -27,7 +27,7 @@ module BotEngineApp exposing
     )
 
 import Base64.Decode
-import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
 import DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue)
 import Dict
 import Json.Decode
@@ -195,14 +195,14 @@ processEvent eventAtTime stateBefore =
 
 integrateEvent : InterfaceToHost.AppEvent -> State -> State
 integrateEvent event stateBefore =
-    case event of
-        InterfaceToHost.ArrivedAtTime _ ->
+    case event.eventAtTime of
+        InterfaceToHost.TimeArrivedEvent ->
             stateBefore
 
-        InterfaceToHost.SetAppSettings settingsString ->
+        InterfaceToHost.AppSettingsChangedEvent settingsString ->
             { stateBefore | imageFileName = Just settingsString }
 
-        InterfaceToHost.CompletedTask { taskId, taskResult } ->
+        InterfaceToHost.TaskCompletedEvent { taskId, taskResult } ->
             case taskResult of
                 InterfaceToHost.CreateVolatileHostResponse createVolatileHostResponse ->
                     case createVolatileHostResponse of
@@ -275,7 +275,7 @@ integrateEvent event stateBefore =
                 InterfaceToHost.CompleteWithoutResult ->
                     stateBefore
 
-        InterfaceToHost.SetSessionTimeLimit _ ->
+        InterfaceToHost.SessionDurationPlannedEvent _ ->
             stateBefore
 
 

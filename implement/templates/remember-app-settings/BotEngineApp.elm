@@ -14,7 +14,7 @@ module BotEngineApp exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
 import Json.Encode
 
 
@@ -45,20 +45,28 @@ processEvent event stateBefore =
 
 
 integrateEvent : InterfaceToHost.AppEvent -> State -> State
-integrateEvent event stateBefore =
-    case event of
-        InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
-            { stateBefore | timeInMilliseconds = timeInMilliseconds }
-
-        InterfaceToHost.SetAppSettings settingsString ->
+integrateEvent event stateBeforeUpdateTime =
+    let
+        stateBefore =
+            { stateBeforeUpdateTime | timeInMilliseconds = event.timeInMilliseconds }
+    in
+    case event.eventAtTime of
+        InterfaceToHost.AppSettingsChangedEvent settingsString ->
             { stateBefore
-                | lastReceivedSettings = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, settings = settingsString }
+                | lastReceivedSettings =
+                    Just
+                        { timeInMilliseconds = stateBefore.timeInMilliseconds
+                        , settings = settingsString
+                        }
             }
 
-        InterfaceToHost.CompletedTask _ ->
+        InterfaceToHost.TimeArrivedEvent ->
             stateBefore
 
-        InterfaceToHost.SetSessionTimeLimit _ ->
+        InterfaceToHost.TaskCompletedEvent _ ->
+            stateBefore
+
+        InterfaceToHost.SessionDurationPlannedEvent _ ->
             stateBefore
 
 
@@ -73,6 +81,10 @@ statusMessageFromState state =
                 ageInSeconds =
                     (state.timeInMilliseconds - lastReceivedSettings.timeInMilliseconds) // 1000
             in
-            (ageInSeconds |> String.fromInt)
-                ++ " seconds ago, I received the following settings:\n"
-                ++ (lastReceivedSettings.settings |> Json.Encode.string |> Json.Encode.encode 0)
+            [ (ageInSeconds |> String.fromInt) ++ " seconds ago, I received the following settings:"
+            , lastReceivedSettings.settings
+            , "----"
+            , "As JSON encoded:"
+            , lastReceivedSettings.settings |> Json.Encode.string |> Json.Encode.encode 0
+            ]
+                |> String.join "\n"

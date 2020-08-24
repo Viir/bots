@@ -14,7 +14,7 @@ module BotEngineApp exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
 
 
 type alias State =
@@ -44,18 +44,22 @@ processEvent event stateBefore =
 
 
 integrateEvent : InterfaceToHost.AppEvent -> State -> State
-integrateEvent event stateBefore =
-    case event of
-        InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
-            { stateBefore | timeInMilliseconds = timeInMilliseconds }
-
-        InterfaceToHost.SetAppSettings _ ->
+integrateEvent event stateBeforeUpdateTime =
+    let
+        stateBefore =
+            { stateBeforeUpdateTime | timeInMilliseconds = event.timeInMilliseconds }
+    in
+    case event.eventAtTime of
+        InterfaceToHost.TimeArrivedEvent ->
             stateBefore
 
-        InterfaceToHost.CompletedTask _ ->
+        InterfaceToHost.AppSettingsChangedEvent _ ->
             stateBefore
 
-        InterfaceToHost.SetSessionTimeLimit { timeInMilliseconds } ->
+        InterfaceToHost.TaskCompletedEvent _ ->
+            stateBefore
+
+        InterfaceToHost.SessionDurationPlannedEvent { timeInMilliseconds } ->
             { stateBefore | sessionTimeLimitInMilliseconds = Just timeInMilliseconds }
 
 

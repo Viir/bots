@@ -15,7 +15,7 @@ module WebBrowser.BotFramework exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
+import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
 import WebBrowser.VolatileHostInterface as VolatileHostInterface
 import WebBrowser.VolatileHostScript as VolatileHostScript
 
@@ -64,7 +64,6 @@ type alias StateIncludingSetup botState =
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
     , taskInProgress : Maybe { startTimeInMilliseconds : Int, taskIdString : String, taskDescription : String }
-    , gotTimeSinceTaskCompleted : Bool
     }
 
 
@@ -108,7 +107,6 @@ initState botState =
     , timeInMilliseconds = 0
     , lastTaskIndex = 0
     , taskInProgress = Nothing
-    , gotTimeSinceTaskCompleted = False
     }
 
 
@@ -161,13 +159,7 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
             (state |> statusReportFromState) ++ "\nCurrent activity: "
 
         notifyWhenArrivedAtTime =
-            stateBefore.timeInMilliseconds
-                + (if state.gotTimeSinceTaskCompleted then
-                    500
-
-                   else
-                    200
-                  )
+            stateBefore.timeInMilliseconds + 500
 
         response =
             case responseBeforeAddingStatusMessageAndSubscribeToTime of
@@ -307,19 +299,19 @@ integrateFromHostEvent :
     -> InterfaceToHost.AppEvent
     -> StateIncludingSetup botState
     -> StateIncludingSetup botState
-integrateFromHostEvent botProcessEvent fromHostEvent stateBefore =
+integrateFromHostEvent botProcessEvent fromHostEvent stateBeforeUpdateTime =
     let
+        stateBefore =
+            { stateBeforeUpdateTime | timeInMilliseconds = fromHostEvent.timeInMilliseconds }
+
         ( stateBeforeIntegrateBotEvent, maybeBotEvent ) =
-            case fromHostEvent of
-                InterfaceToHost.ArrivedAtTime { timeInMilliseconds } ->
-                    ( { stateBefore
-                        | timeInMilliseconds = timeInMilliseconds
-                        , gotTimeSinceTaskCompleted = True
-                      }
-                    , Just (ArrivedAtTime { timeInMilliseconds = timeInMilliseconds })
+            case fromHostEvent.eventAtTime of
+                InterfaceToHost.TimeArrivedEvent ->
+                    ( stateBefore
+                    , Just (ArrivedAtTime { timeInMilliseconds = fromHostEvent.timeInMilliseconds })
                     )
 
-                InterfaceToHost.CompletedTask taskComplete ->
+                InterfaceToHost.TaskCompletedEvent taskComplete ->
                     let
                         ( setupState, maybeBotEventFromTaskComplete ) =
                             stateBefore.setup
@@ -338,18 +330,17 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBefore =
                     ( { stateBefore
                         | setup = setupState
                         , taskInProgress = Nothing
-                        , gotTimeSinceTaskCompleted = False
                         , pendingRequestToRestartWebBrowser = pendingRequestToRestartWebBrowser
                       }
                     , maybeBotEventFromTaskComplete
                     )
 
-                InterfaceToHost.SetAppSettings appSettings ->
+                InterfaceToHost.AppSettingsChangedEvent appSettings ->
                     ( stateBefore
                     , Just (SetAppSettings appSettings)
                     )
 
-                InterfaceToHost.SetSessionTimeLimit _ ->
+                InterfaceToHost.SessionDurationPlannedEvent _ ->
                     ( stateBefore, Nothing )
     in
     maybeBotEvent
@@ -434,7 +425,7 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
 
 
 integrateResponseFromVolatileHost : ( Int, VolatileHostInterface.ResponseFromVolatileHost ) -> SetupState -> ( SetupState, Maybe BotEvent )
-integrateResponseFromVolatileHost ( time, response ) stateBefore =
+integrateResponseFromVolatileHost ( _, response ) stateBefore =
     case response of
         VolatileHostInterface.WebBrowserStarted ->
             ( { stateBefore | webBrowserStarted = True }, Nothing )

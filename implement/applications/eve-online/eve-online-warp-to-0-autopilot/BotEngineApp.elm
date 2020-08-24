@@ -6,7 +6,6 @@
    + Set the UI language to English.
    + Set the in-game autopilot route.
    + Make sure the autopilot info panel is expanded, so that the route is visible.
-   + Undock before starting the bot because the bot does not undock.
 -}
 {-
    app-catalog-tags:eve-online,auto-pilot,travel
@@ -22,43 +21,83 @@ module BotEngineApp exposing
 
 import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
 import Common.AppSettings as AppSettings
-import Common.EffectOnWindow exposing (MouseButton(..))
+import Common.DecisionTree exposing (describeBranch)
 import EveOnline.AppFramework
     exposing
         ( AppEffect(..)
-        , clickOnUIElement
+        , DecisionPathNode
+        , SeeUndockingComplete
+        , branchDependingOnDockedOrInSpace
         , infoPanelRouteFirstMarkerFromReadingFromGameClient
+        , menuCascadeCompleted
         , shipUIIndicatesShipIsWarpingOrJumping
+        , useContextMenuCascade
+        , useMenuEntryWithTextContainingFirstOf
+        , waitForProgressInGame
         )
-import EveOnline.ParseUserInterface
-    exposing
-        ( InfoPanelRouteRouteElementMarker
-        )
 
 
-finishSessionAfterInactivityMinutes : Int
-finishSessionAfterInactivityMinutes =
-    4
-
-
-type alias ReadingFromGameClient =
-    EveOnline.ParseUserInterface.ParsedUserInterface
-
-
-{-| To support the feature that finishes the session some time of inactivity, it needs to remember the time of the last activity.
--}
-type alias BotState =
-    { lastActivityTime : Int
-    }
+type alias StateMemoryAndDecisionTree =
+    EveOnline.AppFramework.AppStateWithMemoryAndDecisionTree ()
 
 
 type alias State =
-    EveOnline.AppFramework.StateIncludingFramework () BotState
+    EveOnline.AppFramework.StateIncludingFramework () StateMemoryAndDecisionTree
+
+
+type alias BotDecisionContext =
+    EveOnline.AppFramework.StepDecisionContext () ()
 
 
 initState : State
 initState =
-    EveOnline.AppFramework.initState { lastActivityTime = 0 }
+    EveOnline.AppFramework.initState
+        (EveOnline.AppFramework.initStateWithMemoryAndDecisionTree ())
+
+
+autopilotBotDecisionRoot : BotDecisionContext -> DecisionPathNode
+autopilotBotDecisionRoot context =
+    branchDependingOnDockedOrInSpace
+        { ifDocked = describeBranch "To continue, undock manually." waitForProgressInGame
+        , ifSeeShipUI = always Nothing
+        , ifUndockingComplete = decisionTreeWhenInSpace context
+        }
+        context.readingFromGameClient
+
+
+decisionTreeWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
+decisionTreeWhenInSpace context undockingComplete =
+    case context.readingFromGameClient |> infoPanelRouteFirstMarkerFromReadingFromGameClient of
+        Nothing ->
+            describeBranch "I see no route in the info panel. I will start when a route is set." waitForProgressInGame
+
+        Just infoPanelRouteFirstMarker ->
+            if undockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
+                describeBranch
+                    "I see the ship is warping or jumping. I wait until that maneuver ends."
+                    waitForProgressInGame
+
+            else
+                useContextMenuCascade
+                    ( "route element icon", infoPanelRouteFirstMarker.uiNode )
+                    (useMenuEntryWithTextContainingFirstOf
+                        [ "dock", "jump" ]
+                        menuCascadeCompleted
+                    )
+
+
+processEveOnlineBotEvent :
+    EveOnline.AppFramework.AppEventContext ()
+    -> EveOnline.AppFramework.AppEvent
+    -> StateMemoryAndDecisionTree
+    -> ( StateMemoryAndDecisionTree, EveOnline.AppFramework.AppEventResponse )
+processEveOnlineBotEvent =
+    EveOnline.AppFramework.processEveOnlineAppEventWithMemoryAndDecisionTree
+        { updateMemoryForNewReadingFromGame = always identity
+        , decisionTreeRoot = autopilotBotDecisionRoot
+        , statusTextFromState = always ""
+        , millisecondsToNextReadingFromGame = always 2000
+        }
 
 
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
@@ -68,111 +107,3 @@ processEvent =
         , selectGameClientInstance = always EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
         , processEvent = processEveOnlineBotEvent
         }
-
-
-processEveOnlineBotEvent :
-    EveOnline.AppFramework.AppEventContext ()
-    -> EveOnline.AppFramework.AppEvent
-    -> BotState
-    -> ( BotState, EveOnline.AppFramework.AppEventResponse )
-processEveOnlineBotEvent eventContext event stateBefore =
-    case event of
-        EveOnline.AppFramework.ReadingFromGameClientCompleted readingFromGameClient ->
-            let
-                continueWaiting statusDescriptionText =
-                    ( stateBefore
-                    , EveOnline.AppFramework.ContinueSession
-                        { millisecondsToNextReadingFromGame = 3000
-                        , statusDescriptionText = statusDescriptionText
-                        , effects = []
-                        }
-                    )
-
-                continueWithCurrentEffects ( effects, statusDescriptionText ) =
-                    let
-                        lastActivityTime =
-                            if effects |> List.isEmpty then
-                                stateBefore.lastActivityTime
-
-                            else
-                                eventContext.timeInMilliseconds // 1000
-                    in
-                    if 60 * finishSessionAfterInactivityMinutes < eventContext.timeInMilliseconds // 1000 - lastActivityTime then
-                        ( stateBefore
-                        , EveOnline.AppFramework.FinishSession
-                            { statusDescriptionText =
-                                "I finish this session because there was nothing to do for me in the last "
-                                    ++ (finishSessionAfterInactivityMinutes |> String.fromInt)
-                                    ++ " minutes."
-                            }
-                        )
-
-                    else
-                        ( { stateBefore | lastActivityTime = lastActivityTime }
-                        , EveOnline.AppFramework.ContinueSession
-                            { millisecondsToNextReadingFromGame = 2000
-                            , effects = effects
-                            , statusDescriptionText = statusDescriptionText
-                            }
-                        )
-            in
-            case readingFromGameClient |> infoPanelRouteFirstMarkerFromReadingFromGameClient of
-                Nothing ->
-                    continueWithCurrentEffects
-                        ( [], "I see no route in the info panel. I will start when a route is set." )
-
-                Just infoPanelRouteFirstMarker ->
-                    case readingFromGameClient.shipUI of
-                        Nothing ->
-                            continueWithCurrentEffects
-                                ( [], "I do not see the ship UI. Looks like we are docked." )
-
-                        Just shipUi ->
-                            if shipUi |> shipUIIndicatesShipIsWarpingOrJumping then
-                                continueWaiting
-                                    "I see the ship is warping or jumping. I wait until that maneuver ends."
-
-                            else
-                                continueWithCurrentEffects
-                                    (botEffectsWhenNotWaitingForShipManeuver readingFromGameClient infoPanelRouteFirstMarker)
-
-
-botEffectsWhenNotWaitingForShipManeuver :
-    ReadingFromGameClient
-    -> InfoPanelRouteRouteElementMarker
-    -> ( List AppEffect, String )
-botEffectsWhenNotWaitingForShipManeuver readingFromGameClient infoPanelRouteFirstMarker =
-    let
-        openMenuAnnouncementAndEffect =
-            ( clickOnUIElement Common.EffectOnWindow.MouseButtonRight infoPanelRouteFirstMarker.uiNode
-                |> List.map EffectOnGameClientWindow
-            , "I click on the route element icon in the info panel to open the menu."
-            )
-    in
-    case readingFromGameClient.contextMenus |> List.head of
-        Nothing ->
-            openMenuAnnouncementAndEffect
-
-        Just firstMenu ->
-            let
-                maybeMenuEntryToClick =
-                    firstMenu.entries
-                        |> List.filter
-                            (\menuEntry ->
-                                let
-                                    textLowercase =
-                                        menuEntry.text |> String.toLower
-                                in
-                                (textLowercase |> String.contains "dock")
-                                    || (textLowercase |> String.contains "jump")
-                            )
-                        |> List.head
-            in
-            case maybeMenuEntryToClick of
-                Nothing ->
-                    openMenuAnnouncementAndEffect
-
-                Just menuEntryToClick ->
-                    ( clickOnUIElement MouseButtonLeft menuEntryToClick.uiNode |> List.map EffectOnGameClientWindow
-                    , "I click on the menu entry '" ++ menuEntryToClick.text ++ "' to start the next ship maneuver."
-                    )

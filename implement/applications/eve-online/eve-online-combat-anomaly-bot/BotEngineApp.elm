@@ -526,7 +526,7 @@ bookmarkLocationForMatchingOverviewEntries context =
                                         endDecisionPath
                                             (actWithoutFurtherReadings
                                                 ( "Click on the submit button"
-                                                , [ submitButton |> clickOnUIElement MouseButtonLeft ]
+                                                , submitButton |> clickOnUIElement MouseButtonLeft
                                                 )
                                             )
                                 )

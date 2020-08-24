@@ -1,4 +1,5 @@
-{- EVE Online combat anomaly bot version Bookmark boss wreck (hifig & briancorner) 2020-08-20
+{- EVE Online combat anomaly bot version Bookmark boss wreck briancorner 2020-08-24
+   Adapted to fix bug reported at https://forum.botengine.org/t/bookmark-boss-wreck/3527/9?u=viir
    Based on thread at https://forum.botengine.org/t/bookmark-boss-wreck/3527
 
    Setup instructions for the EVE Online client:
@@ -879,6 +880,7 @@ parseBookmarkLocationWindow windowUINode =
                 |> EveOnline.ParseUserInterface.listDescendantsWithDisplayRegion
                 |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "Button")
                 |> List.filter (.uiNode >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts >> List.map (String.trim >> String.toLower) >> List.member (labelText |> String.toLower))
+                |> List.sortBy (.totalDisplayRegion >> EveOnline.ParseUserInterface.areaFromDisplayRegion >> Maybe.withDefault 0)
                 |> List.head
     in
     { uiNode = windowUINode

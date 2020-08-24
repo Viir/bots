@@ -6,6 +6,13 @@
    + Set the UI language to English.
    + Set the in-game autopilot route.
    + Make sure the autopilot info panel is expanded, so that the route is visible.
+
+   ## Configuration Settings
+
+   All settings are optional; you only need them in case the defaults don't fit your use-case.
+
+   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "cloak".
+
 -}
 {-
    app-catalog-tags:eve-online,auto-pilot,travel
@@ -21,14 +28,19 @@ module BotEngineApp exposing
 
 import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
 import Common.AppSettings as AppSettings
-import Common.DecisionTree exposing (describeBranch)
+import Common.DecisionTree exposing (describeBranch, endDecisionPath)
+import Common.EffectOnWindow exposing (MouseButton(..))
+import Dict
 import EveOnline.AppFramework
     exposing
         ( AppEffect(..)
         , DecisionPathNode
         , ReadingFromGameClient
         , SeeUndockingComplete
+        , ShipModulesMemory
+        , actWithoutFurtherReadings
         , branchDependingOnDockedOrInSpace
+        , clickOnUIElement
         , infoPanelRouteFirstMarkerFromReadingFromGameClient
         , menuCascadeCompleted
         , shipUIIndicatesShipIsWarpingOrJumping
@@ -36,11 +48,35 @@ import EveOnline.AppFramework
         , useMenuEntryWithTextContainingFirstOf
         , waitForProgressInGame
         )
+import EveOnline.ParseUserInterface exposing (getAllContainedDisplayTexts)
+
+
+defaultBotSettings : BotSettings
+defaultBotSettings =
+    { modulesToActivateAlways = [] }
+
+
+parseBotSettings : String -> Result String BotSettings
+parseBotSettings =
+    AppSettings.parseSimpleList { assignmentsSeparators = [ ",", "\n" ] }
+        ([ ( "module-to-activate-always"
+           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
+           )
+         ]
+            |> Dict.fromList
+        )
+        defaultBotSettings
+
+
+type alias BotSettings =
+    { modulesToActivateAlways : List String
+    }
 
 
 type alias BotMemory =
     { lastSolarSystemName : Maybe String
     , jumpsCompleted : Int
+    , shipModules : ShipModulesMemory
     }
 
 
@@ -49,11 +85,11 @@ type alias StateMemoryAndDecisionTree =
 
 
 type alias State =
-    EveOnline.AppFramework.StateIncludingFramework () StateMemoryAndDecisionTree
+    EveOnline.AppFramework.StateIncludingFramework BotSettings StateMemoryAndDecisionTree
 
 
 type alias BotDecisionContext =
-    EveOnline.AppFramework.StepDecisionContext () BotMemory
+    EveOnline.AppFramework.StepDecisionContext BotSettings BotMemory
 
 
 initState : State
@@ -62,6 +98,7 @@ initState =
         (EveOnline.AppFramework.initStateWithMemoryAndDecisionTree
             { lastSolarSystemName = Nothing
             , jumpsCompleted = 0
+            , shipModules = EveOnline.AppFramework.initShipModulesMemory
             }
         )
 
@@ -96,13 +133,14 @@ decisionTreeWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> Decision
 decisionTreeWhenInSpace context undockingComplete =
     case context.readingFromGameClient |> infoPanelRouteFirstMarkerFromReadingFromGameClient of
         Nothing ->
-            describeBranch "I see no route in the info panel. I will start when a route is set." waitForProgressInGame
+            describeBranch "I see no route in the info panel. I will start when a route is set."
+                (waitingInSpaceDecisionTree context)
 
         Just infoPanelRouteFirstMarker ->
             if undockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
                 describeBranch
                     "I see the ship is warping or jumping. I wait until that maneuver ends."
-                    waitForProgressInGame
+                    (waitingInSpaceDecisionTree context)
 
             else
                 useContextMenuCascade
@@ -111,6 +149,21 @@ decisionTreeWhenInSpace context undockingComplete =
                         [ "dock", "jump" ]
                         menuCascadeCompleted
                     )
+
+
+waitingInSpaceDecisionTree : BotDecisionContext -> DecisionPathNode
+waitingInSpaceDecisionTree context =
+    case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> .isActive >> Maybe.withDefault False >> not) |> List.head of
+        Just ( inactiveModuleMatchingText, inactiveModule ) ->
+            describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
+                (endDecisionPath
+                    (actWithoutFurtherReadings
+                        ( "Click on the module.", inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft )
+                    )
+                )
+
+        Nothing ->
+            readShipUIModuleButtonTooltips context |> Maybe.withDefault waitForProgressInGame
 
 
 updateMemoryForNewReadingFromGame : ReadingFromGameClient -> BotMemory -> BotMemory
@@ -135,11 +188,50 @@ updateMemoryForNewReadingFromGame currentReading memoryBefore =
     in
     { jumpsCompleted = memoryBefore.jumpsCompleted + newJumpsCompleted
     , lastSolarSystemName = lastSolarSystemName
+    , shipModules =
+        EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory
+            currentReading
+            memoryBefore.shipModules
     }
 
 
+knownModulesToActivateAlways : BotDecisionContext -> List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
+knownModulesToActivateAlways context =
+    context.readingFromGameClient.shipUI
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filterMap
+            (\moduleButton ->
+                moduleButton
+                    |> EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                    |> Maybe.andThen (tooltipLooksLikeModuleToActivateAlways context)
+                    |> Maybe.map (\moduleName -> ( moduleName, moduleButton ))
+            )
+
+
+tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> EveOnline.ParseUserInterface.ModuleButtonTooltip -> Maybe String
+tooltipLooksLikeModuleToActivateAlways context =
+    .uiNode
+        >> .uiNode
+        >> getAllContainedDisplayTexts
+        >> List.filterMap
+            (\tooltipText ->
+                (context |> botSettingsFromDecisionContext).modulesToActivateAlways
+                    |> List.filterMap
+                        (\moduleToActivateAlways ->
+                            if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
+                                Just tooltipText
+
+                            else
+                                Nothing
+                        )
+                    |> List.head
+            )
+        >> List.head
+
+
 processEveOnlineBotEvent :
-    EveOnline.AppFramework.AppEventContext ()
+    EveOnline.AppFramework.AppEventContext BotSettings
     -> EveOnline.AppFramework.AppEvent
     -> StateMemoryAndDecisionTree
     -> ( StateMemoryAndDecisionTree, EveOnline.AppFramework.AppEventResponse )
@@ -155,10 +247,15 @@ processEveOnlineBotEvent =
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent =
     EveOnline.AppFramework.processEvent
-        { parseAppSettings = AppSettings.parseAllowOnlyEmpty ()
+        { parseAppSettings = parseBotSettings
         , selectGameClientInstance = always EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
         , processEvent = processEveOnlineBotEvent
         }
+
+
+botSettingsFromDecisionContext : BotDecisionContext -> BotSettings
+botSettingsFromDecisionContext decisionContext =
+    decisionContext.eventContext.appSettings |> Maybe.withDefault defaultBotSettings
 
 
 currentSolarSystemNameFromReading : ReadingFromGameClient -> Maybe String
@@ -166,3 +263,8 @@ currentSolarSystemNameFromReading readingFromGameClient =
     readingFromGameClient.infoPanelContainer
         |> Maybe.andThen .infoPanelLocationInfo
         |> Maybe.andThen .currentSolarSystemName
+
+
+readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
+readShipUIModuleButtonTooltips =
+    EveOnline.AppFramework.readShipUIModuleButtonTooltipWhereNotYetInMemory

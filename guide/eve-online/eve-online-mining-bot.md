@@ -26,7 +26,7 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from https://catalog.botengine.org/a52e3345f4380c1ce241f456bd86886ddcd84fbfb784ccaa89cba1f73fc7a3b1 and then run it.
+To start the mining bot, download the script from https://catalog.botengine.org/369c1d7dbb4be906b84fcbb836a71397931aee028df6d4fc2e9264abae1ea565 and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 
@@ -56,9 +56,13 @@ All settings are optional; you only need them in case the defaults don't fit you
 + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
 + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
 
-To combine multiple settings, use a comma (,) to separate the individual assignments. Here is an example of a complete settings string:
+When using more than one setting, start a new line for each setting in the text input field.
+Here is an example of a complete settings string:
+
 ```
-unload-station-name = Noghere VII - Moon 15, module-to-activate-always = shield hardener, module-to-activate-always = afterburner
+unload-station-name = Noghere VII - Moon 15
+module-to-activate-always = shield hardener
+module-to-activate-always = afterburner
 ```
 
 ----

@@ -6,7 +6,7 @@ Fortunately, this process can be automated using a bot. The bot we are using her
 
 ## Starting the Autopilot Bot
 
-To start the bot, download the script from https://catalog.botengine.org/04d715a249ca6641064b808f3fdb52ea796ff76bc64af1acc0c904c91ff3cd17 and then run it.
+To start the bot, download the script from https://catalog.botengine.org/ee80b7807764279ba11768514384c020129a98cb49a71e302749e297a0fa4c94 and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 

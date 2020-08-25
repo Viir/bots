@@ -22,7 +22,7 @@ Despite being quite robust, this bot is far from being as smart as a human. For 
 
 ## Starting the Bot
 
-To start the bot, download the script from https://catalog.botengine.org/4d10f84e78b2916129b93802db41e41f3e4b3a234e9ae082e43e3ff333627cb7 and then run it.
+To start the bot, download the script from https://catalog.botengine.org/0eac4011309d710f71b1e69c8a9878a331c04b338140a38aee8f0b88e0310a00 and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 
@@ -41,10 +41,13 @@ All settings are optional; you only need them in case the defaults don't fit you
 + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
 + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
 
-To combine multiple settings, use a comma (,) to separate the individual assignments. Here is an example of a complete settings string:
+When using more than one setting, start a new line for each setting in the text input field.
+Here is an example of a complete settings string:
 
 ```
---app-settings="anomaly-name = Drone Patrol, anomaly-name = Drone Horde, hide-when-neutral-in-local = yes"
+anomaly-name = Drone Patrol
+anomaly-name = Drone Horde
+hide-when-neutral-in-local = yes
 ```
 
 ----

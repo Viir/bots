@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-08-24
+{- EVE Online combat anomaly bot version 2020-08-25
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -53,6 +53,7 @@ import EveOnline.AppFramework
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
         , clickOnUIElement
+        , ensureInfoPanelLocationInfoIsExpanded
         , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
@@ -169,30 +170,71 @@ probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
 
 anomalyBotDecisionRoot : BotDecisionContext -> DecisionPathNode
 anomalyBotDecisionRoot context =
-    branchDependingOnDockedOrInSpace
-        { ifDocked =
-            continueIfShouldHide
-                { ifShouldHide =
-                    describeBranch "Stay docked." waitForProgressInGame
+    generalSetupInUserInterface context.readingFromGameClient
+        |> Maybe.withDefault
+            (branchDependingOnDockedOrInSpace
+                { ifDocked =
+                    continueIfShouldHide
+                        { ifShouldHide =
+                            describeBranch "Stay docked." waitForProgressInGame
+                        }
+                        context
+                        |> Maybe.withDefault (undockUsingStationWindow context)
+                , ifSeeShipUI =
+                    always
+                        (continueIfShouldHide
+                            { ifShouldHide =
+                                returnDronesToBay context.readingFromGameClient
+                                    |> Maybe.withDefault
+                                        (describeBranch
+                                            "Dock to station or structure."
+                                            (dockAtRandomStationOrStructure context.readingFromGameClient)
+                                        )
+                            }
+                            context
+                        )
+                , ifUndockingComplete = decideNextActionWhenInSpace context
                 }
-                context
-                |> Maybe.withDefault (undockUsingStationWindow context)
-        , ifSeeShipUI =
-            always
-                (continueIfShouldHide
-                    { ifShouldHide =
-                        returnDronesToBay context.readingFromGameClient
-                            |> Maybe.withDefault
-                                (describeBranch
-                                    "Dock to station or structure."
-                                    (dockAtRandomStationOrStructure context.readingFromGameClient)
+                context.readingFromGameClient
+            )
+
+
+generalSetupInUserInterface : ReadingFromGameClient -> Maybe DecisionPathNode
+generalSetupInUserInterface readingFromGameClient =
+    [ closeMessageBox, ensureInfoPanelLocationInfoIsExpanded ]
+        |> List.filterMap
+            (\maybeSetupDecisionFromGameReading ->
+                maybeSetupDecisionFromGameReading readingFromGameClient
+            )
+        |> List.head
+
+
+closeMessageBox : ReadingFromGameClient -> Maybe DecisionPathNode
+closeMessageBox readingFromGameClient =
+    readingFromGameClient.messageBoxes
+        |> List.head
+        |> Maybe.map
+            (\messageBox ->
+                describeBranch "I see a message box to close."
+                    (let
+                        buttonCanBeUsedToClose =
+                            .mainText
+                                >> Maybe.map (String.trim >> String.toLower >> (\buttonText -> [ "close", "ok" ] |> List.member buttonText))
+                                >> Maybe.withDefault False
+                     in
+                     case messageBox.buttons |> List.filter buttonCanBeUsedToClose |> List.head of
+                        Nothing ->
+                            describeBranch "I see no way to close this message box." askForHelpToGetUnstuck
+
+                        Just buttonToUse ->
+                            endDecisionPath
+                                (actWithoutFurtherReadings
+                                    ( "Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'."
+                                    , buttonToUse.uiNode |> clickOnUIElement MouseButtonLeft
+                                    )
                                 )
-                    }
-                    context
-                )
-        , ifUndockingComplete = decideNextActionWhenInSpace context
-        }
-        context.readingFromGameClient
+                    )
+            )
 
 
 continueIfShouldHide : { ifShouldHide : DecisionPathNode } -> BotDecisionContext -> Maybe DecisionPathNode

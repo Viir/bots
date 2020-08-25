@@ -19,8 +19,12 @@
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
    + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
 
-   To combine multiple settings, use a comma (,) to separate the individual assignments. Here is an example of a complete settings string:
-   --app-settings="anomaly-name = Drone Patrol, anomaly-name = Drone Horde, hide-when-neutral-in-local = yes"
+   When using more than one setting, start a new line for each setting in the text input field.
+   Here is an example of a complete settings string:
+
+   anomaly-name = Drone Patrol
+   anomaly-name = Drone Horde
+   hide-when-neutral-in-local = yes
 -}
 {-
    app-catalog-tags:eve-online,anomaly,ratting

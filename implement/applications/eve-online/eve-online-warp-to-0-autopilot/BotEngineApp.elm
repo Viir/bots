@@ -11,7 +11,7 @@
 
    All settings are optional; you only need them in case the defaults don't fit your use-case.
 
-   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "cloak".
+   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "cloaking device".
 
 -}
 {-

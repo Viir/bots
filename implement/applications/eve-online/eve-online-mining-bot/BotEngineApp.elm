@@ -19,8 +19,12 @@
    + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
    + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
 
-   To combine multiple settings, use a comma (,) to separate the individual assignments. Here is an example of a complete settings string:
-   unload-station-name = Noghere VII - Moon 15, module-to-activate-always = shield hardener, module-to-activate-always = afterburner
+   When using more than one setting, start a new line for each setting in the text input field.
+   Here is an example of a complete settings string:
+
+   unload-station-name = Noghere VII - Moon 15
+   module-to-activate-always = shield hardener
+   module-to-activate-always = afterburner
 -}
 {-
    app-catalog-tags:eve-online,mining

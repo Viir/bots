@@ -132,6 +132,8 @@ type alias BotState =
 type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
     , shipModules : ShipModulesMemory
+    , shipWarpingInLastReading : Maybe Bool
+    , visitedAnomalies : Dict.Dict String { otherPilotsFoundOnArrival : List String }
     }
 
 
@@ -619,6 +621,8 @@ initState =
         (EveOnline.AppFramework.initStateWithMemoryAndDecisionTree
             { lastDockedStationNameFromInfoPanel = Nothing
             , shipModules = EveOnline.AppFramework.initShipModulesMemory
+            , shipWarpingInLastReading = Nothing
+            , visitedAnomalies = Dict.empty
             }
         )
 
@@ -651,6 +655,9 @@ statusTextFromState context =
     let
         readingFromGameClient =
             context.readingFromGameClient
+
+        describePerformance =
+            "Visited anomalies: " ++ (context.memory.visitedAnomalies |> Dict.size |> String.fromInt) ++ "."
 
         combatInfoLines =
             [ "Overview entries to attack: " ++ (readingFromGameClient |> allOverviewEntriesToAttack |> Maybe.map (List.length >> String.fromInt) |> Maybe.withDefault "Nothing") ]
@@ -696,7 +703,10 @@ statusTextFromState context =
                    )
                 ++ "."
     in
-    [ [ describeShip ] ++ combatInfoLines ++ [ describeDrones ], [ describeAnomaly, describeOverview ] ]
+    [ [ describePerformance ]
+    , [ describeShip ] ++ combatInfoLines ++ [ describeDrones ]
+    , [ describeAnomaly, describeOverview ]
+    ]
         |> List.map (String.join " ")
         |> String.join "\n"
 
@@ -747,6 +757,42 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
                 |> Maybe.andThen .infoPanelLocationInfo
                 |> Maybe.andThen .expandedContent
                 |> Maybe.andThen .currentStationName
+
+        shipIsWarping =
+            currentReading.shipUI
+                |> Maybe.andThen .indication
+                |> Maybe.andThen .maneuverType
+                |> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverWarp)
+
+        weJustArrivedOnGrid =
+            (botMemoryBefore.shipWarpingInLastReading == Just True) && (shipIsWarping == Just False)
+
+        visitedAnomalies =
+            if shipIsWarping == Just True then
+                botMemoryBefore.visitedAnomalies
+
+            else
+                case currentReading |> getCurrentAnomalyIDAsSeenInProbeScanner of
+                    Nothing ->
+                        botMemoryBefore.visitedAnomalies
+
+                    Just currentAnomalyID ->
+                        let
+                            anomalyMemoryBefore =
+                                botMemoryBefore.visitedAnomalies
+                                    |> Dict.get currentAnomalyID
+                                    |> Maybe.withDefault { otherPilotsFoundOnArrival = [] }
+
+                            anomalyMemory =
+                                if weJustArrivedOnGrid then
+                                    { anomalyMemoryBefore
+                                        | otherPilotsFoundOnArrival = getNamesOfOtherPilotsInOverview currentReading
+                                    }
+
+                                else
+                                    anomalyMemoryBefore
+                        in
+                        botMemoryBefore.visitedAnomalies |> Dict.insert currentAnomalyID anomalyMemory
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
@@ -755,6 +801,8 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
     , shipModules =
         botMemoryBefore.shipModules
             |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
+    , shipWarpingInLastReading = shipIsWarping
+    , visitedAnomalies = visitedAnomalies
     }
 
 

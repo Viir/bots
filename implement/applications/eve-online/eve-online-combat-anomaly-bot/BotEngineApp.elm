@@ -81,7 +81,7 @@ defaultBotSettings =
     { hideWhenNeutralInLocal = AppSettings.No
     , anomalyNames = []
     , maxTargetCount = 3
-    , botStepDelayMilliseconds = 1300
+    , botStepDelayMilliseconds = 1400
     }
 
 

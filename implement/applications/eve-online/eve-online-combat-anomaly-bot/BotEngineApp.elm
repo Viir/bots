@@ -145,8 +145,13 @@ type alias State =
     EveOnline.AppFramework.StateIncludingFramework BotSettings BotState
 
 
-probeScanResultsRepresentsMatchingAnomaly : BotSettings -> EveOnline.ParseUserInterface.ProbeScanResult -> Bool
-probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
+type ReasonToIgnoreProbeScanResult
+    = IsNoCombatAnomaly
+    | DoesNotMatchAnomalyNameFromSettings
+
+
+findReasonToIgnoreProbeScanResult : BotSettings -> EveOnline.ParseUserInterface.ProbeScanResult -> Maybe ReasonToIgnoreProbeScanResult
+findReasonToIgnoreProbeScanResult settings probeScanResult =
     let
         isCombatAnomaly =
             probeScanResult.cellsTexts
@@ -154,7 +159,7 @@ probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
                 |> Maybe.map (String.toLower >> String.contains "combat")
                 |> Maybe.withDefault False
 
-        matchesNameFromSettings =
+        matchesAnomalyNameFromSettings =
             (settings.anomalyNames |> List.isEmpty)
                 || (settings.anomalyNames
                         |> List.any
@@ -166,7 +171,14 @@ probeScanResultsRepresentsMatchingAnomaly settings probeScanResult =
                             )
                    )
     in
-    isCombatAnomaly && matchesNameFromSettings
+    if not isCombatAnomaly then
+        Just IsNoCombatAnomaly
+
+    else if not matchesAnomalyNameFromSettings then
+        Just DoesNotMatchAnomalyNameFromSettings
+
+    else
+        Nothing
 
 
 anomalyBotDecisionRoot : BotDecisionContext -> DecisionPathNode
@@ -486,12 +498,19 @@ enterAnomaly context =
 
         Just probeScannerWindow ->
             let
-                matchingScanResults =
+                scanResultsWithReasonToIgnore =
                     probeScannerWindow.scanResults
-                        |> List.filter (probeScanResultsRepresentsMatchingAnomaly context.eventContext.appSettings)
+                        |> List.map
+                            (\scanResult ->
+                                ( scanResult
+                                , findReasonToIgnoreProbeScanResult context.eventContext.appSettings scanResult
+                                )
+                            )
             in
             case
-                matchingScanResults
+                scanResultsWithReasonToIgnore
+                    |> List.filter (Tuple.second >> (==) Nothing)
+                    |> List.map Tuple.first
                     |> listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
             of
                 Nothing ->

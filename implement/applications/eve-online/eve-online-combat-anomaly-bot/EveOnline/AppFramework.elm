@@ -56,7 +56,7 @@ type AppEffect
 
 type alias AppEventContext appSettings =
     { timeInMilliseconds : Int
-    , appSettings : Maybe appSettings
+    , appSettings : appSettings
     , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
@@ -290,20 +290,30 @@ processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
         ( state, responseBeforeAddingStatusMessage ) =
             case stateBefore.taskInProgress of
                 Nothing ->
-                    processEventNotWaitingForTaskCompletion
-                        appConfiguration
-                        (maybeAppEvent
-                            |> Maybe.map
-                                (\appEvent ->
-                                    ( appEvent
-                                    , { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                      , appSettings = stateBefore.appSettings
-                                      , sessionTimeLimitInMilliseconds = stateBefore.sessionTimeLimitInMilliseconds
-                                      }
-                                    )
+                    case stateBefore.appSettings of
+                        Nothing ->
+                            ( stateBefore
+                            , InterfaceToHost.FinishSession
+                                { statusDescriptionText =
+                                    "Unexpected order of events: I did not receive any app-settings changed event."
+                                }
+                            )
+
+                        Just appSettings ->
+                            processEventNotWaitingForTaskCompletion
+                                appConfiguration
+                                (maybeAppEvent
+                                    |> Maybe.map
+                                        (\appEvent ->
+                                            ( appEvent
+                                            , { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                              , appSettings = appSettings
+                                              , sessionTimeLimitInMilliseconds = stateBefore.sessionTimeLimitInMilliseconds
+                                              }
+                                            )
+                                        )
                                 )
-                        )
-                        stateBefore
+                                stateBefore
 
                 Just taskInProgress ->
                     ( stateBefore

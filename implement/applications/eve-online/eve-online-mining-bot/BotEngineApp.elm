@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-08-24
+{- EVE Online mining bot version 2020-08-27
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -174,11 +174,6 @@ type alias BotDecisionContext =
     EveOnline.AppFramework.StepDecisionContext BotSettings BotMemory
 
 
-botSettingsFromDecisionContext : BotDecisionContext -> BotSettings
-botSettingsFromDecisionContext decisionContext =
-    decisionContext.eventContext.appSettings |> Maybe.withDefault defaultBotSettings
-
-
 type alias BotState =
     EveOnline.AppFramework.AppStateWithMemoryAndDecisionTree BotMemory
 
@@ -254,7 +249,7 @@ continueIfShouldHide config context =
 
 shouldHideWhenNeutralInLocal : BotDecisionContext -> Bool
 shouldHideWhenNeutralInLocal context =
-    case (context |> botSettingsFromDecisionContext).hideWhenNeutralInLocal of
+    case context.eventContext.appSettings.hideWhenNeutralInLocal of
         Just AppSettings.No ->
             False
 
@@ -274,14 +269,14 @@ returnDronesAndRunAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.Par
 returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
     let
         returnDronesShieldHitpointsThresholdPercent =
-            (context |> botSettingsFromDecisionContext).runAwayShieldHitpointsThresholdPercent + 5
+            context.eventContext.appSettings.runAwayShieldHitpointsThresholdPercent + 5
 
         runAwayWithDescription =
             describeBranch
                 ("Shield hitpoints are at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%. Run away.")
                 (runAway context)
     in
-    if shipUI.hitpointsPercent.shield < (context |> botSettingsFromDecisionContext).runAwayShieldHitpointsThresholdPercent then
+    if shipUI.hitpointsPercent.shield < context.eventContext.appSettings.runAwayShieldHitpointsThresholdPercent then
         Just runAwayWithDescription
 
     else if shipUI.hitpointsPercent.shield < returnDronesShieldHitpointsThresholdPercent then
@@ -423,9 +418,9 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                     Just fillPercent ->
                         let
                             describeThresholdToUnload =
-                                ((context |> botSettingsFromDecisionContext).oreHoldMaxPercent |> String.fromInt) ++ "%"
+                                (context.eventContext.appSettings.oreHoldMaxPercent |> String.fromInt) ++ "%"
                         in
-                        if (context |> botSettingsFromDecisionContext).oreHoldMaxPercent <= fillPercent then
+                        if context.eventContext.appSettings.oreHoldMaxPercent <= fillPercent then
                             describeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
                                 (returnDronesToBay context.readingFromGameClient
                                     |> Maybe.withDefault (dockToUnloadOre context)
@@ -507,8 +502,8 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
                             |> Maybe.withDefault
                                 (lockTargetFromOverviewEntryAndEnsureIsInRange
                                     context.readingFromGameClient
-                                    (min (context |> botSettingsFromDecisionContext).targetingRange
-                                        (context |> botSettingsFromDecisionContext).miningModuleRange
+                                    (min context.eventContext.appSettings.targetingRange
+                                        context.eventContext.appSettings.miningModuleRange
                                     )
                                     asteroidInOverview
                                 )
@@ -770,18 +765,14 @@ runAway context =
 
 dockToUnloadOre : BotDecisionContext -> DecisionPathNode
 dockToUnloadOre context =
-    let
-        settings =
-            context |> botSettingsFromDecisionContext
-    in
-    case settings.unloadStationName of
+    case context.eventContext.appSettings.unloadStationName of
         Just unloadStationName ->
             dockToStationOrStructureWithMatchingName
                 { prioritizeStructures = False, nameFromSettingOrInfoPanel = unloadStationName }
                 context.readingFromGameClient
 
         Nothing ->
-            case settings.unloadStructureName of
+            case context.eventContext.appSettings.unloadStructureName of
                 Just unloadStructureName ->
                     dockToStationOrStructureWithMatchingName
                         { prioritizeStructures = True, nameFromSettingOrInfoPanel = unloadStructureName }
@@ -899,7 +890,7 @@ tooltipLooksLikeModuleToActivateAlways context =
         >> getAllContainedDisplayTexts
         >> List.filterMap
             (\tooltipText ->
-                (context |> botSettingsFromDecisionContext).modulesToActivateAlways
+                context.eventContext.appSettings.modulesToActivateAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
                             if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
@@ -948,7 +939,7 @@ processEveOnlineBotEvent =
         { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
         , statusTextFromState = statusTextFromState
         , decisionTreeRoot = miningBotDecisionRoot
-        , millisecondsToNextReadingFromGame = botSettingsFromDecisionContext >> .botStepDelayMilliseconds
+        , millisecondsToNextReadingFromGame = .eventContext >> .appSettings >> .botStepDelayMilliseconds
         }
 
 

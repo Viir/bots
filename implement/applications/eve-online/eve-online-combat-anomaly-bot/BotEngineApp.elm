@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-08-25
+{- EVE Online combat anomaly bot version 2020-08-27
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -141,11 +141,6 @@ type alias BotDecisionContext =
     EveOnline.AppFramework.StepDecisionContext BotSettings BotMemory
 
 
-botSettingsFromDecisionContext : BotDecisionContext -> BotSettings
-botSettingsFromDecisionContext decisionContext =
-    decisionContext.eventContext.appSettings |> Maybe.withDefault defaultBotSettings
-
-
 type alias State =
     EveOnline.AppFramework.StateIncludingFramework BotSettings BotState
 
@@ -255,7 +250,7 @@ continueIfShouldHide config context =
                 )
 
         Nothing ->
-            if (context |> botSettingsFromDecisionContext).hideWhenNeutralInLocal /= AppSettings.Yes then
+            if context.eventContext.appSettings.hideWhenNeutralInLocal /= AppSettings.Yes then
                 Nothing
 
             else
@@ -444,7 +439,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             (launchAndEngageDrones context.readingFromGameClient
                                                 |> Maybe.withDefault
                                                     (describeBranch "No idling drones."
-                                                        (if (context |> botSettingsFromDecisionContext).maxTargetCount <= (context.readingFromGameClient.targets |> List.length) then
+                                                        (if context.eventContext.appSettings.maxTargetCount <= (context.readingFromGameClient.targets |> List.length) then
                                                             describeBranch "Enough locked targets." waitForProgressInGame
 
                                                          else
@@ -493,7 +488,7 @@ enterAnomaly context =
             let
                 matchingScanResults =
                     probeScannerWindow.scanResults
-                        |> List.filter (probeScanResultsRepresentsMatchingAnomaly (context |> botSettingsFromDecisionContext))
+                        |> List.filter (probeScanResultsRepresentsMatchingAnomaly context.eventContext.appSettings)
             in
             case
                 matchingScanResults
@@ -646,7 +641,7 @@ processEveOnlineBotEvent =
         { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
         , statusTextFromState = statusTextFromState
         , decisionTreeRoot = anomalyBotDecisionRoot
-        , millisecondsToNextReadingFromGame = botSettingsFromDecisionContext >> .botStepDelayMilliseconds
+        , millisecondsToNextReadingFromGame = .eventContext >> .appSettings >> .botStepDelayMilliseconds
         }
 
 

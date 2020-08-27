@@ -14,6 +14,8 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + Developing for EVE Online: [./guide/eve-online/developing-for-eve-online.md](./guide/eve-online/developing-for-eve-online.md)
 
++ Syntax of the Elm programming language: https://elm-lang.org/docs/syntax
+
 + Get a guide for writing Elm code that reads from the EVE Online game client's user interface: Using types from the parsed user interface: https://to.botengine.org/guide/parsed-user-interface-of-the-eve-online-game-client
 
 + Inspect the UI tree of an EVE Online game client process (live or from archived samples): [Alternate UI for EVE Online](https://to.botengine.org/guide/alternate-ui-for-eve-online)

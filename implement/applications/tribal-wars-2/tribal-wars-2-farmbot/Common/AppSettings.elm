@@ -1,6 +1,7 @@
 module Common.AppSettings exposing (..)
 
 import Dict
+import JaroWinkler
 import Result.Extra
 import String.Extra
 
@@ -12,6 +13,11 @@ type YesOrNo
 
 type alias SettingValueType appSettings =
     String -> Result String (appSettings -> appSettings)
+
+
+messageOnlyAcceptEmptyAppSettings : String
+messageOnlyAcceptEmptyAppSettings =
+    "I received an app-settings string that is not empty, but I only accept an empty app-settings string. I am not programmed to support any app settings. Maybe there is another app which better matches your use case?"
 
 
 valueTypeYesOrNo : (YesOrNo -> appSettings -> appSettings) -> SettingValueType appSettings
@@ -41,16 +47,16 @@ parseAllowOnlyEmpty appSettings appSettingsString =
         Ok appSettings
 
     else
-        Err "I received an app-settings string that is not empty, but I only accept an empty app-settings string. I am not programmed to support any app settings. Maybe there is another app which better matches your use case?"
+        Err messageOnlyAcceptEmptyAppSettings
 
 
-parseSimpleCommaSeparatedList : Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
-parseSimpleCommaSeparatedList =
-    parseSimpleList { assignmentsSeparators = [ "," ] }
+parseSimpleCommaSeparatedListOfAssignments : Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
+parseSimpleCommaSeparatedListOfAssignments =
+    parseSimpleListOfAssignments { assignmentsSeparators = [ "," ] }
 
 
-parseSimpleList : { assignmentsSeparators : List String } -> Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
-parseSimpleList { assignmentsSeparators } namedSettings defaultSettings settingsString =
+parseSimpleListOfAssignments : { assignmentsSeparators : List String } -> Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
+parseSimpleListOfAssignments { assignmentsSeparators } namedSettings defaultSettings settingsString =
     let
         assignments =
             assignmentsSeparators
@@ -63,18 +69,61 @@ parseSimpleList { assignmentsSeparators } namedSettings defaultSettings settings
                 |> List.filter (String.isEmpty >> not)
                 |> List.map
                     (\assignment ->
-                        case assignment |> String.split "=" |> List.map String.trim of
-                            [ settingName, assignedValue ] ->
-                                case namedSettings |> Dict.get settingName of
-                                    Nothing ->
-                                        Err ("Unknown setting name '" ++ settingName ++ "'.")
+                        case namedSettings |> Dict.toList of
+                            [] ->
+                                Err messageOnlyAcceptEmptyAppSettings
 
-                                    Just parseFunction ->
-                                        parseFunction assignedValue
-                                            |> Result.mapError (\parseError -> "Failed to parse value for setting '" ++ settingName ++ "': " ++ parseError)
+                            firstNamedSetting :: _ ->
+                                case assignment |> String.split "=" |> List.map String.trim of
+                                    [ settingName, assignedValue ] ->
+                                        case namedSettings |> Dict.get settingName of
+                                            Nothing ->
+                                                let
+                                                    settingsNamesWithSimilarity =
+                                                        namedSettings
+                                                            |> Dict.keys
+                                                            |> List.map
+                                                                (\supportedSettingName ->
+                                                                    ( supportedSettingName
+                                                                    , JaroWinkler.similarity supportedSettingName settingName
+                                                                    )
+                                                                )
+                                                            |> List.sortBy (Tuple.second >> negate)
 
-                            _ ->
-                                Err ("Failed to parse assignment '" ++ assignment ++ "'.")
+                                                    pointOutSimilarSettingNameLines =
+                                                        case
+                                                            settingsNamesWithSimilarity
+                                                                |> List.filter (Tuple.second >> (<=) 0.5)
+                                                        of
+                                                            ( mostSimilarSettingName, _ ) :: _ ->
+                                                                [ "Did you mean '" ++ mostSimilarSettingName ++ "'?" ]
+
+                                                            _ ->
+                                                                []
+                                                in
+                                                [ [ "Unknown setting name '" ++ settingName ++ "'." ]
+                                                , pointOutSimilarSettingNameLines
+                                                , [ "Here is a list of supported settings names: "
+                                                        ++ (namedSettings |> Dict.keys |> List.map (String.Extra.surround "'") |> String.join ", ")
+                                                  ]
+                                                ]
+                                                    |> List.concat
+                                                    |> String.join "\n"
+                                                    |> Err
+
+                                            Just parseFunction ->
+                                                parseFunction assignedValue
+                                                    |> Result.mapError (\parseError -> "Failed to parse value for setting '" ++ settingName ++ "': " ++ parseError)
+
+                                    _ ->
+                                        [ "Failed to parse assignment '"
+                                            ++ assignment
+                                            ++ "': Did not find the equals sign '=' in this text."
+                                        , "Here is an example of an assignment:"
+                                        , Tuple.first firstNamedSetting ++ " = 1234"
+                                        ]
+                                            |> String.join "\n"
+                                            |> Err
                     )
     in
     assignmentFunctionResults

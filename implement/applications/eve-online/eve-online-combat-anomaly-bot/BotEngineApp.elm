@@ -654,62 +654,60 @@ statusTextFromState context =
         describePerformance =
             "Visited anomalies: " ++ (context.memory.visitedAnomalies |> Dict.size |> String.fromInt) ++ "."
 
-        combatInfoLines =
-            [ "Overview entries to attack: " ++ (readingFromGameClient |> allOverviewEntriesToAttack |> Maybe.map (List.length >> String.fromInt) |> Maybe.withDefault "Nothing") ]
-
-        describeShip =
+        describeCurrentReading =
             case readingFromGameClient.shipUI of
+                Nothing ->
+                    [ "I do not see the ship UI. Looks like we are docked." ]
+
                 Just shipUI ->
-                    "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
+                    let
+                        describeShip =
+                            "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
 
-                Nothing ->
-                    "I do not see the ship UI. Please set up game client first."
+                        describeDrones =
+                            case readingFromGameClient.dronesWindow of
+                                Nothing ->
+                                    "I do not see the drones window."
 
-        describeDrones =
-            case readingFromGameClient.dronesWindow of
-                Nothing ->
-                    "I do not see the drones window."
+                                Just dronesWindow ->
+                                    "I see the drones window: In bay: "
+                                        ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                                        ++ ", in local space: "
+                                        ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                                        ++ "."
 
-                Just dronesWindow ->
-                    "I see the drones window: In bay: "
-                        ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
-                        ++ ", in local space: "
-                        ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
-                        ++ "."
+                        namesOfOtherPilotsInOverview =
+                            getNamesOfOtherPilotsInOverview readingFromGameClient
 
-        namesOfOtherPilotsInOverview =
-            getNamesOfOtherPilotsInOverview readingFromGameClient
+                        describeAnomaly =
+                            "Current anomaly: "
+                                ++ (getCurrentAnomalyIDAsSeenInProbeScanner readingFromGameClient |> Maybe.withDefault "None")
+                                ++ "."
 
-        describeAnomaly =
-            "Current anomaly: "
-                ++ (getCurrentAnomalyIDAsSeenInProbeScanner readingFromGameClient |> Maybe.withDefault "None")
-                ++ "."
+                        describeOverview =
+                            ("Seeing "
+                                ++ (namesOfOtherPilotsInOverview |> List.length |> String.fromInt)
+                                ++ " other pilots in the overview"
+                            )
+                                ++ (if namesOfOtherPilotsInOverview == [] then
+                                        ""
 
-        describeOverview =
-            ("Seeing "
-                ++ (namesOfOtherPilotsInOverview |> List.length |> String.fromInt)
-                ++ " other pilots in the overview"
-            )
-                ++ (if namesOfOtherPilotsInOverview == [] then
-                        ""
-
-                    else
-                        ": " ++ (namesOfOtherPilotsInOverview |> String.join ", ")
-                   )
-                ++ "."
+                                    else
+                                        ": " ++ (namesOfOtherPilotsInOverview |> String.join ", ")
+                                   )
+                                ++ "."
+                    in
+                    [ [ describeShip ]
+                    , [ describeDrones ]
+                    , [ describeAnomaly, describeOverview ]
+                    ]
+                        |> List.map (String.join " ")
     in
     [ [ describePerformance ]
-    , [ describeShip ] ++ combatInfoLines ++ [ describeDrones ]
-    , [ describeAnomaly, describeOverview ]
+    , describeCurrentReading
     ]
-        |> List.map (String.join " ")
+        |> List.concat
         |> String.join "\n"
-
-
-allOverviewEntriesToAttack : ReadingFromGameClient -> Maybe (List EveOnline.ParseUserInterface.OverviewWindowEntry)
-allOverviewEntriesToAttack =
-    .overviewWindow
-        >> Maybe.map (.entries >> List.filter shouldAttackOverviewEntry)
 
 
 overviewEntryIsTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool

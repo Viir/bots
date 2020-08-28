@@ -1,42 +1,58 @@
 # Parsed User Interface of the EVE Online Game Client
 
-The parsed user interface is a common way to access parts of the user interface of the game client. It guides you while writing code by providing Elm types and functions for popular derivations from the UI tree.
+The parsed user interface is a library of building blocks to build apps that read from the EVE Online game client.
 
-The UI tree in the EVE Online client can contain thousands of nodes and tens of thousands of individual properties. Because of this large amount of data, navigating in there can be time-consuming. To make this easier, this library filters and transforms the memory reading result into a form that contains less redundant information and uses names more closely related to the experience of players; for example, the overview window or ship modules.
+### Functions
 
-In the program code, we find the implementation in the module [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/7d14efac63081544b7c0d6c6ecc04adc15db367d/implement/applications/eve-online/eve-online-mining-bot/EveOnline/ParseUserInterface.elm).
+The EVE Online client's UI tree can contain thousands of nodes and tens of thousands of individual properties. Because of this large amount of data, navigating in there can be time-consuming.
 
-Years of feedback from developers have shaped this library to contain shortcuts to the often used UI elements. Let's look at the root type to get a general idea of what we can find there:
+When programming an app, we use functions to reach into the UI tree and extract the parts needed for our app. Sometimes the information we need is buried somewhere deep in the tree, contained in other nodes with redundant data. The structure we find in the UI tree is what CCP uses to build a visual representation of the game. It is not designed to be easily accessible to us, so it is not surprising to find many things there that we don't need for our applications and want to filter out.
+
+### Types
+
+To find things faster and automatically detect program code errors, we also use types adapted to the user interface's shape. We use the type system of the Elm programming language to assign names to parts of the UI tree describe the values that we expect in certain parts of the UI. The types provide us with names more closely related to players' experience, such as the overview window or ship modules.
+
+To help find these functions and types, we collect the most popular ones in the [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/3c34667c6cb43aad8eb04ee7b2f3caa8eaaca38d/implement/applications/eve-online/eve-online-mining-bot/EveOnline/ParseUserInterface.elm) Elm module.
+
+If you are not sure how to read the type definitions in that module, see the ["Reading Types"](https://guide.elm-lang.org/types/reading_types.html) and ["Type Aliases"](https://guide.elm-lang.org/types/type_aliases.html) sections in the Elm programming language guide.
+
+When you use the alternate UI or one of the example apps in the bots repository, you will find these already integrate the parsing framework. These apps apply the `parseUserInterfaceFromUITree` function to parse the complete user interface. The return type of that function represents the whole user interface:
 
 ```Elm
 type alias ParsedUserInterface =
     { uiTree : UITreeNodeWithDisplayRegion
     , contextMenus : List ContextMenu
-    , shipUI : MaybeVisible ShipUI
+    , shipUI : Maybe ShipUI
     , targets : List Target
-    , infoPanelContainer : MaybeVisible InfoPanelContainer
-    , overviewWindow : MaybeVisible OverviewWindow
-    , selectedItemWindow : MaybeVisible SelectedItemWindow
-    , dronesWindow : MaybeVisible DronesWindow
-    , fittingWindow : MaybeVisible FittingWindow
-    , probeScannerWindow : MaybeVisible ProbeScannerWindow
-    , stationWindow : MaybeVisible StationWindow
+    , infoPanelContainer : Maybe InfoPanelContainer
+    , overviewWindow : Maybe OverviewWindow
+    , selectedItemWindow : Maybe SelectedItemWindow
+    , dronesWindow : Maybe DronesWindow
+    , fittingWindow : Maybe FittingWindow
+    , probeScannerWindow : Maybe ProbeScannerWindow
+    , directionalScannerWindow : Maybe DirectionalScannerWindow
+    , stationWindow : Maybe StationWindow
     , inventoryWindows : List InventoryWindow
     , chatWindowStacks : List ChatWindowStack
     , agentConversationWindows : List AgentConversationWindow
-    , marketOrdersWindow : MaybeVisible MarketOrdersWindow
-    , surveyScanWindow : MaybeVisible SurveyScanWindow
-    , repairShopWindow : MaybeVisible RepairShopWindow
-    , moduleButtonTooltip : MaybeVisible ModuleButtonTooltip
-    , neocom : MaybeVisible Neocom
+    , marketOrdersWindow : Maybe MarketOrdersWindow
+    , surveyScanWindow : Maybe SurveyScanWindow
+    , bookmarkLocationWindow : Maybe BookmarkLocationWindow
+    , repairShopWindow : Maybe RepairShopWindow
+    , moduleButtonTooltip : Maybe ModuleButtonTooltip
+    , neocom : Maybe Neocom
     , messageBoxes : List MessageBox
-    , layerAbovemain : MaybeVisible UITreeNodeWithDisplayRegion
+    , layerAbovemain : Maybe UITreeNodeWithDisplayRegion
     }
 ```
 
-Using the `uiTree` field, we can access the raw UI tree. All the other fields contain derivations of the UI tree for easier access.
+As we can see in the definition of this record type above, its fields integrate many other types found in this module.
 
-In case the names aren't clear, this annotated screenshot of the game client illustrates what is what, at least for some of the more popular elements:
+Below you find some of those types copied combined with a screenshot of the corresponding portion in the user interface.
+
+Of all the fields, the `uiTree` field is a bit special. This field links to the raw UI tree that went into the `parseUserInterfaceFromUITree` function. All the other fields contain derivations of the UI tree for easier access.
+
+In case the field names aren't clear, this annotated screenshot of the game client illustrates what is what, for some of the more popular elements:
 
 ![Some elements of the parsed user interface](./image/2020-03-11-eve-online-parsed-user-interface-names.png)
 
@@ -47,7 +63,7 @@ type alias ShipUI =
     { uiNode : UITreeNodeWithDisplayRegion
     , capacitor : ShipUICapacitor
     , hitpointsPercent : Hitpoints
-    , indication : MaybeVisible ShipUIIndication
+    , indication : Maybe ShipUIIndication
     , moduleButtons : List ShipUIModuleButton
     , moduleButtonsRows :
         { top : List ShipUIModuleButton
@@ -55,6 +71,7 @@ type alias ShipUI =
         , bottom : List ShipUIModuleButton
         }
     , offensiveBuffButtonNames : List String
+    , squadronsUI : Maybe SquadronsUI
     }
 ```
 
@@ -126,13 +143,13 @@ As you can also see in the screenshot of the live inspector, we get the used, se
 
 In the 'Repairshop'/'Repair Facilities' window, you can repair your ship.
 
-```
+```Elm
 type alias RepairShopWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , items : List UITreeNodeWithDisplayRegion
-    , repairItemButton : MaybeVisible UITreeNodeWithDisplayRegion
-    , pickNewItemButton : MaybeVisible UITreeNodeWithDisplayRegion
-    , repairAllButton : MaybeVisible UITreeNodeWithDisplayRegion
+    , repairItemButton : Maybe UITreeNodeWithDisplayRegion
+    , pickNewItemButton : Maybe UITreeNodeWithDisplayRegion
+    , repairAllButton : Maybe UITreeNodeWithDisplayRegion
     }
 ```
 

@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-08-27
+{- EVE Online combat anomaly bot version 2020-08-28
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -18,6 +18,7 @@
 
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
    + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
+   + `rat-to-avoid` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -25,6 +26,7 @@
    anomaly-name = Drone Patrol
    anomaly-name = Drone Horde
    hide-when-neutral-in-local = yes
+   rat-to-avoid = Infested Carrier
 -}
 {-
    app-catalog-tags:eve-online,anomaly,ratting
@@ -84,6 +86,7 @@ defaultBotSettings : BotSettings
 defaultBotSettings =
     { hideWhenNeutralInLocal = AppSettings.No
     , anomalyNames = []
+    , ratsToAvoid = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1400
     }
@@ -103,6 +106,12 @@ parseBotSettings =
                     \settings -> { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
                 )
            )
+         , ( "rat-to-avoid"
+           , AppSettings.valueTypeString
+                (\ratToAvoid ->
+                    \settings -> { settings | ratsToAvoid = String.trim ratToAvoid :: settings.ratsToAvoid }
+                )
+           )
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
@@ -120,6 +129,7 @@ goodStandingPatterns =
 type alias BotSettings =
     { hideWhenNeutralInLocal : AppSettings.YesOrNo
     , anomalyNames : List String
+    , ratsToAvoid : List String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
@@ -138,7 +148,7 @@ type alias BotMemory =
 
 
 type alias MemoryOfAnomaly =
-    { otherPilotsFoundOnArrival : List String }
+    { otherPilotsFoundOnArrival : List String, ratsSeen : Set.Set String }
 
 
 type alias BotDecisionContext =
@@ -158,6 +168,7 @@ type ReasonToAvoidAnomaly
     = IsNoCombatAnomaly
     | DoesNotMatchAnomalyNameFromSettings
     | FoundOtherPilotOnArrival String
+    | FoundRatToAvoid String
 
 
 describeReasonToAvoidAnomaly : ReasonToAvoidAnomaly -> String
@@ -171,6 +182,9 @@ describeReasonToAvoidAnomaly reason =
 
         FoundOtherPilotOnArrival otherPilot ->
             "Found another pilot on arrival: " ++ otherPilot
+
+        FoundRatToAvoid rat ->
+            "Found a rat to avoid: " ++ rat
 
 
 findReasonToIgnoreProbeScanResult : BotDecisionContext -> EveOnline.ParseUserInterface.ProbeScanResult -> Maybe ReasonToIgnoreProbeScanResult
@@ -222,7 +236,26 @@ findReasonToAvoidAnomalyFromMemory context { anomalyID } =
                     Just (FoundOtherPilotOnArrival otherPilotFoundOnArrival)
 
                 [] ->
-                    Nothing
+                    let
+                        ratsToAvoidSeen =
+                            getRatsToAvoidSeenInAnomaly context.eventContext.appSettings memoryOfAnomaly
+                    in
+                    case ratsToAvoidSeen |> Set.toList of
+                        ratToAvoid :: _ ->
+                            Just (FoundRatToAvoid ratToAvoid)
+
+                        [] ->
+                            Nothing
+
+
+getRatsToAvoidSeenInAnomaly : BotSettings -> MemoryOfAnomaly -> Set.Set String
+getRatsToAvoidSeenInAnomaly settings =
+    .ratsSeen >> Set.filter (shouldAvoidRatAccordingToSettings settings)
+
+
+shouldAvoidRatAccordingToSettings : BotSettings -> String -> Bool
+shouldAvoidRatAccordingToSettings settings ratName =
+    settings.ratsToAvoid |> List.map String.toLower |> List.member (ratName |> String.toLower)
 
 
 memoryOfAnomalyWithID : String -> BotMemory -> Maybe MemoryOfAnomaly
@@ -846,6 +879,9 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
                 |> Maybe.andThen .maneuverType
                 |> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverWarp)
 
+        namesOfRatsInOverview =
+            getNamesOfRatsInOverview currentReading
+
         weJustArrivedOnGrid =
             (botMemoryBefore.shipWarpingInLastReading == Just True) && (shipIsWarping == Just False)
 
@@ -863,9 +899,9 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
                             anomalyMemoryBefore =
                                 botMemoryBefore.visitedAnomalies
                                     |> Dict.get currentAnomalyID
-                                    |> Maybe.withDefault { otherPilotsFoundOnArrival = [] }
+                                    |> Maybe.withDefault { otherPilotsFoundOnArrival = [], ratsSeen = Set.empty }
 
-                            anomalyMemory =
+                            anomalyMemoryWithOtherPilotsOnArrival =
                                 if weJustArrivedOnGrid then
                                     { anomalyMemoryBefore
                                         | otherPilotsFoundOnArrival = getNamesOfOtherPilotsInOverview currentReading
@@ -873,6 +909,12 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
 
                                 else
                                     anomalyMemoryBefore
+
+                            anomalyMemory =
+                                { anomalyMemoryWithOtherPilotsOnArrival
+                                    | ratsSeen =
+                                        Set.union anomalyMemoryBefore.ratsSeen (Set.fromList namesOfRatsInOverview)
+                                }
                         in
                         botMemoryBefore.visitedAnomalies |> Dict.insert currentAnomalyID anomalyMemory
     in
@@ -929,6 +971,23 @@ getNamesOfOtherPilotsInOverview readingFromGameClient =
         |> Maybe.map .entries
         |> Maybe.withDefault []
         |> List.filter overviewEntryRepresentsOtherPilot
+        |> List.map (.objectName >> Maybe.withDefault "do not see name of overview entry")
+
+
+getNamesOfRatsInOverview : ReadingFromGameClient -> List String
+getNamesOfRatsInOverview readingFromGameClient =
+    let
+        overviewEntryRepresentsRatOnGrid overviewEntry =
+            iconSpriteHasColorOfRat overviewEntry
+                && (overviewEntry.objectDistanceInMeters
+                        |> Result.map (\distanceInMeters -> distanceInMeters < 300000)
+                        |> Result.withDefault False
+                   )
+    in
+    readingFromGameClient.overviewWindow
+        |> Maybe.map .entries
+        |> Maybe.withDefault []
+        |> List.filter overviewEntryRepresentsRatOnGrid
         |> List.map (.objectName >> Maybe.withDefault "do not see name of overview entry")
 
 

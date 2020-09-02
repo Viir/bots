@@ -34,7 +34,9 @@ To go back in time and see past status information from the app, you can use the
 But in case an app gets stuck, you want to take a look at this status display. Among general information from the engine, this display can also contain information as coded by the author. This way, the app can tell about the goal of its current actions or inform you about problems. For example, this [auto-pilot bot](https://github.com/Viir/bots/tree/25cd2fbc264b97bd15257bca6f3414e75f206b67/implement/applications/eve-online/eve-online-warp-to-0-autopilot) shows diverse messages to inform you what it is doing at the moment. When you run this bot, the console window might show a text like the following:
 
 ```
-App ebb5faf0d1... in session '' ('2020-09-02T19-04-33-d96095') is running. Press SHIFT + CTRL + ALT keys to pause the app.                                                                                                                  Last app event was 0 seconds ago at 19-06-36.653. There are 0 tasks in progress.                                      Status message from app:
+App ebb5faf0d1... in session '' ('2020-09-02T19-04-33-d96095') is running. Press SHIFT + CTRL + ALT keys to pause the app.
+Last app event was 0 seconds ago at 19-06-36.653. There are 0 tasks in progress.
+Status message from app:
 
 jumps completed: 0
 current solar system: Kemerk

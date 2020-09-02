@@ -95,7 +95,6 @@ defaultBotSettings =
 parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
     AppSettings.parseSimpleListOfAssignments { assignmentsSeparators = [ ",", "\n" ] }
-        {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
         ([ ( "hide-when-neutral-in-local"
            , AppSettings.valueTypeYesOrNo
                 (\hide -> \settings -> { settings | hideWhenNeutralInLocal = hide })

@@ -1,21 +1,8 @@
-{- EVE Online Warp-to-0 auto-pilot version 2020-08-27
-   This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
-
-   Before starting the bot, set up the game client as follows:
-
-   + Set the UI language to English.
-   + Set the in-game autopilot route.
-   + Make sure the autopilot info panel is expanded, so that the route is visible.
-
-   ## Configuration Settings
-
-   All settings are optional; you only need them in case the defaults don't fit your use-case.
-
-   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "cloaking device".
-
+{- Mactastic08 orca mining version 2020-09-19
+   Engage drones part of https://forum.botengine.org/t/orca-targeting-mining/3591
 -}
 {-
-   app-catalog-tags:eve-online,auto-pilot,travel
+   app-catalog-tags:eve-online,mining
    authors-forum-usernames:viir
 -}
 
@@ -28,7 +15,7 @@ module BotEngineApp exposing
 
 import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
 import Common.AppSettings as AppSettings
-import Common.DecisionTree exposing (describeBranch, endDecisionPath)
+import Common.DecisionTree exposing (describeBranch)
 import Common.EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.AppFramework
@@ -36,16 +23,10 @@ import EveOnline.AppFramework
         ( AppEffect(..)
         , DecisionPathNode
         , ReadingFromGameClient
-        , SeeUndockingComplete
         , ShipModulesMemory
-        , actWithoutFurtherReadings
-        , branchDependingOnDockedOrInSpace
-        , clickOnUIElement
-        , infoPanelRouteFirstMarkerFromReadingFromGameClient
         , menuCascadeCompleted
-        , shipUIIndicatesShipIsWarpingOrJumping
         , useContextMenuCascade
-        , useMenuEntryWithTextContainingFirstOf
+        , useMenuEntryWithTextContaining
         , waitForProgressInGame
         )
 import EveOnline.ParseUserInterface exposing (getAllContainedDisplayTexts)
@@ -119,51 +100,55 @@ statusTextFromState context =
         |> String.join "\n"
 
 
-autopilotBotDecisionRoot : BotDecisionContext -> DecisionPathNode
-autopilotBotDecisionRoot context =
-    branchDependingOnDockedOrInSpace
-        { ifDocked = describeBranch "To continue, undock manually." waitForProgressInGame
-        , ifSeeShipUI = always Nothing
-        , ifUndockingComplete = decisionTreeWhenInSpace context
-        }
-        context.readingFromGameClient
+mactastic08_orca_mining_BotDecisionRoot : BotDecisionContext -> DecisionPathNode
+mactastic08_orca_mining_BotDecisionRoot context =
+    -- Engage drones part of https://forum.botengine.org/t/orca-targeting-mining/3591
+    launchAndEngageDrones context.readingFromGameClient
+        |> Maybe.withDefault (describeBranch "Drones already engaged" waitForProgressInGame)
 
 
-decisionTreeWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
-decisionTreeWhenInSpace context undockingComplete =
-    case context.readingFromGameClient |> infoPanelRouteFirstMarkerFromReadingFromGameClient of
-        Nothing ->
-            describeBranch "I see no route in the info panel. I will start when a route is set."
-                (waitingInSpaceDecisionTree context)
+launchAndEngageDrones : ReadingFromGameClient -> Maybe DecisionPathNode
+launchAndEngageDrones readingFromGameClient =
+    readingFromGameClient.dronesWindow
+        |> Maybe.andThen
+            (\dronesWindow ->
+                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
+                    ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
+                        let
+                            idlingDrones =
+                                droneGroupInLocalSpace.drones
+                                    |> List.filter (.uiNode >> .uiNode >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts >> List.any (String.toLower >> String.contains "idle"))
 
-        Just infoPanelRouteFirstMarker ->
-            if undockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
-                describeBranch
-                    "I see the ship is warping or jumping. I wait until that maneuver ends."
-                    (waitingInSpaceDecisionTree context)
+                            dronesInBayQuantity =
+                                droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
 
-            else
-                useContextMenuCascade
-                    ( "route element icon", infoPanelRouteFirstMarker.uiNode )
-                    (useMenuEntryWithTextContainingFirstOf
-                        [ "dock", "jump" ]
-                        menuCascadeCompleted
-                    )
+                            dronesInLocalSpaceQuantity =
+                                droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
+                        in
+                        if 0 < (idlingDrones |> List.length) then
+                            Just
+                                (describeBranch "Engage idling drone(s)"
+                                    (useContextMenuCascade
+                                        ( "drones group", droneGroupInLocalSpace.header.uiNode )
+                                        (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
+                                    )
+                                )
 
+                        else if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
+                            Just
+                                (describeBranch "Launch drones"
+                                    (useContextMenuCascade
+                                        ( "drones group", droneGroupInBay.header.uiNode )
+                                        (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
+                                    )
+                                )
 
-waitingInSpaceDecisionTree : BotDecisionContext -> DecisionPathNode
-waitingInSpaceDecisionTree context =
-    case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> .isActive >> Maybe.withDefault False >> not) |> List.head of
-        Just ( inactiveModuleMatchingText, inactiveModule ) ->
-            describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
-                (endDecisionPath
-                    (actWithoutFurtherReadings
-                        ( "Click on the module.", inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft )
-                    )
-                )
+                        else
+                            Nothing
 
-        Nothing ->
-            readShipUIModuleButtonTooltips context |> Maybe.withDefault waitForProgressInGame
+                    _ ->
+                        Nothing
+            )
 
 
 updateMemoryForNewReadingFromGame : ReadingFromGameClient -> BotMemory -> BotMemory
@@ -195,41 +180,6 @@ updateMemoryForNewReadingFromGame currentReading memoryBefore =
     }
 
 
-knownModulesToActivateAlways : BotDecisionContext -> List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
-knownModulesToActivateAlways context =
-    context.readingFromGameClient.shipUI
-        |> Maybe.map .moduleButtons
-        |> Maybe.withDefault []
-        |> List.filterMap
-            (\moduleButton ->
-                moduleButton
-                    |> EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
-                    |> Maybe.andThen (tooltipLooksLikeModuleToActivateAlways context)
-                    |> Maybe.map (\moduleName -> ( moduleName, moduleButton ))
-            )
-
-
-tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> EveOnline.ParseUserInterface.ModuleButtonTooltip -> Maybe String
-tooltipLooksLikeModuleToActivateAlways context =
-    .uiNode
-        >> .uiNode
-        >> getAllContainedDisplayTexts
-        >> List.filterMap
-            (\tooltipText ->
-                context.eventContext.appSettings.modulesToActivateAlways
-                    |> List.filterMap
-                        (\moduleToActivateAlways ->
-                            if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
-                                Just tooltipText
-
-                            else
-                                Nothing
-                        )
-                    |> List.head
-            )
-        >> List.head
-
-
 processEveOnlineBotEvent :
     EveOnline.AppFramework.AppEventContext BotSettings
     -> EveOnline.AppFramework.AppEvent
@@ -238,7 +188,7 @@ processEveOnlineBotEvent :
 processEveOnlineBotEvent =
     EveOnline.AppFramework.processEveOnlineAppEventWithMemoryAndDecisionTree
         { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
-        , decisionTreeRoot = autopilotBotDecisionRoot
+        , decisionTreeRoot = mactastic08_orca_mining_BotDecisionRoot
         , statusTextFromState = statusTextFromState
         , millisecondsToNextReadingFromGame = always 2000
         }
@@ -258,8 +208,3 @@ currentSolarSystemNameFromReading readingFromGameClient =
     readingFromGameClient.infoPanelContainer
         |> Maybe.andThen .infoPanelLocationInfo
         |> Maybe.andThen .currentSolarSystemName
-
-
-readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
-readShipUIModuleButtonTooltips =
-    EveOnline.AppFramework.readShipUIModuleButtonTooltipWhereNotYetInMemory

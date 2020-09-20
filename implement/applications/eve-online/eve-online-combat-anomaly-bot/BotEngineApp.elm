@@ -1,4 +1,6 @@
-{- EVE Online combat anomaly bot version 2020-08-28
+{- EVE Online - Allan MacGregor - BrianCorner - combat anomaly bot version 2020-09-20
+   farm anomalies in a given route of systems: https://forum.botengine.org/t/ratting-anomalies/3585
+
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -61,6 +63,7 @@ import EveOnline.AppFramework
         , clickOnUIElement
         , ensureInfoPanelLocationInfoIsExpanded
         , getEntropyIntFromReadingFromGameClient
+        , infoPanelRouteFirstMarkerFromReadingFromGameClient
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
         , pickEntryFromLastContextMenuInCascade
@@ -449,7 +452,7 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                     returnDronesAndEnterAnomalyOrWait =
                         returnDronesAndEnterAnomaly
                             { ifNoAcceptableAnomalyAvailable =
-                                describeBranch "Wait for a matching anomaly to appear." waitForProgressInGame
+                                describeBranch "I do not see a matching anomaly." (autopilotBotDecisionRoot context)
                             }
                 in
                 case context.readingFromGameClient |> getCurrentAnomalyIDAsSeenInProbeScanner of
@@ -715,6 +718,58 @@ returnDronesToBay parsedUserInterface =
                             )
                         )
             )
+
+
+autopilotBotDecisionRoot : BotDecisionContext -> DecisionPathNode
+autopilotBotDecisionRoot context =
+    branchDependingOnDockedOrInSpace
+        { ifDocked = describeBranch "To continue, undock manually." waitForProgressInGame
+        , ifSeeShipUI = always Nothing
+        , ifUndockingComplete = autopilot_decisionTreeWhenInSpace context
+        }
+        context.readingFromGameClient
+
+
+autopilot_decisionTreeWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
+autopilot_decisionTreeWhenInSpace context undockingComplete =
+    case context.readingFromGameClient |> infoPanelRouteFirstMarkerFromReadingFromGameClient of
+        Nothing ->
+            describeBranch "I see no route in the info panel. I will start when a route is set."
+                (autopilot_waitingInSpaceDecisionTree context)
+
+        Just infoPanelRouteFirstMarker ->
+            if undockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
+                describeBranch
+                    "I see the ship is warping or jumping. I wait until that maneuver ends."
+                    (autopilot_waitingInSpaceDecisionTree context)
+
+            else
+                useContextMenuCascade
+                    ( "route element icon", infoPanelRouteFirstMarker.uiNode )
+                    (useMenuEntryWithTextContainingFirstOf
+                        [ "dock", "jump" ]
+                        menuCascadeCompleted
+                    )
+
+
+autopilot_waitingInSpaceDecisionTree : BotDecisionContext -> DecisionPathNode
+autopilot_waitingInSpaceDecisionTree context =
+    case context |> autopilot_knownModulesToActivateAlways |> List.filter (Tuple.second >> .isActive >> Maybe.withDefault False >> not) |> List.head of
+        Just ( inactiveModuleMatchingText, inactiveModule ) ->
+            describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
+                (endDecisionPath
+                    (actWithoutFurtherReadings
+                        ( "Click on the module.", inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft )
+                    )
+                )
+
+        Nothing ->
+            readShipUIModuleButtonTooltips context |> Maybe.withDefault waitForProgressInGame
+
+
+autopilot_knownModulesToActivateAlways : BotDecisionContext -> List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
+autopilot_knownModulesToActivateAlways =
+    always []
 
 
 lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode

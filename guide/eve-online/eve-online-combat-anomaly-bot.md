@@ -22,7 +22,7 @@ Despite being quite robust, this bot is far from being as smart as a human. For 
 
 ## Starting the Bot
 
-To start the bot, download the script from https://catalog.botengine.org/0eac4011309d710f71b1e69c8a9878a331c04b338140a38aee8f0b88e0310a00 and then run it.
+To start the bot, download the script from https://catalog.botengine.org/95a3c13744de266f5cea035846335437161693aa416707dcdaaf3239fcab5283 and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 
@@ -40,6 +40,7 @@ All settings are optional; you only need them in case the defaults don't fit you
 
 + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
 + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
++ `rat-to-avoid` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
 
 When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of a complete settings string:
@@ -48,6 +49,7 @@ Here is an example of a complete settings string:
 anomaly-name = Drone Patrol
 anomaly-name = Drone Horde
 hide-when-neutral-in-local = yes
+rat-to-avoid = Infested Carrier
 ```
 
 ----

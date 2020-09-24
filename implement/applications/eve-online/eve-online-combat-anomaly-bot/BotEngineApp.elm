@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-08-28
+{- EVE Online combat anomaly bot version 2020-09-24
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -59,6 +59,7 @@ import EveOnline.AppFramework
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
         , clickOnUIElement
+        , doEffectsClickModuleButton
         , ensureInfoPanelLocationInfoIsExpanded
         , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
@@ -431,11 +432,7 @@ decideNextActionWhenInSpace context seeUndockingComplete =
         case seeUndockingComplete |> shipUIModulesToActivateAlways |> List.filter (moduleIsActiveOrReloading >> not) |> List.head of
             Just inactiveModule ->
                 describeBranch "I see an inactive module in the middle row. Activate the module."
-                    (endDecisionPath
-                        (actWithoutFurtherReadings
-                            ( "Click on the module.", inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft )
-                        )
-                    )
+                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
 
             Nothing ->
                 let
@@ -580,13 +577,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
 
                                     Just inactiveModule ->
                                         describeBranch "I see an inactive module to activate on targets. Activate it."
-                                            (endDecisionPath
-                                                (actWithoutFurtherReadings
-                                                    ( "Click on the module."
-                                                    , inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                                                    )
-                                                )
-                                            )
+                                            (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                                 )
     in
     ensureShipIsOrbitingDecision |> Maybe.withDefault decisionIfAlreadyOrbiting
@@ -829,6 +820,20 @@ statusTextFromState context =
     ]
         |> List.concat
         |> String.join "\n"
+
+
+clickModuleButtonButWaitIfClickedInPreviousStep : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUIModuleButton -> DecisionPathNode
+clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
+    if doEffectsClickModuleButton moduleButton context.previousStepEffects then
+        describeBranch "Already clicked on this module button in previous step." waitForProgressInGame
+
+    else
+        endDecisionPath
+            (actWithoutFurtherReadings
+                ( "Click on this module button."
+                , moduleButton.uiNode |> clickOnUIElement MouseButtonLeft
+                )
+            )
 
 
 overviewEntryIsTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool

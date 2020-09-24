@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-08-27
+{- EVE Online mining bot version 2020-09-24
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -57,6 +57,7 @@ import EveOnline.AppFramework
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
         , clickOnUIElement
+        , doEffectsClickModuleButton
         , ensureInfoPanelLocationInfoIsExpanded
         , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
@@ -403,11 +404,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
         case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> .isActive >> Maybe.withDefault False >> not) |> List.head of
             Just ( inactiveModuleMatchingText, inactiveModule ) ->
                 describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
-                    (endDecisionPath
-                        (actWithoutFurtherReadings
-                            ( "Click on the module.", inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft )
-                        )
-                    )
+                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
 
             Nothing ->
                 case inventoryWindowWithOreHoldSelected |> capacityGaugeUsedPercent of
@@ -448,13 +445,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
 
                                                         Just inactiveModule ->
                                                             describeBranch "I see an inactive mining module. Activate it."
-                                                                (endDecisionPath
-                                                                    (actWithoutFurtherReadings
-                                                                        ( "Click on the module."
-                                                                        , inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                                                                        )
-                                                                    )
-                                                                )
+                                                                (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                                                     )
                                                 )
                                 )
@@ -1069,6 +1060,20 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
         botMemoryBefore.shipModules
             |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
     }
+
+
+clickModuleButtonButWaitIfClickedInPreviousStep : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUIModuleButton -> DecisionPathNode
+clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
+    if doEffectsClickModuleButton moduleButton context.previousStepEffects then
+        describeBranch "Already clicked on this module button in previous step." waitForProgressInGame
+
+    else
+        endDecisionPath
+            (actWithoutFurtherReadings
+                ( "Click on this module button."
+                , moduleButton.uiNode |> clickOnUIElement MouseButtonLeft
+                )
+            )
 
 
 activeShipTreeEntryFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry

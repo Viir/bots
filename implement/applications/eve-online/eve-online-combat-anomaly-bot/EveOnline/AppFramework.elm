@@ -23,6 +23,7 @@ import EveOnline.MemoryReading
 import EveOnline.ParseUserInterface exposing (centerFromDisplayRegion)
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
+import List.Extra
 import String.Extra
 
 
@@ -815,9 +816,6 @@ effectOnWindowAsVolatileHostEffectOnWindow effectOnWindow =
         Common.EffectOnWindow.MouseMoveTo mouseMoveTo ->
             VolatileHostInterface.MouseMoveTo { location = mouseMoveTo }
 
-        Common.EffectOnWindow.SimpleMouseClickAtLocation simpleMouseClickAtLocation ->
-            VolatileHostInterface.SimpleMouseClickAtLocation simpleMouseClickAtLocation
-
         Common.EffectOnWindow.KeyDown key ->
             VolatileHostInterface.KeyDown key
 
@@ -1219,6 +1217,37 @@ shipUIIndicatesShipIsWarpingOrJumping =
         >> Maybe.withDefault False
 
 
+doEffectsClickModuleButton : EveOnline.ParseUserInterface.ShipUIModuleButton -> List Common.EffectOnWindow.EffectOnWindowStructure -> Bool
+doEffectsClickModuleButton moduleButton =
+    List.Extra.tails
+        >> List.any
+            (\effects ->
+                case effects of
+                    firstEffect :: secondEffect :: _ ->
+                        case ( firstEffect, secondEffect ) of
+                            ( Common.EffectOnWindow.MouseMoveTo mouseMoveTo, Common.EffectOnWindow.KeyDown keyDown ) ->
+                                doesPointIntersectRegion mouseMoveTo moduleButton.uiNode.totalDisplayRegion
+                                    && (keyDown == Common.EffectOnWindow.vkey_LBUTTON)
+
+                            _ ->
+                                False
+
+                    [ _ ] ->
+                        False
+
+                    [] ->
+                        False
+            )
+
+
+doesPointIntersectRegion : { x : Int, y : Int } -> EveOnline.ParseUserInterface.DisplayRegion -> Bool
+doesPointIntersectRegion { x, y } region =
+    (region.x <= x)
+        && (x <= region.x + region.width)
+        && (region.y <= y)
+        && (y <= region.y + region.height)
+
+
 type alias TreeLeafAct =
     { actionsAlreadyDecided : ( String, List Common.EffectOnWindow.EffectOnWindowStructure )
     , actionsDependingOnNewReadings : List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
@@ -1239,6 +1268,7 @@ type alias StepDecisionContext appSettings appMemory =
     { eventContext : AppEventContext appSettings
     , readingFromGameClient : ReadingFromGameClient
     , memory : appMemory
+    , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
     }
 
 
@@ -1249,6 +1279,7 @@ type alias AppStateWithMemoryAndDecisionTree appMemory =
             , remainingActions : List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
             }
     , appMemory : appMemory
+    , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
     }
 
 
@@ -1373,6 +1404,7 @@ initStateWithMemoryAndDecisionTree : appMemory -> AppStateWithMemoryAndDecisionT
 initStateWithMemoryAndDecisionTree appMemory =
     { programState = Nothing
     , appMemory = appMemory
+    , previousStepEffects = []
     }
 
 
@@ -1397,6 +1429,7 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                     { eventContext = eventContext
                     , memory = appMemory
                     , readingFromGameClient = readingFromGameClient
+                    , previousStepEffects = stateBefore.previousStepEffects
                     }
 
                 programStateIfEvalDecisionTreeNew =
@@ -1462,7 +1495,11 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                     [ config.statusTextFromState decisionContext, describeActivity ]
                         |> String.join "\n"
             in
-            ( { stateBefore | appMemory = appMemory, programState = programState }
+            ( { stateBefore
+                | appMemory = appMemory
+                , programState = programState
+                , previousStepEffects = effectsOnGameClientWindow
+              }
             , if originalDecisionLeaf == DecideFinishSession then
                 FinishSession { statusDescriptionText = statusMessage }
 

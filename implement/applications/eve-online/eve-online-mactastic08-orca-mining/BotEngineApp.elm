@@ -1,4 +1,4 @@
-{- Mactastic08 orca mining version 2020-09-19
+{- annar_731 orca mining version 2020-09-25
    Engage drones part of https://forum.botengine.org/t/orca-targeting-mining/3591
 -}
 {-
@@ -100,15 +100,15 @@ statusTextFromState context =
         |> String.join "\n"
 
 
-mactastic08_orca_mining_BotDecisionRoot : BotDecisionContext -> DecisionPathNode
-mactastic08_orca_mining_BotDecisionRoot context =
-    -- Engage drones part of https://forum.botengine.org/t/orca-targeting-mining/3591
-    launchAndEngageDrones context.readingFromGameClient
-        |> Maybe.withDefault (describeBranch "Drones already engaged" waitForProgressInGame)
+annar_731_orca_mining_BotDecisionRoot : BotDecisionContext -> DecisionPathNode
+annar_731_orca_mining_BotDecisionRoot context =
+    -- Send drones part of https://forum.botengine.org/t/orca-targeting-mining/3591/3?u=viir
+    launchDronesAndSendThemToMine context.readingFromGameClient
+        |> Maybe.withDefault (describeBranch "Drones already busy" waitForProgressInGame)
 
 
-launchAndEngageDrones : ReadingFromGameClient -> Maybe DecisionPathNode
-launchAndEngageDrones readingFromGameClient =
+launchDronesAndSendThemToMine : ReadingFromGameClient -> Maybe DecisionPathNode
+launchDronesAndSendThemToMine readingFromGameClient =
     readingFromGameClient.dronesWindow
         |> Maybe.andThen
             (\dronesWindow ->
@@ -127,10 +127,10 @@ launchAndEngageDrones readingFromGameClient =
                         in
                         if 0 < (idlingDrones |> List.length) then
                             Just
-                                (describeBranch "Engage idling drone(s)"
+                                (describeBranch "Send idling drone(s)"
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInLocalSpace.header.uiNode )
-                                        (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
+                                        (useMenuEntryWithTextContaining "mine" menuCascadeCompleted)
                                     )
                                 )
 
@@ -188,7 +188,7 @@ processEveOnlineBotEvent :
 processEveOnlineBotEvent =
     EveOnline.AppFramework.processEveOnlineAppEventWithMemoryAndDecisionTree
         { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
-        , decisionTreeRoot = mactastic08_orca_mining_BotDecisionRoot
+        , decisionTreeRoot = annar_731_orca_mining_BotDecisionRoot
         , statusTextFromState = statusTextFromState
         , millisecondsToNextReadingFromGame = always 2000
         }

@@ -1,5 +1,5 @@
-{- annar_731 orca mining version 2020-09-25
-   Engage drones part of https://forum.botengine.org/t/orca-targeting-mining/3591
+{- annar_731 orca mining version 2020-10-03
+   Orca mining described by Mactastic08 and annar_731 at https://forum.botengine.org/t/orca-targeting-mining/3591
 -}
 {-
    app-catalog-tags:eve-online,mining
@@ -26,10 +26,12 @@ import EveOnline.AppFramework
         , ShipModulesMemory
         , menuCascadeCompleted
         , useContextMenuCascade
+        , useContextMenuCascadeOnOverviewEntry
         , useMenuEntryWithTextContaining
+        , useMenuEntryWithTextEqual
         , waitForProgressInGame
         )
-import EveOnline.ParseUserInterface exposing (getAllContainedDisplayTexts)
+import EveOnline.ParseUserInterface exposing (OverviewWindowEntry, getAllContainedDisplayTexts)
 
 
 defaultBotSettings : BotSettings
@@ -102,9 +104,33 @@ statusTextFromState context =
 
 annar_731_orca_mining_BotDecisionRoot : BotDecisionContext -> DecisionPathNode
 annar_731_orca_mining_BotDecisionRoot context =
-    -- Send drones part of https://forum.botengine.org/t/orca-targeting-mining/3591/3?u=viir
-    launchDronesAndSendThemToMine context.readingFromGameClient
-        |> Maybe.withDefault (describeBranch "Drones already busy" waitForProgressInGame)
+    if context.readingFromGameClient.targets == [] then
+        describeBranch "I see no target, lock an asteroid." (targetAsteroid context)
+
+    else
+        -- Send drones part of https://forum.botengine.org/t/orca-targeting-mining/3591/3?u=viir
+        launchDronesAndSendThemToMine context.readingFromGameClient
+            |> Maybe.withDefault (describeBranch "Drones already busy" waitForProgressInGame)
+
+
+targetAsteroid : BotDecisionContext -> DecisionPathNode
+targetAsteroid context =
+    case context.readingFromGameClient |> topmostAsteroidFromOverviewWindow of
+        Nothing ->
+            describeBranch "I see no asteroid in the overview." waitForProgressInGame
+
+        Just asteroidInOverview ->
+            describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                (lockTargetFromOverviewEntry asteroidInOverview)
+
+
+lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
+lockTargetFromOverviewEntry overviewEntry =
+    describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
+        (useContextMenuCascadeOnOverviewEntry
+            (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
+            overviewEntry
+        )
 
 
 launchDronesAndSendThemToMine : ReadingFromGameClient -> Maybe DecisionPathNode
@@ -149,6 +175,26 @@ launchDronesAndSendThemToMine readingFromGameClient =
                     _ ->
                         Nothing
             )
+
+
+topmostAsteroidFromOverviewWindow : ReadingFromGameClient -> Maybe OverviewWindowEntry
+topmostAsteroidFromOverviewWindow =
+    overviewWindowEntriesRepresentingAsteroids
+        >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
+        >> List.head
+
+
+overviewWindowEntriesRepresentingAsteroids : ReadingFromGameClient -> List OverviewWindowEntry
+overviewWindowEntriesRepresentingAsteroids =
+    .overviewWindow
+        >> Maybe.map (.entries >> List.filter overviewWindowEntryRepresentsAnAsteroid)
+        >> Maybe.withDefault []
+
+
+overviewWindowEntryRepresentsAnAsteroid : OverviewWindowEntry -> Bool
+overviewWindowEntryRepresentsAnAsteroid entry =
+    (entry.textsLeftToRight |> List.any (String.toLower >> String.contains "asteroid"))
+        && (entry.textsLeftToRight |> List.any (String.toLower >> String.contains "belt") |> not)
 
 
 updateMemoryForNewReadingFromGame : ReadingFromGameClient -> BotMemory -> BotMemory

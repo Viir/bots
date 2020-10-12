@@ -61,3 +61,12 @@ Original discussion: https://forum.botengine.org/t/let-me-know-how-to-make-my-ap
 
 > Total running time in hours: 76
 
+## 2020-10-12 - Mactastic08 & annar_731 - EVE Online - Orca Mining
+
+https://github.com/Viir/bots/tree/02027201fd8c506c6d88d160b1a80763f8bdabbd/implement/applications/eve-online/eve-online-mactastic08-orca-mining
+
+Original discussion: https://forum.botengine.org/t/orca-targeting-mining/3591
+
+2020-10-12 the catalog entry for [App 81395744f5...](https://catalog.botengine.org/81395744f5857f15f5cf22cf091a71b440b42a81dddd0e992a0d9db1fce92da2) shows:
+
+> Total running time in hours: 33

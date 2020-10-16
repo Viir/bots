@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-09-24
+{- EVE Online combat anomaly bot version 2020-10-16
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -529,6 +529,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                         (useContextMenuCascade
                             ( "locked target", targetToUnlock.barAndImageCont |> Maybe.withDefault targetToUnlock.uiNode )
                             (useMenuEntryWithTextContaining "unlock" menuCascadeCompleted)
+                            context.readingFromGameClient
                         )
 
                 Nothing ->
@@ -549,7 +550,10 @@ combat context seeUndockingComplete continueIfCombatComplete =
 
                                     nextOverviewEntryToLock :: _ ->
                                         describeBranch "I see an overview entry to lock."
-                                            (lockTargetFromOverviewEntry nextOverviewEntryToLock)
+                                            (lockTargetFromOverviewEntry
+                                                nextOverviewEntryToLock
+                                                context.readingFromGameClient
+                                            )
                                 )
 
                         Just _ ->
@@ -570,7 +574,10 @@ combat context seeUndockingComplete continueIfCombatComplete =
 
                                                                 nextOverviewEntryToLock :: _ ->
                                                                     describeBranch "Lock more targets."
-                                                                        (lockTargetFromOverviewEntry nextOverviewEntryToLock)
+                                                                        (lockTargetFromOverviewEntry
+                                                                            nextOverviewEntryToLock
+                                                                            context.readingFromGameClient
+                                                                        )
                                                         )
                                                     )
                                             )
@@ -621,6 +628,7 @@ enterAnomaly { ifNoAcceptableAnomalyAvailable } context =
                             (useMenuEntryWithTextContaining "Warp to Within"
                                 (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
                             )
+                            context.readingFromGameClient
                         )
 
 
@@ -668,6 +676,7 @@ launchAndEngageDrones readingFromGameClient =
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                         (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
+                                        readingFromGameClient
                                     )
                                 )
 
@@ -677,6 +686,7 @@ launchAndEngageDrones readingFromGameClient =
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInBay.header.uiNode )
                                         (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
+                                        readingFromGameClient
                                     )
                                 )
 
@@ -689,8 +699,8 @@ launchAndEngageDrones readingFromGameClient =
 
 
 returnDronesToBay : ReadingFromGameClient -> Maybe DecisionPathNode
-returnDronesToBay parsedUserInterface =
-    parsedUserInterface.dronesWindow
+returnDronesToBay readingFromGameClient =
+    readingFromGameClient.dronesWindow
         |> Maybe.andThen .droneGroupInLocalSpace
         |> Maybe.andThen
             (\droneGroupInLocalSpace ->
@@ -703,17 +713,19 @@ returnDronesToBay parsedUserInterface =
                             (useContextMenuCascade
                                 ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                 (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
+                                readingFromGameClient
                             )
                         )
             )
 
 
-lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
-lockTargetFromOverviewEntry overviewEntry =
+lockTargetFromOverviewEntry : OverviewWindowEntry -> ReadingFromGameClient -> DecisionPathNode
+lockTargetFromOverviewEntry overviewEntry readingFromGameClient =
     describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
         (useContextMenuCascadeOnOverviewEntry
             (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
             overviewEntry
+            readingFromGameClient
         )
 
 

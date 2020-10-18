@@ -1,4 +1,6 @@
-{- Tribal Wars 2 farmbot version 2020-08-27
+{- Tribal Wars 2 farmbot version Drklord 2020-10-18
+   Adapted to scenario from https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/3038/169?u=viir
+
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -109,9 +111,9 @@ parseBotSettings =
         defaultBotSettings
 
 
-farmArmyPresetNamePattern : String
+farmArmyPresetNamePattern : List String
 farmArmyPresetNamePattern =
-    "farm"
+    [ "farm" ]
 
 
 restartGameClientInterval : Int
@@ -1439,12 +1441,25 @@ pickBestMatchingArmyPresetForVillage presets ( villageId, villageDetails ) conti
 
             farmPresetsMaybeEmpty =
                 presets
-                    |> List.filter (.name >> String.toLower >> String.contains (farmPresetFilter |> String.toLower))
+                    |> List.filter
+                        (\preset ->
+                            farmPresetFilter
+                                |> List.any
+                                    (\presetFilter ->
+                                        String.contains
+                                            (String.toLower presetFilter)
+                                            (String.toLower preset.name)
+                                    )
+                        )
                     |> List.sortBy (.name >> String.toLower)
         in
         case farmPresetsMaybeEmpty of
             [] ->
-                describeBranch ("Found no army presets matching the filter '" ++ farmPresetFilter ++ "'.")
+                describeBranch
+                    ("Found no army presets matching the filter '"
+                        ++ (farmPresetFilter |> String.join ",")
+                        ++ "'."
+                    )
                     (endDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
 
             farmPresets ->

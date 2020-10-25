@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-08-27
+{- Tribal Wars 2 farmbot version 2020-10-25
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -20,7 +20,7 @@
    ## Configuration Settings
 
    All settings are optional; you only need them in case the defaults don't fit your use-case.
-   You can adjust six settings:
+   Following is a list of available settings:
 
    + `number-of-farm-cycles` : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
    + `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
@@ -28,6 +28,7 @@
    + `farm-barb-max-distance`: Maximum distance of barbarian villages to attack.
    + `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
    + `character-to-farm`: Name of a (player) character to farm like barbarians.
+   + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
@@ -63,11 +64,12 @@ import Json.Decode
 import Json.Encode
 import List.Extra
 import Result.Extra
+import String.Extra
 import WebBrowser.BotFramework as BotFramework exposing (BotEvent, BotResponse)
 
 
-defaultBotSettings : BotSettings
-defaultBotSettings =
+initBotSettings : BotSettings
+initBotSettings =
     { numberOfFarmCycles = 1
     , breakDurationMinMinutes = 90
     , breakDurationMaxMinutes = 120
@@ -75,6 +77,7 @@ defaultBotSettings =
     , farmBarbarianVillageMaximumDistance = 50
     , farmAvoidCoordinates = []
     , charactersToFarm = []
+    , farmArmyPresetPatterns = []
     }
 
 
@@ -103,14 +106,33 @@ parseBotSettings =
                         { settings | charactersToFarm = characterName :: settings.charactersToFarm }
                 )
            )
+         , ( "farm-army-preset-pattern"
+           , AppSettings.valueTypeString
+                (\presetPattern ->
+                    \settings ->
+                        { settings | farmArmyPresetPatterns = presetPattern :: settings.farmArmyPresetPatterns }
+                )
+           )
          ]
             |> Dict.fromList
         )
-        defaultBotSettings
+        initBotSettings
 
 
-farmArmyPresetNamePattern : String
-farmArmyPresetNamePattern =
+implicitSettingsFromExplicitSettings : BotSettings -> BotSettings
+implicitSettingsFromExplicitSettings settings =
+    { settings
+        | farmArmyPresetPatterns =
+            if settings.farmArmyPresetPatterns == [] then
+                [ farmArmyPresetNamePatternDefault ]
+
+            else
+                settings.farmArmyPresetPatterns
+    }
+
+
+farmArmyPresetNamePatternDefault : String
+farmArmyPresetNamePatternDefault =
     "farm"
 
 
@@ -193,6 +215,7 @@ type alias BotSettings =
     , farmBarbarianVillageMaximumDistance : Int
     , farmAvoidCoordinates : List VillageCoordinates
     , charactersToFarm : List String
+    , farmArmyPresetPatterns : List String
     }
 
 
@@ -383,7 +406,7 @@ initState : State
 initState =
     BotFramework.initState
         { timeInMilliseconds = 0
-        , settings = defaultBotSettings
+        , settings = initBotSettings
         , currentActivity = Nothing
         , lastRequestToPageId = 0
         , pendingRequestToPageRequestId = Nothing
@@ -1299,6 +1322,7 @@ requestToJumpToVillageIfNotYetDone state coordinates =
 decideNextActionForVillage : BotState -> FarmCycleState -> ( Int, VillageDetails ) -> DecisionPathNode VillageEndDecisionPathStructure
 decideNextActionForVillage botState farmCycleState ( villageId, villageDetails ) =
     pickBestMatchingArmyPresetForVillage
+        (implicitSettingsFromExplicitSettings botState.settings)
         (botState.getArmyPresetsResult |> Maybe.withDefault [])
         ( villageId, villageDetails )
         (decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ))
@@ -1423,11 +1447,12 @@ villageMatchesSettingsForFarm settings villageCoordinates village =
 
 
 pickBestMatchingArmyPresetForVillage :
-    List ArmyPreset
+    BotSettings
+    -> List ArmyPreset
     -> ( Int, VillageDetails )
     -> (ArmyPreset -> DecisionPathNode VillageEndDecisionPathStructure)
     -> DecisionPathNode VillageEndDecisionPathStructure
-pickBestMatchingArmyPresetForVillage presets ( villageId, villageDetails ) continueWithArmyPreset =
+pickBestMatchingArmyPresetForVillage settings presets ( villageId, villageDetails ) continueWithArmyPreset =
     if presets |> List.isEmpty then
         describeBranch "Did not find any army presets."
             (endDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
@@ -1435,16 +1460,29 @@ pickBestMatchingArmyPresetForVillage presets ( villageId, villageDetails ) conti
     else
         let
             farmPresetFilter =
-                farmArmyPresetNamePattern
+                settings.farmArmyPresetPatterns
 
             farmPresetsMaybeEmpty =
                 presets
-                    |> List.filter (.name >> String.toLower >> String.contains (farmPresetFilter |> String.toLower))
+                    |> List.filter
+                        (\preset ->
+                            farmPresetFilter
+                                |> List.any
+                                    (\presetFilter ->
+                                        String.contains
+                                            (String.toLower presetFilter)
+                                            (String.toLower preset.name)
+                                    )
+                        )
                     |> List.sortBy (.name >> String.toLower)
         in
         case farmPresetsMaybeEmpty of
             [] ->
-                describeBranch ("Found no army presets matching the filter '" ++ farmPresetFilter ++ "'.")
+                describeBranch
+                    ("Found no army presets matching the patterns ["
+                        ++ (farmPresetFilter |> List.map (String.Extra.surround "'") |> String.join ", ")
+                        ++ "]."
+                    )
                     (endDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
 
             farmPresets ->

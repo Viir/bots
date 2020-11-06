@@ -70,3 +70,20 @@ Original discussion: https://forum.botengine.org/t/orca-targeting-mining/3591
 2020-10-12 the catalog entry for [App 81395744f5...](https://catalog.botengine.org/81395744f5857f15f5cf22cf091a71b440b42a81dddd0e992a0d9db1fce92da2) shows:
 
 > Total running time in hours: 33
+
+## 2020-10-31 - Stephan Fuchs - EVE Online - Merged Mining Scripts
+
+https://github.com/Viir/bots/commit/f6246764ac106894e74669815c0e675c48ab9262
+
+Original discussion: https://forum.botengine.org/t/eve-online-request-suggestion/3663
+
+```
+Would it be possible to merge both mining scripts?
+So that the normal mining script would use mining drones as well?
+Currently the drones willl be activated, but they don’t mine (I guess because most people are using them as fighting drones)
+Thanks for your help and your great tools
+```
+
+2020-11-06 the catalog entry for [App dbbec0a31d...](https://catalog.botengine.org/dbbec0a31dfe05b39cf37bb4f329c1fe5e4eb5ed85ceadac37f04ccff4a14c0b) shows:
+
+> Total running time in hours: 116

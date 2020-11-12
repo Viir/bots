@@ -6,6 +6,11 @@ If you think a change should be merged into the main branch, you can post on the
 If a majority of users choose to apply a change to an app, that change is more likely to be merged into the main branch. You can see the popularity displayed at `Total running time in hours` on the apps catalog entry.
 To find an app on the catalog, you can also enter the commit as a search term, or use the `botengine  describe` command.
 
+## 2020-03-19 - goondola - EVE Online - print the list of pilots in local
+
++ Original discussion: https://forum.botengine.org/t/learning-be-and-elm/3160
++ App program code: https://github.com/Viir/bots/commit/0dcadd5b6d1de84d12be96af32148d618e4fee78 and parent commits.
+
 ## 2020-04-21 - Caleb Tribal Wars 2 - Support Multiple Instances
 
 https://github.com/Viir/bots/tree/9b623a9cc678de660e3aa57b3e1b131da3ad54f9/implement/applications/tribal-wars-2/tribal-wars-2-farmbot

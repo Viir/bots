@@ -1,4 +1,6 @@
-{- EVE Online combat anomaly bot version 2020-11-07
+{- EVE Online combat anomaly bot version Neled 2020-11-12
+   Changed warping to watchlist entry as described at https://forum.botengine.org/t/warp-to-fleet-member-with-watchlist/3642/16?u=viir
+
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -440,7 +442,10 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                         returnDronesToBay context.readingFromGameClient
                             |> Maybe.withDefault
                                 (describeBranch "No drones to return."
-                                    (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable } context)
+                                    (warpToWatchlistEntryOrEnterAnomaly
+                                        { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable }
+                                        context
+                                    )
                                 )
 
                     returnDronesAndEnterAnomalyOrWait =
@@ -588,6 +593,24 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                 )
     in
     ensureShipIsOrbitingDecision |> Maybe.withDefault decisionIfAlreadyOrbiting
+
+
+warpToWatchlistEntryOrEnterAnomaly : { ifNoAcceptableAnomalyAvailable : DecisionPathNode } -> BotDecisionContext -> DecisionPathNode
+warpToWatchlistEntryOrEnterAnomaly enterAnomalyConfig context =
+    case context.readingFromGameClient.watchListPanel |> Maybe.andThen (.entries >> List.head) of
+        Just watchlistEntry ->
+            describeBranch "Warp to entry in watchlist panel."
+                (useContextMenuCascade
+                    ( "Watchlist entry", watchlistEntry )
+                    (useMenuEntryWithTextContaining "Warp to Within"
+                        (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
+                    )
+                    context.readingFromGameClient
+                )
+
+        Nothing ->
+            describeBranch "I see no entry in the watchlist panel."
+                (enterAnomaly enterAnomalyConfig context)
 
 
 enterAnomaly : { ifNoAcceptableAnomalyAvailable : DecisionPathNode } -> BotDecisionContext -> DecisionPathNode

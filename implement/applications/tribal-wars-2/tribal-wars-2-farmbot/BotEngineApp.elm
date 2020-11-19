@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-10-25
+{- Tribal Wars 2 farmbot version 2020-11-19
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -186,7 +186,6 @@ type alias BotState =
     , lastPageLocation : Maybe String
     , gameRootInformationResult : Maybe { timeInMilliseconds : Int, gameRootInformation : TribalWars2RootInformation }
     , ownVillagesDetails : Dict.Dict Int { timeInMilliseconds : Int, villageDetails : VillageDetails }
-    , getArmyPresetsResult : Maybe (List ArmyPreset)
     , lastJumpToCoordinates : Maybe { timeInMilliseconds : Int, coordinates : VillageCoordinates }
     , coordinatesLastCheck : Dict.Dict ( Int, Int ) { timeInMilliseconds : Int, result : VillageByCoordinatesResult }
     , numberOfReadsFromCoordinates : Int
@@ -220,7 +219,8 @@ type alias BotSettings =
 
 
 type alias FarmCycleState =
-    { sentAttackByCoordinates : Dict.Dict ( Int, Int ) ()
+    { getArmyPresetsResult : Maybe (List ArmyPreset)
+    , sentAttackByCoordinates : Dict.Dict ( Int, Int ) ()
     }
 
 
@@ -414,7 +414,6 @@ initState =
         , lastPageLocation = Nothing
         , gameRootInformationResult = Nothing
         , ownVillagesDetails = Dict.empty
-        , getArmyPresetsResult = Nothing
         , lastJumpToCoordinates = Nothing
         , coordinatesLastCheck = Dict.empty
         , numberOfReadsFromCoordinates = 0
@@ -445,7 +444,9 @@ reasonToRestartGameClientFromBotState state =
 
 initFarmCycle : FarmCycleState
 initFarmCycle =
-    { sentAttackByCoordinates = Dict.empty }
+    { getArmyPresetsResult = Nothing
+    , sentAttackByCoordinates = Dict.empty
+    }
 
 
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
@@ -946,7 +947,17 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                     }
 
                 GetPresetsResponse armyPresets ->
-                    { stateBefore | getArmyPresetsResult = Just armyPresets }
+                    let
+                        farmState =
+                            case stateBefore.farmState of
+                                InBreak _ ->
+                                    stateBefore.farmState
+
+                                InFarmCycle cycleBeginTime inFarmCycle ->
+                                    InFarmCycle cycleBeginTime
+                                        { inFarmCycle | getArmyPresetsResult = Just armyPresets }
+                    in
+                    { stateBefore | farmState = farmState }
 
                 ActivatedVillageResponse ->
                     { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
@@ -1252,7 +1263,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                             )
 
                     Just selectedVillageDetails ->
-                        case botState.getArmyPresetsResult |> Maybe.withDefault [] of
+                        case farmCycleState.getArmyPresetsResult |> Maybe.withDefault [] of
                             [] ->
                                 {- 2020-01-28 Observation: We get an empty list here at least sometimes at the beginning of a session.
                                    The number of presets we get can increase with the next query.
@@ -1323,7 +1334,7 @@ decideNextActionForVillage : BotState -> FarmCycleState -> ( Int, VillageDetails
 decideNextActionForVillage botState farmCycleState ( villageId, villageDetails ) =
     pickBestMatchingArmyPresetForVillage
         (implicitSettingsFromExplicitSettings botState.settings)
-        (botState.getArmyPresetsResult |> Maybe.withDefault [])
+        (farmCycleState.getArmyPresetsResult |> Maybe.withDefault [])
         ( villageId, villageDetails )
         (decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ))
 

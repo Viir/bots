@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-11-26
+{- EVE Online mining bot version Enrico Du Bruyn 2020-11-27
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -80,6 +80,7 @@ import EveOnline.ParseUserInterface
         , getAllContainedDisplayTexts
         )
 import Regex
+import Set
 
 
 {-| Sources for the defaults:
@@ -435,18 +436,8 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                         -}
                                         unlockTargetsNotForMining context
                                             |> Maybe.withDefault
-                                                (describeBranch "I see a locked target."
-                                                    (case context |> knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                                        Nothing ->
-                                                            describeBranch "All known mining modules are active."
-                                                                (readShipUIModuleButtonTooltips context
-                                                                    |> Maybe.withDefault waitForProgressInGame
-                                                                )
-
-                                                        Just inactiveModule ->
-                                                            describeBranch "I see an inactive mining module. Activate it."
-                                                                (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
-                                                    )
+                                                (describeBranch "I see a locked target. Use Enricos function."
+                                                    (enrico_2020_11_27_use_mining_crystal context)
                                                 )
                                 )
 
@@ -1183,3 +1174,94 @@ shipManeuverIsApproaching =
         >> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverApproach)
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
+
+
+
+{-
+   Function from https://forum.botengine.org/t/change-mining-crystals/3681/8?u=viir:
+
+      if (we have not any locked target)
+      then
+        Lock new target
+      else
+        if (there is an active ship module)
+        then
+           deactivate that ship module
+        else
+           if (there is a ship module with a tooltip text matching the text from the active target)
+           then
+              activate that module
+           else
+              Use context menu cascade: On one of the mining modules. Select menu entry containing one of the display strings in the selected target.
+
+-}
+
+
+enrico_2020_11_27_use_mining_crystal : BotDecisionContext -> DecisionPathNode
+enrico_2020_11_27_use_mining_crystal context =
+    case context.readingFromGameClient.targets |> List.filter .isActiveTarget |> List.head of
+        Nothing ->
+            describeBranch "I see no active target."
+                (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
+
+        Just activeTarget ->
+            let
+                wordsInActiveTarget =
+                    activeTarget.uiNode.uiNode
+                        |> getAllContainedDisplayTexts
+                        |> List.concatMap String.words
+
+                moduleTooltipTextMatchesActiveTarget moduleTooltip =
+                    moduleTooltip.uiNode.uiNode
+                        |> getAllContainedDisplayTexts
+                        |> List.map String.toLower
+                        |> Set.fromList
+                        |> Set.intersect (wordsInActiveTarget |> List.map String.toLower |> Set.fromList)
+                        |> Set.isEmpty
+                        |> not
+
+                shipModuleButtonTooltipTextMatchesTextFromActiveTarget =
+                    EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                        >> Maybe.map moduleTooltipTextMatchesActiveTarget
+            in
+            case
+                context
+                    |> knownMiningModules
+                    |> List.filter (.isActive >> Maybe.withDefault False)
+                    |> List.head
+            of
+                Just activeModule ->
+                    describeBranch "I see an active mining module. Deactivate it."
+                        (clickModuleButtonButWaitIfClickedInPreviousStep context activeModule)
+
+                Nothing ->
+                    case
+                        context
+                            |> knownMiningModules
+                            |> List.filter (shipModuleButtonTooltipTextMatchesTextFromActiveTarget >> Maybe.withDefault False)
+                            |> List.head
+                    of
+                        Just matchingModule ->
+                            describeBranch "there is a ship module with a tooltip text matching the text from the active target"
+                                (clickModuleButtonButWaitIfClickedInPreviousStep context matchingModule)
+
+                        Nothing ->
+                            describeBranch "there is no ship module with a tooltip text matching the text from the active target"
+                                (case
+                                    context
+                                        |> knownMiningModules
+                                        |> List.filter (shipModuleButtonTooltipTextMatchesTextFromActiveTarget >> Maybe.withDefault False)
+                                        |> List.head
+                                 of
+                                    Just miningModule ->
+                                        useContextMenuCascade
+                                            ( "ship module button", miningModule.uiNode )
+                                            (useMenuEntryWithTextContainingFirstOf wordsInActiveTarget menuCascadeCompleted)
+                                            context.readingFromGameClient
+
+                                    Nothing ->
+                                        describeBranch "No mining modules"
+                                            (readShipUIModuleButtonTooltips context
+                                                |> Maybe.withDefault waitForProgressInGame
+                                            )
+                                )

@@ -58,3 +58,8 @@ More links to program codes are listed at [https://catalog.botengine.org](https:
 ## Exploration
 
 In the ['explore'](./explore) subdirectory, I report on explorations in the world of botting in video games. These are raw chronological reports of experiments and discoveries. Some of the approaches and solutions discovered here become seeds for bots and guides.
+
+
+## Experimental Guides
+
++ How to Allow Multiple RDP Sessions in Windows 10: http://woshub.com/how-to-allow-multiple-rdp-sessions-in-windows-10/

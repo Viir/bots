@@ -41,3 +41,7 @@ Wondering what outcome you can expect from following the guides? Below is a list
 
 + [Tribal Wars 2 farmbot](https://to.botengine.org/guide/app/tribal-wars-2-farmbot)
 
+
+## Experimental Guides
+
++ How to Allow Multiple RDP Sessions in Windows 10: http://woshub.com/how-to-allow-multiple-rdp-sessions-in-windows-10/

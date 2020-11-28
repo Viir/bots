@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-11-19
+{- Tribal Wars 2 farmbot version 2020-11-28
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -168,6 +168,11 @@ selectedVillageInfoMaxAge =
 
 readFromGameTimeoutCountThresholdToRestart : Int
 readFromGameTimeoutCountThresholdToRestart =
+    5
+
+
+switchToOtherVillageCommandCapacityMinimum : Int
+switchToOtherVillageCommandCapacityMinimum =
     5
 
 
@@ -394,7 +399,7 @@ type VillageCompletedStructure
 
 type VillageEndDecisionPathStructure
     = CompletedThisVillage VillageCompletedStructure
-    | ContinueWithThisVillage ActionFromVillage
+    | ContinueWithThisVillage { remainingCapacityCommands : Int } ActionFromVillage
 
 
 type ActionFromVillage
@@ -1115,7 +1120,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
         continueFromDecisionInVillage : VillageEndDecisionPathStructure -> DecisionPathNode InFarmCycleResponse
         continueFromDecisionInVillage decisionInVillage =
             case decisionInVillage of
-                ContinueWithThisVillage (GetVillageInfoAtCoordinates coordinates) ->
+                ContinueWithThisVillage _ (GetVillageInfoAtCoordinates coordinates) ->
                     describeBranch
                         ("Search for village at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
                         (endDecisionPath
@@ -1124,7 +1129,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                             )
                         )
 
-                ContinueWithThisVillage (AttackAtCoordinates armyPreset coordinates) ->
+                ContinueWithThisVillage _ (AttackAtCoordinates armyPreset coordinates) ->
                     describeBranch
                         ("Farm at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
                         (case requestToJumpToVillageIfNotYetDone botState coordinates of
@@ -1186,8 +1191,8 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                                 CompletedThisVillage _ ->
                                                     False
 
-                                                ContinueWithThisVillage _ ->
-                                                    True
+                                                ContinueWithThisVillage conditions _ ->
+                                                    switchToOtherVillageCommandCapacityMinimum <= conditions.remainingCapacityCommands
                                         )
                          in
                          case otherVillagesWithAvailableAction |> List.head of
@@ -1203,7 +1208,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                                         CompletedThisVillage otherVillageCompletion ->
                                                             Just ( otherVillageId, otherVillageCompletion )
 
-                                                        ContinueWithThisVillage _ ->
+                                                        ContinueWithThisVillage _ _ ->
                                                             Nothing
                                                 )
                                             |> Dict.fromList
@@ -1330,7 +1335,11 @@ requestToJumpToVillageIfNotYetDone state coordinates =
         Nothing
 
 
-decideNextActionForVillage : BotState -> FarmCycleState -> ( Int, VillageDetails ) -> DecisionPathNode VillageEndDecisionPathStructure
+decideNextActionForVillage :
+    BotState
+    -> FarmCycleState
+    -> ( Int, VillageDetails )
+    -> DecisionPathNode VillageEndDecisionPathStructure
 decideNextActionForVillage botState farmCycleState ( villageId, villageDetails ) =
     pickBestMatchingArmyPresetForVillage
         (implicitSettingsFromExplicitSettings botState.settings)
@@ -1339,7 +1348,12 @@ decideNextActionForVillage botState farmCycleState ( villageId, villageDetails )
         (decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ))
 
 
-decideNextActionForVillageAfterChoosingPreset : BotState -> FarmCycleState -> ( Int, VillageDetails ) -> ArmyPreset -> DecisionPathNode VillageEndDecisionPathStructure
+decideNextActionForVillageAfterChoosingPreset :
+    BotState
+    -> FarmCycleState
+    -> ( Int, VillageDetails )
+    -> ArmyPreset
+    -> DecisionPathNode VillageEndDecisionPathStructure
 decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ) armyPreset =
     let
         villageInfoCheckFromCoordinates coordinates =
@@ -1347,8 +1361,11 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
 
         numberOfCommandsFromThisVillage =
             villageDetails.commands.outgoing |> List.length
+
+        remainingCapacityCommands =
+            numberOfAttacksLimitPerVillage - numberOfCommandsFromThisVillage
     in
-    if numberOfAttacksLimitPerVillage <= (villageDetails.commands.outgoing |> List.length) then
+    if remainingCapacityCommands < 1 then
         describeBranch
             ("Number of commands from this village is " ++ (numberOfCommandsFromThisVillage |> String.fromInt) ++ ".")
             (endDecisionPath (CompletedThisVillage ExhaustedAttackLimit))
@@ -1418,7 +1435,7 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
                     else
                         GetVillageInfoAtCoordinates nextCoordinates
                 )
-            |> Maybe.map ContinueWithThisVillage
+            |> Maybe.map (ContinueWithThisVillage { remainingCapacityCommands = remainingCapacityCommands })
             |> Maybe.withDefault (CompletedThisVillage AllFarmsInSearchedAreaAlreadyAttackedInThisCycle)
             |> endDecisionPath
 

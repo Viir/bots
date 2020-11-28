@@ -56,6 +56,105 @@ virtualKeyCodeFromMouseButton mouseButton =
             vkey_RBUTTON
 
 
+effectsToEnterString : String -> Result String (List EffectOnWindowStructure)
+effectsToEnterString =
+    getSequenceOfKeyboardKeysToEnterString
+        >> Result.map
+            (List.foldl
+                (\key ( state, effectsBefore ) ->
+                    let
+                        shiftKeyEffects =
+                            if state.shiftKeyIsDown == key.useShiftKey then
+                                []
+
+                            else
+                                let
+                                    effectType =
+                                        if key.useShiftKey then
+                                            KeyDown
+
+                                        else
+                                            KeyUp
+                                in
+                                [ effectType vkey_SHIFT ]
+
+                        mainKeyEffects =
+                            [ KeyDown key.keyCode, KeyUp key.keyCode ]
+
+                        effects =
+                            effectsBefore ++ shiftKeyEffects ++ mainKeyEffects
+                    in
+                    ( { shiftKeyIsDown = key.useShiftKey }, effects )
+                )
+                ( { shiftKeyIsDown = False }, [] )
+            )
+        >> Result.map Tuple.second
+
+
+getSequenceOfKeyboardKeysToEnterString : String -> Result String (List { keyCode : VirtualKeyCode, useShiftKey : Bool })
+getSequenceOfKeyboardKeysToEnterString =
+    String.toList
+        >> List.indexedMap
+            (\index char ->
+                getKeyboardKeyToEnterChar char
+                    |> Maybe.map Ok
+                    |> Maybe.withDefault
+                        (Err
+                            ("Did not find a mapping for character '"
+                                ++ String.fromChar char
+                                ++ "' (code "
+                                ++ String.fromInt (Char.toCode char)
+                                ++ ") at index "
+                                ++ String.fromInt index
+                            )
+                        )
+            )
+        >> List.foldl
+            (\charResult -> Result.andThen (\sequence -> Result.map (List.singleton >> (++) sequence) charResult))
+            (Ok [])
+
+
+getKeyboardKeyToEnterChar : Char -> Maybe { keyCode : VirtualKeyCode, useShiftKey : Bool }
+getKeyboardKeyToEnterChar char =
+    let
+        charCode =
+            Char.toCode char
+
+        relativeToDigitZero =
+            charCode - Char.toCode '0'
+
+        relativeToLetterLower =
+            charCode - Char.toCode 'a'
+
+        relativeToLetterUpper =
+            charCode - Char.toCode 'A'
+    in
+    case vkey_A of
+        VirtualKeyCodeFromInt letterAKeyCode ->
+            if 0 <= relativeToDigitZero && relativeToDigitZero < 10 then
+                Just { keyCode = VirtualKeyCodeFromInt charCode, useShiftKey = False }
+
+            else if 0 <= relativeToLetterLower && relativeToLetterLower <= 26 then
+                Just { keyCode = VirtualKeyCodeFromInt (letterAKeyCode + relativeToLetterLower), useShiftKey = False }
+
+            else if 0 <= relativeToLetterUpper && relativeToLetterUpper <= 26 then
+                Just { keyCode = VirtualKeyCodeFromInt (letterAKeyCode + relativeToLetterUpper), useShiftKey = True }
+
+            else
+                case char of
+                    ' ' ->
+                        Just { keyCode = vkey_SPACE, useShiftKey = False }
+
+                    '-' ->
+                        Just { keyCode = vkey_SUBTRACT, useShiftKey = False }
+
+                    '+' ->
+                        Just { keyCode = vkey_ADD, useShiftKey = False }
+
+                    _ ->
+                        Nothing
+
+
 virtualKeyCodeAsInteger : VirtualKeyCode -> Int
 virtualKeyCodeAsInteger keyCode =
     case keyCode of

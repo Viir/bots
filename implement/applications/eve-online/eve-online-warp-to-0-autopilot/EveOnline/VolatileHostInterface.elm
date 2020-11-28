@@ -1,6 +1,7 @@
 module EveOnline.VolatileHostInterface exposing
     ( ConsoleBeepStructure
     , EffectOnWindowStructure(..)
+    , EffectSequenceElement(..)
     , GameClientProcessSummaryStruct
     , GetMemoryReadingResultStructure(..)
     , Location2d
@@ -25,7 +26,7 @@ type RequestToVolatileHost
     = ListGameClientProcessesRequest
     | SearchUIRootAddress SearchUIRootAddressStructure
     | GetMemoryReading GetMemoryReadingStructure
-    | EffectOnWindow (TaskOnWindowStructure EffectOnWindowStructure)
+    | EffectSequenceOnWindow (TaskOnWindowStructure (List EffectSequenceElement))
     | EffectConsoleBeepSequence (List ConsoleBeepStructure)
 
 
@@ -75,6 +76,11 @@ type alias TaskOnWindowStructure task =
     , bringWindowToForeground : Bool
     , task : task
     }
+
+
+type EffectSequenceElement
+    = Effect EffectOnWindowStructure
+    | DelayMilliseconds Int
 
 
 {-| Using names from Windows API and <https://www.nuget.org/packages/InputSimulator/>
@@ -143,11 +149,33 @@ encodeRequestToVolatileHost request =
         GetMemoryReading getMemoryReading ->
             Json.Encode.object [ ( "GetMemoryReading", getMemoryReading |> encodeGetMemoryReading ) ]
 
-        EffectOnWindow taskOnWindow ->
-            Json.Encode.object [ ( "EffectOnWindow", taskOnWindow |> encodeTaskOnWindow encodeEffectOnWindowStructure ) ]
+        EffectSequenceOnWindow taskOnWindow ->
+            Json.Encode.object
+                [ ( "EffectSequenceOnWindow"
+                  , taskOnWindow |> encodeTaskOnWindow (Json.Encode.list encodeEffectSequenceElement)
+                  )
+                ]
 
         EffectConsoleBeepSequence effectConsoleBeepSequence ->
             Json.Encode.object [ ( "EffectConsoleBeepSequence", effectConsoleBeepSequence |> Json.Encode.list encodeConsoleBeep ) ]
+
+
+encodeEffectSequenceElement : EffectSequenceElement -> Json.Encode.Value
+encodeEffectSequenceElement sequenceElement =
+    case sequenceElement of
+        Effect effect ->
+            Json.Encode.object [ ( "Effect", encodeEffectOnWindowStructure effect ) ]
+
+        DelayMilliseconds delayMilliseconds ->
+            Json.Encode.object [ ( "DelayMilliseconds", Json.Encode.int delayMilliseconds ) ]
+
+
+decodeEffectSequenceElement : Json.Decode.Decoder EffectSequenceElement
+decodeEffectSequenceElement =
+    Json.Decode.oneOf
+        [ Json.Decode.field "Effect" (decodeEffectOnWindowStructure |> Json.Decode.map Effect)
+        , Json.Decode.field "DelayMilliseconds" (Json.Decode.int |> Json.Decode.map DelayMilliseconds)
+        ]
 
 
 jsonDecodeGameClientProcessSummary : Json.Decode.Decoder GameClientProcessSummaryStruct
@@ -164,7 +192,7 @@ decodeRequestToVolatileHost =
         [ Json.Decode.field "ListGameClientProcessesRequest" (jsonDecodeSucceedWhenNotNull ListGameClientProcessesRequest)
         , Json.Decode.field "SearchUIRootAddress" (decodeSearchUIRootAddress |> Json.Decode.map SearchUIRootAddress)
         , Json.Decode.field "GetMemoryReading" (decodeGetMemoryReading |> Json.Decode.map GetMemoryReading)
-        , Json.Decode.field "EffectOnWindow" (decodeTaskOnWindow decodeEffectOnWindowStructure |> Json.Decode.map EffectOnWindow)
+        , Json.Decode.field "EffectSequenceOnWindow" (decodeTaskOnWindow (Json.Decode.list decodeEffectSequenceElement) |> Json.Decode.map EffectSequenceOnWindow)
         , Json.Decode.field "EffectConsoleBeepSequence" (Json.Decode.list decodeConsoleBeep |> Json.Decode.map EffectConsoleBeepSequence)
         ]
 
@@ -196,12 +224,12 @@ encodeEffectOnWindowStructure effectOnWindow =
 
         KeyDown virtualKeyCode ->
             Json.Encode.object
-                [ ( "keyDown", virtualKeyCode |> encodeKey )
+                [ ( "KeyDown", virtualKeyCode |> encodeKey )
                 ]
 
         KeyUp virtualKeyCode ->
             Json.Encode.object
-                [ ( "keyUp", virtualKeyCode |> encodeKey )
+                [ ( "KeyUp", virtualKeyCode |> encodeKey )
                 ]
 
 
@@ -209,8 +237,8 @@ decodeEffectOnWindowStructure : Json.Decode.Decoder EffectOnWindowStructure
 decodeEffectOnWindowStructure =
     Json.Decode.oneOf
         [ Json.Decode.field "MouseMoveTo" (decodeMouseMoveTo |> Json.Decode.map MouseMoveTo)
-        , Json.Decode.field "keyDown" (decodeKey |> Json.Decode.map KeyDown)
-        , Json.Decode.field "keyUp" (decodeKey |> Json.Decode.map KeyUp)
+        , Json.Decode.field "KeyDown" (decodeKey |> Json.Decode.map KeyDown)
+        , Json.Decode.field "KeyUp" (decodeKey |> Json.Decode.map KeyUp)
         ]
 
 

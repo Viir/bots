@@ -51,7 +51,7 @@ type alias ContinueSessionStructure =
 
 
 type AppEffect
-    = EffectOnGameClientWindow Common.EffectOnWindow.EffectOnWindowStructure
+    = EffectSequenceOnGameClientWindow (List Common.EffectOnWindow.EffectOnWindowStructure)
     | EffectConsoleBeepSequence (List ConsoleBeepStructure)
 
 
@@ -127,6 +127,11 @@ type alias ShipModulesMemory =
     { tooltipFromModuleButton : Dict.Dict String EveOnline.ParseUserInterface.ModuleButtonTooltip
     , lastReadingTooltip : Maybe EveOnline.ParseUserInterface.ModuleButtonTooltip
     }
+
+
+effectSequenceSpacingMilliseconds : Int
+effectSequenceSpacingMilliseconds =
+    30
 
 
 volatileHostRecycleInterval : Int
@@ -793,12 +798,15 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                         { buildTaskFromAppEffect =
                                             \effect ->
                                                 case effect of
-                                                    EffectOnGameClientWindow effectOnWindow ->
+                                                    EffectSequenceOnGameClientWindow effectSequenceOnWindow ->
                                                         { windowId = lastCompletedMemoryReading.mainWindowId
-                                                        , task = effectOnWindow |> effectOnWindowAsVolatileHostEffectOnWindow
+                                                        , task =
+                                                            effectSequenceOnWindow
+                                                                |> List.map (effectOnWindowAsVolatileHostEffectOnWindow >> VolatileHostInterface.Effect)
+                                                                |> List.intersperse (VolatileHostInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
                                                         , bringWindowToForeground = True
                                                         }
-                                                            |> VolatileHostInterface.EffectOnWindow
+                                                            |> VolatileHostInterface.EffectSequenceOnWindow
                                                             |> buildTaskFromRequestToVolatileHost
 
                                                     EffectConsoleBeepSequence consoleBeepSequence ->
@@ -1524,8 +1532,8 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                                     , Just { programStateToContinue | remainingActions = remainingActions }
                                     )
 
-                effectsRequests =
-                    effectsOnGameClientWindow |> List.map EffectOnGameClientWindow
+                effectsRequest =
+                    effectsOnGameClientWindow |> EffectSequenceOnGameClientWindow
 
                 describeActivity =
                     (originalDecisionStagesDescriptions ++ [ currentStepDescription ])
@@ -1547,7 +1555,7 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
 
               else
                 ContinueSession
-                    { effects = effectsRequests
+                    { effects = [ effectsRequest ]
                     , millisecondsToNextReadingFromGame = config.millisecondsToNextReadingFromGame decisionContext
                     , statusDescriptionText = statusMessage
                     }

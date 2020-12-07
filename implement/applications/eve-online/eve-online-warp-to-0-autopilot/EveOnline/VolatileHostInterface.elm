@@ -34,6 +34,8 @@ type ResponseFromVolatileHost
     = ListGameClientProcessesResponse (List GameClientProcessSummaryStruct)
     | SearchUIRootAddressResult SearchUIRootAddressResultStructure
     | GetMemoryReadingResult GetMemoryReadingResultStructure
+    | FailedToBringWindowToFront String
+    | CompletedEffectSequenceOnWindow
 
 
 type alias GameClientProcessSummaryStruct =
@@ -134,6 +136,8 @@ decodeResponseFromVolatileHost =
             |> Json.Decode.map SearchUIRootAddressResult
         , Json.Decode.field "GetMemoryReadingResult" decodeGetMemoryReadingResult
             |> Json.Decode.map GetMemoryReadingResult
+        , Json.Decode.field "FailedToBringWindowToFront" (Json.Decode.map FailedToBringWindowToFront Json.Decode.string)
+        , Json.Decode.field "CompletedEffectSequenceOnWindow" (jsonDecodeSucceedWhenNotNull CompletedEffectSequenceOnWindow)
         ]
 
 

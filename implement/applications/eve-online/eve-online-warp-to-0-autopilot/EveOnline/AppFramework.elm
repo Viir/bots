@@ -13,7 +13,7 @@
 
 module EveOnline.AppFramework exposing (..)
 
-import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.Basics
 import Common.DecisionTree
 import Common.EffectOnWindow
@@ -92,6 +92,7 @@ type alias SetupState =
     , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
     , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : VolatileHostInterface.GetMemoryReadingResultStructure }
     , memoryReadingDurations : List Int
+    , lastEffectFailedToAcquireInputFocus : Maybe String
     }
 
 
@@ -217,6 +218,7 @@ initSetup =
     , searchUIRootAddressResult = Nothing
     , lastMemoryReading = Nothing
     , memoryReadingDurations = []
+    , lastEffectFailedToAcquireInputFocus = Nothing
     }
 
 
@@ -591,6 +593,9 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
         InterfaceToHost.RequestToVolatileHostResponse (Err InterfaceToHost.HostNotFound) ->
             ( { setupStateBefore | createVolatileHostResult = Nothing }, Nothing )
 
+        InterfaceToHost.RequestToVolatileHostResponse (Err InterfaceToHost.FailedToAcquireInputFocus) ->
+            ( { setupStateBefore | lastEffectFailedToAcquireInputFocus = Just "Failed before entering volatile host." }, Nothing )
+
         InterfaceToHost.RequestToVolatileHostResponse (Ok requestResult) ->
             let
                 requestToVolatileHostResult =
@@ -678,6 +683,12 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
             in
             ( state, maybeAppEvent )
 
+        VolatileHostInterface.FailedToBringWindowToFront error ->
+            ( { stateBefore | lastEffectFailedToAcquireInputFocus = Just error }, Nothing )
+
+        VolatileHostInterface.CompletedEffectSequenceOnWindow ->
+            ( { stateBefore | lastEffectFailedToAcquireInputFocus = Nothing }, Nothing )
+
 
 type NextAppEffectFromQueue
     = NoEffect
@@ -730,11 +741,13 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                 Nothing ->
                     ContinueSetup stateBefore
                         (InterfaceToHost.RequestToVolatileHost
-                            { hostId = volatileHostId
-                            , request =
-                                VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                                    VolatileHostInterface.ListGameClientProcessesRequest
-                            }
+                            (InterfaceToHost.RequestNotRequiringInputFocus
+                                { hostId = volatileHostId
+                                , request =
+                                    VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
+                                        VolatileHostInterface.ListGameClientProcessesRequest
+                                }
+                            )
                         )
                         "Get list of EVE Online client processes."
 
@@ -746,11 +759,13 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                         Ok gameClientSelection ->
                             ContinueSetup stateBefore
                                 (InterfaceToHost.RequestToVolatileHost
-                                    { hostId = volatileHostId
-                                    , request =
-                                        VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                                            (VolatileHostInterface.SearchUIRootAddress { processId = gameClientSelection.selectedProcess.processId })
-                                    }
+                                    (InterfaceToHost.RequestNotRequiringInputFocus
+                                        { hostId = volatileHostId
+                                        , request =
+                                            VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
+                                                (VolatileHostInterface.SearchUIRootAddress { processId = gameClientSelection.selectedProcess.processId })
+                                        }
+                                    )
                                 )
                                 ((("Search the address of the UI root in process "
                                     ++ (gameClientSelection.selectedProcess.processId |> String.fromInt)
@@ -774,10 +789,12 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                         Nothing ->
                             ContinueSetup stateBefore
                                 (InterfaceToHost.RequestToVolatileHost
-                                    { hostId = volatileHostId
-                                    , request =
-                                        VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost getMemoryReadingRequest
-                                    }
+                                    (InterfaceToHost.RequestNotRequiringInputFocus
+                                        { hostId = volatileHostId
+                                        , request =
+                                            VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost getMemoryReadingRequest
+                                        }
+                                    )
                                 )
                                 "Get the first memory reading from the EVE Online client process. This can take several seconds."
 
@@ -788,11 +805,25 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
 
                                 VolatileHostInterface.Completed lastCompletedMemoryReading ->
                                     let
-                                        buildTaskFromRequestToVolatileHost requestToVolatileHost =
+                                        buildTaskFromRequestToVolatileHost maybeAcquireInputFocus requestToVolatileHost =
+                                            let
+                                                requestBeforeConsideringInputFocus =
+                                                    { hostId = volatileHostId
+                                                    , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
+                                                    }
+                                            in
                                             InterfaceToHost.RequestToVolatileHost
-                                                { hostId = volatileHostId
-                                                , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
-                                                }
+                                                (case maybeAcquireInputFocus of
+                                                    Nothing ->
+                                                        InterfaceToHost.RequestNotRequiringInputFocus
+                                                            requestBeforeConsideringInputFocus
+
+                                                    Just acquireInputFocus ->
+                                                        InterfaceToHost.RequestRequiringInputFocus
+                                                            { request = requestBeforeConsideringInputFocus
+                                                            , acquireInputFocus = acquireInputFocus
+                                                            }
+                                                )
                                     in
                                     OperateApp
                                         { buildTaskFromAppEffect =
@@ -807,13 +838,13 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                         , bringWindowToForeground = True
                                                         }
                                                             |> VolatileHostInterface.EffectSequenceOnWindow
-                                                            |> buildTaskFromRequestToVolatileHost
+                                                            |> buildTaskFromRequestToVolatileHost (Just { maximumDelayMilliseconds = 500 })
 
                                                     EffectConsoleBeepSequence consoleBeepSequence ->
                                                         consoleBeepSequence
                                                             |> VolatileHostInterface.EffectConsoleBeepSequence
-                                                            |> buildTaskFromRequestToVolatileHost
-                                        , getMemoryReadingTask = getMemoryReadingRequest |> buildTaskFromRequestToVolatileHost
+                                                            |> buildTaskFromRequestToVolatileHost Nothing
+                                        , getMemoryReadingTask = getMemoryReadingRequest |> buildTaskFromRequestToVolatileHost Nothing
                                         , releaseVolatileHostTask = InterfaceToHost.ReleaseVolatileHost { hostId = volatileHostId }
                                         }
 
@@ -925,6 +956,14 @@ statusReportFromState state =
                     )
                 |> Maybe.withDefault ""
 
+        inputFocusLines =
+            case state.setup.lastEffectFailedToAcquireInputFocus of
+                Nothing ->
+                    []
+
+                Just error ->
+                    [ "Failed to acquire input focus: " ++ error ]
+
         lastResultFromVolatileHost =
             "Last result from volatile host is: "
                 ++ (state.setup.lastRequestToVolatileHostResult
@@ -968,14 +1007,17 @@ statusReportFromState state =
             else
                 [ "App effect queue length is " ++ (appEffectQueueLength |> String.fromInt) ]
     in
-    [ fromApp
-    , "----"
-    , "EVE Online framework status:"
+    [ [ fromApp ]
+    , [ "----"
+      , "EVE Online framework status:"
+      ]
 
-    -- , runtimeExpensesReport
-    , lastResultFromVolatileHost
+    --, [ runtimeExpensesReport ]
+    , [ lastResultFromVolatileHost ]
+    , appEffectQueueLengthWarning
+    , inputFocusLines
     ]
-        ++ appEffectQueueLengthWarning
+        |> List.concat
         |> String.join "\n"
 
 
@@ -1532,8 +1574,12 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                                     , Just { programStateToContinue | remainingActions = remainingActions }
                                     )
 
-                effectsRequest =
-                    effectsOnGameClientWindow |> EffectSequenceOnGameClientWindow
+                effectsRequests =
+                    if effectsOnGameClientWindow == [] then
+                        []
+
+                    else
+                        [ effectsOnGameClientWindow |> EffectSequenceOnGameClientWindow ]
 
                 describeActivity =
                     (originalDecisionStagesDescriptions ++ [ currentStepDescription ])
@@ -1555,7 +1601,7 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
 
               else
                 ContinueSession
-                    { effects = [ effectsRequest ]
+                    { effects = effectsRequests
                     , millisecondsToNextReadingFromGame = config.millisecondsToNextReadingFromGame decisionContext
                     , statusDescriptionText = statusMessage
                     }

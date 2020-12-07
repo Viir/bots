@@ -22,7 +22,7 @@ Despite being quite robust, this bot is far from being as smart as a human. For 
 
 ## Starting the Bot
 
-To start the bot, download the script from https://catalog.botengine.org/ac51319449ffb845e3789ce523576492239978769d97ebfa245a87f54e451e0d and then run it.
+To start the bot, download the script from https://catalog.botengine.org/b0c49f9ed1f1710940f8a8483d7db9e76db0bfdad88128217ebcf367dec7f02a and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 
@@ -63,4 +63,8 @@ You can test the bot for free. When you want the bot to run more than 15 minutes
 Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
 
 For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
+
+## Running Multiple Instances
+
+This bot supports running multiple instances on the same desktop. In such a scenario, the individual bot instances take turns sending input and coordinate to avoid interfering with each other's input. To learn more about multi-instance setup, see https://to.botengine.org/guide/running-bots-on-multiple-game-clients
 

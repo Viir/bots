@@ -14,7 +14,7 @@
 
 module BotEngine.SimpleBotFramework exposing (..)
 
-import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import BotEngine.VolatileHostWindowsApi as VolatileHostWindowsApi
 import Dict
 import Json.Decode
@@ -264,6 +264,9 @@ processEvent simpleBotProcessEvent event stateBefore =
                                                             case requestToVolatileHostResponse of
                                                                 Err InterfaceToHost.HostNotFound ->
                                                                     Err "Error running script in volatile host: HostNotFound"
+
+                                                                Err InterfaceToHost.FailedToAcquireInputFocus ->
+                                                                    Err "Error running script in volatile host: FailedToAcquireInputFocus"
 
                                                                 Ok volatileHostResponseSuccess ->
                                                                     case volatileHostResponseSuccess.exceptionToString of
@@ -615,6 +618,9 @@ integrateEvent event stateBeforeUpdateTime =
                         Err InterfaceToHost.HostNotFound ->
                             { stateBefore | error = Just "Error running script in volatile host: HostNotFound" }
 
+                        Err InterfaceToHost.FailedToAcquireInputFocus ->
+                            { stateBefore | error = Just "Error running script in volatile host: FailedToAcquireInputFocus" }
+
                         Ok runInVolatileHostComplete ->
                             case runInVolatileHostComplete.returnValueToString of
                                 Nothing ->
@@ -695,11 +701,13 @@ getNextSetupStepWithDescriptionFromState state =
                     let
                         task =
                             InterfaceToHost.RequestToVolatileHost
-                                { hostId = createVolatileHostCompleted.hostId
-                                , request =
-                                    VolatileHostWindowsApi.GetForegroundWindow
-                                        |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
-                                }
+                                (InterfaceToHost.RequestNotRequiringInputFocus
+                                    { hostId = createVolatileHostCompleted.hostId
+                                    , request =
+                                        VolatileHostWindowsApi.GetForegroundWindow
+                                            |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
+                                    }
+                                )
                     in
                     { task = { taskId = InterfaceToHost.taskIdFromString "get_foreground_window", task = task }
                     , taskDescription = "Get foreground window"
@@ -712,12 +720,14 @@ getNextSetupStepWithDescriptionFromState state =
                             let
                                 task =
                                     InterfaceToHost.RequestToVolatileHost
-                                        { hostId = createVolatileHostCompleted.hostId
-                                        , request =
-                                            windowId
-                                                |> VolatileHostWindowsApi.GetWindowText
-                                                |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
-                                        }
+                                        (InterfaceToHost.RequestNotRequiringInputFocus
+                                            { hostId = createVolatileHostCompleted.hostId
+                                            , request =
+                                                windowId
+                                                    |> VolatileHostWindowsApi.GetWindowText
+                                                    |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
+                                            }
+                                        )
                             in
                             { task = { taskId = InterfaceToHost.taskIdFromString "get_window_title", task = task }
                             , taskDescription = "Get window title"
@@ -729,12 +739,14 @@ getNextSetupStepWithDescriptionFromState state =
                                 { buildTaskFromTaskOnWindow =
                                     \taskOnWindow ->
                                         InterfaceToHost.RequestToVolatileHost
-                                            { hostId = createVolatileHostCompleted.hostId
-                                            , request =
-                                                { windowId = windowId, task = taskOnWindow }
-                                                    |> VolatileHostWindowsApi.TaskOnWindow
-                                                    |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
-                                            }
+                                            (InterfaceToHost.RequestNotRequiringInputFocus
+                                                { hostId = createVolatileHostCompleted.hostId
+                                                , request =
+                                                    { windowId = windowId, task = taskOnWindow }
+                                                        |> VolatileHostWindowsApi.TaskOnWindow
+                                                        |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
+                                                }
+                                            )
                                 }
 
 

@@ -27,7 +27,7 @@ module BotEngineApp exposing
     )
 
 import Base64.Decode
-import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import DecodeBMPImage exposing (DecodeBMPImageResult, PixelValue)
 import Dict
 import Json.Decode
@@ -217,6 +217,9 @@ integrateEvent event stateBefore =
                         Err InterfaceToHost.HostNotFound ->
                             { stateBefore | error = Just "Error running script in volatile host: HostNotFound" }
 
+                        Err InterfaceToHost.FailedToAcquireInputFocus ->
+                            { stateBefore | error = Just "Error running script in volatile host: FailedToAcquireInputFocus" }
+
                         Ok runInVolatileHostComplete ->
                             case runInVolatileHostComplete.returnValueToString of
                                 Nothing ->
@@ -315,9 +318,11 @@ getNextRequestWithDescriptionFromState state =
                 let
                     task =
                         InterfaceToHost.RequestToVolatileHost
-                            { hostId = volatileHost.hostId
-                            , request = { filePath = imageFilePath } |> ReadFileContent |> VolatileHostSetup.buildRequestStringToGetResponseFromVolatileHost
-                            }
+                            (InterfaceToHost.RequestNotRequiringInputFocus
+                                { hostId = volatileHost.hostId
+                                , request = { filePath = imageFilePath } |> ReadFileContent |> VolatileHostSetup.buildRequestStringToGetResponseFromVolatileHost
+                                }
+                            )
                 in
                 ContinueWithTask
                     { task = { taskId = InterfaceToHost.taskIdFromString "read_file_content", task = task }

@@ -3,7 +3,7 @@
 -}
 
 
-module BotEngine.Interface_To_Host_20200824 exposing
+module BotEngine.Interface_To_Host_20201207 exposing
     ( AppEvent
     , AppEventAtTime(..)
     , AppResponse(..)
@@ -11,7 +11,9 @@ module BotEngine.Interface_To_Host_20200824 exposing
     , CreateVolatileHostErrorStructure
     , ProcessSerializedEventResponse(..)
     , RequestToVolatileHostComplete
+    , RequestToVolatileHostConsideringInputFocusStructure(..)
     , RequestToVolatileHostError(..)
+    , RequestToVolatileHostRequiringInputFocusStructure
     , StartTaskStructure
     , Task(..)
     , TaskId
@@ -70,12 +72,14 @@ type alias CreateVolatileHostComplete =
 
 type RequestToVolatileHostError
     = HostNotFound
+    | FailedToAcquireInputFocus
 
 
 type alias RequestToVolatileHostComplete =
     { exceptionToString : Maybe String
     , returnValueToString : Maybe String
     , durationInMilliseconds : Int
+    , acquireInputFocusDurationMilliseconds : Int
     }
 
 
@@ -110,7 +114,7 @@ type alias StartTaskStructure =
 
 type Task
     = CreateVolatileHost CreateVolatileHostStructure
-    | RequestToVolatileHost RequestToVolatileHostStructure
+    | RequestToVolatileHost RequestToVolatileHostConsideringInputFocusStructure
     | ReleaseVolatileHost ReleaseVolatileHostStructure
 
 
@@ -118,9 +122,25 @@ type alias CreateVolatileHostStructure =
     { script : String }
 
 
+type RequestToVolatileHostConsideringInputFocusStructure
+    = RequestRequiringInputFocus RequestToVolatileHostRequiringInputFocusStructure
+    | RequestNotRequiringInputFocus RequestToVolatileHostStructure
+
+
+type alias RequestToVolatileHostRequiringInputFocusStructure =
+    { request : RequestToVolatileHostStructure
+    , acquireInputFocus : AcquireInputFocusStructure
+    }
+
+
 type alias RequestToVolatileHostStructure =
     { hostId : VolatileHostId
     , request : String
+    }
+
+
+type alias AcquireInputFocusStructure =
+    { maximumDelayMilliseconds : Int
     }
 
 
@@ -213,16 +233,18 @@ decodeCreateVolatileHostComplete =
 
 decodeRequestToVolatileHostComplete : Json.Decode.Decoder RequestToVolatileHostComplete
 decodeRequestToVolatileHostComplete =
-    Json.Decode.map3 RequestToVolatileHostComplete
+    Json.Decode.map4 RequestToVolatileHostComplete
         (Json.Decode.field "exceptionToString" (jsonDecodeNullAsMaybeNothing Json.Decode.string))
         (Json.Decode.field "returnValueToString" (jsonDecodeNullAsMaybeNothing Json.Decode.string))
         (Json.Decode.field "durationInMilliseconds" Json.Decode.int)
+        (Json.Decode.field "acquireInputFocusDurationMilliseconds" Json.Decode.int)
 
 
 decodeRequestToVolatileHostError : Json.Decode.Decoder RequestToVolatileHostError
 decodeRequestToVolatileHostError =
     Json.Decode.oneOf
         [ Json.Decode.field "HostNotFound" (jsonDecodeSucceedWhenNotNull HostNotFound)
+        , Json.Decode.field "FailedToAcquireInputFocus" (jsonDecodeSucceedWhenNotNull FailedToAcquireInputFocus)
         ]
 
 
@@ -281,13 +303,23 @@ encodeTask task =
                   )
                 ]
 
-        RequestToVolatileHost requestToVolatileHost ->
+        RequestToVolatileHost requestToVolatileHostConsideringInputFocus ->
             Json.Encode.object
                 [ ( "RequestToVolatileHost"
-                  , Json.Encode.object
-                        [ ( "hostId", requestToVolatileHost.hostId |> jsonEncodeVolatileHostId )
-                        , ( "request", requestToVolatileHost.request |> Json.Encode.string )
-                        ]
+                  , case requestToVolatileHostConsideringInputFocus of
+                        RequestRequiringInputFocus requiringInputFocus ->
+                            Json.Encode.object
+                                [ ( "RequestRequiringInputFocus"
+                                  , jsonEncodeRequestToVolatileHostRequiringInputFocus requiringInputFocus
+                                  )
+                                ]
+
+                        RequestNotRequiringInputFocus requestToVolatileHost ->
+                            Json.Encode.object
+                                [ ( "RequestNotRequiringInputFocus"
+                                  , jsonEncodeRequestToVolatileHost requestToVolatileHost
+                                  )
+                                ]
                   )
                 ]
 
@@ -299,6 +331,30 @@ encodeTask task =
                         ]
                   )
                 ]
+
+
+jsonEncodeRequestToVolatileHostRequiringInputFocus : RequestToVolatileHostRequiringInputFocusStructure -> Json.Encode.Value
+jsonEncodeRequestToVolatileHostRequiringInputFocus requestToVolatileHost =
+    Json.Encode.object
+        [ ( "request", requestToVolatileHost.request |> jsonEncodeRequestToVolatileHost )
+        , ( "acquireInputFocus"
+          , requestToVolatileHost.acquireInputFocus |> jsonEncodeAcquireInputFocusStructure
+          )
+        ]
+
+
+jsonEncodeRequestToVolatileHost : RequestToVolatileHostStructure -> Json.Encode.Value
+jsonEncodeRequestToVolatileHost requestToVolatileHost =
+    Json.Encode.object
+        [ ( "hostId", requestToVolatileHost.hostId |> jsonEncodeVolatileHostId )
+        , ( "request", requestToVolatileHost.request |> Json.Encode.string )
+        ]
+
+
+jsonEncodeAcquireInputFocusStructure : AcquireInputFocusStructure -> Json.Encode.Value
+jsonEncodeAcquireInputFocusStructure acquireInputFocus =
+    Json.Encode.object
+        [ ( "maximumDelayMilliseconds", Json.Encode.int acquireInputFocus.maximumDelayMilliseconds ) ]
 
 
 jsonEncodeRecordTimeInMilliseconds : { timeInMilliseconds : Int } -> Json.Encode.Value

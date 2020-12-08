@@ -38,3 +38,7 @@ When using a bot that follows the three choices above, this is the process to st
 + Unpause bot instance A.
 
 The order in which you started the game clients is not relevant. It also does not matter if you had a different bot running on a game client window.
+
+## Avoiding Interference Through Input Focus Scheduling
+
+When you run multiple bot instances in parallel, you might want to use input focus scheduling to prevent them from interfering with each other's inputs. The botengine software comes with built-in support for input focus scheduling. To make sure this feature is enabled for your bot instances, see the guide at https://to.botengine.org/guide/input-focus-scheduling

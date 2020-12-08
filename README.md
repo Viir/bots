@@ -12,6 +12,8 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + Testing an app using simulations: https://to.botengine.org/guide/testing-an-app-using-simulations
 
++ Input focus scheduling for multi-instance support: https://to.botengine.org/guide/input-focus-scheduling
+
 + Running bots on multiple game clients: https://to.botengine.org/guide/running-bots-on-multiple-game-clients
 
 + Developing for EVE Online: [./guide/eve-online/developing-for-eve-online.md](./guide/eve-online/developing-for-eve-online.md)

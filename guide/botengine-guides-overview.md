@@ -9,6 +9,8 @@
 
 + Testing an app using simulations: https://to.botengine.org/guide/testing-an-app-using-simulations
 
++ Input focus scheduling for multi-instance support: https://to.botengine.org/guide/input-focus-scheduling
+
 + Running bots on multiple game clients: https://to.botengine.org/guide/running-bots-on-multiple-game-clients
 
 + [Developing for EVE Online](https://to.botengine.org/guide/developing-for-eve-online): Learn how bots and intel tools are developed. Discover the engineering methods and tools behind the most advanced EVE Online bots.

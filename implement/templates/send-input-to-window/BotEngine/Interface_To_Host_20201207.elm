@@ -3,29 +3,7 @@
 -}
 
 
-module BotEngine.Interface_To_Host_20201207 exposing
-    ( AppEvent
-    , AppEventAtTime(..)
-    , AppResponse(..)
-    , CreateVolatileHostComplete
-    , CreateVolatileHostErrorStructure
-    , ProcessSerializedEventResponse(..)
-    , RequestToVolatileHostComplete
-    , RequestToVolatileHostConsideringInputFocusStructure(..)
-    , RequestToVolatileHostError(..)
-    , RequestToVolatileHostRequiringInputFocusStructure
-    , StartTaskStructure
-    , Task(..)
-    , TaskId
-    , TaskResultStructure(..)
-    , VolatileHostId
-    , decodeAppEvent
-    , decodeAppEventAtTime
-    , deserializeAppEvent
-    , elmEntryPoint
-    , taskIdFromString
-    , wrapForSerialInterface_processEvent
-    )
+module BotEngine.Interface_To_Host_20201207 exposing (..)
 
 import Json.Decode
 import Json.Encode
@@ -168,7 +146,7 @@ wrapForSerialInterface_processEvent processEvent serializedAppEventAtTime stateB
                         |> processEvent appEvent
                         |> Tuple.mapSecond DecodeEventSuccess
     in
-    ( state, response |> encodeProcessSerializedEventResponse |> Json.Encode.encode 0 )
+    ( state, response |> jsonEncodeProcessSerializedEventResponse |> Json.Encode.encode 0 )
 
 
 taskIdFromString : String -> TaskId
@@ -178,61 +156,63 @@ taskIdFromString =
 
 deserializeAppEvent : String -> Result Json.Decode.Error AppEvent
 deserializeAppEvent =
-    Json.Decode.decodeString decodeAppEvent
+    Json.Decode.decodeString jsonDecodeAppEvent
 
 
-decodeAppEvent : Json.Decode.Decoder AppEvent
-decodeAppEvent =
+jsonDecodeAppEvent : Json.Decode.Decoder AppEvent
+jsonDecodeAppEvent =
     Json.Decode.map2 AppEvent
         (Json.Decode.field "timeInMilliseconds" Json.Decode.int)
-        (Json.Decode.field "eventAtTime" decodeAppEventAtTime)
+        (Json.Decode.field "eventAtTime" jsonDecodeAppEventAtTime)
 
 
-decodeAppEventAtTime : Json.Decode.Decoder AppEventAtTime
-decodeAppEventAtTime =
+jsonDecodeAppEventAtTime : Json.Decode.Decoder AppEventAtTime
+jsonDecodeAppEventAtTime =
     Json.Decode.oneOf
         [ Json.Decode.field "TimeArrivedEvent" (Json.Decode.index 0 (Json.Decode.succeed TimeArrivedEvent))
         , Json.Decode.field "AppSettingsChangedEvent" (Json.Decode.index 0 Json.Decode.string)
             |> Json.Decode.map AppSettingsChangedEvent
         , Json.Decode.field "SessionDurationPlannedEvent" (Json.Decode.index 0 jsonDecodeRecordTimeInMilliseconds)
             |> Json.Decode.map SessionDurationPlannedEvent
-        , Json.Decode.field "TaskCompletedEvent" (Json.Decode.index 0 decodeCompletedTaskStructure)
+        , Json.Decode.field "TaskCompletedEvent" (Json.Decode.index 0 jsonDecodeCompletedTaskStructure)
             |> Json.Decode.map TaskCompletedEvent
         ]
 
 
-decodeCompletedTaskStructure : Json.Decode.Decoder CompletedTaskStructure
-decodeCompletedTaskStructure =
+jsonDecodeCompletedTaskStructure : Json.Decode.Decoder CompletedTaskStructure
+jsonDecodeCompletedTaskStructure =
     Json.Decode.map2 CompletedTaskStructure
         (Json.Decode.field "taskId" jsonDecodeTaskId)
-        (Json.Decode.field "taskResult" decodeTaskResult)
+        (Json.Decode.field "taskResult" jsonDecodeTaskResult)
 
 
-decodeTaskResult : Json.Decode.Decoder TaskResultStructure
-decodeTaskResult =
+jsonDecodeTaskResult : Json.Decode.Decoder TaskResultStructure
+jsonDecodeTaskResult =
     Json.Decode.oneOf
-        [ Json.Decode.field "CreateVolatileHostResponse" (jsonDecodeResult decodeCreateVolatileHostError decodeCreateVolatileHostComplete)
+        [ Json.Decode.field "CreateVolatileHostResponse"
+            (jsonDecodeResult jsonDecodeCreateVolatileHostError jsonDecodeCreateVolatileHostComplete)
             |> Json.Decode.map CreateVolatileHostResponse
-        , Json.Decode.field "RequestToVolatileHostResponse" (jsonDecodeResult decodeRequestToVolatileHostError decodeRequestToVolatileHostComplete)
+        , Json.Decode.field "RequestToVolatileHostResponse"
+            (jsonDecodeResult jsonDecodeRequestToVolatileHostError jsonDecodeRequestToVolatileHostComplete)
             |> Json.Decode.map RequestToVolatileHostResponse
         , Json.Decode.field "CompleteWithoutResult" (jsonDecodeSucceedWhenNotNull CompleteWithoutResult)
         ]
 
 
-decodeCreateVolatileHostError : Json.Decode.Decoder CreateVolatileHostErrorStructure
-decodeCreateVolatileHostError =
+jsonDecodeCreateVolatileHostError : Json.Decode.Decoder CreateVolatileHostErrorStructure
+jsonDecodeCreateVolatileHostError =
     Json.Decode.map CreateVolatileHostErrorStructure
         (Json.Decode.field "exceptionToString" Json.Decode.string)
 
 
-decodeCreateVolatileHostComplete : Json.Decode.Decoder CreateVolatileHostComplete
-decodeCreateVolatileHostComplete =
+jsonDecodeCreateVolatileHostComplete : Json.Decode.Decoder CreateVolatileHostComplete
+jsonDecodeCreateVolatileHostComplete =
     Json.Decode.map CreateVolatileHostComplete
         (Json.Decode.field "hostId" jsonDecodeVolatileHostId)
 
 
-decodeRequestToVolatileHostComplete : Json.Decode.Decoder RequestToVolatileHostComplete
-decodeRequestToVolatileHostComplete =
+jsonDecodeRequestToVolatileHostComplete : Json.Decode.Decoder RequestToVolatileHostComplete
+jsonDecodeRequestToVolatileHostComplete =
     Json.Decode.map4 RequestToVolatileHostComplete
         (Json.Decode.field "exceptionToString" (jsonDecodeNullAsMaybeNothing Json.Decode.string))
         (Json.Decode.field "returnValueToString" (jsonDecodeNullAsMaybeNothing Json.Decode.string))
@@ -240,61 +220,98 @@ decodeRequestToVolatileHostComplete =
         (Json.Decode.field "acquireInputFocusDurationMilliseconds" Json.Decode.int)
 
 
-decodeRequestToVolatileHostError : Json.Decode.Decoder RequestToVolatileHostError
-decodeRequestToVolatileHostError =
+jsonDecodeRequestToVolatileHostError : Json.Decode.Decoder RequestToVolatileHostError
+jsonDecodeRequestToVolatileHostError =
     Json.Decode.oneOf
         [ Json.Decode.field "HostNotFound" (jsonDecodeSucceedWhenNotNull HostNotFound)
         , Json.Decode.field "FailedToAcquireInputFocus" (jsonDecodeSucceedWhenNotNull FailedToAcquireInputFocus)
         ]
 
 
-encodeProcessSerializedEventResponse : ProcessSerializedEventResponse -> Json.Encode.Value
-encodeProcessSerializedEventResponse stepResult =
+jsonEncodeProcessSerializedEventResponse : ProcessSerializedEventResponse -> Json.Encode.Value
+jsonEncodeProcessSerializedEventResponse stepResult =
     case stepResult of
         DecodeEventError errorString ->
             Json.Encode.object [ ( "DecodeEventError", errorString |> Json.Encode.string ) ]
 
         DecodeEventSuccess response ->
             Json.Encode.object
-                [ ( "DecodeEventSuccess", response |> encodeAppResponse ) ]
+                [ ( "DecodeEventSuccess", response |> jsonEncodeAppResponse ) ]
 
 
-encodeAppResponse : AppResponse -> Json.Encode.Value
-encodeAppResponse appResponse =
+jsonDecodeProcessSerializedEventResponse : Json.Decode.Decoder ProcessSerializedEventResponse
+jsonDecodeProcessSerializedEventResponse =
+    Json.Decode.oneOf
+        [ Json.Decode.field "DecodeEventError" Json.Decode.string |> Json.Decode.map DecodeEventError
+        , Json.Decode.field "DecodeEventSuccess" jsonDecodeAppResponse |> Json.Decode.map DecodeEventSuccess
+        ]
+
+
+jsonEncodeAppResponse : AppResponse -> Json.Encode.Value
+jsonEncodeAppResponse appResponse =
     case appResponse of
         ContinueSession continueSession ->
-            Json.Encode.object [ ( "ContinueSession", continueSession |> encodeContinueSession ) ]
+            Json.Encode.object [ ( "ContinueSession", continueSession |> jsonEncodeContinueSession ) ]
 
         FinishSession finishSession ->
-            Json.Encode.object [ ( "FinishSession", finishSession |> encodeFinishSession ) ]
+            Json.Encode.object [ ( "FinishSession", finishSession |> jsonEncodeFinishSession ) ]
 
 
-encodeContinueSession : ContinueSessionStructure -> Json.Encode.Value
-encodeContinueSession continueSession =
+jsonDecodeAppResponse : Json.Decode.Decoder AppResponse
+jsonDecodeAppResponse =
+    Json.Decode.oneOf
+        [ Json.Decode.field "ContinueSession" jsonDecodeContinueSession |> Json.Decode.map ContinueSession
+        , Json.Decode.field "FinishSession" jsonDecodeFinishSession |> Json.Decode.map FinishSession
+        ]
+
+
+jsonEncodeContinueSession : ContinueSessionStructure -> Json.Encode.Value
+jsonEncodeContinueSession continueSession =
     [ ( "statusDescriptionText", continueSession.statusDescriptionText |> Json.Encode.string )
-    , ( "startTasks", continueSession.startTasks |> Json.Encode.list encodeStartTask )
+    , ( "startTasks", continueSession.startTasks |> Json.Encode.list jsonEncodeStartTask )
     , ( "notifyWhenArrivedAtTime", continueSession.notifyWhenArrivedAtTime |> jsonEncodeMaybeNothingAsNull jsonEncodeRecordTimeInMilliseconds )
     ]
         |> Json.Encode.object
 
 
-encodeFinishSession : FinishSessionStructure -> Json.Encode.Value
-encodeFinishSession finishSession =
+jsonDecodeContinueSession : Json.Decode.Decoder ContinueSessionStructure
+jsonDecodeContinueSession =
+    Json.Decode.map3 ContinueSessionStructure
+        (Json.Decode.field "statusDescriptionText" Json.Decode.string)
+        (Json.Decode.field "startTasks" (Json.Decode.list jsonDecodeStartTask))
+        (Json.Decode.field "notifyWhenArrivedAtTime" (jsonDecodeNullAsMaybeNothing jsonDecodeRecordTimeInMilliseconds))
+
+
+jsonEncodeFinishSession : FinishSessionStructure -> Json.Encode.Value
+jsonEncodeFinishSession finishSession =
     [ ( "statusDescriptionText", finishSession.statusDescriptionText |> Json.Encode.string )
     ]
         |> Json.Encode.object
 
 
-encodeStartTask : StartTaskStructure -> Json.Encode.Value
-encodeStartTask startTaskAfterTime =
+jsonDecodeFinishSession : Json.Decode.Decoder FinishSessionStructure
+jsonDecodeFinishSession =
+    Json.Decode.map FinishSessionStructure
+        (Json.Decode.field "statusDescriptionText" Json.Decode.string)
+
+
+jsonEncodeStartTask : StartTaskStructure -> Json.Encode.Value
+jsonEncodeStartTask startTaskAfterTime =
     Json.Encode.object
         [ ( "taskId", startTaskAfterTime.taskId |> jsonEncodeTaskId )
-        , ( "task", startTaskAfterTime.task |> encodeTask )
+        , ( "task", startTaskAfterTime.task |> jsonEncodeTask )
         ]
 
 
-encodeTask : Task -> Json.Encode.Value
-encodeTask task =
+jsonDecodeStartTask : Json.Decode.Decoder StartTaskStructure
+jsonDecodeStartTask =
+    Json.Decode.map2 StartTaskStructure
+        (Json.Decode.field "taskId" jsonDecodeTaskId)
+        (Json.Decode.field "task" jsonDecodeTask)
+
+
+jsonEncodeTask : Task -> Json.Encode.Value
+jsonEncodeTask task =
     case task of
         CreateVolatileHost createVolatileHost ->
             Json.Encode.object
@@ -333,6 +350,29 @@ encodeTask task =
                 ]
 
 
+jsonDecodeTask : Json.Decode.Decoder Task
+jsonDecodeTask =
+    Json.Decode.oneOf
+        [ Json.Decode.field "CreateVolatileHost"
+            (Json.Decode.field "script" Json.Decode.string |> Json.Decode.map CreateVolatileHostStructure)
+            |> Json.Decode.map CreateVolatileHost
+        , Json.Decode.field "RequestToVolatileHost"
+            (Json.Decode.oneOf
+                [ Json.Decode.field "RequestRequiringInputFocus" jsonDecodeRequestToVolatileHostRequiringInputFocus |> Json.Decode.map RequestRequiringInputFocus
+                , Json.Decode.field "RequestNotRequiringInputFocus" jsonDecodeRequestToVolatileHost |> Json.Decode.map RequestNotRequiringInputFocus
+                ]
+            )
+            |> Json.Decode.map RequestToVolatileHost
+        , Json.Decode.field "ReleaseVolatileHost" jsonDecodeReleaseVolatileHost |> Json.Decode.map ReleaseVolatileHost
+        , Json.Decode.field "releaseVolatileHost" jsonDecodeReleaseVolatileHost |> Json.Decode.map ReleaseVolatileHost
+        ]
+
+
+jsonDecodeReleaseVolatileHost : Json.Decode.Decoder ReleaseVolatileHostStructure
+jsonDecodeReleaseVolatileHost =
+    Json.Decode.map ReleaseVolatileHostStructure (Json.Decode.field "hostId" jsonDecodeVolatileHostId)
+
+
 jsonEncodeRequestToVolatileHostRequiringInputFocus : RequestToVolatileHostRequiringInputFocusStructure -> Json.Encode.Value
 jsonEncodeRequestToVolatileHostRequiringInputFocus requestToVolatileHost =
     Json.Encode.object
@@ -343,6 +383,13 @@ jsonEncodeRequestToVolatileHostRequiringInputFocus requestToVolatileHost =
         ]
 
 
+jsonDecodeRequestToVolatileHostRequiringInputFocus : Json.Decode.Decoder RequestToVolatileHostRequiringInputFocusStructure
+jsonDecodeRequestToVolatileHostRequiringInputFocus =
+    Json.Decode.map2 RequestToVolatileHostRequiringInputFocusStructure
+        (Json.Decode.field "request" jsonDecodeRequestToVolatileHost)
+        (Json.Decode.field "acquireInputFocus" jsonDecodeAcquireInputFocus)
+
+
 jsonEncodeRequestToVolatileHost : RequestToVolatileHostStructure -> Json.Encode.Value
 jsonEncodeRequestToVolatileHost requestToVolatileHost =
     Json.Encode.object
@@ -351,10 +398,23 @@ jsonEncodeRequestToVolatileHost requestToVolatileHost =
         ]
 
 
+jsonDecodeRequestToVolatileHost : Json.Decode.Decoder RequestToVolatileHostStructure
+jsonDecodeRequestToVolatileHost =
+    Json.Decode.map2 RequestToVolatileHostStructure
+        (Json.Decode.field "hostId" jsonDecodeVolatileHostId)
+        (Json.Decode.field "request" Json.Decode.string)
+
+
 jsonEncodeAcquireInputFocusStructure : AcquireInputFocusStructure -> Json.Encode.Value
 jsonEncodeAcquireInputFocusStructure acquireInputFocus =
     Json.Encode.object
         [ ( "maximumDelayMilliseconds", Json.Encode.int acquireInputFocus.maximumDelayMilliseconds ) ]
+
+
+jsonDecodeAcquireInputFocus : Json.Decode.Decoder AcquireInputFocusStructure
+jsonDecodeAcquireInputFocus =
+    Json.Decode.map AcquireInputFocusStructure
+        (Json.Decode.field "maximumDelayMilliseconds" Json.Decode.int)
 
 
 jsonEncodeRecordTimeInMilliseconds : { timeInMilliseconds : Int } -> Json.Encode.Value
@@ -365,10 +425,8 @@ jsonEncodeRecordTimeInMilliseconds { timeInMilliseconds } =
 
 jsonDecodeRecordTimeInMilliseconds : Json.Decode.Decoder { timeInMilliseconds : Int }
 jsonDecodeRecordTimeInMilliseconds =
-    Json.Decode.oneOf
-        [ Json.Decode.field "timeInMilliseconds" Json.Decode.int
-            |> Json.Decode.map (\timeInMilliseconds -> { timeInMilliseconds = timeInMilliseconds })
-        ]
+    Json.Decode.field "timeInMilliseconds" Json.Decode.int
+        |> Json.Decode.map (\timeInMilliseconds -> { timeInMilliseconds = timeInMilliseconds })
 
 
 jsonDecodeResult : Json.Decode.Decoder error -> Json.Decode.Decoder ok -> Json.Decode.Decoder (Result error ok)

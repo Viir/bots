@@ -1,4 +1,7 @@
-{- EVE Online mining bot version 2020-12-07
+{- EVE Online mining bot version kiwibros 2020-12-10
+   Adapted for https://forum.botengine.org/t/how-to-detect-jammed-and-fly-to-another-asteroid-belt/3741
+   Please could there be functionality added to detect “Jammed” status and to fly away to another asteroid belt?
+
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -427,7 +430,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                 (case context.readingFromGameClient.targets |> List.head of
                                     Nothing ->
                                         describeBranch "I see no locked target."
-                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
+                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context seeUndockingComplete)
 
                                     Just _ ->
                                         {- Depending on the UI configuration, the game client might automatically target rats.
@@ -475,31 +478,36 @@ unlockTargetsNotForMining context =
             )
 
 
-travelToMiningSiteAndLaunchDronesAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
-travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
-    case context.readingFromGameClient |> topmostAsteroidFromOverviewWindow of
-        Nothing ->
-            describeBranch "I see no asteroid in the overview. Warp to mining site."
-                (returnDronesToBay context.readingFromGameClient
-                    |> Maybe.withDefault
-                        (warpToMiningSite context.readingFromGameClient)
-                )
+travelToMiningSiteAndLaunchDronesAndTargetAsteroid : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
+travelToMiningSiteAndLaunchDronesAndTargetAsteroid context seeUndockingComplete =
+    if seeUndockingComplete.shipUI.offensiveBuffButtonNames |> List.member "electronic" then
+        describeBranch "I see we are jammed. Warp to another site."
+            (warpToMiningSite context.readingFromGameClient)
 
-        Just asteroidInOverview ->
-            describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                (warpToOverviewEntryIfFarEnough context asteroidInOverview
-                    |> Maybe.withDefault
-                        (launchDrones context.readingFromGameClient
-                            |> Maybe.withDefault
-                                (lockTargetFromOverviewEntryAndEnsureIsInRange
-                                    context.readingFromGameClient
-                                    (min context.eventContext.appSettings.targetingRange
-                                        context.eventContext.appSettings.miningModuleRange
+    else
+        case context.readingFromGameClient |> topmostAsteroidFromOverviewWindow of
+            Nothing ->
+                describeBranch "I see no asteroid in the overview. Warp to mining site."
+                    (returnDronesToBay context.readingFromGameClient
+                        |> Maybe.withDefault
+                            (warpToMiningSite context.readingFromGameClient)
+                    )
+
+            Just asteroidInOverview ->
+                describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                    (warpToOverviewEntryIfFarEnough context asteroidInOverview
+                        |> Maybe.withDefault
+                            (launchDrones context.readingFromGameClient
+                                |> Maybe.withDefault
+                                    (lockTargetFromOverviewEntryAndEnsureIsInRange
+                                        context.readingFromGameClient
+                                        (min context.eventContext.appSettings.targetingRange
+                                            context.eventContext.appSettings.miningModuleRange
+                                        )
+                                        asteroidInOverview
                                     )
-                                    asteroidInOverview
-                                )
-                        )
-                )
+                            )
+                    )
 
 
 warpToOverviewEntryIfFarEnough : BotDecisionContext -> OverviewWindowEntry -> Maybe DecisionPathNode

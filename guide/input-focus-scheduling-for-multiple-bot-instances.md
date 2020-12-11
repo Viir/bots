@@ -1,4 +1,4 @@
-# Input Focus Scheduling
+# Input Focus Scheduling for Multiple Bot Instances
 
 Input focus scheduling is a technique to resolve the contention for device input focus between multiple bots. This problem occurs when we run multiple bots requiring input focus on the operating system level in parallel.
 

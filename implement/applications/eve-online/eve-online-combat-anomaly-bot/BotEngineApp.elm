@@ -8,7 +8,6 @@
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + In the ship UI, arrange the modules:
      + Place to use in combat (to activate on targets) in the top row.
-     + Place modules that should always be active in the middle row.
      + Hide passive modules by disabling the check-box `Display Passive Modules`.
    + Configure the keyboard key 'W' to make the ship orbit.
 
@@ -19,6 +18,7 @@
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
    + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
    + `rat-to-avoid` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
+   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -27,6 +27,7 @@
    anomaly-name = Drone Horde
    hide-when-neutral-in-local = yes
    rat-to-avoid = Infested Carrier
+   module-to-activate-always = shield hardener
 -}
 {-
    app-catalog-tags:eve-online,anomaly,ratting
@@ -79,6 +80,7 @@ import EveOnline.ParseUserInterface
         ( OverviewWindowEntry
         , ShipUI
         , ShipUIModuleButton
+        , getAllContainedDisplayTexts
         )
 import Set
 
@@ -88,6 +90,7 @@ defaultBotSettings =
     { hideWhenNeutralInLocal = AppSettings.No
     , anomalyNames = []
     , ratsToAvoid = []
+    , modulesToActivateAlways = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1400
     }
@@ -112,6 +115,9 @@ parseBotSettings =
                     \settings -> { settings | ratsToAvoid = String.trim ratToAvoid :: settings.ratsToAvoid }
                 )
            )
+         , ( "module-to-activate-always"
+           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
+           )
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
@@ -130,6 +136,7 @@ type alias BotSettings =
     { hideWhenNeutralInLocal : AppSettings.YesOrNo
     , anomalyNames : List String
     , ratsToAvoid : List String
+    , modulesToActivateAlways : List String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
@@ -429,9 +436,9 @@ decideNextActionWhenInSpace context seeUndockingComplete =
             )
 
     else
-        case seeUndockingComplete |> shipUIModulesToActivateAlways |> List.filter (moduleIsActiveOrReloading >> not) |> List.head of
-            Just inactiveModule ->
-                describeBranch "I see an inactive module in the middle row. Activate the module."
+        case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> moduleIsActiveOrReloading >> not) |> List.head of
+            Just ( inactiveModuleMatchingText, inactiveModule ) ->
+                describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
                     (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
 
             Nothing ->
@@ -734,6 +741,41 @@ readShipUIModuleButtonTooltips =
     EveOnline.AppFramework.readShipUIModuleButtonTooltipWhereNotYetInMemory
 
 
+knownModulesToActivateAlways : BotDecisionContext -> List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
+knownModulesToActivateAlways context =
+    context.readingFromGameClient.shipUI
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filterMap
+            (\moduleButton ->
+                moduleButton
+                    |> EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                    |> Maybe.andThen (tooltipLooksLikeModuleToActivateAlways context)
+                    |> Maybe.map (\moduleName -> ( moduleName, moduleButton ))
+            )
+
+
+tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> EveOnline.ParseUserInterface.ModuleButtonTooltip -> Maybe String
+tooltipLooksLikeModuleToActivateAlways context =
+    .uiNode
+        >> .uiNode
+        >> getAllContainedDisplayTexts
+        >> List.filterMap
+            (\tooltipText ->
+                context.eventContext.appSettings.modulesToActivateAlways
+                    |> List.filterMap
+                        (\moduleToActivateAlways ->
+                            if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
+                                Just tooltipText
+
+                            else
+                                Nothing
+                        )
+                    |> List.head
+            )
+        >> List.head
+
+
 initState : State
 initState =
     EveOnline.AppFramework.initState
@@ -1010,11 +1052,6 @@ getNamesOfRatsInOverview readingFromGameClient =
 shipUIModulesToActivateOnTarget : SeeUndockingComplete -> List ShipUIModuleButton
 shipUIModulesToActivateOnTarget =
     .shipUI >> .moduleButtonsRows >> .top
-
-
-shipUIModulesToActivateAlways : SeeUndockingComplete -> List ShipUIModuleButton
-shipUIModulesToActivateAlways =
-    .shipUI >> .moduleButtonsRows >> .middle
 
 
 nothingFromIntIfGreaterThan : Int -> Int -> Maybe Int

@@ -9,6 +9,7 @@ It automatically detects barbarian villages, available troops and configured arm
 
 + Automatically reads the required information from the game: Locations of farms, available units, army presets, current attacks per village, etc.
 + Use the in-game army presets to configure which villages should attack and which units to use.
++ Requires no input focus: You can continue using your device as usual while the bot runs in the background. 
 
 ### Efficient
 
@@ -30,7 +31,7 @@ This video shows the process of starting the farmbot and setting up your Tribal 
 
 https://youtu.be/yzkernqechE
 
-To start the farmbot, download the executable file from [https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-08-22.exe](https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-08-22.exe) and then run it.
+To start the farmbot, download the executable file from [https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-12-07.exe](https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-12-07.exe) and then run it.
 
 The first time you start the bot, it will download a web browser component. This can take some time, depending on your internet connection.
 
@@ -106,7 +107,7 @@ You can adjust six settings:
 + `farm-avoid-coordinates` : List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
 + `character-to-farm` : Name of a (player) character to farm like barbarians.
 
-To configure settings, open the configuration page at https://catalog.botengine.org/8207bbbb1414957dc4166faad23a3fd20b783f0f68ef8ececc279bd2a894bf38 in a web browser.
+To configure settings, open the configuration page at https://catalog.botengine.org/21e86dc95a434e21f4c99cd958057e6b468394e81e1a344f46fc20f080f8621d in a web browser.
 
 On this page, scroll down to the button `Configure app`.
 

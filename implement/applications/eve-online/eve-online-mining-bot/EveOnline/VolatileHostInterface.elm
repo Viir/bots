@@ -1,6 +1,7 @@
 module EveOnline.VolatileHostInterface exposing
     ( ConsoleBeepStructure
     , EffectOnWindowStructure(..)
+    , EffectSequenceElement(..)
     , GameClientProcessSummaryStruct
     , GetMemoryReadingResultStructure(..)
     , Location2d
@@ -25,7 +26,7 @@ type RequestToVolatileHost
     = ListGameClientProcessesRequest
     | SearchUIRootAddress SearchUIRootAddressStructure
     | GetMemoryReading GetMemoryReadingStructure
-    | EffectOnWindow (TaskOnWindowStructure EffectOnWindowStructure)
+    | EffectSequenceOnWindow (TaskOnWindowStructure (List EffectSequenceElement))
     | EffectConsoleBeepSequence (List ConsoleBeepStructure)
 
 
@@ -33,6 +34,8 @@ type ResponseFromVolatileHost
     = ListGameClientProcessesResponse (List GameClientProcessSummaryStruct)
     | SearchUIRootAddressResult SearchUIRootAddressResultStructure
     | GetMemoryReadingResult GetMemoryReadingResultStructure
+    | FailedToBringWindowToFront String
+    | CompletedEffectSequenceOnWindow
 
 
 type alias GameClientProcessSummaryStruct =
@@ -77,6 +80,11 @@ type alias TaskOnWindowStructure task =
     }
 
 
+type EffectSequenceElement
+    = Effect EffectOnWindowStructure
+    | DelayMilliseconds Int
+
+
 {-| Using names from Windows API and <https://www.nuget.org/packages/InputSimulator/>
 -}
 type
@@ -92,7 +100,6 @@ type
        | TextEntry String
     -}
     = MouseMoveTo MouseMoveToStructure
-    | SimpleMouseClickAtLocation MouseClickAtLocation
     | KeyDown VirtualKeyCode
     | KeyUp VirtualKeyCode
 
@@ -103,12 +110,6 @@ type alias MouseMoveToStructure =
 
 type alias WindowId =
     String
-
-
-type alias MouseClickAtLocation =
-    { location : Location2d
-    , mouseButton : MouseButton
-    }
 
 
 type alias Location2d =
@@ -135,6 +136,8 @@ decodeResponseFromVolatileHost =
             |> Json.Decode.map SearchUIRootAddressResult
         , Json.Decode.field "GetMemoryReadingResult" decodeGetMemoryReadingResult
             |> Json.Decode.map GetMemoryReadingResult
+        , Json.Decode.field "FailedToBringWindowToFront" (Json.Decode.map FailedToBringWindowToFront Json.Decode.string)
+        , Json.Decode.field "CompletedEffectSequenceOnWindow" (jsonDecodeSucceedWhenNotNull CompletedEffectSequenceOnWindow)
         ]
 
 
@@ -150,11 +153,33 @@ encodeRequestToVolatileHost request =
         GetMemoryReading getMemoryReading ->
             Json.Encode.object [ ( "GetMemoryReading", getMemoryReading |> encodeGetMemoryReading ) ]
 
-        EffectOnWindow taskOnWindow ->
-            Json.Encode.object [ ( "EffectOnWindow", taskOnWindow |> encodeTaskOnWindow encodeEffectOnWindowStructure ) ]
+        EffectSequenceOnWindow taskOnWindow ->
+            Json.Encode.object
+                [ ( "EffectSequenceOnWindow"
+                  , taskOnWindow |> encodeTaskOnWindow (Json.Encode.list encodeEffectSequenceElement)
+                  )
+                ]
 
         EffectConsoleBeepSequence effectConsoleBeepSequence ->
             Json.Encode.object [ ( "EffectConsoleBeepSequence", effectConsoleBeepSequence |> Json.Encode.list encodeConsoleBeep ) ]
+
+
+encodeEffectSequenceElement : EffectSequenceElement -> Json.Encode.Value
+encodeEffectSequenceElement sequenceElement =
+    case sequenceElement of
+        Effect effect ->
+            Json.Encode.object [ ( "Effect", encodeEffectOnWindowStructure effect ) ]
+
+        DelayMilliseconds delayMilliseconds ->
+            Json.Encode.object [ ( "DelayMilliseconds", Json.Encode.int delayMilliseconds ) ]
+
+
+decodeEffectSequenceElement : Json.Decode.Decoder EffectSequenceElement
+decodeEffectSequenceElement =
+    Json.Decode.oneOf
+        [ Json.Decode.field "Effect" (decodeEffectOnWindowStructure |> Json.Decode.map Effect)
+        , Json.Decode.field "DelayMilliseconds" (Json.Decode.int |> Json.Decode.map DelayMilliseconds)
+        ]
 
 
 jsonDecodeGameClientProcessSummary : Json.Decode.Decoder GameClientProcessSummaryStruct
@@ -171,7 +196,7 @@ decodeRequestToVolatileHost =
         [ Json.Decode.field "ListGameClientProcessesRequest" (jsonDecodeSucceedWhenNotNull ListGameClientProcessesRequest)
         , Json.Decode.field "SearchUIRootAddress" (decodeSearchUIRootAddress |> Json.Decode.map SearchUIRootAddress)
         , Json.Decode.field "GetMemoryReading" (decodeGetMemoryReading |> Json.Decode.map GetMemoryReading)
-        , Json.Decode.field "EffectOnWindow" (decodeTaskOnWindow decodeEffectOnWindowStructure |> Json.Decode.map EffectOnWindow)
+        , Json.Decode.field "EffectSequenceOnWindow" (decodeTaskOnWindow (Json.Decode.list decodeEffectSequenceElement) |> Json.Decode.map EffectSequenceOnWindow)
         , Json.Decode.field "EffectConsoleBeepSequence" (Json.Decode.list decodeConsoleBeep |> Json.Decode.map EffectConsoleBeepSequence)
         ]
 
@@ -201,32 +226,34 @@ encodeEffectOnWindowStructure effectOnWindow =
                 [ ( "MouseMoveTo", mouseMoveTo |> encodeMouseMoveTo )
                 ]
 
-        SimpleMouseClickAtLocation mouseClickAtLocation ->
-            Json.Encode.object
-                [ ( "simpleMouseClickAtLocation", mouseClickAtLocation |> encodeMouseClickAtLocation )
-                ]
-
         KeyDown virtualKeyCode ->
             Json.Encode.object
-                [ ( "keyDown", virtualKeyCode |> encodeKey )
+                [ ( "KeyDown", virtualKeyCode |> encodeKey )
                 ]
 
         KeyUp virtualKeyCode ->
             Json.Encode.object
-                [ ( "keyUp", virtualKeyCode |> encodeKey )
+                [ ( "KeyUp", virtualKeyCode |> encodeKey )
                 ]
 
 
 decodeEffectOnWindowStructure : Json.Decode.Decoder EffectOnWindowStructure
 decodeEffectOnWindowStructure =
     Json.Decode.oneOf
-        [ Json.Decode.field "simpleMouseClickAtLocation" (decodeMouseClickAtLocation |> Json.Decode.map SimpleMouseClickAtLocation)
+        [ Json.Decode.field "MouseMoveTo" (decodeMouseMoveTo |> Json.Decode.map MouseMoveTo)
+        , Json.Decode.field "KeyDown" (decodeKey |> Json.Decode.map KeyDown)
+        , Json.Decode.field "KeyUp" (decodeKey |> Json.Decode.map KeyUp)
         ]
 
 
 encodeKey : VirtualKeyCode -> Json.Encode.Value
 encodeKey virtualKeyCode =
     Json.Encode.object [ ( "virtualKeyCode", virtualKeyCode |> virtualKeyCodeAsInteger |> Json.Encode.int ) ]
+
+
+decodeKey : Json.Decode.Decoder VirtualKeyCode
+decodeKey =
+    Json.Decode.field "virtualKeyCode" Json.Decode.int |> Json.Decode.map VirtualKeyCodeFromInt
 
 
 encodeMouseMoveTo : MouseMoveToStructure -> Json.Encode.Value
@@ -236,19 +263,9 @@ encodeMouseMoveTo mouseMoveTo =
         ]
 
 
-encodeMouseClickAtLocation : MouseClickAtLocation -> Json.Encode.Value
-encodeMouseClickAtLocation mouseClickAtLocation_ =
-    Json.Encode.object
-        [ ( "location", mouseClickAtLocation_.location |> encodeLocation2d )
-        , ( "mouseButton", mouseClickAtLocation_.mouseButton |> encodeMouseButton )
-        ]
-
-
-decodeMouseClickAtLocation : Json.Decode.Decoder MouseClickAtLocation
-decodeMouseClickAtLocation =
-    Json.Decode.map2 MouseClickAtLocation
-        (Json.Decode.field "location" jsonDecodeLocation2d)
-        (Json.Decode.field "mouseButton" jsonDecodeMouseButton)
+decodeMouseMoveTo : Json.Decode.Decoder MouseMoveToStructure
+decodeMouseMoveTo =
+    Json.Decode.field "location" jsonDecodeLocation2d |> Json.Decode.map MouseMoveToStructure
 
 
 encodeLocation2d : Location2d -> Json.Encode.Value
@@ -264,35 +281,6 @@ jsonDecodeLocation2d =
     Json.Decode.map2 Location2d
         (Json.Decode.field "x" Json.Decode.int)
         (Json.Decode.field "y" Json.Decode.int)
-
-
-encodeMouseButton : MouseButton -> Json.Encode.Value
-encodeMouseButton mouseButton =
-    (case mouseButton of
-        MouseButtonLeft ->
-            "left"
-
-        MouseButtonRight ->
-            "right"
-    )
-        |> Json.Encode.string
-
-
-jsonDecodeMouseButton : Json.Decode.Decoder MouseButton
-jsonDecodeMouseButton =
-    Json.Decode.string
-        |> Json.Decode.andThen
-            (\asString ->
-                case asString of
-                    "left" ->
-                        Json.Decode.succeed MouseButtonLeft
-
-                    "right" ->
-                        Json.Decode.succeed MouseButtonRight
-
-                    _ ->
-                        Json.Decode.fail ("Unrecognized mouse button type: " ++ asString)
-            )
 
 
 encodeSearchUIRootAddress : SearchUIRootAddressStructure -> Json.Encode.Value

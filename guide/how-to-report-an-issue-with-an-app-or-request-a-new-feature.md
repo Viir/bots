@@ -7,7 +7,7 @@ Improving an app starts with documenting the scenario(s) in which we want the ap
 
 These scenarios are the fuel for bot development. Developing these apps is very much an incremental process. A bot evolves as we collect more scenarios describing the desired behavior.
 
-Explaining your use-case in human language is a good start, but usually, a developer will ask for more data.
+Explaining your use-case in human language is a good start, but a developer will usually ask for more data.
 
 ## App Session Recording and Archive
 
@@ -20,13 +20,15 @@ The artifact of the app session recording allows us to:
 + Understand why our bot did what it did.
 + Create simulations to test new program codes. ([Testing an app using simulations](https://to.botengine.org/guide/testing-an-app-using-simulations))
 
-In summary, by providing a session recording, you answer a lot of questions from people that want to help you.
+In summary, by providing a session recording, you answer many questions from people who want to help you.
 
 ### Getting the Session Recording Archive
 
 How do you get a session recording that you can share with others?
 
-By default, the botengine for Windows automatically creates that recording for you, every time you run an app. That means saving the session recording is already taken care of unless you chose to disable it sometime in the past.
+By default, the botengine for Windows automatically creates that recording for you every time you run an app. That means saving the session recording is already taken care of unless you chose to disable it for that session.
+
+(If you have set the `--detailed-session-recording` switch to `off` on a session, the recording will not be available for that session)
 
 After running an app, use the `botengine  devtools` command to get a list of completed sessions:
 

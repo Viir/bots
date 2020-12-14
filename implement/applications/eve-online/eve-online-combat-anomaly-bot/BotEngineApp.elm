@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2020-08-28
+{- EVE Online combat anomaly bot version 2020-12-13
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -8,7 +8,6 @@
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + In the ship UI, arrange the modules:
      + Place to use in combat (to activate on targets) in the top row.
-     + Place modules that should always be active in the middle row.
      + Hide passive modules by disabling the check-box `Display Passive Modules`.
    + Configure the keyboard key 'W' to make the ship orbit.
 
@@ -19,6 +18,7 @@
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
    + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
    + `rat-to-avoid` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
+   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -27,6 +27,7 @@
    anomaly-name = Drone Horde
    hide-when-neutral-in-local = yes
    rat-to-avoid = Infested Carrier
+   module-to-activate-always = shield hardener
 -}
 {-
    app-catalog-tags:eve-online,anomaly,ratting
@@ -40,7 +41,7 @@ module BotEngineApp exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex)
 import Common.DecisionTree exposing (describeBranch, endDecisionPath)
@@ -59,6 +60,7 @@ import EveOnline.AppFramework
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
         , clickOnUIElement
+        , doEffectsClickModuleButton
         , ensureInfoPanelLocationInfoIsExpanded
         , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
@@ -78,6 +80,7 @@ import EveOnline.ParseUserInterface
         ( OverviewWindowEntry
         , ShipUI
         , ShipUIModuleButton
+        , getAllContainedDisplayTexts
         )
 import Set
 
@@ -87,6 +90,7 @@ defaultBotSettings =
     { hideWhenNeutralInLocal = AppSettings.No
     , anomalyNames = []
     , ratsToAvoid = []
+    , modulesToActivateAlways = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1400
     }
@@ -111,6 +115,9 @@ parseBotSettings =
                     \settings -> { settings | ratsToAvoid = String.trim ratToAvoid :: settings.ratsToAvoid }
                 )
            )
+         , ( "module-to-activate-always"
+           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
+           )
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
@@ -129,6 +136,7 @@ type alias BotSettings =
     { hideWhenNeutralInLocal : AppSettings.YesOrNo
     , anomalyNames : List String
     , ratsToAvoid : List String
+    , modulesToActivateAlways : List String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
     }
@@ -428,14 +436,10 @@ decideNextActionWhenInSpace context seeUndockingComplete =
             )
 
     else
-        case seeUndockingComplete |> shipUIModulesToActivateAlways |> List.filter (moduleIsActiveOrReloading >> not) |> List.head of
-            Just inactiveModule ->
-                describeBranch "I see an inactive module in the middle row. Activate the module."
-                    (endDecisionPath
-                        (actWithoutFurtherReadings
-                            ( "Click on the module.", inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft )
-                        )
-                    )
+        case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> moduleIsActiveOrReloading >> not) |> List.head of
+            Just ( inactiveModuleMatchingText, inactiveModule ) ->
+                describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
+                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
 
             Nothing ->
                 let
@@ -532,6 +536,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                         (useContextMenuCascade
                             ( "locked target", targetToUnlock.barAndImageCont |> Maybe.withDefault targetToUnlock.uiNode )
                             (useMenuEntryWithTextContaining "unlock" menuCascadeCompleted)
+                            context.readingFromGameClient
                         )
 
                 Nothing ->
@@ -552,7 +557,10 @@ combat context seeUndockingComplete continueIfCombatComplete =
 
                                     nextOverviewEntryToLock :: _ ->
                                         describeBranch "I see an overview entry to lock."
-                                            (lockTargetFromOverviewEntry nextOverviewEntryToLock)
+                                            (lockTargetFromOverviewEntry
+                                                nextOverviewEntryToLock
+                                                context.readingFromGameClient
+                                            )
                                 )
 
                         Just _ ->
@@ -573,20 +581,17 @@ combat context seeUndockingComplete continueIfCombatComplete =
 
                                                                 nextOverviewEntryToLock :: _ ->
                                                                     describeBranch "Lock more targets."
-                                                                        (lockTargetFromOverviewEntry nextOverviewEntryToLock)
+                                                                        (lockTargetFromOverviewEntry
+                                                                            nextOverviewEntryToLock
+                                                                            context.readingFromGameClient
+                                                                        )
                                                         )
                                                     )
                                             )
 
                                     Just inactiveModule ->
                                         describeBranch "I see an inactive module to activate on targets. Activate it."
-                                            (endDecisionPath
-                                                (actWithoutFurtherReadings
-                                                    ( "Click on the module."
-                                                    , inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                                                    )
-                                                )
-                                            )
+                                            (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                                 )
     in
     ensureShipIsOrbitingDecision |> Maybe.withDefault decisionIfAlreadyOrbiting
@@ -630,6 +635,7 @@ enterAnomaly { ifNoAcceptableAnomalyAvailable } context =
                             (useMenuEntryWithTextContaining "Warp to Within"
                                 (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
                             )
+                            context.readingFromGameClient
                         )
 
 
@@ -677,6 +683,7 @@ launchAndEngageDrones readingFromGameClient =
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                         (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
+                                        readingFromGameClient
                                     )
                                 )
 
@@ -686,6 +693,7 @@ launchAndEngageDrones readingFromGameClient =
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInBay.header.uiNode )
                                         (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
+                                        readingFromGameClient
                                     )
                                 )
 
@@ -698,8 +706,8 @@ launchAndEngageDrones readingFromGameClient =
 
 
 returnDronesToBay : ReadingFromGameClient -> Maybe DecisionPathNode
-returnDronesToBay parsedUserInterface =
-    parsedUserInterface.dronesWindow
+returnDronesToBay readingFromGameClient =
+    readingFromGameClient.dronesWindow
         |> Maybe.andThen .droneGroupInLocalSpace
         |> Maybe.andThen
             (\droneGroupInLocalSpace ->
@@ -712,23 +720,60 @@ returnDronesToBay parsedUserInterface =
                             (useContextMenuCascade
                                 ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                 (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
+                                readingFromGameClient
                             )
                         )
             )
 
 
-lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
-lockTargetFromOverviewEntry overviewEntry =
+lockTargetFromOverviewEntry : OverviewWindowEntry -> ReadingFromGameClient -> DecisionPathNode
+lockTargetFromOverviewEntry overviewEntry readingFromGameClient =
     describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
         (useContextMenuCascadeOnOverviewEntry
             (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
             overviewEntry
+            readingFromGameClient
         )
 
 
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
 readShipUIModuleButtonTooltips =
     EveOnline.AppFramework.readShipUIModuleButtonTooltipWhereNotYetInMemory
+
+
+knownModulesToActivateAlways : BotDecisionContext -> List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
+knownModulesToActivateAlways context =
+    context.readingFromGameClient.shipUI
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filterMap
+            (\moduleButton ->
+                moduleButton
+                    |> EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                    |> Maybe.andThen (tooltipLooksLikeModuleToActivateAlways context)
+                    |> Maybe.map (\moduleName -> ( moduleName, moduleButton ))
+            )
+
+
+tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> EveOnline.ParseUserInterface.ModuleButtonTooltip -> Maybe String
+tooltipLooksLikeModuleToActivateAlways context =
+    .uiNode
+        >> .uiNode
+        >> getAllContainedDisplayTexts
+        >> List.filterMap
+            (\tooltipText ->
+                context.eventContext.appSettings.modulesToActivateAlways
+                    |> List.filterMap
+                        (\moduleToActivateAlways ->
+                            if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
+                                Just tooltipText
+
+                            else
+                                Nothing
+                        )
+                    |> List.head
+            )
+        >> List.head
 
 
 initState : State
@@ -829,6 +874,20 @@ statusTextFromState context =
     ]
         |> List.concat
         |> String.join "\n"
+
+
+clickModuleButtonButWaitIfClickedInPreviousStep : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUIModuleButton -> DecisionPathNode
+clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
+    if doEffectsClickModuleButton moduleButton context.previousStepEffects then
+        describeBranch "Already clicked on this module button in previous step." waitForProgressInGame
+
+    else
+        endDecisionPath
+            (actWithoutFurtherReadings
+                ( "Click on this module button."
+                , moduleButton.uiNode |> clickOnUIElement MouseButtonLeft
+                )
+            )
 
 
 overviewEntryIsTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
@@ -993,11 +1052,6 @@ getNamesOfRatsInOverview readingFromGameClient =
 shipUIModulesToActivateOnTarget : SeeUndockingComplete -> List ShipUIModuleButton
 shipUIModulesToActivateOnTarget =
     .shipUI >> .moduleButtonsRows >> .top
-
-
-shipUIModulesToActivateAlways : SeeUndockingComplete -> List ShipUIModuleButton
-shipUIModulesToActivateAlways =
-    .shipUI >> .moduleButtonsRows >> .middle
 
 
 nothingFromIntIfGreaterThan : Int -> Int -> Maybe Int

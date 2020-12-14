@@ -6,6 +6,11 @@ If you think a change should be merged into the main branch, you can post on the
 If a majority of users choose to apply a change to an app, that change is more likely to be merged into the main branch. You can see the popularity displayed at `Total running time in hours` on the apps catalog entry.
 To find an app on the catalog, you can also enter the commit as a search term, or use the `botengine  describe` command.
 
+## 2020-03-19 - goondola - EVE Online - print the list of pilots in local
+
++ Original discussion: https://forum.botengine.org/t/learning-be-and-elm/3160
++ App program code: https://github.com/Viir/bots/commit/0dcadd5b6d1de84d12be96af32148d618e4fee78 and parent commits.
+
 ## 2020-04-21 - Caleb Tribal Wars 2 - Support Multiple Instances
 
 https://github.com/Viir/bots/tree/9b623a9cc678de660e3aa57b3e1b131da3ad54f9/implement/applications/tribal-wars-2/tribal-wars-2-farmbot
@@ -61,3 +66,29 @@ Original discussion: https://forum.botengine.org/t/let-me-know-how-to-make-my-ap
 
 > Total running time in hours: 76
 
+## 2020-10-12 - Mactastic08 & annar_731 - EVE Online - Orca Mining
+
+https://github.com/Viir/bots/tree/02027201fd8c506c6d88d160b1a80763f8bdabbd/implement/applications/eve-online/eve-online-mactastic08-orca-mining
+
+Original discussion: https://forum.botengine.org/t/orca-targeting-mining/3591
+
+2020-10-12 the catalog entry for [App 81395744f5...](https://catalog.botengine.org/81395744f5857f15f5cf22cf091a71b440b42a81dddd0e992a0d9db1fce92da2) shows:
+
+> Total running time in hours: 33
+
+## 2020-10-31 - Stephan Fuchs - EVE Online - Merged Mining Scripts
+
+https://github.com/Viir/bots/commit/f6246764ac106894e74669815c0e675c48ab9262
+
+Original discussion: https://forum.botengine.org/t/eve-online-request-suggestion/3663
+
+```
+Would it be possible to merge both mining scripts?
+So that the normal mining script would use mining drones as well?
+Currently the drones willl be activated, but they don’t mine (I guess because most people are using them as fighting drones)
+Thanks for your help and your great tools
+```
+
+2020-11-06 the catalog entry for [App dbbec0a31d...](https://catalog.botengine.org/dbbec0a31dfe05b39cf37bb4f329c1fe5e4eb5ed85ceadac37f04ccff4a14c0b) shows:
+
+> Total running time in hours: 116

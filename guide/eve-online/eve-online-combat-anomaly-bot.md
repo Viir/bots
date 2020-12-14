@@ -16,13 +16,12 @@ Despite being quite robust, this bot is far from being as smart as a human. For 
 + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
 + In the ship UI, arrange the modules:
   + Place to use in combat (to activate on targets) in the top row.
-  + Place modules that should always be active in the middle row.
   + Hide passive modules by disabling the check-box `Display Passive Modules`.
 + Configure the keyboard key 'W' to make the ship orbit.
 
 ## Starting the Bot
 
-To start the bot, download the script from https://catalog.botengine.org/0eac4011309d710f71b1e69c8a9878a331c04b338140a38aee8f0b88e0310a00 and then run it.
+To start the bot, download the script from https://catalog.botengine.org/5d8f713bfcbd590c11f74b7b1fa1b21b5f19de8ae4013e70304ea05d76fa5fdd and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 
@@ -40,6 +39,8 @@ All settings are optional; you only need them in case the defaults don't fit you
 
 + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
 + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
++ `rat-to-avoid` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
++ `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
 
 When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of a complete settings string:
@@ -48,6 +49,8 @@ Here is an example of a complete settings string:
 anomaly-name = Drone Patrol
 anomaly-name = Drone Horde
 hide-when-neutral-in-local = yes
+rat-to-avoid = Infested Carrier
+module-to-activate-always = shield hardener
 ```
 
 ----
@@ -61,4 +64,8 @@ You can test the bot for free. When you want the bot to run more than 15 minutes
 Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
 
 For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
+
+## Running Multiple Instances
+
+This bot supports running multiple instances on the same desktop. In such a scenario, the individual bot instances take turns sending input and coordinate to avoid interfering with each other's input. To learn more about multi-instance setup, see https://to.botengine.org/guide/running-bots-on-multiple-game-clients
 

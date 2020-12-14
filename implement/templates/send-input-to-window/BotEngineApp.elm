@@ -14,7 +14,7 @@ module BotEngineApp exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import BotEngine.SimpleBotFramework as SimpleBotFramework
     exposing
         ( bringWindowToForeground

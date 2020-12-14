@@ -1,9 +1,9 @@
-{- annar_731 orca mining version 2020-10-03
+{- Mactastic08 & annar_731 orca mining version 2020-12-14
    Orca mining described by Mactastic08 and annar_731 at https://forum.botengine.org/t/orca-targeting-mining/3591
 -}
 {-
    app-catalog-tags:eve-online,mining
-   authors-forum-usernames:viir
+   authors-forum-usernames:Mactastic08,annar_731,viir
 -}
 
 
@@ -13,7 +13,7 @@ module BotEngineApp exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.DecisionTree exposing (describeBranch)
 import Common.EffectOnWindow exposing (MouseButton(..))
@@ -121,15 +121,16 @@ targetAsteroid context =
 
         Just asteroidInOverview ->
             describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                (lockTargetFromOverviewEntry asteroidInOverview)
+                (lockTargetFromOverviewEntry asteroidInOverview context.readingFromGameClient)
 
 
-lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
-lockTargetFromOverviewEntry overviewEntry =
+lockTargetFromOverviewEntry : OverviewWindowEntry -> ReadingFromGameClient -> DecisionPathNode
+lockTargetFromOverviewEntry overviewEntry readingFromGameClient =
     describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
         (useContextMenuCascadeOnOverviewEntry
             (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
             overviewEntry
+            readingFromGameClient
         )
 
 
@@ -157,6 +158,7 @@ launchDronesAndSendThemToMine readingFromGameClient =
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                         (useMenuEntryWithTextContaining "mine" menuCascadeCompleted)
+                                        readingFromGameClient
                                     )
                                 )
 
@@ -166,6 +168,7 @@ launchDronesAndSendThemToMine readingFromGameClient =
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInBay.header.uiNode )
                                         (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
+                                        readingFromGameClient
                                     )
                                 )
 

@@ -15,7 +15,7 @@ module WebBrowser.BotFramework exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import WebBrowser.VolatileHostInterface as VolatileHostInterface
 import WebBrowser.VolatileHostScript as VolatileHostScript
 
@@ -391,6 +391,9 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                                 case error of
                                     InterfaceToHost.HostNotFound ->
                                         "HostNotFound"
+
+                                    InterfaceToHost.FailedToAcquireInputFocus ->
+                                        "FailedToAcquireInputFocus"
                             )
                         |> Result.andThen
                             (\fromHostResult ->
@@ -459,11 +462,13 @@ getSetupTaskWhenVolatileHostSetupCompleted { pageGoToUrl } stateBefore volatileH
     if stateBefore.webBrowserStarted |> not then
         ContinueSetup stateBefore
             (InterfaceToHost.RequestToVolatileHost
-                { hostId = volatileHostId
-                , request =
-                    VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                        (VolatileHostInterface.StartWebBrowserRequest { pageGoToUrl = pageGoToUrl })
-                }
+                (InterfaceToHost.RequestNotRequiringInputFocus
+                    { hostId = volatileHostId
+                    , request =
+                        VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
+                            (VolatileHostInterface.StartWebBrowserRequest { pageGoToUrl = pageGoToUrl })
+                    }
+                )
             )
             "Starting the web browser. This can take a while because I might need to download the web browser software first."
 
@@ -476,9 +481,11 @@ getSetupTaskWhenVolatileHostSetupCompleted { pageGoToUrl } stateBefore volatileH
                             VolatileHostInterface.RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest
                     in
                     InterfaceToHost.RequestToVolatileHost
-                        { hostId = volatileHostId
-                        , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
-                        }
+                        (InterfaceToHost.RequestNotRequiringInputFocus
+                            { hostId = volatileHostId
+                            , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
+                            }
+                        )
             }
 
 

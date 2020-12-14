@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2020-08-27
+{- EVE Online mining bot version 2020-12-13
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -38,7 +38,7 @@ module BotEngineApp exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex)
 import Common.DecisionTree exposing (describeBranch, endDecisionPath)
@@ -57,6 +57,7 @@ import EveOnline.AppFramework
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
         , clickOnUIElement
+        , doEffectsClickModuleButton
         , ensureInfoPanelLocationInfoIsExpanded
         , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
@@ -403,11 +404,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
         case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> .isActive >> Maybe.withDefault False >> not) |> List.head of
             Just ( inactiveModuleMatchingText, inactiveModule ) ->
                 describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
-                    (endDecisionPath
-                        (actWithoutFurtherReadings
-                            ( "Click on the module.", inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft )
-                        )
-                    )
+                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
 
             Nothing ->
                 case inventoryWindowWithOreHoldSelected |> capacityGaugeUsedPercent of
@@ -448,13 +445,7 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
 
                                                         Just inactiveModule ->
                                                             describeBranch "I see an inactive mining module. Activate it."
-                                                                (endDecisionPath
-                                                                    (actWithoutFurtherReadings
-                                                                        ( "Click on the module."
-                                                                        , inactiveModule.uiNode |> clickOnUIElement MouseButtonLeft
-                                                                        )
-                                                                    )
-                                                                )
+                                                                (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                                                     )
                                                 )
                                 )
@@ -479,6 +470,7 @@ unlockTargetsNotForMining context =
                     (useContextMenuCascade
                         ( "target", targetToUnlock.barAndImageCont |> Maybe.withDefault targetToUnlock.uiNode )
                         (useMenuEntryWithTextContaining "unlock" menuCascadeCompleted)
+                        context.readingFromGameClient
                     )
             )
 
@@ -527,6 +519,7 @@ warpToOverviewEntryIfFarEnough context destinationOverviewEntry =
                                         (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
                                     )
                                     destinationOverviewEntry
+                                    context.readingFromGameClient
                                 )
                         )
                     )
@@ -598,7 +591,7 @@ lockTargetFromOverviewEntryAndEnsureIsInRange readingFromGameClient rangeInMeter
 
                 else
                     describeBranch "Object is in range. Lock target."
-                        (lockTargetFromOverviewEntry overviewEntry)
+                        (lockTargetFromOverviewEntry overviewEntry readingFromGameClient)
 
             else
                 describeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
@@ -609,18 +602,20 @@ lockTargetFromOverviewEntryAndEnsureIsInRange readingFromGameClient rangeInMeter
                         useContextMenuCascadeOnOverviewEntry
                             (useMenuEntryWithTextContaining "approach" menuCascadeCompleted)
                             overviewEntry
+                            readingFromGameClient
                     )
 
         Err error ->
             describeBranch ("Failed to read the distance: " ++ error) askForHelpToGetUnstuck
 
 
-lockTargetFromOverviewEntry : OverviewWindowEntry -> DecisionPathNode
-lockTargetFromOverviewEntry overviewEntry =
+lockTargetFromOverviewEntry : OverviewWindowEntry -> ReadingFromGameClient -> DecisionPathNode
+lockTargetFromOverviewEntry overviewEntry readingFromGameClient =
     describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
         (useContextMenuCascadeOnOverviewEntry
             (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
             overviewEntry
+            readingFromGameClient
         )
 
 
@@ -647,8 +642,11 @@ dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSetting
     in
     matchingOverviewEntry
         |> Maybe.map
-            (EveOnline.AppFramework.useContextMenuCascadeOnOverviewEntry
-                (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+            (\entry ->
+                EveOnline.AppFramework.useContextMenuCascadeOnOverviewEntry
+                    (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+                    entry
+                    readingFromGameClient
             )
         |> Maybe.withDefault
             (overviewWindowScrollControls
@@ -811,6 +809,7 @@ launchDrones readingFromGameClient =
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInBay.header.uiNode )
                                         (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
+                                        readingFromGameClient
                                     )
                                 )
 
@@ -837,6 +836,7 @@ returnDronesToBay readingFromGameClient =
                             (useContextMenuCascade
                                 ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                 (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
+                                readingFromGameClient
                             )
                         )
             )
@@ -1069,6 +1069,20 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
         botMemoryBefore.shipModules
             |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
     }
+
+
+clickModuleButtonButWaitIfClickedInPreviousStep : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUIModuleButton -> DecisionPathNode
+clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
+    if doEffectsClickModuleButton moduleButton context.previousStepEffects then
+        describeBranch "Already clicked on this module button in previous step." waitForProgressInGame
+
+    else
+        endDecisionPath
+            (actWithoutFurtherReadings
+                ( "Click on this module button."
+                , moduleButton.uiNode |> clickOnUIElement MouseButtonLeft
+                )
+            )
 
 
 activeShipTreeEntryFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry

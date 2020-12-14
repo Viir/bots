@@ -13,7 +13,7 @@
 
 module EveOnline.AppFramework exposing (..)
 
-import BotEngine.Interface_To_Host_20200824 as InterfaceToHost
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.Basics
 import Common.DecisionTree
 import Common.EffectOnWindow
@@ -23,6 +23,7 @@ import EveOnline.MemoryReading
 import EveOnline.ParseUserInterface exposing (centerFromDisplayRegion)
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
+import List.Extra
 import String.Extra
 
 
@@ -50,7 +51,7 @@ type alias ContinueSessionStructure =
 
 
 type AppEffect
-    = EffectOnGameClientWindow Common.EffectOnWindow.EffectOnWindowStructure
+    = EffectSequenceOnGameClientWindow (List Common.EffectOnWindow.EffectOnWindowStructure)
     | EffectConsoleBeepSequence (List ConsoleBeepStructure)
 
 
@@ -91,6 +92,7 @@ type alias SetupState =
     , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
     , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : VolatileHostInterface.GetMemoryReadingResultStructure }
     , memoryReadingDurations : List Int
+    , lastEffectFailedToAcquireInputFocus : Maybe String
     }
 
 
@@ -126,6 +128,11 @@ type alias ShipModulesMemory =
     { tooltipFromModuleButton : Dict.Dict String EveOnline.ParseUserInterface.ModuleButtonTooltip
     , lastReadingTooltip : Maybe EveOnline.ParseUserInterface.ModuleButtonTooltip
     }
+
+
+effectSequenceSpacingMilliseconds : Int
+effectSequenceSpacingMilliseconds =
+    30
 
 
 volatileHostRecycleInterval : Int
@@ -211,6 +218,7 @@ initSetup =
     , searchUIRootAddressResult = Nothing
     , lastMemoryReading = Nothing
     , memoryReadingDurations = []
+    , lastEffectFailedToAcquireInputFocus = Nothing
     }
 
 
@@ -585,6 +593,9 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
         InterfaceToHost.RequestToVolatileHostResponse (Err InterfaceToHost.HostNotFound) ->
             ( { setupStateBefore | createVolatileHostResult = Nothing }, Nothing )
 
+        InterfaceToHost.RequestToVolatileHostResponse (Err InterfaceToHost.FailedToAcquireInputFocus) ->
+            ( { setupStateBefore | lastEffectFailedToAcquireInputFocus = Just "Failed before entering volatile host." }, Nothing )
+
         InterfaceToHost.RequestToVolatileHostResponse (Ok requestResult) ->
             let
                 requestToVolatileHostResult =
@@ -672,6 +683,12 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
             in
             ( state, maybeAppEvent )
 
+        VolatileHostInterface.FailedToBringWindowToFront error ->
+            ( { stateBefore | lastEffectFailedToAcquireInputFocus = Just error }, Nothing )
+
+        VolatileHostInterface.CompletedEffectSequenceOnWindow ->
+            ( { stateBefore | lastEffectFailedToAcquireInputFocus = Nothing }, Nothing )
+
 
 type NextAppEffectFromQueue
     = NoEffect
@@ -724,11 +741,13 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                 Nothing ->
                     ContinueSetup stateBefore
                         (InterfaceToHost.RequestToVolatileHost
-                            { hostId = volatileHostId
-                            , request =
-                                VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                                    VolatileHostInterface.ListGameClientProcessesRequest
-                            }
+                            (InterfaceToHost.RequestNotRequiringInputFocus
+                                { hostId = volatileHostId
+                                , request =
+                                    VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
+                                        VolatileHostInterface.ListGameClientProcessesRequest
+                                }
+                            )
                         )
                         "Get list of EVE Online client processes."
 
@@ -740,11 +759,13 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                         Ok gameClientSelection ->
                             ContinueSetup stateBefore
                                 (InterfaceToHost.RequestToVolatileHost
-                                    { hostId = volatileHostId
-                                    , request =
-                                        VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                                            (VolatileHostInterface.SearchUIRootAddress { processId = gameClientSelection.selectedProcess.processId })
-                                    }
+                                    (InterfaceToHost.RequestNotRequiringInputFocus
+                                        { hostId = volatileHostId
+                                        , request =
+                                            VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
+                                                (VolatileHostInterface.SearchUIRootAddress { processId = gameClientSelection.selectedProcess.processId })
+                                        }
+                                    )
                                 )
                                 ((("Search the address of the UI root in process "
                                     ++ (gameClientSelection.selectedProcess.processId |> String.fromInt)
@@ -768,10 +789,12 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                         Nothing ->
                             ContinueSetup stateBefore
                                 (InterfaceToHost.RequestToVolatileHost
-                                    { hostId = volatileHostId
-                                    , request =
-                                        VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost getMemoryReadingRequest
-                                    }
+                                    (InterfaceToHost.RequestNotRequiringInputFocus
+                                        { hostId = volatileHostId
+                                        , request =
+                                            VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost getMemoryReadingRequest
+                                        }
+                                    )
                                 )
                                 "Get the first memory reading from the EVE Online client process. This can take several seconds."
 
@@ -782,29 +805,46 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
 
                                 VolatileHostInterface.Completed lastCompletedMemoryReading ->
                                     let
-                                        buildTaskFromRequestToVolatileHost requestToVolatileHost =
+                                        buildTaskFromRequestToVolatileHost maybeAcquireInputFocus requestToVolatileHost =
+                                            let
+                                                requestBeforeConsideringInputFocus =
+                                                    { hostId = volatileHostId
+                                                    , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
+                                                    }
+                                            in
                                             InterfaceToHost.RequestToVolatileHost
-                                                { hostId = volatileHostId
-                                                , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
-                                                }
+                                                (case maybeAcquireInputFocus of
+                                                    Nothing ->
+                                                        InterfaceToHost.RequestNotRequiringInputFocus
+                                                            requestBeforeConsideringInputFocus
+
+                                                    Just acquireInputFocus ->
+                                                        InterfaceToHost.RequestRequiringInputFocus
+                                                            { request = requestBeforeConsideringInputFocus
+                                                            , acquireInputFocus = acquireInputFocus
+                                                            }
+                                                )
                                     in
                                     OperateApp
                                         { buildTaskFromAppEffect =
                                             \effect ->
                                                 case effect of
-                                                    EffectOnGameClientWindow effectOnWindow ->
+                                                    EffectSequenceOnGameClientWindow effectSequenceOnWindow ->
                                                         { windowId = lastCompletedMemoryReading.mainWindowId
-                                                        , task = effectOnWindow |> effectOnWindowAsVolatileHostEffectOnWindow
+                                                        , task =
+                                                            effectSequenceOnWindow
+                                                                |> List.map (effectOnWindowAsVolatileHostEffectOnWindow >> VolatileHostInterface.Effect)
+                                                                |> List.intersperse (VolatileHostInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
                                                         , bringWindowToForeground = True
                                                         }
-                                                            |> VolatileHostInterface.EffectOnWindow
-                                                            |> buildTaskFromRequestToVolatileHost
+                                                            |> VolatileHostInterface.EffectSequenceOnWindow
+                                                            |> buildTaskFromRequestToVolatileHost (Just { maximumDelayMilliseconds = 500 })
 
                                                     EffectConsoleBeepSequence consoleBeepSequence ->
                                                         consoleBeepSequence
                                                             |> VolatileHostInterface.EffectConsoleBeepSequence
-                                                            |> buildTaskFromRequestToVolatileHost
-                                        , getMemoryReadingTask = getMemoryReadingRequest |> buildTaskFromRequestToVolatileHost
+                                                            |> buildTaskFromRequestToVolatileHost Nothing
+                                        , getMemoryReadingTask = getMemoryReadingRequest |> buildTaskFromRequestToVolatileHost Nothing
                                         , releaseVolatileHostTask = InterfaceToHost.ReleaseVolatileHost { hostId = volatileHostId }
                                         }
 
@@ -814,9 +854,6 @@ effectOnWindowAsVolatileHostEffectOnWindow effectOnWindow =
     case effectOnWindow of
         Common.EffectOnWindow.MouseMoveTo mouseMoveTo ->
             VolatileHostInterface.MouseMoveTo { location = mouseMoveTo }
-
-        Common.EffectOnWindow.SimpleMouseClickAtLocation simpleMouseClickAtLocation ->
-            VolatileHostInterface.SimpleMouseClickAtLocation simpleMouseClickAtLocation
 
         Common.EffectOnWindow.KeyDown key ->
             VolatileHostInterface.KeyDown key
@@ -919,6 +956,14 @@ statusReportFromState state =
                     )
                 |> Maybe.withDefault ""
 
+        inputFocusLines =
+            case state.setup.lastEffectFailedToAcquireInputFocus of
+                Nothing ->
+                    []
+
+                Just error ->
+                    [ "Failed to acquire input focus: " ++ error ]
+
         lastResultFromVolatileHost =
             "Last result from volatile host is: "
                 ++ (state.setup.lastRequestToVolatileHostResult
@@ -962,28 +1007,36 @@ statusReportFromState state =
             else
                 [ "App effect queue length is " ++ (appEffectQueueLength |> String.fromInt) ]
     in
-    [ fromApp
-    , "----"
-    , "EVE Online framework status:"
+    [ [ fromApp ]
+    , [ "----"
+      , "EVE Online framework status:"
+      ]
 
-    -- , runtimeExpensesReport
-    , lastResultFromVolatileHost
+    --, [ runtimeExpensesReport ]
+    , [ lastResultFromVolatileHost ]
+    , appEffectQueueLengthWarning
+    , inputFocusLines
     ]
-        ++ appEffectQueueLengthWarning
+        |> List.concat
         |> String.join "\n"
 
 
 useContextMenuCascadeOnOverviewEntry :
     UseContextMenuCascadeNode
     -> EveOnline.ParseUserInterface.OverviewWindowEntry
+    -> ReadingFromGameClient
     -> DecisionPathNode
-useContextMenuCascadeOnOverviewEntry useContextMenu overviewEntry =
+useContextMenuCascadeOnOverviewEntry useContextMenu overviewEntry readingFromGameClient =
     useContextMenuCascade
         ( "overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'", overviewEntry.uiNode )
         useContextMenu
+        readingFromGameClient
 
 
-useContextMenuCascadeOnListSurroundingsButton : UseContextMenuCascadeNode -> ReadingFromGameClient -> DecisionPathNode
+useContextMenuCascadeOnListSurroundingsButton :
+    UseContextMenuCascadeNode
+    -> ReadingFromGameClient
+    -> DecisionPathNode
 useContextMenuCascadeOnListSurroundingsButton useContextMenu readingFromGameClient =
     case readingFromGameClient.infoPanelContainer |> Maybe.andThen .infoPanelLocationInfo of
         Nothing ->
@@ -993,18 +1046,55 @@ useContextMenuCascadeOnListSurroundingsButton useContextMenu readingFromGameClie
             useContextMenuCascade
                 ( "surroundings button", infoPanelLocationInfo.listSurroundingsButton )
                 useContextMenu
+                readingFromGameClient
 
 
-useContextMenuCascade : ( String, UIElement ) -> UseContextMenuCascadeNode -> DecisionPathNode
-useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu =
-    { actionsAlreadyDecided =
-        ( "Open context menu on " ++ initialUIElementName
-        , initialUIElement |> clickOnUIElement Common.EffectOnWindow.MouseButtonRight
-        )
-    , actionsDependingOnNewReadings = useContextMenu |> unpackContextMenuTreeToListOfActionsDependingOnReadings
-    }
-        |> Act
-        |> Common.DecisionTree.endDecisionPath
+useContextMenuCascade :
+    ( String, UIElement )
+    -> UseContextMenuCascadeNode
+    -> ReadingFromGameClient
+    -> DecisionPathNode
+useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu readingFromGameClient =
+    let
+        occludingRegionsWithSafetyMargin =
+            readingFromGameClient.contextMenus
+                |> List.map (.uiNode >> .totalDisplayRegion >> growRegionOnAllSides 2)
+
+        regionsRemainingAfterOcclusion =
+            subtractRegionsFromRegion
+                { minuend = initialUIElement.totalDisplayRegion, subtrahend = occludingRegionsWithSafetyMargin }
+    in
+    case
+        regionsRemainingAfterOcclusion
+            |> List.filter (\region -> 3 < region.width && 3 < region.height)
+            |> List.sortBy (\region -> negate (min region.width region.height))
+            |> List.head
+    of
+        Nothing ->
+            Common.DecisionTree.describeBranch
+                ("All of "
+                    ++ initialUIElementName
+                    ++ " is occluded by context menus."
+                )
+                (Common.DecisionTree.endDecisionPath
+                    (actWithoutFurtherReadings
+                        ( "Click somewhere else to get rid of the occluding elements."
+                        , Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight { x = 4, y = 4 }
+                        )
+                    )
+                )
+
+        Just preferredRegion ->
+            { actionsAlreadyDecided =
+                ( "Open context menu on " ++ initialUIElementName
+                , preferredRegion
+                    |> centerFromDisplayRegion
+                    |> Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight
+                )
+            , actionsDependingOnNewReadings = useContextMenu |> unpackContextMenuTreeToListOfActionsDependingOnReadings
+            }
+                |> Act
+                |> Common.DecisionTree.endDecisionPath
 
 
 getEntropyIntFromReadingFromGameClient : EveOnline.ParseUserInterface.ParsedUserInterface -> Int
@@ -1219,6 +1309,37 @@ shipUIIndicatesShipIsWarpingOrJumping =
         >> Maybe.withDefault False
 
 
+doEffectsClickModuleButton : EveOnline.ParseUserInterface.ShipUIModuleButton -> List Common.EffectOnWindow.EffectOnWindowStructure -> Bool
+doEffectsClickModuleButton moduleButton =
+    List.Extra.tails
+        >> List.any
+            (\effects ->
+                case effects of
+                    firstEffect :: secondEffect :: _ ->
+                        case ( firstEffect, secondEffect ) of
+                            ( Common.EffectOnWindow.MouseMoveTo mouseMoveTo, Common.EffectOnWindow.KeyDown keyDown ) ->
+                                doesPointIntersectRegion mouseMoveTo moduleButton.uiNode.totalDisplayRegion
+                                    && (keyDown == Common.EffectOnWindow.vkey_LBUTTON)
+
+                            _ ->
+                                False
+
+                    [ _ ] ->
+                        False
+
+                    [] ->
+                        False
+            )
+
+
+doesPointIntersectRegion : { x : Int, y : Int } -> EveOnline.ParseUserInterface.DisplayRegion -> Bool
+doesPointIntersectRegion { x, y } region =
+    (region.x <= x)
+        && (x <= region.x + region.width)
+        && (region.y <= y)
+        && (y <= region.y + region.height)
+
+
 type alias TreeLeafAct =
     { actionsAlreadyDecided : ( String, List Common.EffectOnWindow.EffectOnWindowStructure )
     , actionsDependingOnNewReadings : List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
@@ -1239,6 +1360,7 @@ type alias StepDecisionContext appSettings appMemory =
     { eventContext : AppEventContext appSettings
     , readingFromGameClient : ReadingFromGameClient
     , memory : appMemory
+    , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
     }
 
 
@@ -1249,6 +1371,7 @@ type alias AppStateWithMemoryAndDecisionTree appMemory =
             , remainingActions : List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
             }
     , appMemory : appMemory
+    , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
     }
 
 
@@ -1373,6 +1496,7 @@ initStateWithMemoryAndDecisionTree : appMemory -> AppStateWithMemoryAndDecisionT
 initStateWithMemoryAndDecisionTree appMemory =
     { programState = Nothing
     , appMemory = appMemory
+    , previousStepEffects = []
     }
 
 
@@ -1397,6 +1521,7 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                     { eventContext = eventContext
                     , memory = appMemory
                     , readingFromGameClient = readingFromGameClient
+                    , previousStepEffects = stateBefore.previousStepEffects
                     }
 
                 programStateIfEvalDecisionTreeNew =
@@ -1450,7 +1575,11 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                                     )
 
                 effectsRequests =
-                    effectsOnGameClientWindow |> List.map EffectOnGameClientWindow
+                    if effectsOnGameClientWindow == [] then
+                        []
+
+                    else
+                        [ effectsOnGameClientWindow |> EffectSequenceOnGameClientWindow ]
 
                 describeActivity =
                     (originalDecisionStagesDescriptions ++ [ currentStepDescription ])
@@ -1462,7 +1591,11 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                     [ config.statusTextFromState decisionContext, describeActivity ]
                         |> String.join "\n"
             in
-            ( { stateBefore | appMemory = appMemory, programState = programState }
+            ( { stateBefore
+                | appMemory = appMemory
+                , programState = programState
+                , previousStepEffects = effectsOnGameClientWindow
+              }
             , if originalDecisionLeaf == DecideFinishSession then
                 FinishSession { statusDescriptionText = statusMessage }
 
@@ -1473,3 +1606,96 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                     , statusDescriptionText = statusMessage
                     }
             )
+
+
+subtractRegionsFromRegion :
+    { minuend : EveOnline.ParseUserInterface.DisplayRegion
+    , subtrahend : List EveOnline.ParseUserInterface.DisplayRegion
+    }
+    -> List EveOnline.ParseUserInterface.DisplayRegion
+subtractRegionsFromRegion { minuend, subtrahend } =
+    subtrahend
+        |> List.foldl
+            (\subtrahendPart previousResults ->
+                previousResults
+                    |> List.concatMap
+                        (\minuendPart ->
+                            subtractRegionFromRegion { subtrahend = subtrahendPart, minuend = minuendPart }
+                        )
+            )
+            [ minuend ]
+
+
+subtractRegionFromRegion :
+    { minuend : EveOnline.ParseUserInterface.DisplayRegion
+    , subtrahend : EveOnline.ParseUserInterface.DisplayRegion
+    }
+    -> List EveOnline.ParseUserInterface.DisplayRegion
+subtractRegionFromRegion { minuend, subtrahend } =
+    let
+        minuendRight =
+            minuend.x + minuend.width
+
+        minuendBottom =
+            minuend.y + minuend.height
+
+        subtrahendRight =
+            subtrahend.x + subtrahend.width
+
+        subtrahendBottom =
+            subtrahend.y + subtrahend.height
+    in
+    {-
+       Similar to approach from https://stackoverflow.com/questions/3765283/how-to-subtract-a-rectangle-from-another/15228510#15228510
+       We want to support finding the largest rectangle, so we let them overlap here.
+
+       ----------------------------
+       |  A  |       A      |  A  |
+       |  B  |              |  C  |
+       |--------------------------|
+       |  B  |  subtrahend  |  C  |
+       |--------------------------|
+       |  B  |              |  C  |
+       |  D  |      D       |  D  |
+       ----------------------------
+    -}
+    [ { left = minuend.x
+      , top = minuend.y
+      , right = minuendRight
+      , bottom = minuendBottom |> min subtrahend.y
+      }
+    , { left = minuend.x
+      , top = minuend.y
+      , right = minuendRight |> min subtrahend.x
+      , bottom = minuendBottom
+      }
+    , { left = minuend.x |> max subtrahendRight
+      , top = minuend.y
+      , right = minuendRight
+      , bottom = minuendBottom
+      }
+    , { left = minuend.x
+      , top = minuend.y |> max subtrahendBottom
+      , right = minuendRight
+      , bottom = minuendBottom
+      }
+    ]
+        |> List.map
+            (\rect ->
+                { x = rect.left
+                , y = rect.top
+                , width = rect.right - rect.left
+                , height = rect.bottom - rect.top
+                }
+            )
+        |> List.filter (\rect -> 0 < rect.width && 0 < rect.height)
+        |> Common.Basics.listUnique
+
+
+growRegionOnAllSides : Int -> EveOnline.ParseUserInterface.DisplayRegion -> EveOnline.ParseUserInterface.DisplayRegion
+growRegionOnAllSides growthAmount region =
+    { x = region.x - growthAmount
+    , y = region.y - growthAmount
+    , width = region.width + growthAmount * 2
+    , height = region.height + growthAmount * 2
+    }

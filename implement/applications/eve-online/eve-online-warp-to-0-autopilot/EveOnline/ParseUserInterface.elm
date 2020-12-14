@@ -29,6 +29,10 @@ type alias ParsedUserInterface =
     , surveyScanWindow : Maybe SurveyScanWindow
     , bookmarkLocationWindow : Maybe BookmarkLocationWindow
     , repairShopWindow : Maybe RepairShopWindow
+    , characterSheetWindow : Maybe CharacterSheetWindow
+    , fleetWindow : Maybe FleetWindow
+    , watchListPanel : Maybe WatchListPanel
+    , standaloneBookmarkWindow : Maybe StandaloneBookmarkWindow
     , moduleButtonTooltip : Maybe ModuleButtonTooltip
     , neocom : Maybe Neocom
     , messageBoxes : List MessageBox
@@ -88,6 +92,8 @@ type alias ShipUI =
         }
     , offensiveBuffButtonNames : List String
     , squadronsUI : Maybe SquadronsUI
+    , stopButton : Maybe UITreeNodeWithDisplayRegion
+    , maxSpeedButton : Maybe UITreeNodeWithDisplayRegion
     }
 
 
@@ -282,6 +288,12 @@ type alias RepairShopWindow =
     }
 
 
+type alias CharacterSheetWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , skillGroups : List UITreeNodeWithDisplayRegion
+    }
+
+
 type alias ColorComponents =
     { a : Int, r : Int, g : Int, b : Int }
 
@@ -311,6 +323,7 @@ type alias DronesWindowDroneGroupHeader =
 type alias DronesWindowEntry =
     { uiNode : UITreeNodeWithDisplayRegion
     , mainText : Maybe String
+    , hitpointsPercent : Maybe Hitpoints
     }
 
 
@@ -367,6 +380,7 @@ type InventoryItemsView
 type alias InventoryWindowLeftTreeEntry =
     { uiNode : UITreeNodeWithDisplayRegion
     , toggleBtn : Maybe UITreeNodeWithDisplayRegion
+    , selectRegion : Maybe UITreeNodeWithDisplayRegion
     , text : String
     , children : List InventoryWindowLeftTreeEntryChild
     }
@@ -419,6 +433,7 @@ type alias ModuleButtonTooltip =
 
 type alias Neocom =
     { uiNode : UITreeNodeWithDisplayRegion
+    , iconInventory : Maybe UITreeNodeWithDisplayRegion
     , clock : Maybe NeocomClock
     }
 
@@ -461,6 +476,24 @@ type alias ScrollControls =
     }
 
 
+type alias FleetWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , fleetMembers : List UITreeNodeWithDisplayRegion
+    }
+
+
+type alias WatchListPanel =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , entries : List UITreeNodeWithDisplayRegion
+    }
+
+
+type alias StandaloneBookmarkWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , entries : List UITreeNodeWithDisplayRegion
+    }
+
+
 parseUITreeWithDisplayRegionFromUITree : EveOnline.MemoryReading.UITreeNode -> UITreeNodeWithDisplayRegion
 parseUITreeWithDisplayRegionFromUITree uiTree =
     let
@@ -496,6 +529,10 @@ parseUserInterfaceFromUITree uiTree =
     , surveyScanWindow = parseSurveyScanWindowFromUITreeRoot uiTree
     , bookmarkLocationWindow = parseBookmarkLocationWindowFromUITreeRoot uiTree
     , repairShopWindow = parseRepairShopWindowFromUITreeRoot uiTree
+    , characterSheetWindow = parseCharacterSheetWindowFromUITreeRoot uiTree
+    , fleetWindow = parseFleetWindowFromUITreeRoot uiTree
+    , watchListPanel = parseWatchListPanelFromUITreeRoot uiTree
+    , standaloneBookmarkWindow = parseStandaloneBookmarkWindowFromUITreeRoot uiTree
     , neocom = parseNeocomFromUITreeRoot uiTree
     , messageBoxes = parseMessageBoxesFromUITreeRoot uiTree
     , layerAbovemain = parseLayerAbovemainFromUITreeRoot uiTree
@@ -807,6 +844,11 @@ parseShipUIFromUITreeRoot uiTreeRoot =
 
                 Just capacitorUINode ->
                     let
+                        descendantNodesFromPythonObjectTypeNameEqual pythonObjectTypeName =
+                            shipUINode
+                                |> listDescendantsWithDisplayRegion
+                                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) pythonObjectTypeName)
+
                         capacitor =
                             capacitorUINode |> parseShipUICapacitorFromUINode
 
@@ -885,6 +927,8 @@ parseShipUIFromUITreeRoot uiTreeRoot =
                                 , moduleButtonsRows = groupShipUIModulesIntoRows capacitor moduleButtons
                                 , offensiveBuffButtonNames = offensiveBuffButtonNames
                                 , squadronsUI = squadronsUI
+                                , stopButton = descendantNodesFromPythonObjectTypeNameEqual "StopButton" |> List.head
+                                , maxSpeedButton = descendantNodesFromPythonObjectTypeNameEqual "MaxSpeedButton" |> List.head
                                 }
                             )
 
@@ -1462,9 +1506,54 @@ parseDronesWindowEntry droneEntryNode =
                 |> List.sortBy (Tuple.second >> .totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
                 |> List.map Tuple.first
                 |> List.head
+
+        gaugeValuePercentFromContainerName containerName =
+            droneEntryNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just containerName))
+                |> List.head
+                |> Maybe.andThen
+                    (\gaugeNode ->
+                        let
+                            gaudeDescendantFromName gaugeDescendantName =
+                                gaugeNode
+                                    |> listDescendantsWithDisplayRegion
+                                    |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just gaugeDescendantName))
+                                    |> List.head
+                        in
+                        gaudeDescendantFromName "droneGaugeBar"
+                            |> Maybe.andThen
+                                (\gaugeBar ->
+                                    gaudeDescendantFromName "droneGaugeBarDmg"
+                                        |> Maybe.map
+                                            (\droneGaugeBarDmg ->
+                                                ((gaugeBar.totalDisplayRegion.width - droneGaugeBarDmg.totalDisplayRegion.width) * 100)
+                                                    // gaugeBar.totalDisplayRegion.width
+                                            )
+                                )
+                    )
+
+        hitpointsPercent =
+            gaugeValuePercentFromContainerName "gauge_shield"
+                |> Maybe.andThen
+                    (\shieldPercent ->
+                        gaugeValuePercentFromContainerName "gauge_armor"
+                            |> Maybe.andThen
+                                (\armorPercent ->
+                                    gaugeValuePercentFromContainerName "gauge_struct"
+                                        |> Maybe.map
+                                            (\structPercent ->
+                                                { shield = shieldPercent
+                                                , armor = armorPercent
+                                                , structure = structPercent
+                                                }
+                                            )
+                                )
+                    )
     in
     { uiNode = droneEntryNode
     , mainText = mainText
+    , hitpointsPercent = hitpointsPercent
     }
 
 
@@ -1687,7 +1776,11 @@ parseInventoryWindow windowUiNode =
             rightContainerNode
                 |> Maybe.andThen
                     (listDescendantsWithDisplayRegion
-                        >> List.filter (\uiNode -> [ "ShipCargo", "ShipDroneBay", "ShipOreHold", "StationItems" ] |> List.member uiNode.uiNode.pythonObjectTypeName)
+                        >> List.filter
+                            (\uiNode ->
+                                [ "ShipCargo", "ShipDroneBay", "ShipOreHold", "StationItems", "ShipFleetHangar" ]
+                                    |> List.member uiNode.uiNode.pythonObjectTypeName
+                            )
                         >> List.head
                     )
 
@@ -1799,6 +1892,7 @@ parseInventoryWindowTreeViewEntry treeEntryNode =
     in
     { uiNode = treeEntryNode
     , toggleBtn = toggleBtn
+    , selectRegion = topContNode
     , text = text
     , children = children
     }
@@ -2183,6 +2277,94 @@ parseRepairShopWindow windowUINode =
     }
 
 
+parseCharacterSheetWindowFromUITreeRoot : UITreeNodeWithDisplayRegion -> Maybe CharacterSheetWindow
+parseCharacterSheetWindowFromUITreeRoot uiTreeRoot =
+    uiTreeRoot
+        |> listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "CharacterSheetWindow")
+        |> List.head
+        |> Maybe.map parseCharacterSheetWindow
+
+
+parseCharacterSheetWindow : UITreeNodeWithDisplayRegion -> CharacterSheetWindow
+parseCharacterSheetWindow windowUINode =
+    let
+        skillGroups =
+            windowUINode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "SkillGroupGauge")
+    in
+    { uiNode = windowUINode
+    , skillGroups = skillGroups
+    }
+
+
+parseFleetWindowFromUITreeRoot : UITreeNodeWithDisplayRegion -> Maybe FleetWindow
+parseFleetWindowFromUITreeRoot uiTreeRoot =
+    uiTreeRoot
+        |> listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "FleetWindow")
+        |> List.head
+        |> Maybe.map parseFleetWindow
+
+
+parseFleetWindow : UITreeNodeWithDisplayRegion -> FleetWindow
+parseFleetWindow windowUINode =
+    let
+        fleetMembers =
+            windowUINode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "FleetMember")
+    in
+    { uiNode = windowUINode
+    , fleetMembers = fleetMembers
+    }
+
+
+parseWatchListPanelFromUITreeRoot : UITreeNodeWithDisplayRegion -> Maybe WatchListPanel
+parseWatchListPanelFromUITreeRoot uiTreeRoot =
+    uiTreeRoot
+        |> listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "WatchListPanel")
+        |> List.head
+        |> Maybe.map parseWatchListPanel
+
+
+parseWatchListPanel : UITreeNodeWithDisplayRegion -> WatchListPanel
+parseWatchListPanel windowUINode =
+    let
+        entries =
+            windowUINode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "WatchListEntry")
+    in
+    { uiNode = windowUINode
+    , entries = entries
+    }
+
+
+parseStandaloneBookmarkWindowFromUITreeRoot : UITreeNodeWithDisplayRegion -> Maybe StandaloneBookmarkWindow
+parseStandaloneBookmarkWindowFromUITreeRoot uiTreeRoot =
+    uiTreeRoot
+        |> listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "StandaloneBookmarkWnd")
+        |> List.head
+        |> Maybe.map parseStandaloneBookmarkWindow
+
+
+parseStandaloneBookmarkWindow : UITreeNodeWithDisplayRegion -> StandaloneBookmarkWindow
+parseStandaloneBookmarkWindow windowUINode =
+    let
+        entries =
+            windowUINode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "PlaceEntry")
+    in
+    { uiNode = windowUINode
+    , entries = entries
+    }
+
+
 parseNeocomFromUITreeRoot : UITreeNodeWithDisplayRegion -> Maybe Neocom
 parseNeocomFromUITreeRoot uiTreeRoot =
     case
@@ -2208,6 +2390,17 @@ parseNeocom neocomUiNode =
                 |> List.concatMap getAllContainedDisplayTextsWithRegion
                 |> List.head
 
+        nodeFromTexturePathEnd texturePathEnd =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter
+                    (.uiNode
+                        >> getTexturePathFromDictEntries
+                        >> Maybe.map (String.endsWith texturePathEnd)
+                        >> Maybe.withDefault False
+                    )
+                |> List.head
+
         clock =
             maybeClockTextAndNode
                 |> Maybe.map
@@ -2219,6 +2412,7 @@ parseNeocom neocomUiNode =
                     )
     in
     { uiNode = neocomUiNode
+    , iconInventory = nodeFromTexturePathEnd "items.png"
     , clock = clock
     }
 

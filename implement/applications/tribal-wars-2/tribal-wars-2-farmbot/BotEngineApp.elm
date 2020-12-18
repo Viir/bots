@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-06-10
+{- Tribal Wars 2 farmbot version 2020-12-10
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -20,16 +20,22 @@
    ## Configuration Settings
 
    All settings are optional; you only need them in case the defaults don't fit your use-case.
-   You can adjust five settings:
+   Following is a list of available settings:
 
-   + 'number-of-farm-cycles' : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
-   + 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
-   + 'farm-barb-min-points': Minimum points of barbarian villages to attack.
-   + 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
-   + 'farm-avoid-coordinates': List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
+   + `number-of-farm-cycles` : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
+   + `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
+   + `farm-barb-min-points`: Minimum points of barbarian villages to attack.
+   + `farm-barb-max-distance`: Maximum distance of barbarian villages to attack.
+   + `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
+   + `character-to-farm`: Name of a (player) character to farm like barbarians.
+   + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
 
+   When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
-   --app-settings="number-of-farm-cycles = 3, break-duration = 20 - 40"
+
+   number-of-farm-cycles = 3
+   break-duration = 20 - 40
+
 -}
 {-
    app-catalog-tags:tribal-wars-2,farmbot
@@ -43,44 +49,90 @@ module BotEngineApp exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.AppSettings as AppSettings
+import Common.DecisionTree
+    exposing
+        ( DecisionPathNode
+        , continueDecisionTree
+        , describeBranch
+        , endDecisionPath
+        , unpackToDecisionStagesDescriptionsAndLeaf
+        )
 import Dict
 import Json.Decode
 import Json.Encode
 import List.Extra
 import Result.Extra
+import String.Extra
 import WebBrowser.BotFramework as BotFramework exposing (BotEvent, BotResponse)
 
 
-defaultBotSettings : BotSettings
-defaultBotSettings =
+initBotSettings : BotSettings
+initBotSettings =
     { numberOfFarmCycles = 1
     , breakDurationMinMinutes = 90
     , breakDurationMaxMinutes = 120
     , farmBarbarianVillageMinimumPoints = Nothing
     , farmBarbarianVillageMaximumDistance = 50
     , farmAvoidCoordinates = []
+    , charactersToFarm = []
+    , farmArmyPresetPatterns = []
     }
 
 
 parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
-    AppSettings.parseSimpleCommaSeparatedList
-        {- Names to support with the `--app-settings`, see <https://github.com/Viir/bots/blob/master/guide/how-to-run-a-bot.md#configuring-a-bot> -}
-        ([ ( "number-of-farm-cycles", AppSettings.ValueTypeInteger (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles }) )
-         , ( "break-duration", AppSettings.ValueTypeCustom parseBotSettingBreakDurationMinutes )
-         , ( "farm-barb-min-points", AppSettings.ValueTypeInteger (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }) )
-         , ( "farm-barb-max-distance", AppSettings.ValueTypeInteger (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance }) )
-         , ( "farm-avoid-coordinates", AppSettings.ValueTypeCustom parseSettingFarmAvoidCoordinates )
+    AppSettings.parseSimpleListOfAssignments { assignmentsSeparators = [ ",", "\n" ] }
+        ([ ( "number-of-farm-cycles"
+           , AppSettings.valueTypeInteger (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles })
+           )
+         , ( "break-duration"
+           , parseBotSettingBreakDurationMinutes
+           )
+         , ( "farm-barb-min-points"
+           , AppSettings.valueTypeInteger (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints })
+           )
+         , ( "farm-barb-max-distance"
+           , AppSettings.valueTypeInteger (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance })
+           )
+         , ( "farm-avoid-coordinates"
+           , parseSettingFarmAvoidCoordinates
+           )
+         , ( "character-to-farm"
+           , AppSettings.valueTypeString
+                (\characterName ->
+                    \settings ->
+                        { settings | charactersToFarm = characterName :: settings.charactersToFarm }
+                )
+           )
+         , ( "farm-army-preset-pattern"
+           , AppSettings.valueTypeString
+                (\presetPattern ->
+                    \settings ->
+                        { settings | farmArmyPresetPatterns = presetPattern :: settings.farmArmyPresetPatterns }
+                )
+           )
          ]
             |> Dict.fromList
         )
-        defaultBotSettings
+        initBotSettings
 
 
-farmArmyPresetNamePattern : String
-farmArmyPresetNamePattern =
+implicitSettingsFromExplicitSettings : BotSettings -> BotSettings
+implicitSettingsFromExplicitSettings settings =
+    { settings
+        | farmArmyPresetPatterns =
+            if settings.farmArmyPresetPatterns == [] then
+                [ farmArmyPresetNamePatternDefault ]
+
+            else
+                settings.farmArmyPresetPatterns
+    }
+
+
+farmArmyPresetNamePatternDefault : String
+farmArmyPresetNamePatternDefault =
     "farm"
 
 
@@ -91,7 +143,7 @@ restartGameClientInterval =
 
 gameRootInformationQueryInterval : Int
 gameRootInformationQueryInterval =
-    20
+    60
 
 
 waitDurationAfterReloadWebPage : Int
@@ -106,16 +158,21 @@ numberOfAttacksLimitPerVillage =
 
 ownVillageInfoMaxAge : Int
 ownVillageInfoMaxAge =
-    240
+    600
 
 
 selectedVillageInfoMaxAge : Int
 selectedVillageInfoMaxAge =
-    20
+    30
 
 
 readFromGameTimeoutCountThresholdToRestart : Int
 readFromGameTimeoutCountThresholdToRestart =
+    5
+
+
+switchToOtherVillageCommandCapacityMinimum : Int
+switchToOtherVillageCommandCapacityMinimum =
     5
 
 
@@ -134,9 +191,9 @@ type alias BotState =
     , lastPageLocation : Maybe String
     , gameRootInformationResult : Maybe { timeInMilliseconds : Int, gameRootInformation : TribalWars2RootInformation }
     , ownVillagesDetails : Dict.Dict Int { timeInMilliseconds : Int, villageDetails : VillageDetails }
-    , getArmyPresetsResult : Maybe (List ArmyPreset)
     , lastJumpToCoordinates : Maybe { timeInMilliseconds : Int, coordinates : VillageCoordinates }
     , coordinatesLastCheck : Dict.Dict ( Int, Int ) { timeInMilliseconds : Int, result : VillageByCoordinatesResult }
+    , numberOfReadsFromCoordinates : Int
     , readFromGameConsecutiveTimeoutsCount : Int
     , farmState : FarmState
     , lastAttackTimeInMilliseconds : Maybe Int
@@ -161,11 +218,14 @@ type alias BotSettings =
     , farmBarbarianVillageMinimumPoints : Maybe Int
     , farmBarbarianVillageMaximumDistance : Int
     , farmAvoidCoordinates : List VillageCoordinates
+    , charactersToFarm : List String
+    , farmArmyPresetPatterns : List String
     }
 
 
 type alias FarmCycleState =
-    { sentAttackByCoordinates : Dict.Dict ( Int, Int ) ()
+    { getArmyPresetsResult : Maybe (List ArmyPreset)
+    , sentAttackByCoordinates : Dict.Dict ( Int, Int ) ()
     }
 
 
@@ -205,6 +265,7 @@ type alias RootInformationStructure =
 type alias TribalWars2RootInformation =
     { readyVillages : List Int
     , selectedVillageId : Int
+    , getTotalVillagesResult : Int
     }
 
 
@@ -282,6 +343,7 @@ type alias VillageByCoordinatesDetails =
     { villageId : Int
     , affiliation : VillageByCoordinatesAffiliation
     , points : Maybe Int
+    , characterName : Maybe String
     }
 
 
@@ -337,12 +399,7 @@ type VillageCompletedStructure
 
 type VillageEndDecisionPathStructure
     = CompletedThisVillage VillageCompletedStructure
-    | ContinueWithThisVillage ActionFromVillage
-
-
-type DecisionPathNode leaf
-    = DescribeBranch String (DecisionPathNode leaf)
-    | EndDecisionPath leaf
+    | ContinueWithThisVillage { remainingCapacityCommands : Int } ActionFromVillage
 
 
 type ActionFromVillage
@@ -354,7 +411,7 @@ initState : State
 initState =
     BotFramework.initState
         { timeInMilliseconds = 0
-        , settings = defaultBotSettings
+        , settings = initBotSettings
         , currentActivity = Nothing
         , lastRequestToPageId = 0
         , pendingRequestToPageRequestId = Nothing
@@ -362,9 +419,9 @@ initState =
         , lastPageLocation = Nothing
         , gameRootInformationResult = Nothing
         , ownVillagesDetails = Dict.empty
-        , getArmyPresetsResult = Nothing
         , lastJumpToCoordinates = Nothing
         , coordinatesLastCheck = Dict.empty
+        , numberOfReadsFromCoordinates = 0
         , readFromGameConsecutiveTimeoutsCount = 0
         , farmState = InFarmCycle { beginTime = 0 } initFarmCycle
         , lastAttackTimeInMilliseconds = Nothing
@@ -392,7 +449,9 @@ reasonToRestartGameClientFromBotState state =
 
 initFarmCycle : FarmCycleState
 initFarmCycle =
-    { sentAttackByCoordinates = Dict.empty }
+    { getArmyPresetsResult = Nothing
+    , sentAttackByCoordinates = Dict.empty
+    }
 
 
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
@@ -404,10 +463,14 @@ processWebBrowserBotEvent : BotEvent -> BotState -> { newState : BotState, respo
 processWebBrowserBotEvent event stateBeforeIntegrateEvent =
     case stateBeforeIntegrateEvent |> integrateWebBrowserBotEvent event of
         Err integrateEventError ->
-            { newState = stateBeforeIntegrateEvent, response = BotFramework.FinishSession, statusMessage = "Error: " ++ integrateEventError }
+            { newState = stateBeforeIntegrateEvent
+            , response = BotFramework.FinishSession
+            , statusMessage = "Error: " ++ integrateEventError
+            }
 
         Ok stateBefore ->
             let
+                maybeCurrentActivityToWaitFor : Maybe { decisionTree : DecisionPathNode InFarmCycleResponse, activityType : String }
                 maybeCurrentActivityToWaitFor =
                     case stateBefore.currentActivity of
                         Nothing ->
@@ -421,7 +484,7 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                                             Just currentActivity.beginTimeInMilliseconds
 
                                         Just lastRunJavascriptResult ->
-                                            if currentActivity.beginTimeInMilliseconds < lastRunJavascriptResult.timeInMilliseconds then
+                                            if currentActivity.beginTimeInMilliseconds <= lastRunJavascriptResult.timeInMilliseconds then
                                                 Nothing
 
                                             else
@@ -435,25 +498,43 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                                         3000
 
                                 waitTimeLimits =
-                                    [ stateBefore.lastRunJavascriptResult
-                                        |> Maybe.map (.timeInMilliseconds >> (+) waitTimeAfterLastRunJavascriptResult)
-                                    , pendingRequestTimeInMilliseconds
-                                        |> Maybe.map ((+) 3000)
+                                    [ ( "lastRunJavascriptResult"
+                                      , stateBefore.lastRunJavascriptResult
+                                            |> Maybe.map (.timeInMilliseconds >> (+) waitTimeAfterLastRunJavascriptResult)
+                                      )
+                                    , ( "pending request"
+                                      , pendingRequestTimeInMilliseconds |> Maybe.map ((+) 3000)
+                                      )
                                     ]
-                                        |> List.filterMap identity
-                            in
-                            if stateBefore.timeInMilliseconds < (waitTimeLimits |> List.maximum |> Maybe.withDefault 0) then
-                                Just currentActivity.decision
+                                        |> List.filterMap
+                                            (\( activityType, maybeWaitTimeLimit ) ->
+                                                maybeWaitTimeLimit
+                                                    |> Maybe.map (\waitTimeLimit -> ( activityType, waitTimeLimit ))
+                                            )
 
-                            else
-                                Nothing
+                                effectiveWaitTimeLimits =
+                                    waitTimeLimits
+                                        |> List.filter (\( _, waitTimeLimit ) -> stateBefore.timeInMilliseconds < waitTimeLimit)
+                            in
+                            case effectiveWaitTimeLimits |> List.head of
+                                Just ( activityType, _ ) ->
+                                    -- TODO: Forward the time we want to get notified to the framework, based on the remaining time to the limit.
+                                    Just { decisionTree = currentActivity.decision, activityType = activityType }
+
+                                Nothing ->
+                                    Nothing
             in
             let
                 ( activityDecision, maybeUpdatedState ) =
                     case maybeCurrentActivityToWaitFor of
                         Just currentActivityToWaitFor ->
-                            ( currentActivityToWaitFor
-                                |> continueDecisionTree (always (EndDecisionPath (BotFramework.ContinueSession Nothing)))
+                            ( currentActivityToWaitFor.decisionTree
+                                |> continueDecisionTree
+                                    (always (endDecisionPath (BotFramework.ContinueSession Nothing)))
+                                |> Common.DecisionTree.mapLastDescriptionBeforeLeaf
+                                    (\originalLeafDescription ->
+                                        originalLeafDescription ++ " waiting for completion (" ++ currentActivityToWaitFor.activityType ++ ")"
+                                    )
                             , Nothing
                             )
 
@@ -488,20 +569,20 @@ decideNextAction { lastPageLocation } stateBefore =
                     (farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000) // 60
             in
             if minutesToNextFarmCycleStart < 1 then
-                ( DescribeBranch "Start next farm cycle."
-                    (EndDecisionPath (BotFramework.ContinueSession Nothing))
+                ( describeBranch "Start next farm cycle."
+                    (endDecisionPath (BotFramework.ContinueSession Nothing))
                 , { stateBefore | farmState = InFarmCycle { beginTime = stateBefore.timeInMilliseconds // 1000 } initFarmCycle }
                 )
 
             else
-                ( DescribeBranch
+                ( describeBranch
                     ("Next farm cycle starts in "
                         ++ (minutesToNextFarmCycleStart |> String.fromInt)
                         ++ " minutes. Last cycle completed "
                         ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
                         ++ " minutes ago."
                     )
-                    (EndDecisionPath (BotFramework.ContinueSession Nothing))
+                    (endDecisionPath (BotFramework.ContinueSession Nothing))
                 , stateBefore
                 )
 
@@ -567,7 +648,7 @@ decideNextAction { lastPageLocation } stateBefore =
                                             , updatedStateForActivity
                                             )
                             in
-                            ( EndDecisionPath (BotFramework.ContinueSession maybeRequest)
+                            ( endDecisionPath (BotFramework.ContinueSession maybeRequest)
                             , Just decisionInFarmCycle
                             , updatedStateFromContinueCycle
                             )
@@ -616,15 +697,15 @@ decideNextAction { lastPageLocation } stateBefore =
                                         , completedFarmCycles = completedFarmCycles
                                     }
                             in
-                            ( DescribeBranch "Finish farm cycle."
+                            ( describeBranch "Finish farm cycle."
                                 (if stateBefore.settings.numberOfFarmCycles <= (stateAfterFinishingFarmCycle.completedFarmCycles |> List.length) then
-                                    DescribeBranch
+                                    describeBranch
                                         ("Finish session because I finished all " ++ (stateAfterFinishingFarmCycle.completedFarmCycles |> List.length |> String.fromInt) ++ " configured farm cycles.")
-                                        (EndDecisionPath BotFramework.FinishSession)
+                                        (endDecisionPath BotFramework.FinishSession)
 
                                  else
-                                    DescribeBranch "Enter break."
-                                        (EndDecisionPath (BotFramework.ContinueSession Nothing))
+                                    describeBranch "Enter break."
+                                        (endDecisionPath (BotFramework.ContinueSession Nothing))
                                 )
                             , Nothing
                             , stateAfterFinishingFarmCycle
@@ -720,7 +801,7 @@ integrateWebBrowserBotEvent event stateBefore =
                                 relativeCoordinatesToSearchForFarmsPartitions newSettings
                         }
                     )
-                |> Result.mapError (\parseError -> "Failed to parse bot settings: " ++ parseError)
+                |> Result.mapError (\parseError -> "Failed to parse these app-settings: " ++ parseError)
 
         BotFramework.ArrivedAtTime { timeInMilliseconds } ->
             Ok { stateBefore | timeInMilliseconds = timeInMilliseconds }
@@ -839,6 +920,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                                                     { timeInMilliseconds = stateAfterRememberJump.timeInMilliseconds
                                                     , result = villageByCoordinates
                                                     }
+                                        , numberOfReadsFromCoordinates = stateAfterRememberJump.numberOfReadsFromCoordinates + 1
                                         , readFromGameConsecutiveTimeoutsCount = 0
                                     }
 
@@ -870,7 +952,17 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                     }
 
                 GetPresetsResponse armyPresets ->
-                    { stateBefore | getArmyPresetsResult = Just armyPresets }
+                    let
+                        farmState =
+                            case stateBefore.farmState of
+                                InBreak _ ->
+                                    stateBefore.farmState
+
+                                InFarmCycle cycleBeginTime inFarmCycle ->
+                                    InFarmCycle cycleBeginTime
+                                        { inFarmCycle | getArmyPresetsResult = Just armyPresets }
+                    in
+                    { stateBefore | farmState = farmState }
 
                 ActivatedVillageResponse ->
                     { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
@@ -893,25 +985,25 @@ maintainGameClient : BotState -> Maybe (DecisionPathNode InFarmCycleResponse)
 maintainGameClient botState =
     case botState.lastRunJavascriptResult of
         Nothing ->
-            DescribeBranch
+            describeBranch
                 "Test if web browser is already open."
-                (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
+                (endDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
                 |> Just
 
         Just _ ->
             case botState |> lastReloadPageAgeInSecondsFromState |> Maybe.andThen (nothingFromIntIfGreaterThan waitDurationAfterReloadWebPage) of
                 Just lastReloadPageAgeInSeconds ->
-                    DescribeBranch
+                    describeBranch
                         ("Waiting because reloaded web page " ++ (lastReloadPageAgeInSeconds |> String.fromInt) ++ " seconds ago.")
-                        (EndDecisionPath (ContinueFarmCycle Nothing))
+                        (endDecisionPath (ContinueFarmCycle Nothing))
                         |> Just
 
                 Nothing ->
                     case botState |> reasonToRestartGameClientFromBotState of
                         Just reasonToRestartGameClient ->
-                            DescribeBranch
+                            describeBranch
                                 ("Restart the game client (" ++ reasonToRestartGameClient ++ ").")
-                                (EndDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
+                                (endDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
                                 |> Just
 
                         Nothing ->
@@ -929,7 +1021,8 @@ decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState =
     let
         sufficientlyNewGameRootInformation =
             botState.gameRootInformationResult
-                |> Maybe.andThen
+                |> Result.fromMaybe "did not receive any yet"
+                |> Result.andThen
                     (\gameRootInformationResult ->
                         let
                             updateTimeMinimumMilli =
@@ -937,19 +1030,22 @@ decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState =
                                     |> max (botState.timeInMilliseconds - gameRootInformationQueryInterval * 1000)
                         in
                         if gameRootInformationResult.timeInMilliseconds <= updateTimeMinimumMilli then
-                            Nothing
+                            Err "last received is not recent enough"
+
+                        else if areAllVillagesLoaded gameRootInformationResult.gameRootInformation then
+                            Ok gameRootInformationResult.gameRootInformation
 
                         else
-                            Just gameRootInformationResult.gameRootInformation
+                            Err
+                                "last received has not all villages loaded yet"
                     )
     in
     case sufficientlyNewGameRootInformation of
-        Nothing ->
-            DescribeBranch
-                "Game root information is not recent enough."
-                (DescribeBranch "Read root info." (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest)))))
+        Err error ->
+            describeBranch ("Read game root info (" ++ error ++ ")")
+                (endDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
 
-        Just gameRootInformation ->
+        Ok gameRootInformation ->
             decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInformation
 
 
@@ -1024,28 +1120,28 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
         continueFromDecisionInVillage : VillageEndDecisionPathStructure -> DecisionPathNode InFarmCycleResponse
         continueFromDecisionInVillage decisionInVillage =
             case decisionInVillage of
-                ContinueWithThisVillage (GetVillageInfoAtCoordinates coordinates) ->
-                    DescribeBranch
+                ContinueWithThisVillage _ (GetVillageInfoAtCoordinates coordinates) ->
+                    describeBranch
                         ("Search for village at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
-                        (EndDecisionPath
+                        (endDecisionPath
                             (ContinueFarmCycle
                                 (Just (RequestToPage (VillageByCoordinatesRequest { coordinates = coordinates, jumpToVillage = False })))
                             )
                         )
 
-                ContinueWithThisVillage (AttackAtCoordinates armyPreset coordinates) ->
-                    DescribeBranch
+                ContinueWithThisVillage _ (AttackAtCoordinates armyPreset coordinates) ->
+                    describeBranch
                         ("Farm at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
                         (case requestToJumpToVillageIfNotYetDone botState coordinates of
                             Just jumpToVillageRequest ->
-                                DescribeBranch
+                                describeBranch
                                     ("Jump to village at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
-                                    (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage jumpToVillageRequest))))
+                                    (endDecisionPath (ContinueFarmCycle (Just (RequestToPage jumpToVillageRequest))))
 
                             Nothing ->
-                                DescribeBranch
+                                describeBranch
                                     ("Send attack using preset '" ++ armyPreset.name ++ "'.")
-                                    (EndDecisionPath
+                                    (endDecisionPath
                                         (ContinueFarmCycle
                                             (Just
                                                 (RequestToPage
@@ -1057,7 +1153,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                         )
 
                 CompletedThisVillage currentVillageCompletion ->
-                    DescribeBranch
+                    describeBranch
                         ("Current village is completed ("
                             ++ (describeVillageCompletion currentVillageCompletion).decisionBranch
                             ++ ")."
@@ -1095,8 +1191,8 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                                 CompletedThisVillage _ ->
                                                     False
 
-                                                ContinueWithThisVillage _ ->
-                                                    True
+                                                ContinueWithThisVillage conditions _ ->
+                                                    switchToOtherVillageCommandCapacityMinimum <= conditions.remainingCapacityCommands
                                         )
                          in
                          case otherVillagesWithAvailableAction |> List.head of
@@ -1112,19 +1208,19 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                                         CompletedThisVillage otherVillageCompletion ->
                                                             Just ( otherVillageId, otherVillageCompletion )
 
-                                                        ContinueWithThisVillage _ ->
+                                                        ContinueWithThisVillage _ _ ->
                                                             Nothing
                                                 )
                                             |> Dict.fromList
                                             |> Dict.insert gameRootInformation.selectedVillageId currentVillageCompletion
                                 in
-                                DescribeBranch "All villages completed."
-                                    (EndDecisionPath (FinishFarmCycle { villagesResults = villagesResults }))
+                                describeBranch "All villages completed."
+                                    (endDecisionPath (FinishFarmCycle { villagesResults = villagesResults }))
 
                             Just ( villageToActivateId, ( villageToActivateDetails, _ ) ) ->
-                                DescribeBranch
+                                describeBranch
                                     ("Switch to village " ++ (villageToActivateId |> String.fromInt) ++ " at " ++ (villageToActivateDetails.coordinates |> villageCoordinatesDisplayText) ++ ".")
-                                    (EndDecisionPath
+                                    (endDecisionPath
                                         (ContinueFarmCycle
                                             (Just
                                                 (RequestToPage
@@ -1138,8 +1234,8 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                         )
 
         readBattleReportList =
-            DescribeBranch "Read report list"
-                (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadBattleReportListRequest))))
+            describeBranch "Read report list"
+                (endDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadBattleReportListRequest))))
     in
     {-
        Disable reading battle report list for to clean up status message.
@@ -1151,39 +1247,39 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
     -}
     case ownVillagesNeedingDetailsUpdate of
         ownVillageNeedingDetailsUpdate :: _ ->
-            DescribeBranch
+            describeBranch
                 ("Read status of own village " ++ (ownVillageNeedingDetailsUpdate |> String.fromInt) ++ ".")
-                (EndDecisionPath
+                (endDecisionPath
                     (ContinueFarmCycle
                         (Just (RequestToPage (ReadSelectedCharacterVillageDetailsRequest { villageId = ownVillageNeedingDetailsUpdate })))
                     )
                 )
 
         [] ->
-            DescribeBranch describeSelectedVillage
+            describeBranch describeSelectedVillage
                 (case selectedVillageUpdatedDetails of
                     Nothing ->
-                        DescribeBranch
+                        describeBranch
                             ("Read status of current selected village (" ++ (gameRootInformation.selectedVillageId |> String.fromInt) ++ ")")
-                            (EndDecisionPath
+                            (endDecisionPath
                                 (ContinueFarmCycle
                                     (Just (RequestToPage (ReadSelectedCharacterVillageDetailsRequest { villageId = gameRootInformation.selectedVillageId })))
                                 )
                             )
 
                     Just selectedVillageDetails ->
-                        case botState.getArmyPresetsResult |> Maybe.withDefault [] of
+                        case farmCycleState.getArmyPresetsResult |> Maybe.withDefault [] of
                             [] ->
                                 {- 2020-01-28 Observation: We get an empty list here at least sometimes at the beginning of a session.
                                    The number of presets we get can increase with the next query.
 
                                    -- TODO: Add timeout for getting presets.
                                 -}
-                                DescribeBranch
+                                describeBranch
                                     "Did not find any army presets. Maybe loading is not completed yet."
-                                    (DescribeBranch
+                                    (describeBranch
                                         "Read army presets."
-                                        (EndDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadArmyPresets))))
+                                        (endDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadArmyPresets))))
                                     )
 
                             _ ->
@@ -1239,15 +1335,25 @@ requestToJumpToVillageIfNotYetDone state coordinates =
         Nothing
 
 
-decideNextActionForVillage : BotState -> FarmCycleState -> ( Int, VillageDetails ) -> DecisionPathNode VillageEndDecisionPathStructure
+decideNextActionForVillage :
+    BotState
+    -> FarmCycleState
+    -> ( Int, VillageDetails )
+    -> DecisionPathNode VillageEndDecisionPathStructure
 decideNextActionForVillage botState farmCycleState ( villageId, villageDetails ) =
     pickBestMatchingArmyPresetForVillage
-        (botState.getArmyPresetsResult |> Maybe.withDefault [])
+        (implicitSettingsFromExplicitSettings botState.settings)
+        (farmCycleState.getArmyPresetsResult |> Maybe.withDefault [])
         ( villageId, villageDetails )
         (decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ))
 
 
-decideNextActionForVillageAfterChoosingPreset : BotState -> FarmCycleState -> ( Int, VillageDetails ) -> ArmyPreset -> DecisionPathNode VillageEndDecisionPathStructure
+decideNextActionForVillageAfterChoosingPreset :
+    BotState
+    -> FarmCycleState
+    -> ( Int, VillageDetails )
+    -> ArmyPreset
+    -> DecisionPathNode VillageEndDecisionPathStructure
 decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ) armyPreset =
     let
         villageInfoCheckFromCoordinates coordinates =
@@ -1255,11 +1361,14 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
 
         numberOfCommandsFromThisVillage =
             villageDetails.commands.outgoing |> List.length
+
+        remainingCapacityCommands =
+            numberOfAttacksLimitPerVillage - numberOfCommandsFromThisVillage
     in
-    if numberOfAttacksLimitPerVillage <= (villageDetails.commands.outgoing |> List.length) then
-        DescribeBranch
+    if remainingCapacityCommands < 1 then
+        describeBranch
             ("Number of commands from this village is " ++ (numberOfCommandsFromThisVillage |> String.fromInt) ++ ".")
-            (EndDecisionPath (CompletedThisVillage ExhaustedAttackLimit))
+            (endDecisionPath (CompletedThisVillage ExhaustedAttackLimit))
 
     else
         let
@@ -1326,14 +1435,27 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
                     else
                         GetVillageInfoAtCoordinates nextCoordinates
                 )
-            |> Maybe.map ContinueWithThisVillage
+            |> Maybe.map (ContinueWithThisVillage { remainingCapacityCommands = remainingCapacityCommands })
             |> Maybe.withDefault (CompletedThisVillage AllFarmsInSearchedAreaAlreadyAttackedInThisCycle)
-            |> EndDecisionPath
+            |> endDecisionPath
 
 
 villageMatchesSettingsForFarm : BotSettings -> VillageCoordinates -> VillageByCoordinatesDetails -> Bool
 villageMatchesSettingsForFarm settings villageCoordinates village =
-    (village.affiliation == AffiliationBarbarian)
+    let
+        ownedByCharacterToFarm =
+            case village.characterName of
+                Nothing ->
+                    False
+
+                Just characterName ->
+                    if characterName == "" then
+                        False
+
+                    else
+                        settings.charactersToFarm |> List.member characterName
+    in
+    (((village.affiliation == AffiliationBarbarian)
         && (settings.farmBarbarianVillageMinimumPoints
                 |> Maybe.map
                     (\farmBarbarianVillageMinimumPoints ->
@@ -1346,33 +1468,50 @@ villageMatchesSettingsForFarm settings villageCoordinates village =
                     )
                 |> Maybe.withDefault True
            )
+     )
+        || ownedByCharacterToFarm
+    )
         && (settings.farmAvoidCoordinates |> List.member villageCoordinates |> not)
 
 
 pickBestMatchingArmyPresetForVillage :
-    List ArmyPreset
+    BotSettings
+    -> List ArmyPreset
     -> ( Int, VillageDetails )
     -> (ArmyPreset -> DecisionPathNode VillageEndDecisionPathStructure)
     -> DecisionPathNode VillageEndDecisionPathStructure
-pickBestMatchingArmyPresetForVillage presets ( villageId, villageDetails ) continueWithArmyPreset =
+pickBestMatchingArmyPresetForVillage settings presets ( villageId, villageDetails ) continueWithArmyPreset =
     if presets |> List.isEmpty then
-        DescribeBranch "Did not find any army presets."
-            (EndDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
+        describeBranch "Did not find any army presets."
+            (endDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
 
     else
         let
             farmPresetFilter =
-                farmArmyPresetNamePattern
+                settings.farmArmyPresetPatterns
 
             farmPresetsMaybeEmpty =
                 presets
-                    |> List.filter (.name >> String.toLower >> String.contains (farmPresetFilter |> String.toLower))
+                    |> List.filter
+                        (\preset ->
+                            farmPresetFilter
+                                |> List.any
+                                    (\presetFilter ->
+                                        String.contains
+                                            (String.toLower presetFilter)
+                                            (String.toLower preset.name)
+                                    )
+                        )
                     |> List.sortBy (.name >> String.toLower)
         in
         case farmPresetsMaybeEmpty of
             [] ->
-                DescribeBranch ("Found no army presets matching the filter '" ++ farmPresetFilter ++ "'.")
-                    (EndDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
+                describeBranch
+                    ("Found no army presets matching the patterns ["
+                        ++ (farmPresetFilter |> List.map (String.Extra.surround "'") |> String.join ", ")
+                        ++ "]."
+                    )
+                    (endDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
 
             farmPresets ->
                 case
@@ -1380,9 +1519,9 @@ pickBestMatchingArmyPresetForVillage presets ( villageId, villageDetails ) conti
                         |> List.filter (.assigned_villages >> List.member villageId)
                 of
                     [] ->
-                        DescribeBranch
+                        describeBranch
                             ("Found " ++ (farmPresets |> List.length |> String.fromInt) ++ " army presets for farming, but none enabled for this village.")
-                            (EndDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
+                            (endDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
 
                     farmPresetsEnabledForThisVillage ->
                         let
@@ -1401,12 +1540,12 @@ pickBestMatchingArmyPresetForVillage presets ( villageId, villageDetails ) conti
                         in
                         case farmPresetsMatchingAvailableUnits |> List.head of
                             Nothing ->
-                                DescribeBranch
+                                describeBranch
                                     ("Found " ++ (farmPresetsEnabledForThisVillage |> List.length |> String.fromInt) ++ " farming army presets enabled for this village, but not sufficient units available for any of these.")
-                                    (EndDecisionPath (CompletedThisVillage NotEnoughUnits))
+                                    (endDecisionPath (CompletedThisVillage NotEnoughUnits))
 
                             Just bestMatchingPreset ->
-                                DescribeBranch
+                                describeBranch
                                     ("Best matching army preset for this village is '" ++ bestMatchingPreset.name ++ "'.")
                                     (continueWithArmyPreset bestMatchingPreset)
 
@@ -1490,9 +1629,13 @@ tribalWars2 = (function(){
     if (selectedCharacter == null)
         return { NotInTribalWars: true};
 
-    return { InTribalWars2 :
-        { readyVillages : selectedCharacter.data.readyVillages
-        , selectedVillageId : selectedCharacter.data.selectedVillage.data.villageId }
+    // Adapted formatting to strange syntax in google Chrome ->
+
+    return { InTribalWars2 : {
+            readyVillages : selectedCharacter.data.readyVillages
+            , selectedVillageId : selectedCharacter.data.selectedVillage.data.villageId
+            , getTotalVillagesResult : selectedCharacter.getTotalVillages()
+            }
         };
 })();
 
@@ -1529,9 +1672,10 @@ decodeRootInformation =
 
 decodeTribalWars2RootInformation : Json.Decode.Decoder TribalWars2RootInformation
 decodeTribalWars2RootInformation =
-    Json.Decode.map2 TribalWars2RootInformation
+    Json.Decode.map3 TribalWars2RootInformation
         (Json.Decode.field "readyVillages" (Json.Decode.list Json.Decode.int))
         (Json.Decode.field "selectedVillageId" Json.Decode.int)
+        (Json.Decode.field "getTotalVillagesResult" Json.Decode.int)
 
 
 readSelectedCharacterVillageDetailsScript : Int -> String
@@ -1692,7 +1836,7 @@ decodeVillageByCoordinatesResult =
 -}
 decodeVillageByCoordinatesDetails : Json.Decode.Decoder VillageByCoordinatesDetails
 decodeVillageByCoordinatesDetails =
-    Json.Decode.map3 VillageByCoordinatesDetails
+    Json.Decode.map4 VillageByCoordinatesDetails
         (Json.Decode.field "id" Json.Decode.int)
         (Json.Decode.field "affiliation" Json.Decode.string
             |> Json.Decode.map
@@ -1706,6 +1850,7 @@ decodeVillageByCoordinatesDetails =
                 )
         )
         (Json.Decode.maybe (Json.Decode.field "points" Json.Decode.int))
+        (Json.Decode.maybe (Json.Decode.field "character_name" Json.Decode.string))
 
 
 getPresetsScript : String
@@ -1930,6 +2075,17 @@ statusMessageFromState state { activityDecisionStages } =
 
         Just _ ->
             let
+                sentAttacks =
+                    countSentAttacks state
+
+                describeSessionPerformance =
+                    [ ( "attacks sent", sentAttacks.inSession )
+                    , ( "coordinates read", state.numberOfReadsFromCoordinates )
+                    , ( "completed farm cycles", state.completedFarmCycles |> List.length )
+                    ]
+                        |> List.map (\( metric, amount ) -> metric ++ ": " ++ (amount |> String.fromInt))
+                        |> String.join ", "
+
                 jsRunResult =
                     "lastRunJavascriptResult:\n"
                         ++ (state.lastRunJavascriptResult |> Maybe.map .response |> describeMaybe describeRunJavascriptInCurrentPageResponseStructure)
@@ -1961,11 +2117,11 @@ statusMessageFromState state { activityDecisionStages } =
                 coordinatesChecksReport =
                     "Checked "
                         ++ (state.coordinatesLastCheck |> Dict.size |> String.fromInt)
-                        ++ " coordinates and found "
+                        ++ " unique coordinates and found "
                         ++ (villagesByCoordinates |> Dict.size |> String.fromInt)
                         ++ " villages, "
                         ++ (barbarianVillages |> Dict.size |> String.fromInt)
-                        ++ " of wich are barbarian villages"
+                        ++ " of which are barbarian villages"
                         ++ (if numberOfVillagesAvoidedBySettings < 1 then
                                 ""
 
@@ -1974,19 +2130,13 @@ statusMessageFromState state { activityDecisionStages } =
                            )
                         ++ "."
 
-                sentAttacks =
-                    countSentAttacks state
-
-                sentAttacksReportPartSession =
-                    "Sent " ++ (sentAttacks.inSession |> String.fromInt) ++ " attacks in this session"
-
                 sentAttacksReportPartCurrentCycle =
                     case sentAttacks.inCurrentCycle of
                         Nothing ->
-                            "."
+                            []
 
                         Just inCurrentCycle ->
-                            ", " ++ (inCurrentCycle |> String.fromInt) ++ " in the current cycle."
+                            [ "Sent " ++ (inCurrentCycle |> String.fromInt) ++ " attacks in the current cycle." ]
 
                 completedFarmCyclesReportLines =
                     case state.completedFarmCycles |> List.head of
@@ -2012,9 +2162,6 @@ statusMessageFromState state { activityDecisionStages } =
                             , "---"
                             ]
 
-                sentAttacksReport =
-                    sentAttacksReportPartSession ++ sentAttacksReportPartCurrentCycle
-
                 inGameReport =
                     case state.gameRootInformationResult of
                         Nothing ->
@@ -2027,8 +2174,15 @@ statusMessageFromState state { activityDecisionStages } =
 
                                 ownVillagesReport =
                                     "Found "
-                                        ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt)
-                                        ++ " own villages."
+                                        ++ (gameRootInformation.getTotalVillagesResult |> String.fromInt)
+                                        ++ " own villages"
+                                        ++ (if areAllVillagesLoaded gameRootInformation then
+                                                ""
+
+                                            else
+                                                ", but only " ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt) ++ " loaded yet"
+                                           )
+                                        ++ "."
                             in
                             ownVillagesReport
 
@@ -2097,8 +2251,9 @@ statusMessageFromState state { activityDecisionStages } =
                             (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
                         |> String.join "\n"
             in
-            [ completedFarmCyclesReportLines
-            , [ sentAttacksReport ]
+            [ [ "Session performance: " ++ describeSessionPerformance ]
+            , completedFarmCyclesReportLines
+            , sentAttacksReportPartCurrentCycle
             , [ coordinatesChecksReport ]
             , [ inGameReport ]
             , [ readBattleReportsReport ]
@@ -2115,6 +2270,11 @@ statusMessageFromState state { activityDecisionStages } =
             ]
                 |> List.concat
                 |> String.join "\n"
+
+
+areAllVillagesLoaded : TribalWars2RootInformation -> Bool
+areAllVillagesLoaded rootInfo =
+    rootInfo.getTotalVillagesResult == (rootInfo.readyVillages |> List.length)
 
 
 describeOrdinalNumber : Int -> String
@@ -2212,30 +2372,6 @@ describeRunJavascriptInCurrentPageResponseStructure response =
         ++ ", callbackReturnValueAsString = "
         ++ describeMaybe (describeString 300) response.callbackReturnValueAsString
         ++ "\n}"
-
-
-continueDecisionTree : (originalLeaf -> DecisionPathNode newLeaf) -> DecisionPathNode originalLeaf -> DecisionPathNode newLeaf
-continueDecisionTree continueLeaf originalNode =
-    case originalNode of
-        DescribeBranch branch childNode ->
-            DescribeBranch branch (continueDecisionTree continueLeaf childNode)
-
-        EndDecisionPath leaf ->
-            continueLeaf leaf
-
-
-unpackToDecisionStagesDescriptionsAndLeaf : DecisionPathNode leaf -> ( List String, leaf )
-unpackToDecisionStagesDescriptionsAndLeaf node =
-    case node of
-        EndDecisionPath leaf ->
-            ( [], leaf )
-
-        DescribeBranch branchDescription childNode ->
-            let
-                ( childDecisionsDescriptions, leaf ) =
-                    unpackToDecisionStagesDescriptionsAndLeaf childNode
-            in
-            ( branchDescription :: childDecisionsDescriptions, leaf )
 
 
 describeString : Int -> String -> String

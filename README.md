@@ -1,12 +1,32 @@
-What is more interesting than playing video games? - Training artificial intelligence to play video games!
+What is more interesting than playing video games? - Programming bots to play video games!
 
 ## Guides
 
 + How to install/register the `botengine` command: [./guide/failed-run-did-not-find-botengine-program.md](./guide/failed-run-did-not-find-botengine-program.md)
 
++ Video on how to start a bot or botengine app: https://youtu.be/Q44uTEKw_aA
+
++ How to report an issue with an app or request a new feature: https://to.botengine.org/guide/how-to-report-an-issue-with-an-app-or-request-a-new-feature
+
++ Observing and inspecting (aka 'debugging') an app: https://to.botengine.org/guide/observing-and-inspecting-an-app
+
++ Testing an app using simulations: https://to.botengine.org/guide/testing-an-app-using-simulations
+
++ Input focus scheduling for multiple bot instances: https://to.botengine.org/guide/input-focus-scheduling-for-multiple-bot-instances
+
++ Running bots on multiple game clients: https://to.botengine.org/guide/running-bots-on-multiple-game-clients
+
 + Developing for EVE Online: [./guide/eve-online/developing-for-eve-online.md](./guide/eve-online/developing-for-eve-online.md)
 
-+ Find things faster in the EVE Online game client user interface: [./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md](./guide/eve-online/parsed-user-interface-of-the-eve-online-game-client.md)
++ Syntax of the Elm programming language: https://elm-lang.org/docs/syntax
+
++ Elm programming language - forward pipe (`|>`) and function composition (`>>`) operators: https://to.botengine.org/guide/elm-programming-language-forward-pipe-and-function-composition-operators
+
++ Get a guide for writing Elm code that reads from the EVE Online game client's user interface: Using types from the parsed user interface: https://to.botengine.org/guide/parsed-user-interface-of-the-eve-online-game-client
+
++ Inspect the UI tree of an EVE Online game client process (live or from archived samples): [Alternate UI for EVE Online](https://to.botengine.org/guide/alternate-ui-for-eve-online)
+
++ [Walkthrough, Programming]: Making an EVE Online bot see anomalies and other pilots: [https://youtu.be/pL1zLGYn8jQ](https://youtu.be/pL1zLGYn8jQ)
 
 + [Walkthrough, Programming]: Programming an EVE Online mining bot to defend against rats: [https://youtu.be/dgV9Ce7f03I](https://youtu.be/dgV9Ce7f03I)
 
@@ -26,9 +46,9 @@ What is more interesting than playing video games? - Training artificial intelli
   + User guide: [./guide/eve-online/eve-online-mining-bot.md](./guide/eve-online/eve-online-mining-bot.md)
   + Program code: [./implement/applications/eve-online/eve-online-mining-bot](./implement/applications/eve-online/eve-online-mining-bot)
 
-+ EVE Online anomaly ratting bot
-  + User guide: [./guide/eve-online/eve-online-anomaly-ratting-bot.md](./guide/eve-online/eve-online-anomaly-ratting-bot.md)
-  + Program code: [./implement/applications/eve-online/eve-online-anomaly-ratting-bot](./implement/applications/eve-online/eve-online-anomaly-ratting-bot)
++ EVE Online combat anomaly bot
+  + User guide: [./guide/eve-online/eve-online-combat-anomaly-bot.md](./guide/eve-online/eve-online-combat-anomaly-bot.md)
+  + Program code: [./implement/applications/eve-online/eve-online-combat-anomaly-bot](./implement/applications/eve-online/eve-online-combat-anomaly-bot)
 
 + Tribal Wars 2 farmbot
   + User guide: [./guide/tribal-wars-2/farm-manager-tribal-wars-2-farmbot.md](./guide/tribal-wars-2/farm-manager-tribal-wars-2-farmbot.md)
@@ -40,3 +60,8 @@ More links to program codes are listed at [https://catalog.botengine.org](https:
 ## Exploration
 
 In the ['explore'](./explore) subdirectory, I report on explorations in the world of botting in video games. These are raw chronological reports of experiments and discoveries. Some of the approaches and solutions discovered here become seeds for bots and guides.
+
+
+## Experimental Guides
+
++ How to Allow Multiple RDP Sessions in Windows 10: http://woshub.com/how-to-allow-multiple-rdp-sessions-in-windows-10/

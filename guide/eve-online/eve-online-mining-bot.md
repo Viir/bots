@@ -9,8 +9,8 @@ Before going into the setup, a quick overview of this bot and what it does:
 + When the ore hold is not full, warps to an asteroid belt.
 + Uses drones to defend against rats if available.
 + Mines from asteroids.
-+ When the ore hold is full, warps and docks to a station to unload the ore into the item hangar. (It remembers the station in which it was last docked, and docks again at the same station.)
-+ Runs away if shield hitpoints drop too low (The default threshold is 50%).
++ When the ore hold is full, warps and docks to a station or structure to unload the ore into the item hangar. (It remembers the station in which it was last docked, and docks again at the same station.)
++ Runs away if shield hitpoints drop too low (The default threshold is 70%).
 + Displays statistics such as the total volume of unloaded ore, so that you can easily track performance.
 + Closes message boxes that could pop up sometimes during gameplay.
 
@@ -22,15 +22,11 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 + In Overview window, make asteroids visible.
 + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
 + Open one inventory window.
-+ In the ship UI, arrange the modules:
-    + Place all mining modules (to activate on targets) in the top row.
-    + Place modules that should always be active in the middle row.
-    + Hide passive modules by disabling the check-box `Display Passive Modules`.
 + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from https://catalog.botengine.org/63d2b10af9b7b7001c49cfc3eb63888b6905aa50fe18a4cb99caadd5cfcc4249 and then run it.
+To start the mining bot, download the script from https://catalog.botengine.org/f339178a0a753355aff11e85253e84589dac36819adff86e0301c54a990abe41 and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 
@@ -50,6 +46,30 @@ The bot repeats the cycle of mining and unloading until you tell it to pause (`S
 To give an overview of the performance of the bot, it displays statistics like this:
 
 > Session performance: times unloaded: 13, volume unloaded / m³: 351706
+
+## Configuration Settings
+
+All settings are optional; you only need them in case the defaults don't fit your use-case.
+
++ `unload-station-name` : Name of a station to dock to when the ore hold is full.
++ `unload-structure-name` : Name of a structure to dock to when the ore hold is full.
++ `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
++ `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
+
+When using more than one setting, start a new line for each setting in the text input field.
+Here is an example of a complete settings string:
+
+```
+unload-station-name = Noghere VII - Moon 15
+module-to-activate-always = shield hardener
+module-to-activate-always = afterburner
+```
+
+## Running Multiple Instances
+
+This bot supports running multiple instances on the same desktop. In such a scenario, the individual bot instances take turns sending input and coordinate to avoid interfering with each other's input. To learn more about multi-instance setup, see https://to.botengine.org/guide/running-bots-on-multiple-game-clients
+
+----
 
 If you want to learn how this bot or other apps for EVE Online are developed, have a look at the directory of development guides at https://to.botengine.org/guide/overview
 

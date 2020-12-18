@@ -1,4 +1,4 @@
-{- EVE Online Intel Bot - Local Watch Script
+{- EVE Online Intel Bot - Local Watch Script - Smirnoff 2020-12-18
    This app watches local and plays an alarm sound when a pilot with bad standing appears.
 
    The detection code below works for English language in the game client.
@@ -16,15 +16,11 @@ module BotEngineApp exposing
     , processEvent
     )
 
-import BotEngine.Interface_To_Host_20200610 as InterfaceToHost
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.EffectOnWindow exposing (MouseButton(..))
 import EveOnline.AppFramework exposing (AppEffect(..))
 import EveOnline.ParseUserInterface
-    exposing
-        ( MaybeVisible(..)
-        , canNotSeeItFromMaybeNothing
-        )
 
 
 type alias ReadingFromGameClient =
@@ -82,7 +78,7 @@ processEveOnlineBotEvent eventContext event stateBefore =
 botEffectsFromGameClientState : ReadingFromGameClient -> ( List AppEffect, String )
 botEffectsFromGameClientState readingFromGameClient =
     case readingFromGameClient |> localChatWindowFromUserInterface of
-        CanNotSeeIt ->
+        Nothing ->
             ( [ EveOnline.AppFramework.EffectConsoleBeepSequence
                     [ { frequency = 700, durationInMs = 100 }
                     , { frequency = 0, durationInMs = 100 }
@@ -93,7 +89,7 @@ botEffectsFromGameClientState readingFromGameClient =
             , "I don't see the local chat window."
             )
 
-        CanSee localChatWindow ->
+        Just localChatWindow ->
             let
                 chatUserHasGoodStanding chatUser =
                     goodStandingPatterns
@@ -104,13 +100,18 @@ botEffectsFromGameClientState readingFromGameClient =
                                     |> Maybe.withDefault False
                             )
 
+                visibleUsers =
+                    localChatWindow.userlist
+                        |> Maybe.map .visibleUsers
+                        |> Maybe.withDefault []
+
                 subsetOfUsersWithNoGoodStanding =
-                    localChatWindow.visibleUsers
+                    visibleUsers
                         |> List.filter (chatUserHasGoodStanding >> not)
 
                 chatWindowReport =
                     "I see "
-                        ++ (localChatWindow.visibleUsers |> List.length |> String.fromInt)
+                        ++ (visibleUsers |> List.length |> String.fromInt)
                         ++ " users in the local chat. "
                         ++ (subsetOfUsersWithNoGoodStanding |> List.length |> String.fromInt)
                         ++ " with no good standing."
@@ -130,10 +131,9 @@ botEffectsFromGameClientState readingFromGameClient =
             ( alarmRequests, chatWindowReport )
 
 
-localChatWindowFromUserInterface : ReadingFromGameClient -> MaybeVisible EveOnline.ParseUserInterface.ChatWindow
+localChatWindowFromUserInterface : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ChatWindow
 localChatWindowFromUserInterface =
     .chatWindowStacks
         >> List.filterMap .chatWindow
         >> List.filter (.name >> Maybe.map (String.endsWith "_local") >> Maybe.withDefault False)
         >> List.head
-        >> canNotSeeItFromMaybeNothing

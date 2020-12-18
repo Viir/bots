@@ -51,7 +51,7 @@ class Request
 
     public GetMemoryReadingStructure GetMemoryReading;
 
-    public TaskOnWindow<EffectOnWindowStructure> EffectOnWindow;
+    public TaskOnWindow<EffectSequenceElement[]> EffectSequenceOnWindow;
 
     public ConsoleBeepStructure[] EffectConsoleBeepSequence;
 
@@ -76,15 +76,20 @@ class Request
         public Task task;
     }
 
+    public class EffectSequenceElement
+    {
+        public EffectOnWindowStructure Effect;
+
+        public int? DelayMilliseconds;
+    }
+
     public class EffectOnWindowStructure
     {
-        public MouseMoveToStructure mouseMoveTo;
+        public MouseMoveToStructure MouseMoveTo;
 
-        public SimpleMouseClickAtLocation simpleMouseClickAtLocation;
+        public KeyboardKey KeyDown;
 
-        public KeyboardKey keyDown;
-
-        public KeyboardKey keyUp;
+        public KeyboardKey KeyUp;
     }
 
     public class KeyboardKey
@@ -95,13 +100,6 @@ class Request
     public class MouseMoveToStructure
     {
         public Location2d location;
-    }
-
-    public class SimpleMouseClickAtLocation
-    {
-        public Location2d location;
-
-        public MouseButton mouseButton;
     }
 
     public class Location2d
@@ -130,7 +128,11 @@ class Response
 
     public GetMemoryReadingResultStructure GetMemoryReadingResult;
 
-    public object effectExecuted;
+    public string FailedToBringWindowToFront;
+
+    public object CompletedEffectSequenceOnWindow;
+
+    public object CompletedOtherEffect;
 
     public class GameClientProcessSummaryStruct
     {
@@ -241,15 +243,35 @@ Response request(Request request)
         };
     }
 
-    if (request?.EffectOnWindow?.task != null)
+    if (request?.EffectSequenceOnWindow?.task != null)
     {
-        var windowHandle = new IntPtr(long.Parse(request.EffectOnWindow.windowId));
+        var windowHandle = new IntPtr(long.Parse(request.EffectSequenceOnWindow.windowId));
 
-        ExecuteEffectOnWindow(request.EffectOnWindow.task, windowHandle, request.EffectOnWindow.bringWindowToForeground);
+        if (request.EffectSequenceOnWindow.bringWindowToForeground)
+        {
+            var setForegroundWindowError = SetForegroundWindowInWindows.TrySetForegroundWindow(windowHandle);
+
+            if(setForegroundWindowError != null)
+            {
+                return new Response
+                {
+                    FailedToBringWindowToFront = setForegroundWindowError,
+                };
+            }
+        }
+
+        foreach(var sequenceElement in request.EffectSequenceOnWindow.task)
+        {
+            if(sequenceElement?.Effect != null)
+                ExecuteEffectOnWindow(sequenceElement.Effect, windowHandle, request.EffectSequenceOnWindow.bringWindowToForeground);
+
+            if(sequenceElement?.DelayMilliseconds != null)
+                System.Threading.Thread.Sleep(sequenceElement.DelayMilliseconds.Value);
+        }
 
         return new Response
         {
-            effectExecuted = new object(),
+            CompletedEffectSequenceOnWindow = new object(),
         };
     }
 
@@ -265,7 +287,7 @@ Response request(Request request)
 
         return new Response
         {
-            effectExecuted = new object(),
+            CompletedOtherEffect = new object(),
         };
     }
 
@@ -298,17 +320,15 @@ void ExecuteEffectOnWindow(
     bool bringWindowToForeground)
 {
     if (bringWindowToForeground)
-        EnsureWindowIsForeground(windowHandle);
+        BotEngine.WinApi.User32.SetForegroundWindow(windowHandle);
 
-    //  TODO: Consolidate mouseMoveTo and simpleMouseClickAtLocation?
-
-    if (effectOnWindow?.mouseMoveTo != null)
+    if (effectOnWindow?.MouseMoveTo != null)
     {
         //  Build motion description based on https://github.com/Arcitectus/Sanderling/blob/ada11c9f8df2367976a6bcc53efbe9917107bfa7/src/Sanderling/Sanderling/Motor/Extension.cs#L24-L131
 
         var mousePosition = new Bib3.Geometrik.Vektor2DInt(
-            effectOnWindow.mouseMoveTo.location.x,
-            effectOnWindow.mouseMoveTo.location.y);
+            effectOnWindow.MouseMoveTo.location.x,
+            effectOnWindow.MouseMoveTo.location.y);
 
         var mouseButtons = new BotEngine.Motor.MouseButtonIdEnum[]{};
 
@@ -328,51 +348,18 @@ void ExecuteEffectOnWindow(
         windowMotor.ActSequenceMotion(motionSequence);
     }
 
-    if (effectOnWindow?.simpleMouseClickAtLocation != null)
+    if (effectOnWindow?.KeyDown != null)
     {
-        //  Build motion description based on https://github.com/Arcitectus/Sanderling/blob/ada11c9f8df2367976a6bcc53efbe9917107bfa7/src/Sanderling/Sanderling/Motor/Extension.cs#L24-L131
-
-        var mousePosition = new Bib3.Geometrik.Vektor2DInt(
-            effectOnWindow.simpleMouseClickAtLocation.location.x,
-            effectOnWindow.simpleMouseClickAtLocation.location.y);
-
-        var mouseButton =
-            effectOnWindow.simpleMouseClickAtLocation.mouseButton == Request.MouseButton.right
-            ? BotEngine.Motor.MouseButtonIdEnum.Right : BotEngine.Motor.MouseButtonIdEnum.Left;
-
-        var mouseButtons = new BotEngine.Motor.MouseButtonIdEnum[]
-        {
-            mouseButton,
-        };
-
-        var windowMotor = new Sanderling.Motor.WindowMotor(windowHandle);
-
-        var motionSequence = new BotEngine.Motor.Motion[]{
-            new BotEngine.Motor.Motion(
-                mousePosition: mousePosition,
-                mouseButtonDown: mouseButtons,
-                windowToForeground: bringWindowToForeground),
-            new BotEngine.Motor.Motion(
-                mousePosition: mousePosition,
-                mouseButtonUp: mouseButtons,
-                windowToForeground: bringWindowToForeground),
-        };
-
-        windowMotor.ActSequenceMotion(motionSequence);
-    }
-
-    if (effectOnWindow?.keyDown != null)
-    {
-        var virtualKeyCode = (WindowsInput.Native.VirtualKeyCode)effectOnWindow.keyDown.virtualKeyCode;
+        var virtualKeyCode = (WindowsInput.Native.VirtualKeyCode)effectOnWindow.KeyDown.virtualKeyCode;
 
         (MouseActionForKeyUpOrDown(keyCode: virtualKeyCode, buttonUp: false)
         ??
         (() => new WindowsInput.InputSimulator().Keyboard.KeyDown(virtualKeyCode)))();
     }
 
-    if (effectOnWindow?.keyUp != null)
+    if (effectOnWindow?.KeyUp != null)
     {
-        var virtualKeyCode = (WindowsInput.Native.VirtualKeyCode)effectOnWindow.keyUp.virtualKeyCode;
+        var virtualKeyCode = (WindowsInput.Native.VirtualKeyCode)effectOnWindow.KeyUp.virtualKeyCode;
 
         (MouseActionForKeyUpOrDown(keyCode: virtualKeyCode, buttonUp: true)
         ??
@@ -401,19 +388,6 @@ static System.Action MouseActionForKeyUpOrDown(WindowsInput.Native.VirtualKeyCod
         return () => method();
 
     return null;
-}
-
-static void EnsureWindowIsForeground(
-    IntPtr windowHandle)
-{
-    var PreviousForegroundWindowHandle = BotEngine.WinApi.User32.GetForegroundWindow();
-
-    if (PreviousForegroundWindowHandle == windowHandle)
-    {
-        return;
-    }
-
-    BotEngine.WinApi.User32.SetForegroundWindow(windowHandle);
 }
 
 string SerializeToJsonForBot<T>(T value) =>
@@ -466,6 +440,55 @@ static public class WinApi
         }, IntPtr.Zero);
 
         return windowHandles;
+    }
+}
+
+static public class SetForegroundWindowInWindows
+{
+    static public int AltKeyPlusSetForegroundWindowWaitTimeMilliseconds = 60;
+
+    /// <summary>
+    /// </summary>
+    /// <param name="windowHandle"></param>
+    /// <returns>null in case of success</returns>
+    static public string TrySetForegroundWindow(IntPtr windowHandle)
+    {
+        try
+        {
+            /*
+            * For the conditions for `SetForegroundWindow` to work, see https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow
+            * */
+            BotEngine.WinApi.User32.SetForegroundWindow(windowHandle);
+
+            if (BotEngine.WinApi.User32.GetForegroundWindow() == windowHandle)
+                return null;
+
+            var windowsInZOrder = WinApi.ListWindowHandlesInZOrder();
+
+            var windowIndex = windowsInZOrder.ToList().IndexOf(windowHandle);
+
+            if (windowIndex < 0)
+                return "Did not find window for this handle";
+
+            {
+                var simulator = new WindowsInput.InputSimulator();
+
+                simulator.Keyboard.KeyDown(WindowsInput.Native.VirtualKeyCode.MENU);
+                BotEngine.WinApi.User32.SetForegroundWindow(windowHandle);
+                simulator.Keyboard.KeyUp(WindowsInput.Native.VirtualKeyCode.MENU);
+
+                System.Threading.Thread.Sleep(AltKeyPlusSetForegroundWindowWaitTimeMilliseconds);
+
+                if (BotEngine.WinApi.User32.GetForegroundWindow() == windowHandle)
+                    return null;
+
+                return "Alt key plus SetForegroundWindow approach was not successful.";
+            }
+        }
+        catch (Exception e)
+        {
+            return "Exception: " + e.ToString();
+        }
     }
 }
 

@@ -1,21 +1,21 @@
 module ParseMemoryReadingTest exposing (allTests)
 
 import Common.EffectOnWindow
-import EveOnline.ParseUserInterface exposing (MaybeVisible(..))
+import EveOnline.ParseUserInterface
 import Expect
-import Test exposing (..)
+import Test
 
 
-allTests : Test
+allTests : Test.Test
 allTests =
-    describe "Parse memory reading"
+    Test.describe "Parse memory reading"
         [ overview_entry_distance_text_to_meter
         , inventory_capacity_gauge_text
         , parse_module_button_tooltip_shortcut
         ]
 
 
-overview_entry_distance_text_to_meter : Test
+overview_entry_distance_text_to_meter : Test.Test
 overview_entry_distance_text_to_meter =
     [ ( "2,856 m", Ok 2856 )
     , ( "123 m", Ok 123 )
@@ -30,16 +30,16 @@ overview_entry_distance_text_to_meter =
     ]
         |> List.map
             (\( displayText, expectedResult ) ->
-                test displayText <|
+                Test.test displayText <|
                     \_ ->
                         displayText
                             |> EveOnline.ParseUserInterface.parseOverviewEntryDistanceInMetersFromText
                             |> Expect.equal expectedResult
             )
-        |> describe "Overview entry distance text"
+        |> Test.describe "Overview entry distance text"
 
 
-inventory_capacity_gauge_text : Test
+inventory_capacity_gauge_text : Test.Test
 inventory_capacity_gauge_text =
     [ ( "1,211.9/5,000.0 m³", Ok { used = 1211, maximum = Just 5000, selected = Nothing } )
     , ( " 123.4 / 5,000.0 m³ ", Ok { used = 123, maximum = Just 5000, selected = Nothing } )
@@ -55,33 +55,36 @@ inventory_capacity_gauge_text =
 
     -- 2020-02-23 process-sample-FFE3312944 contributed by ORly (https://forum.botengine.org/t/mining-bot-i-cannot-see-the-ore-hold-capacity-gauge/3101/5?u=viir)
     , ( "0/5\u{00A0}000,0 m³", Ok { used = 0, maximum = Just 5000, selected = Nothing } )
+
+    -- 2020-07-26 scenario shared by neolexo at https://forum.botengine.org/t/issue-with-mining/3469/3?u=viir
+    , ( "0/5’000.0 m³", Ok { used = 0, maximum = Just 5000, selected = Nothing } )
     ]
         |> List.map
             (\( text, expectedResult ) ->
-                test text <|
+                Test.test text <|
                     \_ ->
                         text
                             |> EveOnline.ParseUserInterface.parseInventoryCapacityGaugeText
                             |> Expect.equal expectedResult
             )
-        |> describe "Inventory capacity gauge text"
+        |> Test.describe "Inventory capacity gauge text"
 
 
-parse_module_button_tooltip_shortcut : Test
+parse_module_button_tooltip_shortcut : Test.Test
 parse_module_button_tooltip_shortcut =
-    [ ( " F1 ", [ Common.EffectOnWindow.key_F1 ] )
-    , ( " CTRL-F3 ", [ Common.EffectOnWindow.VK_LCONTROL, Common.EffectOnWindow.key_F3 ] )
-    , ( " STRG-F4 ", [ Common.EffectOnWindow.VK_LCONTROL, Common.EffectOnWindow.key_F4 ] )
-    , ( " ALT+F4 ", [ Common.EffectOnWindow.VK_LMENU, Common.EffectOnWindow.key_F4 ] )
-    , ( " SHIFT - F5 ", [ Common.EffectOnWindow.VK_LSHIFT, Common.EffectOnWindow.key_F5 ] )
-    , ( " UMSCH-F6 ", [ Common.EffectOnWindow.VK_LSHIFT, Common.EffectOnWindow.key_F6 ] )
+    [ ( " F1 ", [ Common.EffectOnWindow.vkey_F1 ] )
+    , ( " CTRL-F3 ", [ Common.EffectOnWindow.vkey_LCONTROL, Common.EffectOnWindow.vkey_F3 ] )
+    , ( " STRG-F4 ", [ Common.EffectOnWindow.vkey_LCONTROL, Common.EffectOnWindow.vkey_F4 ] )
+    , ( " ALT+F4 ", [ Common.EffectOnWindow.vkey_LMENU, Common.EffectOnWindow.vkey_F4 ] )
+    , ( " SHIFT - F5 ", [ Common.EffectOnWindow.vkey_LSHIFT, Common.EffectOnWindow.vkey_F5 ] )
+    , ( " UMSCH-F6 ", [ Common.EffectOnWindow.vkey_LSHIFT, Common.EffectOnWindow.vkey_F6 ] )
     ]
         |> List.map
             (\( text, expectedResult ) ->
-                test text <|
+                Test.test text <|
                     \_ ->
                         text
                             |> EveOnline.ParseUserInterface.parseModuleButtonTooltipShortcut
                             |> Expect.equal (Ok expectedResult)
             )
-        |> describe "Parse module button tooltip shortcut"
+        |> Test.describe "Parse module button tooltip shortcut"

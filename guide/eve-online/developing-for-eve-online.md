@@ -362,9 +362,7 @@ To test and verify that the setup works, you need the source files of an app on 
 
 The Elm command line program understands the [programming language](https://elm-lang.org/blog/the-perfect-bug-report) we use and [helps us](https://elm-lang.org/blog/compilers-as-assistants) find problems in the code we write.
 
-Download the file from https://github.com/elm/compiler/releases/download/0.19.1/binary-for-windows-64-bit.gz
-
-Extract the `binary-for-windows-64-bit.gz` file; this will get you a file named `binary-for-windows-64-bit`. Rename this to `elm.exe`, so the system will recognize it as an executable file. If you don't know how to extract `.gz` files, [7zip](https://www.7-zip.org) can do that.
+You can download the Elm executable file from https://botengine.blob.core.windows.net/blob-library/by-name/elm.exe
 
 Next, we perform a small test to verify the elm.exe program works on the app code as intended. Since `elm.exe` is a command line program, we start it from the Windows Command Prompt (cmd.exe).
 Before starting the elm.exe, you need to navigate to the app code directory containing the `elm.json` file. You can use the `cd` command in the Command Prompt to switch to this directory, with a command like this:

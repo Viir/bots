@@ -46,4 +46,6 @@ Wondering what outcome you can expect from following the guides? Below is a list
 
 ## Experimental Guides
 
++ Explore Elm syntax and core library with the Elm Explorer: https://botengine.blob.core.windows.net/blob-library/by-name/ElmExplorer.html
+
 + How to Allow Multiple RDP Sessions in Windows 10: http://woshub.com/how-to-allow-multiple-rdp-sessions-in-windows-10/

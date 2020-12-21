@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-12-10
+{- Tribal Wars 2 farmbot version 2020-12-21
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -341,7 +341,7 @@ type VillageByCoordinatesResult
 
 type alias VillageByCoordinatesDetails =
     { villageId : Int
-    , affiliation : VillageByCoordinatesAffiliation
+    , affiliation : Maybe VillageByCoordinatesAffiliation
     , points : Maybe Int
     , characterName : Maybe String
     }
@@ -1455,7 +1455,7 @@ villageMatchesSettingsForFarm settings villageCoordinates village =
                     else
                         settings.charactersToFarm |> List.member characterName
     in
-    (((village.affiliation == AffiliationBarbarian)
+    (((village.affiliation == Just AffiliationBarbarian)
         && (settings.farmBarbarianVillageMinimumPoints
                 |> Maybe.map
                     (\farmBarbarianVillageMinimumPoints ->
@@ -1833,21 +1833,27 @@ decodeVillageByCoordinatesResult =
 
 {-| 2020-03-22 There are also villages without 'points':
 { "x": 597, "y": 545, "name": "Freund einladen", "id": -2, "affiliation": "other" }
+
+2020-12-21 Drklord discovered a case without 'affiliation' field at <https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/3038/207> :
+{ "x" : 508, "y" : 456, "name" : "Invite a friend", "id" : -2 }
+
 -}
 decodeVillageByCoordinatesDetails : Json.Decode.Decoder VillageByCoordinatesDetails
 decodeVillageByCoordinatesDetails =
     Json.Decode.map4 VillageByCoordinatesDetails
         (Json.Decode.field "id" Json.Decode.int)
-        (Json.Decode.field "affiliation" Json.Decode.string
-            |> Json.Decode.map
-                (\affiliation ->
-                    case affiliation |> String.toLower of
-                        "barbarian" ->
-                            AffiliationBarbarian
+        (jsonDecodeOptionalField "affiliation"
+            (Json.Decode.string
+                |> Json.Decode.map
+                    (\affiliation ->
+                        case affiliation |> String.toLower of
+                            "barbarian" ->
+                                AffiliationBarbarian
 
-                        _ ->
-                            AffiliationOther
-                )
+                            _ ->
+                                AffiliationOther
+                    )
+            )
         )
         (Json.Decode.maybe (Json.Decode.field "points" Json.Decode.int))
         (Json.Decode.maybe (Json.Decode.field "character_name" Json.Decode.string))
@@ -2105,7 +2111,7 @@ statusMessageFromState state { activityDecisionStages } =
                         |> Dict.fromList
 
                 barbarianVillages =
-                    villagesByCoordinates |> Dict.filter (\_ village -> village.affiliation == AffiliationBarbarian)
+                    villagesByCoordinates |> Dict.filter (\_ village -> village.affiliation == Just AffiliationBarbarian)
 
                 villagesMatchingSettingsForFarm =
                     villagesByCoordinates
@@ -2405,3 +2411,20 @@ nothingFromIntIfGreaterThan limit originalInt =
 
     else
         Just originalInt
+
+
+jsonDecodeOptionalField : String -> Json.Decode.Decoder a -> Json.Decode.Decoder (Maybe a)
+jsonDecodeOptionalField fieldName decoder =
+    let
+        finishDecoding json =
+            case Json.Decode.decodeValue (Json.Decode.field fieldName Json.Decode.value) json of
+                Ok _ ->
+                    -- The field is present, so run the decoder on it.
+                    Json.Decode.map Just (Json.Decode.field fieldName decoder)
+
+                Err _ ->
+                    -- The field was missing, which is fine!
+                    Json.Decode.succeed Nothing
+    in
+    Json.Decode.value
+        |> Json.Decode.andThen finishDecoding

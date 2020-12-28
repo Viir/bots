@@ -1,5 +1,7 @@
 {- Do not change this file. The engine uses this file to see on which framework your app depends.
-   The encoding and decoding of interface messages here mirrors the implementation of the botengine.
+   The encoding and decoding of interface messages here mirrors the hosting engine's implementation in the `botengine.exe` program.
+   The app uses the types and deserialization functions to decode the event data coming from the engine.
+   You can see each event's concrete representation as a string in the event details view in devtools (https://to.botengine.org/guide/observing-and-inspecting-an-app).
 -}
 
 

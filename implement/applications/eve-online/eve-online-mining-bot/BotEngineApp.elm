@@ -35,6 +35,7 @@
 module BotEngineApp exposing
     ( State
     , initState
+    , overviewWindowEntryRepresentsAnAsteroid
     , processEvent
     )
 

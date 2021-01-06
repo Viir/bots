@@ -26,7 +26,7 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from https://catalog.botengine.org/f339178a0a753355aff11e85253e84589dac36819adff86e0301c54a990abe41 and then run it.
+To start the mining bot, download the script from https://catalog.botengine.org/b09ecff19b10ffe5a751a9d4e51156d8686a0daa73c88d0704b5f6445d080ec1 and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 

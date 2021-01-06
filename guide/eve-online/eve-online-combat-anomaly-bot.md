@@ -21,7 +21,7 @@ Despite being quite robust, this bot is far from being as smart as a human. For 
 
 ## Starting the Bot
 
-To start the bot, download the script from https://catalog.botengine.org/5d8f713bfcbd590c11f74b7b1fa1b21b5f19de8ae4013e70304ea05d76fa5fdd and then run it.
+To start the bot, download the script from https://catalog.botengine.org/8bf9294cc10753cfbfe8dffa71b725beac37ac4302579c87d600150b185acb56 and then run it.
 
 In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
 

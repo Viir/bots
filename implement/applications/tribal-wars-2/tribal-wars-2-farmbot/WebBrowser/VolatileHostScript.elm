@@ -68,6 +68,10 @@ class Request
     public class StartWebBrowserRequestStructure
     {
         public string pageGoToUrl;
+
+        public string userProfileId;
+
+        public int remoteDebuggingPort;
     }
 }
 
@@ -100,9 +104,10 @@ Response request(Request request)
 {
     if (request.StartWebBrowserRequest != null)
     {
-        KillPreviousWebBrowserProcesses();
-
-        StartBrowser(request.StartWebBrowserRequest.pageGoToUrl).Wait();
+        ConnectToOrLaunchBrowser(
+            pageGoToUrl: request.StartWebBrowserRequest.pageGoToUrl,
+            userProfileId: request.StartWebBrowserRequest.userProfileId,
+            remoteDebuggingPort: request.StartWebBrowserRequest.remoteDebuggingPort).Wait();
 
         return new Response
         {
@@ -121,24 +126,54 @@ Response request(Request request)
     return null;
 }
 
-static string UserDataDirPath() =>
-    System.IO.Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA"), "bot", "web-browser", "user-data");
+static string UserDataDirPath(string userProfileId) =>
+    System.IO.Path.Combine(
+        Environment.GetEnvironmentVariable("LOCALAPPDATA"), "bot", "web-browser", "user-profile", userProfileId, "user-data");
 
 PuppeteerSharp.Browser browser;
 PuppeteerSharp.Page browserPage;
 
 Action<string> callbackFromBrowserDelegate;
 
-async System.Threading.Tasks.Task StartBrowser(string pageGoToUrl)
+async System.Threading.Tasks.Task ConnectToOrLaunchBrowser(string pageGoToUrl, string userProfileId, int remoteDebuggingPort)
 {
     await new PuppeteerSharp.BrowserFetcher().DownloadAsync(PuppeteerSharp.BrowserFetcher.DefaultRevision);
-    browser = await PuppeteerSharp.Puppeteer.LaunchAsync(new PuppeteerSharp.LaunchOptions
+
+    /*
+    2020-04-21
+    To support using multiple browser tabs, use the approach from https://stackoverflow.com/questions/57876123/puppeteer-c-connecting-to-running-chrome-instance/57877110#57877110
+    */
+
+    try
     {
-        Headless = false,
-        UserDataDir = UserDataDirPath(),
-        DefaultViewport = null,
-    });
-    browserPage = (await browser.PagesAsync()).FirstOrDefault() ?? await browser.NewPageAsync();
+        browser = await PuppeteerSharp.Puppeteer.ConnectAsync(new PuppeteerSharp.ConnectOptions
+        {
+            BrowserURL = "http://127.0.0.1:" + remoteDebuggingPort.ToString(),
+            DefaultViewport = null,
+        });
+
+        browserPage = await browser.NewPageAsync();
+    }
+    catch
+    {
+    }
+
+    if(browserPage == null)
+    {
+        // If connecting to an existing instance failed, launch a new one.
+
+        KillPreviousWebBrowserProcesses(userProfileId);
+
+        browser = await PuppeteerSharp.Puppeteer.LaunchAsync(new PuppeteerSharp.LaunchOptions
+        {
+            Args = new[] { "--remote-debugging-port=" + remoteDebuggingPort.ToString() },
+            Headless = false,
+            UserDataDir = UserDataDirPath(userProfileId),
+            DefaultViewport = null,
+        });
+
+        browserPage = (await browser.PagesAsync()).FirstOrDefault() ?? await browser.NewPageAsync();
+    }
 
     //  TODO: Better name for ____callback____?
 
@@ -181,15 +216,17 @@ async System.Threading.Tasks.Task<Response.RunJavascriptInCurrentPageResponseStr
     };
 }
 
-void KillPreviousWebBrowserProcesses()
+void KillPreviousWebBrowserProcesses(string userProfileId)
 {
     var matchingProcesses =
         System.Diagnostics.Process.GetProcesses()
+        .Where(ProcessIsWebBrowser)
         /*
         2020-02-17
-        .Where(process => process.StartInfo.Arguments.Contains(UserDataDirPath(), StringComparison.InvariantCultureIgnoreCase))
+        .Where(process =>
+            process.StartInfo.Arguments.Contains(
+                UserDataDirPath(userProfileId), StringComparison.InvariantCultureIgnoreCase))
         */
-        .Where(ProcessIsWebBrowser)
         .ToList();
 
     foreach (var process in matchingProcesses)

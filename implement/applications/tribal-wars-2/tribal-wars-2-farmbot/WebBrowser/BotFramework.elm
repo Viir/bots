@@ -466,7 +466,9 @@ getSetupTaskWhenVolatileHostSetupCompleted { pageGoToUrl } stateBefore volatileH
                     { hostId = volatileHostId
                     , request =
                         VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                            (VolatileHostInterface.StartWebBrowserRequest { pageGoToUrl = pageGoToUrl })
+                            (VolatileHostInterface.StartWebBrowserRequest
+                                { pageGoToUrl = pageGoToUrl, userProfileId = "default", remoteDebuggingPort = 13485 }
+                            )
                     }
                 )
             )

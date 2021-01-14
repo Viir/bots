@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2020-12-21
+{- Tribal Wars 2 farmbot version 2021-01-14
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -78,6 +78,7 @@ initBotSettings =
     , farmAvoidCoordinates = []
     , charactersToFarm = []
     , farmArmyPresetPatterns = []
+    , webBrowserUserProfileId = "default"
     }
 
 
@@ -112,6 +113,9 @@ parseBotSettings =
                     \settings ->
                         { settings | farmArmyPresetPatterns = presetPattern :: settings.farmArmyPresetPatterns }
                 )
+           )
+         , ( "web-browser-user-profile-id"
+           , AppSettings.valueTypeString (\webBrowserUserProfileId settings -> { settings | webBrowserUserProfileId = webBrowserUserProfileId })
            )
          ]
             |> Dict.fromList
@@ -198,8 +202,8 @@ type alias BotState =
     , farmState : FarmState
     , lastAttackTimeInMilliseconds : Maybe Int
     , lastActivatedVillageTimeInMilliseconds : Maybe Int
-    , lastReloadPageTimeInSeconds : Maybe Int
-    , reloadPageCount : Int
+    , lastStartWebBrowserTimeInSeconds : Maybe Int
+    , startWebBrowserCount : Int
     , completedFarmCycles : List FarmCycleConclusion
     , lastRequestReportListResult :
         Maybe
@@ -220,6 +224,7 @@ type alias BotSettings =
     , farmAvoidCoordinates : List VillageCoordinates
     , charactersToFarm : List String
     , farmArmyPresetPatterns : List String
+    , webBrowserUserProfileId : String
     }
 
 
@@ -426,8 +431,8 @@ initState =
         , farmState = InFarmCycle { beginTime = 0 } initFarmCycle
         , lastAttackTimeInMilliseconds = Nothing
         , lastActivatedVillageTimeInMilliseconds = Nothing
-        , lastReloadPageTimeInSeconds = Nothing
-        , reloadPageCount = 0
+        , lastStartWebBrowserTimeInSeconds = Nothing
+        , startWebBrowserCount = 0
         , completedFarmCycles = []
         , lastRequestReportListResult = Nothing
         , parseResponseError = Nothing
@@ -437,14 +442,32 @@ initState =
 
 reasonToRestartGameClientFromBotState : BotState -> Maybe String
 reasonToRestartGameClientFromBotState state =
-    if restartGameClientInterval < (state.timeInMilliseconds // 1000) - (state.lastReloadPageTimeInSeconds |> Maybe.withDefault 0) then
-        Just ("Last restart was more than " ++ (restartGameClientInterval |> String.fromInt) ++ " seconds ago.")
+    case state.lastStartWebBrowserTimeInSeconds of
+        Nothing ->
+            Just "Did not yet start the web browser."
 
-    else if readFromGameTimeoutCountThresholdToRestart < state.readFromGameConsecutiveTimeoutsCount then
-        Just ("Reading from game timed out consecutively more than " ++ (readFromGameTimeoutCountThresholdToRestart |> String.fromInt) ++ " times.")
+        Just lastStartWebBrowserTimeInSeconds ->
+            let
+                continueAfterCheckLastRunJs =
+                    if restartGameClientInterval < (state.timeInMilliseconds // 1000) - lastStartWebBrowserTimeInSeconds then
+                        Just ("Last restart was more than " ++ (restartGameClientInterval |> String.fromInt) ++ " seconds ago.")
 
-    else
-        Nothing
+                    else if readFromGameTimeoutCountThresholdToRestart < state.readFromGameConsecutiveTimeoutsCount then
+                        Just ("Reading from game timed out consecutively more than " ++ (readFromGameTimeoutCountThresholdToRestart |> String.fromInt) ++ " times.")
+
+                    else
+                        Nothing
+            in
+            case state.lastRunJavascriptResult of
+                Just lastRunJavascriptResult ->
+                    if lastRunJavascriptResult.response.webBrowserAvailable then
+                        continueAfterCheckLastRunJs
+
+                    else
+                        Just "Last request to run javascript returned no browser instance available."
+
+                Nothing ->
+                    continueAfterCheckLastRunJs
 
 
 initFarmCycle : FarmCycleState
@@ -636,10 +659,13 @@ decideNextAction { lastPageLocation } stateBefore =
                                                             )
 
                                                         RestartWebBrowser ->
-                                                            ( BotFramework.RestartWebBrowser { pageGoToUrl = lastPageLocation }
+                                                            ( BotFramework.StartWebBrowser
+                                                                { pageGoToUrl = lastPageLocation
+                                                                , userProfileId = stateBefore.settings.webBrowserUserProfileId
+                                                                }
                                                             , { stateBefore
-                                                                | lastReloadPageTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
-                                                                , reloadPageCount = stateBefore.reloadPageCount + 1
+                                                                | lastStartWebBrowserTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
+                                                                , startWebBrowserCount = stateBefore.startWebBrowserCount + 1
                                                                 , readFromGameConsecutiveTimeoutsCount = 0
                                                               }
                                                             )
@@ -983,30 +1009,34 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
 
 maintainGameClient : BotState -> Maybe (DecisionPathNode InFarmCycleResponse)
 maintainGameClient botState =
-    case botState.lastRunJavascriptResult of
-        Nothing ->
+    case
+        botState
+            |> lastStartWebBrowserAgeInSecondsFromState
+            |> Maybe.andThen (nothingFromIntIfGreaterThan waitDurationAfterReloadWebPage)
+    of
+        Just lastReloadPageAgeInSeconds ->
             describeBranch
-                "Test if web browser is already open."
-                (endDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
+                ("Waiting because reloaded web page " ++ (lastReloadPageAgeInSeconds |> String.fromInt) ++ " seconds ago.")
+                (endDecisionPath (ContinueFarmCycle Nothing))
                 |> Just
 
-        Just _ ->
-            case botState |> lastReloadPageAgeInSecondsFromState |> Maybe.andThen (nothingFromIntIfGreaterThan waitDurationAfterReloadWebPage) of
-                Just lastReloadPageAgeInSeconds ->
+        Nothing ->
+            case botState |> reasonToRestartGameClientFromBotState of
+                Just reasonToRestartGameClient ->
                     describeBranch
-                        ("Waiting because reloaded web page " ++ (lastReloadPageAgeInSeconds |> String.fromInt) ++ " seconds ago.")
-                        (endDecisionPath (ContinueFarmCycle Nothing))
+                        ("Restart the game client (" ++ reasonToRestartGameClient ++ ").")
+                        (endDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
                         |> Just
 
                 Nothing ->
-                    case botState |> reasonToRestartGameClientFromBotState of
-                        Just reasonToRestartGameClient ->
+                    case botState.lastRunJavascriptResult of
+                        Nothing ->
                             describeBranch
-                                ("Restart the game client (" ++ reasonToRestartGameClient ++ ").")
-                                (endDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
+                                "Test if web browser is already open."
+                                (endDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
                                 |> Just
 
-                        Nothing ->
+                        Just _ ->
                             Nothing
 
 
@@ -1307,10 +1337,10 @@ describeVillageCompletion villageCompletion =
             { decisionBranch = "All farms in the search area have already been attacked in this farm cycle.", cycleStatsGroup = "Out of farms" }
 
 
-lastReloadPageAgeInSecondsFromState : BotState -> Maybe Int
-lastReloadPageAgeInSecondsFromState state =
-    state.lastReloadPageTimeInSeconds
-        |> Maybe.map (\lastReloadPageTimeInSeconds -> state.timeInMilliseconds // 1000 - lastReloadPageTimeInSeconds)
+lastStartWebBrowserAgeInSecondsFromState : BotState -> Maybe Int
+lastStartWebBrowserAgeInSecondsFromState state =
+    state.lastStartWebBrowserTimeInSeconds
+        |> Maybe.map (\lastStartWebBrowserTimeInSeconds -> state.timeInMilliseconds // 1000 - lastStartWebBrowserTimeInSeconds)
 
 
 requestToJumpToVillageIfNotYetDone : BotState -> VillageCoordinates -> Maybe RequestToPageStructure
@@ -2075,207 +2105,203 @@ decodeBattleReportResult =
 
 statusMessageFromState : BotState -> { activityDecisionStages : List String } -> String
 statusMessageFromState state { activityDecisionStages } =
-    case state.lastRunJavascriptResult of
-        Nothing ->
-            "Opening web browser."
+    let
+        sentAttacks =
+            countSentAttacks state
 
-        Just _ ->
-            let
-                sentAttacks =
-                    countSentAttacks state
-
-                describeSessionPerformance =
-                    [ ( "attacks sent", sentAttacks.inSession )
-                    , ( "coordinates read", state.numberOfReadsFromCoordinates )
-                    , ( "completed farm cycles", state.completedFarmCycles |> List.length )
-                    ]
-                        |> List.map (\( metric, amount ) -> metric ++ ": " ++ (amount |> String.fromInt))
-                        |> String.join ", "
-
-                jsRunResult =
-                    "lastRunJavascriptResult:\n"
-                        ++ (state.lastRunJavascriptResult |> Maybe.map .response |> describeMaybe describeRunJavascriptInCurrentPageResponseStructure)
-
-                villagesByCoordinates =
-                    state.coordinatesLastCheck
-                        |> Dict.toList
-                        |> List.filterMap
-                            (\( coordinates, scanResult ) ->
-                                case scanResult.result of
-                                    NoVillageThere ->
-                                        Nothing
-
-                                    VillageThere village ->
-                                        Just ( coordinates, village )
-                            )
-                        |> Dict.fromList
-
-                barbarianVillages =
-                    villagesByCoordinates |> Dict.filter (\_ village -> village.affiliation == Just AffiliationBarbarian)
-
-                villagesMatchingSettingsForFarm =
-                    villagesByCoordinates
-                        |> Dict.filter (\( x, y ) village -> villageMatchesSettingsForFarm state.settings { x = x, y = y } village)
-
-                numberOfVillagesAvoidedBySettings =
-                    (barbarianVillages |> Dict.size) - (villagesMatchingSettingsForFarm |> Dict.size)
-
-                coordinatesChecksReport =
-                    "Checked "
-                        ++ (state.coordinatesLastCheck |> Dict.size |> String.fromInt)
-                        ++ " unique coordinates and found "
-                        ++ (villagesByCoordinates |> Dict.size |> String.fromInt)
-                        ++ " villages, "
-                        ++ (barbarianVillages |> Dict.size |> String.fromInt)
-                        ++ " of which are barbarian villages"
-                        ++ (if numberOfVillagesAvoidedBySettings < 1 then
-                                ""
-
-                            else
-                                " (" ++ (numberOfVillagesAvoidedBySettings |> String.fromInt) ++ " avoided by current settings)"
-                           )
-                        ++ "."
-
-                sentAttacksReportPartCurrentCycle =
-                    case sentAttacks.inCurrentCycle of
-                        Nothing ->
-                            []
-
-                        Just inCurrentCycle ->
-                            [ "Sent " ++ (inCurrentCycle |> String.fromInt) ++ " attacks in the current cycle." ]
-
-                completedFarmCyclesReportLines =
-                    case state.completedFarmCycles |> List.head of
-                        Nothing ->
-                            []
-
-                        Just lastCompletedFarmCycle ->
-                            let
-                                completionAgeInMinutes =
-                                    (state.timeInMilliseconds // 1000 - lastCompletedFarmCycle.completionTime) // 60
-
-                                farmCycleConclusionDescription =
-                                    describeFarmCycleConclusion lastCompletedFarmCycle
-                            in
-                            [ "Completed "
-                                ++ (state.completedFarmCycles |> List.length |> describeOrdinalNumber)
-                                ++ " farm cycle "
-                                ++ (completionAgeInMinutes |> String.fromInt)
-                                ++ " minutes ago with "
-                                ++ farmCycleConclusionDescription.villagesReport
-                                ++ " "
-                                ++ farmCycleConclusionDescription.attacksReport
-                            , "---"
-                            ]
-
-                inGameReport =
-                    case state.gameRootInformationResult of
-                        Nothing ->
-                            "I did not yet read game root information. Please log in to the game so that you see your villages."
-
-                        Just gameRootInformationResult ->
-                            let
-                                gameRootInformation =
-                                    gameRootInformationResult.gameRootInformation
-
-                                ownVillagesReport =
-                                    "Found "
-                                        ++ (gameRootInformation.getTotalVillagesResult |> String.fromInt)
-                                        ++ " own villages"
-                                        ++ (if areAllVillagesLoaded gameRootInformation then
-                                                ""
-
-                                            else
-                                                ", but only " ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt) ++ " loaded yet"
-                                           )
-                                        ++ "."
-                            in
-                            ownVillagesReport
-
-                parseResponseErrorReport =
-                    case state.parseResponseError of
-                        Nothing ->
-                            ""
-
-                        Just parseResponseError ->
-                            Json.Decode.errorToString parseResponseError
-
-                debugInspectionLines =
-                    [ jsRunResult ]
-
-                enableDebugInspection =
-                    False
-
-                reloadReportLines =
-                    state
-                        |> lastReloadPageAgeInSecondsFromState
-                        |> Maybe.map
-                            (\lastReloadPageAgeInSeconds ->
-                                [ "Reloaded the web page "
-                                    ++ (state.reloadPageCount |> String.fromInt)
-                                    ++ " times, last time was "
-                                    ++ ((lastReloadPageAgeInSeconds // 60) |> String.fromInt)
-                                    ++ " minutes ago."
-                                ]
-                            )
-                        |> Maybe.withDefault []
-
-                readBattleReportsReport =
-                    case state.lastRequestReportListResult of
-                        Nothing ->
-                            "Did not yet read battle reports."
-
-                        Just requestReportListResult ->
-                            let
-                                responseReport =
-                                    case requestReportListResult.decodeResponseResult of
-                                        Ok requestReportListResponse ->
-                                            "Received IDs of " ++ (requestReportListResponse.reports |> List.length |> String.fromInt) ++ " reports"
-
-                                        Err decodeError ->
-                                            "Failed to decode the response: " ++ Json.Decode.errorToString decodeError
-                            in
-                            "Read the list of battle reports: " ++ responseReport
-
-                settingsReport =
-                    "Settings: "
-                        ++ ([ ( "cycles", state.settings.numberOfFarmCycles |> String.fromInt )
-                            , ( "breaks"
-                              , (state.settings.breakDurationMinMinutes |> String.fromInt)
-                                    ++ " - "
-                                    ++ (state.settings.breakDurationMaxMinutes |> String.fromInt)
-                              )
-                            , ( "max dist", state.settings.farmBarbarianVillageMaximumDistance |> String.fromInt )
-                            ]
-                                |> List.map (\( settingName, settingValue ) -> settingName ++ ": " ++ settingValue)
-                                |> String.join ", "
-                           )
-
-                activityDescription =
-                    activityDecisionStages
-                        |> List.indexedMap
-                            (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
-                        |> String.join "\n"
-            in
-            [ [ "Session performance: " ++ describeSessionPerformance ]
-            , completedFarmCyclesReportLines
-            , sentAttacksReportPartCurrentCycle
-            , [ coordinatesChecksReport ]
-            , [ inGameReport ]
-            , [ readBattleReportsReport ]
-            , reloadReportLines
-            , [ parseResponseErrorReport ]
-            , if enableDebugInspection then
-                debugInspectionLines
-
-              else
-                []
-            , [ "", "Current activity:" ]
-            , [ activityDescription ]
-            , [ "---", settingsReport ]
+        describeSessionPerformance =
+            [ ( "attacks sent", sentAttacks.inSession )
+            , ( "coordinates read", state.numberOfReadsFromCoordinates )
+            , ( "completed farm cycles", state.completedFarmCycles |> List.length )
             ]
-                |> List.concat
+                |> List.map (\( metric, amount ) -> metric ++ ": " ++ (amount |> String.fromInt))
+                |> String.join ", "
+
+        jsRunResult =
+            "lastRunJavascriptResult:\n"
+                ++ (state.lastRunJavascriptResult |> Maybe.map .response |> describeMaybe describeRunJavascriptInCurrentPageResponseStructure)
+
+        villagesByCoordinates =
+            state.coordinatesLastCheck
+                |> Dict.toList
+                |> List.filterMap
+                    (\( coordinates, scanResult ) ->
+                        case scanResult.result of
+                            NoVillageThere ->
+                                Nothing
+
+                            VillageThere village ->
+                                Just ( coordinates, village )
+                    )
+                |> Dict.fromList
+
+        barbarianVillages =
+            villagesByCoordinates |> Dict.filter (\_ village -> village.affiliation == Just AffiliationBarbarian)
+
+        villagesMatchingSettingsForFarm =
+            villagesByCoordinates
+                |> Dict.filter (\( x, y ) village -> villageMatchesSettingsForFarm state.settings { x = x, y = y } village)
+
+        numberOfVillagesAvoidedBySettings =
+            (barbarianVillages |> Dict.size) - (villagesMatchingSettingsForFarm |> Dict.size)
+
+        coordinatesChecksReport =
+            "Checked "
+                ++ (state.coordinatesLastCheck |> Dict.size |> String.fromInt)
+                ++ " unique coordinates and found "
+                ++ (villagesByCoordinates |> Dict.size |> String.fromInt)
+                ++ " villages, "
+                ++ (barbarianVillages |> Dict.size |> String.fromInt)
+                ++ " of which are barbarian villages"
+                ++ (if numberOfVillagesAvoidedBySettings < 1 then
+                        ""
+
+                    else
+                        " (" ++ (numberOfVillagesAvoidedBySettings |> String.fromInt) ++ " avoided by current settings)"
+                   )
+                ++ "."
+
+        sentAttacksReportPartCurrentCycle =
+            case sentAttacks.inCurrentCycle of
+                Nothing ->
+                    []
+
+                Just inCurrentCycle ->
+                    [ "Sent " ++ (inCurrentCycle |> String.fromInt) ++ " attacks in the current cycle." ]
+
+        completedFarmCyclesReportLines =
+            case state.completedFarmCycles |> List.head of
+                Nothing ->
+                    []
+
+                Just lastCompletedFarmCycle ->
+                    let
+                        completionAgeInMinutes =
+                            (state.timeInMilliseconds // 1000 - lastCompletedFarmCycle.completionTime) // 60
+
+                        farmCycleConclusionDescription =
+                            describeFarmCycleConclusion lastCompletedFarmCycle
+                    in
+                    [ "Completed "
+                        ++ (state.completedFarmCycles |> List.length |> describeOrdinalNumber)
+                        ++ " farm cycle "
+                        ++ (completionAgeInMinutes |> String.fromInt)
+                        ++ " minutes ago with "
+                        ++ farmCycleConclusionDescription.villagesReport
+                        ++ " "
+                        ++ farmCycleConclusionDescription.attacksReport
+                    , "---"
+                    ]
+
+        inGameReport =
+            case state.gameRootInformationResult of
+                Nothing ->
+                    "I did not yet read game root information. Please log in to the game so that you see your villages."
+
+                Just gameRootInformationResult ->
+                    let
+                        gameRootInformation =
+                            gameRootInformationResult.gameRootInformation
+
+                        ownVillagesReport =
+                            "Found "
+                                ++ (gameRootInformation.getTotalVillagesResult |> String.fromInt)
+                                ++ " own villages"
+                                ++ (if areAllVillagesLoaded gameRootInformation then
+                                        ""
+
+                                    else
+                                        ", but only " ++ (gameRootInformation.readyVillages |> List.length |> String.fromInt) ++ " loaded yet"
+                                   )
+                                ++ "."
+                    in
+                    ownVillagesReport
+
+        parseResponseErrorReport =
+            case state.parseResponseError of
+                Nothing ->
+                    ""
+
+                Just parseResponseError ->
+                    Json.Decode.errorToString parseResponseError
+
+        debugInspectionLines =
+            [ jsRunResult ]
+
+        enableDebugInspection =
+            False
+
+        reloadReportLines =
+            state
+                |> lastStartWebBrowserAgeInSecondsFromState
+                |> Maybe.map
+                    (\lastReloadPageAgeInSeconds ->
+                        [ "Started the web browser "
+                            ++ (state.startWebBrowserCount |> String.fromInt)
+                            ++ " times, last time was "
+                            ++ ((lastReloadPageAgeInSeconds // 60) |> String.fromInt)
+                            ++ " minutes ago."
+                        ]
+                    )
+                |> Maybe.withDefault []
+
+        readBattleReportsReport =
+            case state.lastRequestReportListResult of
+                Nothing ->
+                    "Did not yet read battle reports."
+
+                Just requestReportListResult ->
+                    let
+                        responseReport =
+                            case requestReportListResult.decodeResponseResult of
+                                Ok requestReportListResponse ->
+                                    "Received IDs of " ++ (requestReportListResponse.reports |> List.length |> String.fromInt) ++ " reports"
+
+                                Err decodeError ->
+                                    "Failed to decode the response: " ++ Json.Decode.errorToString decodeError
+                    in
+                    "Read the list of battle reports: " ++ responseReport
+
+        settingsReport =
+            "Settings: "
+                ++ ([ ( "cycles", state.settings.numberOfFarmCycles |> String.fromInt )
+                    , ( "breaks"
+                      , (state.settings.breakDurationMinMinutes |> String.fromInt)
+                            ++ " - "
+                            ++ (state.settings.breakDurationMaxMinutes |> String.fromInt)
+                      )
+                    , ( "max dist", state.settings.farmBarbarianVillageMaximumDistance |> String.fromInt )
+                    , ( "web-browser-user-profile-id", state.settings.webBrowserUserProfileId )
+                    ]
+                        |> List.map (\( settingName, settingValue ) -> settingName ++ ": " ++ settingValue)
+                        |> String.join ", "
+                   )
+
+        activityDescription =
+            activityDecisionStages
+                |> List.indexedMap
+                    (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
                 |> String.join "\n"
+    in
+    [ [ "Session performance: " ++ describeSessionPerformance ]
+    , completedFarmCyclesReportLines
+    , sentAttacksReportPartCurrentCycle
+    , [ coordinatesChecksReport ]
+    , [ inGameReport ]
+    , [ readBattleReportsReport ]
+    , reloadReportLines
+    , [ parseResponseErrorReport ]
+    , if enableDebugInspection then
+        debugInspectionLines
+
+      else
+        []
+    , [ "", "Current activity:" ]
+    , [ activityDescription ]
+    , [ "---", settingsReport ]
+    ]
+        |> List.concat
+        |> String.join "\n"
 
 
 areAllVillagesLoaded : TribalWars2RootInformation -> Bool
@@ -2372,7 +2398,14 @@ villageCoordinatesDisplayText { x, y } =
 
 describeRunJavascriptInCurrentPageResponseStructure : BotFramework.RunJavascriptInCurrentPageResponseStructure -> String
 describeRunJavascriptInCurrentPageResponseStructure response =
-    "{ directReturnValueAsString = "
+    "{ webBrowserAvailable = "
+        ++ (if response.webBrowserAvailable then
+                "true"
+
+            else
+                "false"
+           )
+        ++ ", directReturnValueAsString = "
         ++ describeString 300 response.directReturnValueAsString
         ++ "\n"
         ++ ", callbackReturnValueAsString = "

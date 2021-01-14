@@ -107,7 +107,7 @@ You can adjust six settings:
 + `farm-avoid-coordinates` : List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
 + `character-to-farm` : Name of a (player) character to farm like barbarians.
 
-To configure settings, open the configuration page at https://catalog.botengine.org/bd3e2da9569724fd984cef7c33db5bb78339a86080a4775b133adf8882d192cc in a web browser.
+To configure settings, open the configuration page at https://catalog.botengine.org/d0b382bd4254d5cba7394c6910580e0781810de86a5d0d568faf3215e78951b9 in a web browser.
 
 On this page, scroll down to the button `Configure app`.
 

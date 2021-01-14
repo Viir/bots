@@ -40,7 +40,7 @@ type BotResponse
 
 type BotRequest
     = RunJavascriptInCurrentPageRequest RunJavascriptInCurrentPageRequestStructure
-    | RestartWebBrowser { pageGoToUrl : Maybe String }
+    | StartWebBrowser { userProfileId : String, pageGoToUrl : Maybe String }
 
 
 type alias RunJavascriptInCurrentPageRequestStructure =
@@ -52,6 +52,7 @@ type alias RunJavascriptInCurrentPageRequestStructure =
 
 type alias RunJavascriptInCurrentPageResponseStructure =
     { requestId : String
+    , webBrowserAvailable : Bool
     , directReturnValueAsString : String
     , callbackReturnValueAsString : Maybe String
     }
@@ -59,11 +60,17 @@ type alias RunJavascriptInCurrentPageResponseStructure =
 
 type alias StateIncludingSetup botState =
     { setup : SetupState
-    , pendingRequestToRestartWebBrowser : Maybe { pageGoToUrl : Maybe String }
+    , pendingRequestToRestartWebBrowser : Maybe RequestToRestartWebBrowserStructure
     , botState : BotState botState
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
     , taskInProgress : Maybe { startTimeInMilliseconds : Int, taskIdString : String, taskDescription : String }
+    }
+
+
+type alias RequestToRestartWebBrowserStructure =
+    { userProfileId : String
+    , pageGoToUrl : Maybe String
     }
 
 
@@ -183,8 +190,7 @@ processEventNotWaitingForTask : StateIncludingSetup botState -> ( StateIncluding
 processEventNotWaitingForTask stateBefore =
     case
         stateBefore.setup
-            |> getNextSetupTask
-                { pageGoToUrl = stateBefore.pendingRequestToRestartWebBrowser |> Maybe.andThen .pageGoToUrl }
+            |> getNextSetupTask stateBefore.pendingRequestToRestartWebBrowser
     of
         ContinueSetup setupState setupTask setupTaskDescription ->
             let
@@ -227,7 +233,7 @@ processEventNotWaitingForTask stateBefore =
                                             , [ runJavascriptInCurrentPageRequest |> operateBot.taskFromBotRequestRunJavascript ]
                                             )
 
-                                        RestartWebBrowser restartWebBrowser ->
+                                        StartWebBrowser startWebBrowser ->
                                             let
                                                 releaseVolatileHostTasks =
                                                     case stateBefore.setup.createVolatileHostResult of
@@ -238,7 +244,7 @@ processEventNotWaitingForTask stateBefore =
                                                             []
                                             in
                                             ( { stateBefore
-                                                | pendingRequestToRestartWebBrowser = Just restartWebBrowser
+                                                | pendingRequestToRestartWebBrowser = Just startWebBrowser
                                                 , setup = initSetup
                                               }
                                             , releaseVolatileHostTasks
@@ -441,8 +447,8 @@ integrateResponseFromVolatileHost ( _, response ) stateBefore =
             ( stateBefore, Just botEvent )
 
 
-getNextSetupTask : { pageGoToUrl : Maybe String } -> SetupState -> SetupTask
-getNextSetupTask startWebBrowserParameters stateBefore =
+getNextSetupTask : Maybe RequestToRestartWebBrowserStructure -> SetupState -> SetupTask
+getNextSetupTask startWebBrowserRequest stateBefore =
     case stateBefore.createVolatileHostResult of
         Nothing ->
             ContinueSetup
@@ -454,39 +460,45 @@ getNextSetupTask startWebBrowserParameters stateBefore =
             FailSetup ("Set up the volatile host failed with exception: " ++ error.exceptionToString)
 
         Just (Ok createVolatileHostComplete) ->
-            getSetupTaskWhenVolatileHostSetupCompleted startWebBrowserParameters stateBefore createVolatileHostComplete.hostId
+            getSetupTaskWhenVolatileHostSetupCompleted startWebBrowserRequest stateBefore createVolatileHostComplete.hostId
 
 
-getSetupTaskWhenVolatileHostSetupCompleted : { pageGoToUrl : Maybe String } -> SetupState -> InterfaceToHost.VolatileHostId -> SetupTask
-getSetupTaskWhenVolatileHostSetupCompleted { pageGoToUrl } stateBefore volatileHostId =
-    if stateBefore.webBrowserStarted |> not then
-        ContinueSetup stateBefore
-            (InterfaceToHost.RequestToVolatileHost
-                (InterfaceToHost.RequestNotRequiringInputFocus
-                    { hostId = volatileHostId
-                    , request =
-                        VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                            (VolatileHostInterface.StartWebBrowserRequest { pageGoToUrl = pageGoToUrl })
-                    }
+getSetupTaskWhenVolatileHostSetupCompleted : Maybe RequestToRestartWebBrowserStructure -> SetupState -> InterfaceToHost.VolatileHostId -> SetupTask
+getSetupTaskWhenVolatileHostSetupCompleted maybeStartWebBrowserRequest stateBefore volatileHostId =
+    case maybeStartWebBrowserRequest of
+        Just startWebBrowserRequest ->
+            ContinueSetup stateBefore
+                (InterfaceToHost.RequestToVolatileHost
+                    (InterfaceToHost.RequestNotRequiringInputFocus
+                        { hostId = volatileHostId
+                        , request =
+                            VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
+                                (VolatileHostInterface.StartWebBrowserRequest
+                                    { pageGoToUrl = startWebBrowserRequest.pageGoToUrl
+                                    , userProfileId = startWebBrowserRequest.userProfileId
+                                    , remoteDebuggingPort = 13485
+                                    }
+                                )
+                        }
+                    )
                 )
-            )
-            "Starting the web browser. This can take a while because I might need to download the web browser software first."
+                "Starting the web browser. This can take a while because I might need to download the web browser software first."
 
-    else
-        OperateBot
-            { taskFromBotRequestRunJavascript =
-                \runJavascriptInCurrentPageRequest ->
-                    let
-                        requestToVolatileHost =
-                            VolatileHostInterface.RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest
-                    in
-                    InterfaceToHost.RequestToVolatileHost
-                        (InterfaceToHost.RequestNotRequiringInputFocus
-                            { hostId = volatileHostId
-                            , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
-                            }
-                        )
-            }
+        Nothing ->
+            OperateBot
+                { taskFromBotRequestRunJavascript =
+                    \runJavascriptInCurrentPageRequest ->
+                        let
+                            requestToVolatileHost =
+                                VolatileHostInterface.RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest
+                        in
+                        InterfaceToHost.RequestToVolatileHost
+                            (InterfaceToHost.RequestNotRequiringInputFocus
+                                { hostId = volatileHostId
+                                , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
+                                }
+                            )
+                }
 
 
 runScriptResultDisplayString : Result String (Maybe String) -> { string : String, isErr : Bool }

@@ -11,7 +11,7 @@ import Json.Encode
 
 
 type RequestToVolatileHost
-    = StartWebBrowserRequest { pageGoToUrl : Maybe String }
+    = StartWebBrowserRequest { pageGoToUrl : Maybe String, userProfileId : String, remoteDebuggingPort : Int }
     | RunJavascriptInCurrentPageRequest RunJavascriptInCurrentPageRequestStructure
 
 
@@ -29,6 +29,7 @@ type ResponseFromVolatileHost
 
 type alias RunJavascriptInCurrentPageResponseStructure =
     { requestId : String
+    , webBrowserAvailable : Bool
     , directReturnValueAsString : String
     , callbackReturnValueAsString : Maybe String
     }
@@ -58,6 +59,12 @@ encodeRequestToVolatileHost request =
                         [ ( "pageGoToUrl"
                           , startWebBrowserRequest.pageGoToUrl |> Maybe.map Json.Encode.string |> Maybe.withDefault Json.Encode.null
                           )
+                        , ( "userProfileId"
+                          , startWebBrowserRequest.userProfileId |> Json.Encode.string
+                          )
+                        , ( "remoteDebuggingPort"
+                          , startWebBrowserRequest.remoteDebuggingPort |> Json.Encode.int
+                          )
                         ]
                   )
                 ]
@@ -77,8 +84,9 @@ encodeRunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest =
 
 decodeRunJavascriptInCurrentPageResponse : Json.Decode.Decoder RunJavascriptInCurrentPageResponseStructure
 decodeRunJavascriptInCurrentPageResponse =
-    Json.Decode.map3 RunJavascriptInCurrentPageResponseStructure
+    Json.Decode.map4 RunJavascriptInCurrentPageResponseStructure
         (Json.Decode.field "requestId" Json.Decode.string)
+        (Json.Decode.field "webBrowserAvailable" Json.Decode.bool)
         (Json.Decode.field "directReturnValueAsString" Json.Decode.string)
         (Json.Decode.Extra.optionalField "callbackReturnValueAsString" Json.Decode.string)
 

@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2021-01-06
+{- EVE Online mining bot version 2021-01-14
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -99,6 +99,7 @@ defaultBotSettings =
     , botStepDelayMilliseconds = 2000
     , oreHoldMaxPercent = 99
     , selectInstancePilotName = Nothing
+    , returnToUnloadRemainingSessionLengthThresholdSeconds = 120
     }
 
 
@@ -158,6 +159,7 @@ type alias BotSettings =
     , botStepDelayMilliseconds : Int
     , oreHoldMaxPercent : Int
     , selectInstancePilotName : Maybe String
+    , returnToUnloadRemainingSessionLengthThresholdSeconds : Int
     }
 
 
@@ -421,40 +423,61 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                         let
                             describeThresholdToUnload =
                                 (context.eventContext.appSettings.oreHoldMaxPercent |> String.fromInt) ++ "%"
-                        in
-                        if context.eventContext.appSettings.oreHoldMaxPercent <= fillPercent then
-                            describeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
-                                (returnDronesToBay context.readingFromGameClient
-                                    |> Maybe.withDefault (dockToUnloadOre context)
-                                )
 
-                        else
-                            describeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
-                                (case context.readingFromGameClient.targets |> List.head of
-                                    Nothing ->
-                                        describeBranch "I see no locked target."
-                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
+                            maybeReasonToReturnToUnload =
+                                if context.eventContext.appSettings.oreHoldMaxPercent <= fillPercent then
+                                    Just ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ".")
 
-                                    Just _ ->
-                                        {- Depending on the UI configuration, the game client might automatically target rats.
-                                           To avoid these targets interfering with mining, unlock them here.
-                                        -}
-                                        unlockTargetsNotForMining context
-                                            |> Maybe.withDefault
-                                                (describeBranch "I see a locked target."
-                                                    (case context |> knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                                        Nothing ->
-                                                            describeBranch "All known mining modules are active."
-                                                                (readShipUIModuleButtonTooltips context
-                                                                    |> Maybe.withDefault waitForProgressInGame
-                                                                )
-
-                                                        Just inactiveModule ->
-                                                            describeBranch "I see an inactive mining module. Activate it."
-                                                                (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                                else
+                                    case EveOnline.AppFramework.secondsToSessionEnd context.eventContext of
+                                        Just secondsToSessionEnd ->
+                                            if secondsToSessionEnd < context.eventContext.appSettings.returnToUnloadRemainingSessionLengthThresholdSeconds then
+                                                Just
+                                                    ("Remaining session length is less than "
+                                                        ++ String.fromInt context.eventContext.appSettings.returnToUnloadRemainingSessionLengthThresholdSeconds
+                                                        ++ " seconds."
                                                     )
-                                                )
-                                )
+
+                                            else
+                                                Nothing
+
+                                        Nothing ->
+                                            Nothing
+                        in
+                        case maybeReasonToReturnToUnload of
+                            Just reasonToReturnToUnload ->
+                                describeBranch ("Found a reason to return to unload: " ++ reasonToReturnToUnload)
+                                    (returnDronesToBay context.readingFromGameClient
+                                        |> Maybe.withDefault (dockToUnloadOre context)
+                                    )
+
+                            Nothing ->
+                                describeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
+                                    (case context.readingFromGameClient.targets |> List.head of
+                                        Nothing ->
+                                            describeBranch "I see no locked target."
+                                                (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
+
+                                        Just _ ->
+                                            {- Depending on the UI configuration, the game client might automatically target rats.
+                                               To avoid these targets interfering with mining, unlock them here.
+                                            -}
+                                            unlockTargetsNotForMining context
+                                                |> Maybe.withDefault
+                                                    (describeBranch "I see a locked target."
+                                                        (case context |> knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                            Nothing ->
+                                                                describeBranch "All known mining modules are active."
+                                                                    (readShipUIModuleButtonTooltips context
+                                                                        |> Maybe.withDefault waitForProgressInGame
+                                                                    )
+
+                                                            Just inactiveModule ->
+                                                                describeBranch "I see an inactive mining module. Activate it."
+                                                                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                                                        )
+                                                    )
+                                    )
 
 
 unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode

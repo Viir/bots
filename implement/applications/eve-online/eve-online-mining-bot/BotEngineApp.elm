@@ -808,14 +808,24 @@ launchDrones readingFromGameClient =
 
                             dronesInLocalSpaceQuantity =
                                 droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
+
+                            droneGroupExpectedDisplayText =
+                                "Hobgoblin (5)"
                         in
                         if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
                             Just
                                 (describeBranch "Launch drones"
-                                    (useContextMenuCascade
-                                        ( "drones group", droneGroupInBay.header.uiNode )
-                                        (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
-                                        readingFromGameClient
+                                    (case getDescendantWithDisplayText droneGroupExpectedDisplayText dronesWindow.uiNode of
+                                        Nothing ->
+                                            describeBranch
+                                                ("Did not find the node with display text '" ++ droneGroupExpectedDisplayText ++ "'")
+                                                askForHelpToGetUnstuck
+
+                                        Just droneGroupUiNode ->
+                                            useContextMenuCascade
+                                                ( "drones group", droneGroupUiNode )
+                                                (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
+                                                readingFromGameClient
                                     )
                                 )
 

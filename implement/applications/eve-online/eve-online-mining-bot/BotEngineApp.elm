@@ -1201,3 +1201,11 @@ shipManeuverIsApproaching =
         >> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverApproach)
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
+
+
+getDescendantWithDisplayText : String -> UIElement -> Maybe UIElement
+getDescendantWithDisplayText displayText parent =
+    parent
+        |> EveOnline.ParseUserInterface.listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> EveOnline.ParseUserInterface.getDisplayText >> (==) (Just displayText))
+        |> List.head

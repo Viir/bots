@@ -502,9 +502,9 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
                             )
                             asteroidInOverview
                             |> Maybe.withDefault
-                                (launchDrones context.readingFromGameClient
-                                    |> Maybe.withDefault
-                                        (describeBranch "Locked asteroid and launched drones." waitForProgressInGame)
+                                (launchDrones
+                                    { ifComplete = describeBranch "Locked asteroid and launched drones." waitForProgressInGame }
+                                    context.readingFromGameClient
                                 )
                         )
                 )
@@ -802,36 +802,35 @@ dockToRandomStationOrStructure readingFromGameClient =
         readingFromGameClient
 
 
-launchDrones : ReadingFromGameClient -> Maybe DecisionPathNode
-launchDrones readingFromGameClient =
-    readingFromGameClient.dronesWindow
-        |> Maybe.andThen
-            (\dronesWindow ->
-                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
-                    ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
-                        let
-                            dronesInBayQuantity =
-                                droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
+launchDrones : { ifComplete : DecisionPathNode } -> ReadingFromGameClient -> DecisionPathNode
+launchDrones { ifComplete } readingFromGameClient =
+    case readingFromGameClient.dronesWindow of
+        Nothing ->
+            ifComplete
 
-                            dronesInLocalSpaceQuantity =
-                                droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
-                        in
-                        if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
-                            Just
-                                (describeBranch "Launch drones"
-                                    (useContextMenuCascade
-                                        ( "drones group", droneGroupInBay.header.uiNode )
-                                        (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
-                                        readingFromGameClient
-                                    )
-                                )
+        Just dronesWindow ->
+            case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
+                ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
+                    let
+                        dronesInBayQuantity =
+                            droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
 
-                        else
-                            Nothing
+                        dronesInLocalSpaceQuantity =
+                            droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
+                    in
+                    if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
+                        describeBranch "Launch drones"
+                            (useContextMenuCascade
+                                ( "drones group", droneGroupInBay.header.uiNode )
+                                (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
+                                readingFromGameClient
+                            )
 
-                    _ ->
-                        Nothing
-            )
+                    else
+                        ifComplete
+
+                _ ->
+                    ifComplete
 
 
 returnDronesToBay : ReadingFromGameClient -> Maybe DecisionPathNode

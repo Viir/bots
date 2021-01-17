@@ -495,14 +495,16 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
             describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
                 (warpToOverviewEntryIfFarEnough context asteroidInOverview
                     |> Maybe.withDefault
-                        (launchDrones context.readingFromGameClient
+                        (lockTargetFromOverviewEntryAndEnsureIsInRange
+                            context.readingFromGameClient
+                            (min context.eventContext.appSettings.targetingRange
+                                context.eventContext.appSettings.miningModuleRange
+                            )
+                            asteroidInOverview
                             |> Maybe.withDefault
-                                (lockTargetFromOverviewEntryAndEnsureIsInRange
-                                    context.readingFromGameClient
-                                    (min context.eventContext.appSettings.targetingRange
-                                        context.eventContext.appSettings.miningModuleRange
-                                    )
-                                    asteroidInOverview
+                                (launchDrones context.readingFromGameClient
+                                    |> Maybe.withDefault
+                                        (describeBranch "Locked asteroid and launched drones." waitForProgressInGame)
                                 )
                         )
                 )
@@ -587,32 +589,37 @@ ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInven
                         )
 
 
-lockTargetFromOverviewEntryAndEnsureIsInRange : ReadingFromGameClient -> Int -> OverviewWindowEntry -> DecisionPathNode
+lockTargetFromOverviewEntryAndEnsureIsInRange : ReadingFromGameClient -> Int -> OverviewWindowEntry -> Maybe DecisionPathNode
 lockTargetFromOverviewEntryAndEnsureIsInRange readingFromGameClient rangeInMeters overviewEntry =
     case overviewEntry.objectDistanceInMeters of
         Ok distanceInMeters ->
             if distanceInMeters <= rangeInMeters then
-                if overviewEntry.commonIndications.targetedByMe || overviewEntry.commonIndications.targeting then
-                    describeBranch "Locking target is in progress, wait for completion." waitForProgressInGame
-
-                else
-                    describeBranch "Object is in range. Lock target."
-                        (lockTargetFromOverviewEntry overviewEntry readingFromGameClient)
-
-            else
-                describeBranch ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
-                    (if shipManeuverIsApproaching readingFromGameClient then
-                        describeBranch "I see we already approach." waitForProgressInGame
+                Just
+                    (if overviewEntry.commonIndications.targetedByMe || overviewEntry.commonIndications.targeting then
+                        describeBranch "Locking target is in progress, wait for completion." waitForProgressInGame
 
                      else
-                        useContextMenuCascadeOnOverviewEntry
+                        describeBranch "Object is in range. Lock target."
+                            (lockTargetFromOverviewEntry overviewEntry readingFromGameClient)
+                    )
+
+            else if shipManeuverIsApproaching readingFromGameClient then
+                -- describeBranch "I see we already approach." waitForProgressInGame
+                Nothing
+
+            else
+                Just
+                    (describeBranch
+                        ("Object is not in range (" ++ (distanceInMeters |> String.fromInt) ++ " meters away). Approach.")
+                        (useContextMenuCascadeOnOverviewEntry
                             (useMenuEntryWithTextContaining "approach" menuCascadeCompleted)
                             overviewEntry
                             readingFromGameClient
+                        )
                     )
 
         Err error ->
-            describeBranch ("Failed to read the distance: " ++ error) askForHelpToGetUnstuck
+            Just (describeBranch ("Failed to read the distance: " ++ error) askForHelpToGetUnstuck)
 
 
 lockTargetFromOverviewEntry : OverviewWindowEntry -> ReadingFromGameClient -> DecisionPathNode

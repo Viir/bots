@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2021-01-06
+{- EVE Online mining bot version 2021-01-18
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -1173,24 +1173,6 @@ itemHangarFromInventoryWindow =
         >> List.filter (.text >> String.toLower >> String.contains "item hangar")
         >> List.head
         >> Maybe.map .uiNode
-
-
-{-| The region of a ship entry in the inventory window can contain child nodes (e.g. 'Ore Hold').
-For this reason, we don't click on the center but stay close to the top.
--}
-predictUIElementInventoryShipEntry : EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry -> UIElement
-predictUIElementInventoryShipEntry treeEntry =
-    let
-        originalUIElement =
-            treeEntry.uiNode
-
-        originalTotalDisplayRegion =
-            originalUIElement.totalDisplayRegion
-
-        totalDisplayRegion =
-            { originalTotalDisplayRegion | height = 10 }
-    in
-    { originalUIElement | totalDisplayRegion = totalDisplayRegion }
 
 
 shipManeuverIsApproaching : ReadingFromGameClient -> Bool

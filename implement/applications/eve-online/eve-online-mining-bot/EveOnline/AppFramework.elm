@@ -15,7 +15,7 @@ module EveOnline.AppFramework exposing (..)
 
 import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.Basics
-import Common.DecisionTree
+import Common.DecisionPath
 import Common.EffectOnWindow
 import Common.FNV
 import Dict
@@ -1040,7 +1040,7 @@ useContextMenuCascadeOnListSurroundingsButton :
 useContextMenuCascadeOnListSurroundingsButton useContextMenu readingFromGameClient =
     case readingFromGameClient.infoPanelContainer |> Maybe.andThen .infoPanelLocationInfo of
         Nothing ->
-            Common.DecisionTree.describeBranch "I do not see the location info panel." askForHelpToGetUnstuck
+            Common.DecisionPath.describeBranch "I do not see the location info panel." askForHelpToGetUnstuck
 
         Just infoPanelLocationInfo ->
             useContextMenuCascade
@@ -1071,12 +1071,12 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
             |> List.head
     of
         Nothing ->
-            Common.DecisionTree.describeBranch
+            Common.DecisionPath.describeBranch
                 ("All of "
                     ++ initialUIElementName
                     ++ " is occluded by context menus."
                 )
-                (Common.DecisionTree.endDecisionPath
+                (Common.DecisionPath.endDecisionPath
                     (actWithoutFurtherReadings
                         ( "Click somewhere else to get rid of the occluding elements."
                         , Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight { x = 4, y = 4 }
@@ -1094,7 +1094,7 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
             , actionsDependingOnNewReadings = useContextMenu |> unpackContextMenuTreeToListOfActionsDependingOnReadings
             }
                 |> Act
-                |> Common.DecisionTree.endDecisionPath
+                |> Common.DecisionPath.endDecisionPath
 
 
 getEntropyIntFromReadingFromGameClient : EveOnline.ParseUserInterface.ParsedUserInterface -> Int
@@ -1353,7 +1353,7 @@ type EndDecisionPathStructure
 
 
 type alias DecisionPathNode =
-    Common.DecisionTree.DecisionPathNode EndDecisionPathStructure
+    Common.DecisionPath.DecisionPathNode EndDecisionPathStructure
 
 
 type alias StepDecisionContext appSettings appMemory =
@@ -1364,7 +1364,7 @@ type alias StepDecisionContext appSettings appMemory =
     }
 
 
-type alias AppStateWithMemoryAndDecisionTree appMemory =
+type alias AppStateSeparatingMemory appMemory =
     { programState :
         Maybe
             { originalDecision : DecisionPathNode
@@ -1386,13 +1386,13 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
     case readingFromGameClient.infoPanelContainer |> Maybe.andThen .infoPanelLocationInfo of
         Nothing ->
             Just
-                (Common.DecisionTree.describeBranch "I do not see the location info panel. Enable the info panel."
+                (Common.DecisionPath.describeBranch "I do not see the location info panel. Enable the info panel."
                     (case readingFromGameClient.infoPanelContainer |> Maybe.andThen .icons |> Maybe.andThen .locationInfo of
                         Nothing ->
-                            Common.DecisionTree.describeBranch "I do not see the icon for the location info panel." askForHelpToGetUnstuck
+                            Common.DecisionPath.describeBranch "I do not see the icon for the location info panel." askForHelpToGetUnstuck
 
                         Just iconLocationInfoPanel ->
-                            Common.DecisionTree.endDecisionPath
+                            Common.DecisionPath.endDecisionPath
                                 (actWithoutFurtherReadings
                                     ( "Click on the icon to enable the info panel."
                                     , iconLocationInfoPanel |> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft
@@ -1407,8 +1407,8 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
 
             else
                 Just
-                    (Common.DecisionTree.describeBranch "Location info panel seems collapsed."
-                        (Common.DecisionTree.endDecisionPath
+                    (Common.DecisionPath.describeBranch "Location info panel seems collapsed."
+                        (Common.DecisionPath.endDecisionPath
                             (actWithoutFurtherReadings
                                 ( "Click to expand the info panel."
                                 , Common.EffectOnWindow.effectsMouseClickAtLocation
@@ -1432,19 +1432,19 @@ branchDependingOnDockedOrInSpace :
 branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI, ifUndockingComplete } readingFromGameClient =
     case readingFromGameClient.shipUI of
         Nothing ->
-            Common.DecisionTree.describeBranch "I see no ship UI, assume we are docked." ifDocked
+            Common.DecisionPath.describeBranch "I see no ship UI, assume we are docked." ifDocked
 
         Just shipUI ->
             ifSeeShipUI shipUI
                 |> Maybe.withDefault
                     (case readingFromGameClient.overviewWindow of
                         Nothing ->
-                            Common.DecisionTree.describeBranch
+                            Common.DecisionPath.describeBranch
                                 "I see no overview window, wait until undocking completed."
                                 waitForProgressInGame
 
                         Just overviewWindow ->
-                            Common.DecisionTree.describeBranch "I see ship UI and overview, undocking complete."
+                            Common.DecisionPath.describeBranch "I see ship UI and overview, undocking complete."
                                 (ifUndockingComplete
                                     { shipUI = shipUI, overviewWindow = overviewWindow }
                                 )
@@ -1453,13 +1453,13 @@ branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI, ifUndockingComplete } 
 
 waitForProgressInGame : DecisionPathNode
 waitForProgressInGame =
-    Common.DecisionTree.endDecisionPath Wait
+    Common.DecisionPath.endDecisionPath Wait
 
 
 askForHelpToGetUnstuck : DecisionPathNode
 askForHelpToGetUnstuck =
-    Common.DecisionTree.describeBranch "I am stuck here and need help to continue."
-        (Common.DecisionTree.endDecisionPath Wait)
+    Common.DecisionPath.describeBranch "I am stuck here and need help to continue."
+        (Common.DecisionPath.endDecisionPath Wait)
 
 
 readShipUIModuleButtonTooltipWhereNotYetInMemory :
@@ -1476,7 +1476,7 @@ readShipUIModuleButtonTooltipWhereNotYetInMemory context =
         |> List.head
         |> Maybe.map
             (\moduleButtonWithoutMemoryOfTooltip ->
-                Common.DecisionTree.endDecisionPath
+                Common.DecisionPath.endDecisionPath
                     (actWithoutFurtherReadings
                         ( "Read tooltip for module button"
                         , [ Common.EffectOnWindow.MouseMoveTo
@@ -1492,25 +1492,25 @@ actWithoutFurtherReadings actionsAlreadyDecided =
     Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
 
 
-initStateWithMemoryAndDecisionTree : appMemory -> AppStateWithMemoryAndDecisionTree appMemory
-initStateWithMemoryAndDecisionTree appMemory =
+initAppStateSeparatingMemory : appMemory -> AppStateSeparatingMemory appMemory
+initAppStateSeparatingMemory appMemory =
     { programState = Nothing
     , appMemory = appMemory
     , previousStepEffects = []
     }
 
 
-processEveOnlineAppEventWithMemoryAndDecisionTree :
+processEveOnlineAppEventSeparatingMemory :
     { updateMemoryForNewReadingFromGame : ReadingFromGameClient -> appMemory -> appMemory
     , statusTextFromState : StepDecisionContext appSettings appMemory -> String
-    , decisionTreeRoot : StepDecisionContext appSettings appMemory -> DecisionPathNode
+    , decideNextAction : StepDecisionContext appSettings appMemory -> DecisionPathNode
     , millisecondsToNextReadingFromGame : StepDecisionContext appSettings appMemory -> Int
     }
     -> AppEventContext appSettings
     -> AppEvent
-    -> AppStateWithMemoryAndDecisionTree appMemory
-    -> ( AppStateWithMemoryAndDecisionTree appMemory, AppEventResponse )
-processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stateBefore =
+    -> AppStateSeparatingMemory appMemory
+    -> ( AppStateSeparatingMemory appMemory, AppEventResponse )
+processEveOnlineAppEventSeparatingMemory config eventContext event stateBefore =
     case event of
         ReadingFromGameClientCompleted readingFromGameClient ->
             let
@@ -1527,10 +1527,10 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                 programStateIfEvalDecisionTreeNew =
                     let
                         originalDecision =
-                            config.decisionTreeRoot decisionContext
+                            config.decideNextAction decisionContext
 
                         originalRemainingActions =
-                            case Common.DecisionTree.unpackToDecisionStagesDescriptionsAndLeaf originalDecision |> Tuple.second of
+                            case Common.DecisionPath.unpackToDecisionStagesDescriptionsAndLeaf originalDecision |> Tuple.second of
                                 Wait ->
                                     []
 
@@ -1556,7 +1556,7 @@ processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stat
                         |> Maybe.withDefault programStateIfEvalDecisionTreeNew
 
                 ( originalDecisionStagesDescriptions, originalDecisionLeaf ) =
-                    Common.DecisionTree.unpackToDecisionStagesDescriptionsAndLeaf programStateToContinue.originalDecision
+                    Common.DecisionPath.unpackToDecisionStagesDescriptionsAndLeaf programStateToContinue.originalDecision
 
                 ( currentStepDescription, effectsOnGameClientWindow, programState ) =
                     case programStateToContinue.remainingActions of

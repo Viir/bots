@@ -1,4 +1,4 @@
-module Common.DecisionTree exposing (..)
+module Common.DecisionPath exposing (..)
 
 
 type DecisionPathNode leaf
@@ -30,11 +30,11 @@ unpackToDecisionStagesDescriptionsAndLeaf node =
             ( branchDescription :: childDecisionsDescriptions, leaf )
 
 
-continueDecisionTree : (originalLeaf -> DecisionPathNode newLeaf) -> DecisionPathNode originalLeaf -> DecisionPathNode newLeaf
-continueDecisionTree continueLeaf originalNode =
+continueDecisionPath : (originalLeaf -> DecisionPathNode newLeaf) -> DecisionPathNode originalLeaf -> DecisionPathNode newLeaf
+continueDecisionPath continueLeaf originalNode =
     case originalNode of
         DescribeBranch branch childNode ->
-            DescribeBranch branch (continueDecisionTree continueLeaf childNode)
+            DescribeBranch branch (continueDecisionPath continueLeaf childNode)
 
         EndDecisionPath leaf ->
             continueLeaf leaf

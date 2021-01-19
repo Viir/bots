@@ -944,7 +944,10 @@ processEveOnlineBotEvent =
         { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
         , statusTextFromState = statusTextFromState
         , decisionTreeRoot = miningBotDecisionRoot
-        , millisecondsToNextReadingFromGame = .eventContext >> .appSettings >> .botStepDelayMilliseconds
+        , millisecondsToNextReadingFromGame =
+            \context ->
+                context.eventContext.appSettings.botStepDelayMilliseconds
+                    + (EveOnline.AppFramework.getEntropyIntFromReadingFromGameClient context.readingFromGameClient |> modBy 1500)
         }
 
 

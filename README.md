@@ -36,6 +36,8 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + How to collect samples for 64-bit memory reading development: [./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md](./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md)
 
++ Syntax highlighting of code blocks - How to format code on the forum: https://forum.botengine.org/t/syntax-highlighting-of-code-blocks-how-to-format-code-on-the-forum/738
+
 ## Example Projects
 
 + EVE Online warp-to-0 autopilot

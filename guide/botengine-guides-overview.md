@@ -31,6 +31,10 @@
 
 + [Walkthrough, Programming]: How to add a setting to a botengine app: [https://youtu.be/A-tbRE9S2ss](https://youtu.be/A-tbRE9S2ss)
 
++ How to collect samples for 64-bit memory reading development: [./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md](./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md)
+
++ Syntax highlighting of code blocks - How to format code on the forum: https://forum.botengine.org/t/syntax-highlighting-of-code-blocks-how-to-format-code-on-the-forum/738
+
 ## App Examples
 
 Wondering what outcome you can expect from following the guides? Below is a list of example apps. You can test them for free:

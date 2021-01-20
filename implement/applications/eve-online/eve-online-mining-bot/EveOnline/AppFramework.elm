@@ -129,6 +129,12 @@ type alias ShipModulesMemory =
     }
 
 
+type alias SeeUndockingComplete =
+    { shipUI : EveOnline.ParseUserInterface.ShipUI
+    , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
+    }
+
+
 effectSequenceSpacingMilliseconds : Int
 effectSequenceSpacingMilliseconds =
     30
@@ -1270,12 +1276,6 @@ cornersFromDisplayRegion region =
     , { x = region.x, y = region.y + region.height }
     , { x = region.x + region.width, y = region.y + region.height }
     ]
-
-
-type alias SeeUndockingComplete =
-    { shipUI : EveOnline.ParseUserInterface.ShipUI
-    , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
-    }
 
 
 subtractRegionsFromRegion :

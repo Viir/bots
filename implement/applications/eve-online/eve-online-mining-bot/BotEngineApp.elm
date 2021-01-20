@@ -1016,8 +1016,8 @@ statusTextFromState context =
         |> String.join "\n"
 
 
-updateMemoryForNewReadingFromGame : ReadingFromGameClient -> BotMemory -> BotMemory
-updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
+updateMemoryForNewReadingFromGame : EveOnline.AppFramework.AppEventContext BotSettings -> ReadingFromGameClient -> BotMemory -> BotMemory
+updateMemoryForNewReadingFromGame _ currentReading botMemoryBefore =
     let
         currentStationNameFromInfoPanel =
             currentReading.infoPanelContainer

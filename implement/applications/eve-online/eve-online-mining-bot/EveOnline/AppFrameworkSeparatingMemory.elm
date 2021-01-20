@@ -54,7 +54,7 @@ initAppState appMemory =
 
 
 processEveOnlineAppEvent :
-    { updateMemoryForNewReadingFromGame : ReadingFromGameClient -> appMemory -> appMemory
+    { updateMemoryForNewReadingFromGame : EveOnline.AppFramework.AppEventContext appSettings -> ReadingFromGameClient -> appMemory -> appMemory
     , statusTextFromState : StepDecisionContext appSettings appMemory -> String
     , decideNextAction : StepDecisionContext appSettings appMemory -> DecisionPathNode
     , millisecondsToNextReadingFromGame : StepDecisionContext appSettings appMemory -> Int
@@ -68,7 +68,8 @@ processEveOnlineAppEvent config eventContext event stateBefore =
         EveOnline.AppFramework.ReadingFromGameClientCompleted readingFromGameClient ->
             let
                 appMemory =
-                    stateBefore.appMemory |> config.updateMemoryForNewReadingFromGame readingFromGameClient
+                    stateBefore.appMemory
+                        |> config.updateMemoryForNewReadingFromGame eventContext readingFromGameClient
 
                 decisionContext =
                     { eventContext = eventContext

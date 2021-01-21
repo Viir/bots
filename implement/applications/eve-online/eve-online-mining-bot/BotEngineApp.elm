@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2021-01-20
+{- EVE Online mining bot version 2021-01-21
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -1016,17 +1016,17 @@ statusTextFromState context =
         |> String.join "\n"
 
 
-updateMemoryForNewReadingFromGame : EveOnline.AppFramework.AppEventContext BotSettings -> ReadingFromGameClient -> BotMemory -> BotMemory
-updateMemoryForNewReadingFromGame _ currentReading botMemoryBefore =
+updateMemoryForNewReadingFromGame : EveOnline.AppFrameworkSeparatingMemory.UpdateMemoryContext -> BotMemory -> BotMemory
+updateMemoryForNewReadingFromGame context botMemoryBefore =
     let
         currentStationNameFromInfoPanel =
-            currentReading.infoPanelContainer
+            context.readingFromGameClient.infoPanelContainer
                 |> Maybe.andThen .infoPanelLocationInfo
                 |> Maybe.andThen .expandedContent
                 |> Maybe.andThen .currentStationName
 
         lastUsedCapacityInOreHold =
-            currentReading
+            context.readingFromGameClient
                 |> inventoryWindowWithOreHoldSelectedFromGameClient
                 |> Maybe.andThen .selectedContainerCapacityGauge
                 |> Maybe.andThen Result.toMaybe
@@ -1075,7 +1075,7 @@ updateMemoryForNewReadingFromGame _ currentReading botMemoryBefore =
     , lastUsedCapacityInOreHold = lastUsedCapacityInOreHold
     , shipModules =
         botMemoryBefore.shipModules
-            |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
+            |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory context.readingFromGameClient
     }
 
 

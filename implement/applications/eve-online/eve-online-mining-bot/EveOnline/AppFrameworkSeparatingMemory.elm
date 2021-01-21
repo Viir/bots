@@ -29,6 +29,12 @@ type alias DecisionPathNode =
     Common.DecisionPath.DecisionPathNode EndDecisionPathStructure
 
 
+type alias UpdateMemoryContext =
+    { timeInMilliseconds : Int
+    , readingFromGameClient : ReadingFromGameClient
+    }
+
+
 type alias StepDecisionContext appSettings appMemory =
     { eventContext : EveOnline.AppFramework.AppEventContext appSettings
     , readingFromGameClient : ReadingFromGameClient
@@ -54,7 +60,7 @@ initAppState appMemory =
 
 
 processEveOnlineAppEvent :
-    { updateMemoryForNewReadingFromGame : EveOnline.AppFramework.AppEventContext appSettings -> ReadingFromGameClient -> appMemory -> appMemory
+    { updateMemoryForNewReadingFromGame : UpdateMemoryContext -> appMemory -> appMemory
     , statusTextFromState : StepDecisionContext appSettings appMemory -> String
     , decideNextAction : StepDecisionContext appSettings appMemory -> DecisionPathNode
     , millisecondsToNextReadingFromGame : StepDecisionContext appSettings appMemory -> Int
@@ -67,9 +73,14 @@ processEveOnlineAppEvent config eventContext event stateBefore =
     case event of
         EveOnline.AppFramework.ReadingFromGameClientCompleted readingFromGameClient ->
             let
+                updateMemoryContext =
+                    { timeInMilliseconds = eventContext.timeInMilliseconds
+                    , readingFromGameClient = readingFromGameClient
+                    }
+
                 appMemory =
                     stateBefore.appMemory
-                        |> config.updateMemoryForNewReadingFromGame eventContext readingFromGameClient
+                        |> config.updateMemoryForNewReadingFromGame updateMemoryContext
 
                 decisionContext =
                     { eventContext = eventContext

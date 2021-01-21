@@ -2,9 +2,9 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 ## Guides
 
-+ How to install/register the `botengine` command: [./guide/failed-run-did-not-find-botengine-program.md](./guide/failed-run-did-not-find-botengine-program.md)
-
 + Video on how to start a bot or botengine app: https://youtu.be/Q44uTEKw_aA
+
++ How to install/register the `botengine` command: https://to.botengine.org/failed-run-did-not-find-botengine-program
 
 + How to report an issue with an app or request a new feature: https://to.botengine.org/guide/how-to-report-an-issue-with-an-app-or-request-a-new-feature
 
@@ -16,7 +16,7 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + Running bots on multiple game clients: https://to.botengine.org/guide/running-bots-on-multiple-game-clients
 
-+ Developing for EVE Online: [./guide/eve-online/developing-for-eve-online.md](./guide/eve-online/developing-for-eve-online.md)
++ Learn how to develop EVE Online bots and intel tools. Discover the engineering methods and tools behind the most advanced bots: https://to.botengine.org/guide/developing-for-eve-online
 
 + Syntax of the Elm programming language: https://elm-lang.org/docs/syntax
 
@@ -34,7 +34,7 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + [Walkthrough, Programming]: How to add a setting to a botengine app: [https://youtu.be/A-tbRE9S2ss](https://youtu.be/A-tbRE9S2ss)
 
-+ How to collect samples for 64-bit memory reading development: [./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md](./guide/how-to-collect-samples-for-64-bit-memory-reading-development.md)
++ How to collect samples for 64-bit memory reading development: https://to.botengine.org/guide/collect-samples-for-memory-reading-development
 
 + Syntax highlighting of code blocks - How to format code on the forum: https://forum.botengine.org/t/syntax-highlighting-of-code-blocks-how-to-format-code-on-the-forum/738
 

@@ -166,6 +166,8 @@ type alias BotSettings =
 
 type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
+    , lastTargetCount : Int
+    , timesTargeted : Int
     , timesUnloaded : Int
     , volumeUnloadedCubicMeters : Int
     , lastUsedCapacityInOreHold : Maybe Int
@@ -916,6 +918,8 @@ initState =
     EveOnline.AppFramework.initState
         (EveOnline.AppFrameworkSeparatingMemory.initAppState
             { lastDockedStationNameFromInfoPanel = Nothing
+            , lastTargetCount = 0
+            , timesTargeted = 0
             , timesUnloaded = 0
             , volumeUnloadedCubicMeters = 0
             , lastUsedCapacityInOreHold = Nothing
@@ -1065,11 +1069,19 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
 
         volumeUnloadedCubicMeters =
             botMemoryBefore.volumeUnloadedCubicMeters + volumeUnloadedSincePreviousReading
+
+        lastTargetCount =
+            List.length context.readingFromGameClient.targets
+
+        timesTargeted =
+            botMemoryBefore.timesTargeted + lastTargetCount - botMemoryBefore.lastTargetCount
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
             |> List.filterMap identity
             |> List.head
+    , lastTargetCount = lastTargetCount
+    , timesTargeted = timesTargeted
     , timesUnloaded = timesUnloaded
     , volumeUnloadedCubicMeters = volumeUnloadedCubicMeters
     , lastUsedCapacityInOreHold = lastUsedCapacityInOreHold

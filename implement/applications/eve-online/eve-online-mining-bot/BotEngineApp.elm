@@ -1070,17 +1070,26 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
         volumeUnloadedCubicMeters =
             botMemoryBefore.volumeUnloadedCubicMeters + volumeUnloadedSincePreviousReading
 
-        lastTargetCount =
+        targetCount =
             List.length context.readingFromGameClient.targets
 
+        targetCountChangeSinceLastReading =
+            targetCount - botMemoryBefore.lastTargetCount
+
         timesTargeted =
-            botMemoryBefore.timesTargeted + lastTargetCount - botMemoryBefore.lastTargetCount
+            botMemoryBefore.timesTargeted
+                + (if targetCountChangeSinceLastReading < 0 then
+                    0
+
+                   else
+                    targetCountChangeSinceLastReading
+                  )
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
             |> List.filterMap identity
             |> List.head
-    , lastTargetCount = lastTargetCount
+    , lastTargetCount = targetCount
     , timesTargeted = timesTargeted
     , timesUnloaded = timesUnloaded
     , volumeUnloadedCubicMeters = volumeUnloadedCubicMeters

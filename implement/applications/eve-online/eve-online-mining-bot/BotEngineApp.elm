@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2021-01-21
+{- EVE Online mining bot version 2021-01-23
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -41,7 +41,7 @@ module BotEngineApp exposing
 import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex)
-import Common.DecisionPath exposing (describeBranch, endDecisionPath)
+import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.AppFramework
@@ -67,10 +67,10 @@ import EveOnline.AppFrameworkSeparatingMemory
     exposing
         ( DecisionPathNode
         , EndDecisionPathStructure(..)
-        , actWithoutFurtherReadings
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
         , ensureInfoPanelLocationInfoIsExpanded
+        , sendEffectsToGameClient
         , useContextMenuCascade
         , useContextMenuCascadeOnListSurroundingsButton
         , useContextMenuCascadeOnOverviewEntry
@@ -99,7 +99,7 @@ defaultBotSettings =
     , hideWhenNeutralInLocal = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
-    , botStepDelayMilliseconds = 2000
+    , botStepDelayMilliseconds = 1300
     , oreHoldMaxPercent = 99
     , selectInstancePilotName = Nothing
     }
@@ -185,11 +185,19 @@ type alias State =
     EveOnline.AppFramework.StateIncludingFramework BotSettings BotState
 
 
-{-| A first outline of the decision tree for a mining bot came from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
--}
 miningBotDecisionRoot : BotDecisionContext -> DecisionPathNode
 miningBotDecisionRoot context =
-    generalSetupInUserInterface context.readingFromGameClient
+    miningBotDecisionRootBeforeApplyingSettings context
+        |> EveOnline.AppFrameworkSeparatingMemory.setMillisecondsToNextReadingFromGameBase
+            context.eventContext.appSettings.botStepDelayMilliseconds
+
+
+{-| A first outline of the decision tree for a mining bot came from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
+-}
+miningBotDecisionRootBeforeApplyingSettings : BotDecisionContext -> DecisionPathNode
+miningBotDecisionRootBeforeApplyingSettings context =
+    generalSetupInUserInterface
+        context.readingFromGameClient
         |> Maybe.withDefault
             (branchDependingOnDockedOrInSpace
                 { ifDocked =
@@ -329,11 +337,10 @@ closeMessageBox readingFromGameClient =
                             describeBranch "I see no way to close this message box." askForHelpToGetUnstuck
 
                         Just buttonToUse ->
-                            endDecisionPath
-                                (actWithoutFurtherReadings
-                                    ( "Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'."
-                                    , buttonToUse.uiNode |> clickOnUIElement MouseButtonLeft
-                                    )
+                            describeBranch
+                                ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
+                                (sendEffectsToGameClient
+                                    (clickOnUIElement MouseButtonLeft buttonToUse.uiNode)
                                 )
                     )
             )
@@ -359,10 +366,9 @@ dockedWithOreHoldSelected context inventoryWindowWithOreHoldSelected =
 
                 Just itemInInventory ->
                     describeBranch "I see at least one item in the ore hold. Move this to the item hangar."
-                        (endDecisionPath
-                            (actWithoutFurtherReadings
-                                ( "Drag and drop."
-                                , EffectOnWindow.effectsForDragAndDrop
+                        (describeBranch "Drag and drop."
+                            (sendEffectsToGameClient
+                                (EffectOnWindow.effectsForDragAndDrop
                                     { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
                                     , endLocation = itemHangar.totalDisplayRegion |> centerFromDisplayRegion
                                     , mouseButton = MouseButtonLeft
@@ -389,11 +395,9 @@ undockUsingStationWindow context =
                             describeBranch "I see we are already undocking." waitForProgressInGame
 
                 Just undockButton ->
-                    endDecisionPath
-                        (actWithoutFurtherReadings
-                            ( "Click on the button to undock."
-                            , clickOnUIElement MouseButtonLeft undockButton
-                            )
+                    describeBranch "Click on the button to undock."
+                        (sendEffectsToGameClient
+                            (clickOnUIElement MouseButtonLeft undockButton)
                         )
 
 
@@ -572,20 +576,16 @@ ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInven
                                                         askForHelpToGetUnstuck
 
                                                 Just toggleBtn ->
-                                                    endDecisionPath
-                                                        (actWithoutFurtherReadings
-                                                            ( "Click the toggle button to expand."
-                                                            , toggleBtn |> clickOnUIElement MouseButtonLeft
-                                                            )
+                                                    describeBranch "Click the toggle button to expand."
+                                                        (sendEffectsToGameClient
+                                                            (clickOnUIElement MouseButtonLeft toggleBtn)
                                                         )
                                             )
 
                                     Just oreHoldTreeEntry ->
-                                        endDecisionPath
-                                            (actWithoutFurtherReadings
-                                                ( "Click the tree entry representing the ore hold."
-                                                , oreHoldTreeEntry.uiNode |> clickOnUIElement MouseButtonLeft
-                                                )
+                                        describeBranch "Click the tree entry representing the ore hold."
+                                            (sendEffectsToGameClient
+                                                (clickOnUIElement MouseButtonLeft oreHoldTreeEntry.uiNode)
                                             )
                         )
 
@@ -694,10 +694,9 @@ scrollDown scrollControls =
             in
             if 10 < freeHeightAtBottom then
                 Just
-                    (endDecisionPath
-                        (actWithoutFurtherReadings
-                            ( "Click at scroll control bottom"
-                            , EffectOnWindow.effectsMouseClickAtLocation EffectOnWindow.MouseButtonLeft
+                    (describeBranch "Click at scroll control bottom"
+                        (sendEffectsToGameClient
+                            (EffectOnWindow.effectsMouseClickAtLocation EffectOnWindow.MouseButtonLeft
                                 { x = scrollControlsTotalDisplayRegion.x + 3
                                 , y = scrollControlsBottom - 8
                                 }
@@ -944,14 +943,13 @@ processEveOnlineBotEvent :
 processEveOnlineBotEvent =
     EveOnline.AppFrameworkSeparatingMemory.processEveOnlineAppEvent
         { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
-        , statusTextFromState = statusTextFromState
+        , statusText = statusTextFromDecisionContext
         , decideNextAction = miningBotDecisionRoot
-        , millisecondsToNextReadingFromGame = .eventContext >> .appSettings >> .botStepDelayMilliseconds
         }
 
 
-statusTextFromState : BotDecisionContext -> String
-statusTextFromState context =
+statusTextFromDecisionContext : BotDecisionContext -> String
+statusTextFromDecisionContext context =
     let
         readingFromGameClient =
             context.readingFromGameClient
@@ -1085,11 +1083,9 @@ clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
         describeBranch "Already clicked on this module button in previous step." waitForProgressInGame
 
     else
-        endDecisionPath
-            (actWithoutFurtherReadings
-                ( "Click on this module button."
-                , moduleButton.uiNode |> clickOnUIElement MouseButtonLeft
-                )
+        describeBranch "Click on this module button."
+            (sendEffectsToGameClient
+                (clickOnUIElement MouseButtonLeft moduleButton.uiNode)
             )
 
 

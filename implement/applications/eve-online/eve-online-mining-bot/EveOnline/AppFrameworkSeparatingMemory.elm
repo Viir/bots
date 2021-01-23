@@ -21,8 +21,15 @@ import EveOnline.ParseUserInterface exposing (centerFromDisplayRegion)
 
 
 type EndDecisionPathStructure
-    = ContinueSession ( String, List Common.EffectOnWindow.EffectOnWindowStructure )
+    = ContinueSession ContinueSessionStructure
     | FinishSession
+
+
+type alias ContinueSessionStructure =
+    { effectsOnGameClient : List Common.EffectOnWindow.EffectOnWindowStructure
+    , millisecondsToNextReadingFromGameBase : Maybe Int
+    , millisecondsToNextReadingFromGameModifierPercent : Int
+    }
 
 
 type alias DecisionPathNode =
@@ -51,6 +58,11 @@ type alias AppState appMemory =
     }
 
 
+millisecondsToNextReadingFromGameDefault : Int
+millisecondsToNextReadingFromGameDefault =
+    1500
+
+
 initAppState : appMemory -> AppState appMemory
 initAppState appMemory =
     { appMemory = appMemory
@@ -61,9 +73,8 @@ initAppState appMemory =
 
 processEveOnlineAppEvent :
     { updateMemoryForNewReadingFromGame : UpdateMemoryContext -> appMemory -> appMemory
-    , statusTextFromState : StepDecisionContext appSettings appMemory -> String
+    , statusText : StepDecisionContext appSettings appMemory -> String
     , decideNextAction : StepDecisionContext appSettings appMemory -> DecisionPathNode
-    , millisecondsToNextReadingFromGame : StepDecisionContext appSettings appMemory -> Int
     }
     -> EveOnline.AppFramework.AppEventContext appSettings
     -> EveOnline.AppFramework.AppEvent
@@ -94,13 +105,13 @@ processEveOnlineAppEvent config eventContext event stateBefore =
                     config.decideNextAction decisionContext
                         |> Common.DecisionPath.unpackToDecisionStagesDescriptionsAndLeaf
 
-                ( currentStepDescription, effectsOnGameClientWindow ) =
+                effectsOnGameClientWindow =
                     case decisionLeaf of
                         ContinueSession act ->
-                            act
+                            act.effectsOnGameClient
 
                         FinishSession ->
-                            ( "Finish session", [] )
+                            []
 
                 effectsRequests =
                     if effectsOnGameClientWindow == [] then
@@ -110,28 +121,38 @@ processEveOnlineAppEvent config eventContext event stateBefore =
                         [ effectsOnGameClientWindow |> EveOnline.AppFramework.EffectSequenceOnGameClientWindow ]
 
                 describeActivity =
-                    (decisionStagesDescriptions ++ [ currentStepDescription ])
+                    decisionStagesDescriptions
                         |> List.indexedMap
                             (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
                         |> String.join "\n"
 
                 statusMessage =
-                    [ config.statusTextFromState decisionContext, describeActivity ]
+                    [ config.statusText decisionContext, describeActivity ]
                         |> String.join "\n"
             in
             ( { appMemory = appMemory
               , lastStepEffects = effectsOnGameClientWindow
               , lastReadingFromGameClient = Just readingFromGameClient
               }
-            , if decisionLeaf == FinishSession then
-                EveOnline.AppFramework.FinishSession { statusDescriptionText = statusMessage }
+            , case decisionLeaf of
+                ContinueSession continueSession ->
+                    let
+                        millisecondsToNextReadingFromGame =
+                            ((continueSession.millisecondsToNextReadingFromGameModifierPercent + 100)
+                                * (continueSession.millisecondsToNextReadingFromGameBase
+                                    |> Maybe.withDefault millisecondsToNextReadingFromGameDefault
+                                  )
+                            )
+                                // 100
+                    in
+                    EveOnline.AppFramework.ContinueSession
+                        { effects = effectsRequests
+                        , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
+                        , statusDescriptionText = statusMessage
+                        }
 
-              else
-                EveOnline.AppFramework.ContinueSession
-                    { effects = effectsRequests
-                    , millisecondsToNextReadingFromGame = config.millisecondsToNextReadingFromGame decisionContext
-                    , statusDescriptionText = statusMessage
-                    }
+                FinishSession ->
+                    EveOnline.AppFramework.FinishSession { statusDescriptionText = statusMessage }
             )
 
 
@@ -191,26 +212,23 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
             of
                 Nothing ->
                     Common.DecisionPath.describeBranch
-                        ("All of "
-                            ++ initialUIElementName
-                            ++ " is occluded by context menus."
-                        )
-                        (Common.DecisionPath.endDecisionPath
-                            (ContinueSession
-                                ( "Click somewhere else to get rid of the occluding elements."
-                                , Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight { x = 4, y = 4 }
-                                )
+                        ("All of " ++ initialUIElementName ++ " is occluded by context menus.")
+                        (Common.DecisionPath.describeBranch
+                            "Click somewhere else to get rid of the occluding elements."
+                            ({ x = 4, y = 4 }
+                                |> Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight
+                                |> sendEffectsToGameClient
                             )
                         )
 
                 Just preferredRegion ->
-                    ( "Open context menu on " ++ initialUIElementName
-                    , preferredRegion
-                        |> centerFromDisplayRegion
-                        |> Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight
-                    )
-                        |> ContinueSession
-                        |> Common.DecisionPath.endDecisionPath
+                    Common.DecisionPath.describeBranch
+                        ("Open context menu on " ++ initialUIElementName)
+                        (preferredRegion
+                            |> centerFromDisplayRegion
+                            |> Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight
+                            |> sendEffectsToGameClient
+                        )
     in
     case context.previousReadingFromGameClient of
         Nothing ->
@@ -252,18 +270,15 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
                                 beginCascade
 
                             Just ( stepDescription, actionFromReading ) ->
-                                case actionFromReading context.readingFromGameClient of
-                                    Nothing ->
-                                        Common.DecisionPath.describeBranch
-                                            ("Failed step: " ++ stepDescription)
-                                            askForHelpToGetUnstuck
+                                Common.DecisionPath.describeBranch stepDescription
+                                    (case actionFromReading context.readingFromGameClient of
+                                        Nothing ->
+                                            Common.DecisionPath.describeBranch "Failed step."
+                                                askForHelpToGetUnstuck
 
-                                    Just effectsToGameClient ->
-                                        ( stepDescription
-                                        , effectsToGameClient
-                                        )
-                                            |> ContinueSession
-                                            |> Common.DecisionPath.endDecisionPath
+                                        Just effectsToGameClient ->
+                                            sendEffectsToGameClient effectsToGameClient
+                                    )
 
 
 ensureInfoPanelLocationInfoIsExpanded : ReadingFromGameClient -> Maybe DecisionPathNode
@@ -277,11 +292,11 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
                             Common.DecisionPath.describeBranch "I do not see the icon for the location info panel." askForHelpToGetUnstuck
 
                         Just iconLocationInfoPanel ->
-                            Common.DecisionPath.endDecisionPath
-                                (ContinueSession
-                                    ( "Click on the icon to enable the info panel."
-                                    , iconLocationInfoPanel |> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft
-                                    )
+                            Common.DecisionPath.describeBranch
+                                "Click on the icon to enable the info panel."
+                                (iconLocationInfoPanel
+                                    |> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft
+                                    |> sendEffectsToGameClient
                                 )
                     )
                 )
@@ -293,15 +308,13 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
             else
                 Just
                     (Common.DecisionPath.describeBranch "Location info panel seems collapsed."
-                        (Common.DecisionPath.endDecisionPath
-                            (ContinueSession
-                                ( "Click to expand the info panel."
-                                , Common.EffectOnWindow.effectsMouseClickAtLocation
+                        (Common.DecisionPath.describeBranch "Click to expand the info panel."
+                            ({ x = infoPanelLocationInfo.uiNode.totalDisplayRegion.x + 8
+                             , y = infoPanelLocationInfo.uiNode.totalDisplayRegion.y + 8
+                             }
+                                |> Common.EffectOnWindow.effectsMouseClickAtLocation
                                     Common.EffectOnWindow.MouseButtonLeft
-                                    { x = infoPanelLocationInfo.uiNode.totalDisplayRegion.x + 8
-                                    , y = infoPanelLocationInfo.uiNode.totalDisplayRegion.y + 8
-                                    }
-                                )
+                                |> sendEffectsToGameClient
                             )
                         )
                     )
@@ -338,12 +351,16 @@ branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI, ifUndockingComplete } 
 
 waitForProgressInGame : DecisionPathNode
 waitForProgressInGame =
-    Common.DecisionPath.endDecisionPath (ContinueSession ( "Wait for progress in game", [] ))
+    Common.DecisionPath.describeBranch "Wait for progress in game"
+        (sendEffectsToGameClient [])
+        |> updateMillisecondsToNextReadingFromGameModifierPercent (always 100)
 
 
 askForHelpToGetUnstuck : DecisionPathNode
 askForHelpToGetUnstuck =
-    Common.DecisionPath.endDecisionPath (ContinueSession ( "I am stuck here and need help to continue.", [] ))
+    Common.DecisionPath.describeBranch "I am stuck here and need help to continue."
+        (sendEffectsToGameClient [])
+        |> updateMillisecondsToNextReadingFromGameModifierPercent (always 100)
 
 
 readShipUIModuleButtonTooltipWhereNotYetInMemory :
@@ -360,17 +377,58 @@ readShipUIModuleButtonTooltipWhereNotYetInMemory context =
         |> List.head
         |> Maybe.map
             (\moduleButtonWithoutMemoryOfTooltip ->
-                Common.DecisionPath.endDecisionPath
-                    (actWithoutFurtherReadings
-                        ( "Read tooltip for module button"
-                        , [ Common.EffectOnWindow.MouseMoveTo
-                                (moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
-                          ]
-                        )
+                Common.DecisionPath.describeBranch "Read tooltip for module button"
+                    (sendEffectsToGameClient
+                        [ Common.EffectOnWindow.MouseMoveTo
+                            (moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
+                        ]
                     )
             )
 
 
-actWithoutFurtherReadings : ( String, List Common.EffectOnWindow.EffectOnWindowStructure ) -> EndDecisionPathStructure
-actWithoutFurtherReadings =
-    ContinueSession
+updateMillisecondsToNextReadingFromGameModifierPercent : (Int -> Int) -> DecisionPathNode -> DecisionPathNode
+updateMillisecondsToNextReadingFromGameModifierPercent update decisionPath =
+    updateDecisionPathEndContinueSession
+        (\continueSession ->
+            { continueSession
+                | millisecondsToNextReadingFromGameModifierPercent =
+                    update continueSession.millisecondsToNextReadingFromGameModifierPercent
+            }
+        )
+        decisionPath
+
+
+setMillisecondsToNextReadingFromGameBase : Int -> DecisionPathNode -> DecisionPathNode
+setMillisecondsToNextReadingFromGameBase millisecondsToNextReadingFromGameBase decisionPath =
+    updateDecisionPathEndContinueSession
+        (\continueSession ->
+            { continueSession | millisecondsToNextReadingFromGameBase = Just millisecondsToNextReadingFromGameBase }
+        )
+        decisionPath
+
+
+updateDecisionPathEndContinueSession : (ContinueSessionStructure -> ContinueSessionStructure) -> DecisionPathNode -> DecisionPathNode
+updateDecisionPathEndContinueSession updateContinueSession decisionPath =
+    Common.DecisionPath.continueDecisionPath
+        (\pathEnd ->
+            Common.DecisionPath.endDecisionPath
+                (case pathEnd of
+                    ContinueSession continueSession ->
+                        ContinueSession (updateContinueSession continueSession)
+
+                    FinishSession ->
+                        pathEnd
+                )
+        )
+        decisionPath
+
+
+sendEffectsToGameClient : List Common.EffectOnWindow.EffectOnWindowStructure -> DecisionPathNode
+sendEffectsToGameClient effects =
+    Common.DecisionPath.endDecisionPath
+        (ContinueSession
+            { effectsOnGameClient = effects
+            , millisecondsToNextReadingFromGameBase = Nothing
+            , millisecondsToNextReadingFromGameModifierPercent = 0
+            }
+        )

@@ -1,40 +1,40 @@
 module Common.DecisionPath exposing (..)
 
 
-type DecisionPathNode leaf
-    = DescribeBranch String (DecisionPathNode leaf)
-    | EndDecisionPath leaf
+type DecisionPathNode pathEnd
+    = DescribeBranch String (DecisionPathNode pathEnd)
+    | EndDecisionPath pathEnd
 
 
-endDecisionPath : leaf -> DecisionPathNode leaf
+endDecisionPath : pathEnd -> DecisionPathNode pathEnd
 endDecisionPath =
     EndDecisionPath
 
 
-describeBranch : String -> DecisionPathNode leaf -> DecisionPathNode leaf
+describeBranch : String -> DecisionPathNode pathEnd -> DecisionPathNode pathEnd
 describeBranch =
     DescribeBranch
 
 
-unpackToDecisionStagesDescriptionsAndLeaf : DecisionPathNode leaf -> ( List String, leaf )
+unpackToDecisionStagesDescriptionsAndLeaf : DecisionPathNode pathEnd -> ( List String, pathEnd )
 unpackToDecisionStagesDescriptionsAndLeaf node =
     case node of
-        EndDecisionPath leaf ->
-            ( [], leaf )
+        EndDecisionPath pathEnd ->
+            ( [], pathEnd )
 
         DescribeBranch branchDescription childNode ->
             let
-                ( childDecisionsDescriptions, leaf ) =
+                ( childDecisionsDescriptions, pathEnd ) =
                     unpackToDecisionStagesDescriptionsAndLeaf childNode
             in
-            ( branchDescription :: childDecisionsDescriptions, leaf )
+            ( branchDescription :: childDecisionsDescriptions, pathEnd )
 
 
-continueDecisionPath : (originalLeaf -> DecisionPathNode newLeaf) -> DecisionPathNode originalLeaf -> DecisionPathNode newLeaf
-continueDecisionPath continueLeaf originalNode =
+continueDecisionPath : (originalEnd -> DecisionPathNode newEnd) -> DecisionPathNode originalEnd -> DecisionPathNode newEnd
+continueDecisionPath continuePath originalNode =
     case originalNode of
         DescribeBranch branch childNode ->
-            DescribeBranch branch (continueDecisionPath continueLeaf childNode)
+            DescribeBranch branch (continueDecisionPath continuePath childNode)
 
-        EndDecisionPath leaf ->
-            continueLeaf leaf
+        EndDecisionPath pathEnd ->
+            continuePath pathEnd

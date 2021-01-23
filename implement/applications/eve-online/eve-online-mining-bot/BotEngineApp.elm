@@ -961,7 +961,8 @@ statusTextFromState context =
             context.readingFromGameClient
 
         describeSessionPerformance =
-            [ ( "times unloaded", context.memory.timesUnloaded )
+            [ ( "times targeted", context.memory.timesTargeted )
+            , ( "times unloaded", context.memory.timesUnloaded )
             , ( "volume unloaded / m³", context.memory.volumeUnloadedCubicMeters )
             ]
                 |> List.map (\( metric, amount ) -> metric ++ ": " ++ (amount |> String.fromInt))

@@ -217,7 +217,7 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
                             "Click somewhere else to get rid of the occluding elements."
                             ({ x = 4, y = 4 }
                                 |> Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight
-                                |> sendEffectsToGameClient
+                                |> decideActionForCurrentStep
                             )
                         )
 
@@ -227,7 +227,7 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
                         (preferredRegion
                             |> centerFromDisplayRegion
                             |> Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight
-                            |> sendEffectsToGameClient
+                            |> decideActionForCurrentStep
                         )
     in
     case context.previousReadingFromGameClient of
@@ -277,7 +277,7 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
                                                 askForHelpToGetUnstuck
 
                                         Just effectsToGameClient ->
-                                            sendEffectsToGameClient effectsToGameClient
+                                            decideActionForCurrentStep effectsToGameClient
                                     )
 
 
@@ -296,7 +296,7 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
                                 "Click on the icon to enable the info panel."
                                 (iconLocationInfoPanel
                                     |> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft
-                                    |> sendEffectsToGameClient
+                                    |> decideActionForCurrentStep
                                 )
                     )
                 )
@@ -314,7 +314,7 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
                              }
                                 |> Common.EffectOnWindow.effectsMouseClickAtLocation
                                     Common.EffectOnWindow.MouseButtonLeft
-                                |> sendEffectsToGameClient
+                                |> decideActionForCurrentStep
                             )
                         )
                     )
@@ -352,14 +352,14 @@ branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI, ifUndockingComplete } 
 waitForProgressInGame : DecisionPathNode
 waitForProgressInGame =
     Common.DecisionPath.describeBranch "Wait for progress in game"
-        (sendEffectsToGameClient [])
+        (decideActionForCurrentStep [])
         |> updateMillisecondsToNextReadingFromGameModifierPercent (always 100)
 
 
 askForHelpToGetUnstuck : DecisionPathNode
 askForHelpToGetUnstuck =
     Common.DecisionPath.describeBranch "I am stuck here and need help to continue."
-        (sendEffectsToGameClient [])
+        (decideActionForCurrentStep [])
         |> updateMillisecondsToNextReadingFromGameModifierPercent (always 100)
 
 
@@ -378,7 +378,7 @@ readShipUIModuleButtonTooltipWhereNotYetInMemory context =
         |> Maybe.map
             (\moduleButtonWithoutMemoryOfTooltip ->
                 Common.DecisionPath.describeBranch "Read tooltip for module button"
-                    (sendEffectsToGameClient
+                    (decideActionForCurrentStep
                         [ Common.EffectOnWindow.MouseMoveTo
                             (moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
                         ]
@@ -423,8 +423,8 @@ updateDecisionPathEndContinueSession updateContinueSession decisionPath =
         decisionPath
 
 
-sendEffectsToGameClient : List Common.EffectOnWindow.EffectOnWindowStructure -> DecisionPathNode
-sendEffectsToGameClient effects =
+decideActionForCurrentStep : List Common.EffectOnWindow.EffectOnWindowStructure -> DecisionPathNode
+decideActionForCurrentStep effects =
     Common.DecisionPath.endDecisionPath
         (ContinueSession
             { effectsOnGameClient = effects

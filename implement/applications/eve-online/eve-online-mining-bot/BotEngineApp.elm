@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2021-01-23
+{- EVE Online mining bot version 2021-01-24
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -69,8 +69,8 @@ import EveOnline.AppFrameworkSeparatingMemory
         , EndDecisionPathStructure(..)
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
+        , decideActionForCurrentStep
         , ensureInfoPanelLocationInfoIsExpanded
-        , sendEffectsToGameClient
         , useContextMenuCascade
         , useContextMenuCascadeOnListSurroundingsButton
         , useContextMenuCascadeOnOverviewEntry
@@ -339,7 +339,7 @@ closeMessageBox readingFromGameClient =
                         Just buttonToUse ->
                             describeBranch
                                 ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
-                                (sendEffectsToGameClient
+                                (decideActionForCurrentStep
                                     (clickOnUIElement MouseButtonLeft buttonToUse.uiNode)
                                 )
                     )
@@ -367,7 +367,7 @@ dockedWithOreHoldSelected context inventoryWindowWithOreHoldSelected =
                 Just itemInInventory ->
                     describeBranch "I see at least one item in the ore hold. Move this to the item hangar."
                         (describeBranch "Drag and drop."
-                            (sendEffectsToGameClient
+                            (decideActionForCurrentStep
                                 (EffectOnWindow.effectsForDragAndDrop
                                     { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
                                     , endLocation = itemHangar.totalDisplayRegion |> centerFromDisplayRegion
@@ -396,7 +396,7 @@ undockUsingStationWindow context =
 
                 Just undockButton ->
                     describeBranch "Click on the button to undock."
-                        (sendEffectsToGameClient
+                        (decideActionForCurrentStep
                             (clickOnUIElement MouseButtonLeft undockButton)
                         )
 
@@ -577,14 +577,14 @@ ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInven
 
                                                 Just toggleBtn ->
                                                     describeBranch "Click the toggle button to expand."
-                                                        (sendEffectsToGameClient
+                                                        (decideActionForCurrentStep
                                                             (clickOnUIElement MouseButtonLeft toggleBtn)
                                                         )
                                             )
 
                                     Just oreHoldTreeEntry ->
                                         describeBranch "Click the tree entry representing the ore hold."
-                                            (sendEffectsToGameClient
+                                            (decideActionForCurrentStep
                                                 (clickOnUIElement MouseButtonLeft oreHoldTreeEntry.uiNode)
                                             )
                         )
@@ -695,7 +695,7 @@ scrollDown scrollControls =
             if 10 < freeHeightAtBottom then
                 Just
                     (describeBranch "Click at scroll control bottom"
-                        (sendEffectsToGameClient
+                        (decideActionForCurrentStep
                             (EffectOnWindow.effectsMouseClickAtLocation EffectOnWindow.MouseButtonLeft
                                 { x = scrollControlsTotalDisplayRegion.x + 3
                                 , y = scrollControlsBottom - 8
@@ -1084,7 +1084,7 @@ clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
 
     else
         describeBranch "Click on this module button."
-            (sendEffectsToGameClient
+            (decideActionForCurrentStep
                 (clickOnUIElement MouseButtonLeft moduleButton.uiNode)
             )
 

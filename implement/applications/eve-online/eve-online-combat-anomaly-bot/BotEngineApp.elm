@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2021-01-06
+{- EVE Online combat anomaly bot version 2021-01-24
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -44,35 +44,38 @@ module BotEngineApp exposing
 import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex)
-import Common.DecisionTree exposing (describeBranch, endDecisionPath)
+import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.AppFramework
     exposing
         ( AppEffect(..)
-        , DecisionPathNode
-        , EndDecisionPathStructure(..)
         , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
         , UseContextMenuCascadeNode(..)
-        , actWithoutFurtherReadings
-        , askForHelpToGetUnstuck
-        , branchDependingOnDockedOrInSpace
         , clickOnUIElement
         , doEffectsClickModuleButton
-        , ensureInfoPanelLocationInfoIsExpanded
         , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
         , pickEntryFromLastContextMenuInCascade
         , shipUIIndicatesShipIsWarpingOrJumping
-        , useContextMenuCascade
-        , useContextMenuCascadeOnListSurroundingsButton
-        , useContextMenuCascadeOnOverviewEntry
         , useMenuEntryWithTextContaining
         , useMenuEntryWithTextContainingFirstOf
         , useMenuEntryWithTextEqual
+        )
+import EveOnline.AppFrameworkSeparatingMemory
+    exposing
+        ( DecisionPathNode
+        , UpdateMemoryContext
+        , askForHelpToGetUnstuck
+        , branchDependingOnDockedOrInSpace
+        , decideActionForCurrentStep
+        , ensureInfoPanelLocationInfoIsExpanded
+        , useContextMenuCascade
+        , useContextMenuCascadeOnListSurroundingsButton
+        , useContextMenuCascadeOnOverviewEntry
         , waitForProgressInGame
         )
 import EveOnline.ParseUserInterface
@@ -143,7 +146,7 @@ type alias BotSettings =
 
 
 type alias BotState =
-    EveOnline.AppFramework.AppStateWithMemoryAndDecisionTree BotMemory
+    EveOnline.AppFrameworkSeparatingMemory.AppState BotMemory
 
 
 type alias BotMemory =
@@ -159,7 +162,7 @@ type alias MemoryOfAnomaly =
 
 
 type alias BotDecisionContext =
-    EveOnline.AppFramework.StepDecisionContext BotSettings BotMemory
+    EveOnline.AppFrameworkSeparatingMemory.StepDecisionContext BotSettings BotMemory
 
 
 type alias State =
@@ -272,6 +275,13 @@ memoryOfAnomalyWithID anomalyID =
 
 anomalyBotDecisionRoot : BotDecisionContext -> DecisionPathNode
 anomalyBotDecisionRoot context =
+    anomalyBotDecisionRootBeforeApplyingSettings context
+        |> EveOnline.AppFrameworkSeparatingMemory.setMillisecondsToNextReadingFromGameBase
+            context.eventContext.appSettings.botStepDelayMilliseconds
+
+
+anomalyBotDecisionRootBeforeApplyingSettings : BotDecisionContext -> DecisionPathNode
+anomalyBotDecisionRootBeforeApplyingSettings context =
     generalSetupInUserInterface context.readingFromGameClient
         |> Maybe.withDefault
             (branchDependingOnDockedOrInSpace
@@ -286,11 +296,11 @@ anomalyBotDecisionRoot context =
                     always
                         (continueIfShouldHide
                             { ifShouldHide =
-                                returnDronesToBay context.readingFromGameClient
+                                returnDronesToBay context
                                     |> Maybe.withDefault
                                         (describeBranch
                                             "Dock to station or structure."
-                                            (dockAtRandomStationOrStructure context.readingFromGameClient)
+                                            (dockAtRandomStationOrStructure context)
                                         )
                             }
                             context
@@ -329,11 +339,9 @@ closeMessageBox readingFromGameClient =
                             describeBranch "I see no way to close this message box." askForHelpToGetUnstuck
 
                         Just buttonToUse ->
-                            endDecisionPath
-                                (actWithoutFurtherReadings
-                                    ( "Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'."
-                                    , buttonToUse.uiNode |> clickOnUIElement MouseButtonLeft
-                                    )
+                            describeBranch ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
+                                (decideActionForCurrentStep
+                                    (clickOnUIElement MouseButtonLeft buttonToUse.uiNode)
                                 )
                     )
             )
@@ -387,8 +395,8 @@ continueIfShouldHide config context =
 The entries for structures in the menu from the SurroundingsButton can be nested one level deeper than the ones for stations.
 In other words, not all structures appear directly under the "structures" entry.
 -}
-dockAtRandomStationOrStructure : ReadingFromGameClient -> DecisionPathNode
-dockAtRandomStationOrStructure readingFromGameClient =
+dockAtRandomStationOrStructure : BotDecisionContext -> DecisionPathNode
+dockAtRandomStationOrStructure context =
     let
         withTextContainingIgnoringCase textToSearch =
             List.filter (.text >> String.toLower >> (==) (textToSearch |> String.toLower)) >> List.head
@@ -405,7 +413,8 @@ dockAtRandomStationOrStructure readingFromGameClient =
                     (\menuEntries ->
                         [ withTextContainingIgnoringCase "dock"
                         , List.filter menuEntryIsSuitable
-                            >> Common.Basics.listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient)
+                            >> Common.Basics.listElementAtWrappedIndex
+                                (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
                         ]
                             |> List.filterMap (\priority -> menuEntries |> priority)
                             |> List.head
@@ -420,14 +429,14 @@ dockAtRandomStationOrStructure readingFromGameClient =
                 )
             )
         )
-        readingFromGameClient
+        context
 
 
 decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
 decideNextActionWhenInSpace context seeUndockingComplete =
     if seeUndockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
         describeBranch "I see we are warping."
-            ([ returnDronesToBay context.readingFromGameClient
+            ([ returnDronesToBay context
              , readShipUIModuleButtonTooltips context
              ]
                 |> List.filterMap identity
@@ -444,7 +453,7 @@ decideNextActionWhenInSpace context seeUndockingComplete =
             Nothing ->
                 let
                     returnDronesAndEnterAnomaly { ifNoAcceptableAnomalyAvailable } =
-                        returnDronesToBay context.readingFromGameClient
+                        returnDronesToBay context
                             |> Maybe.withDefault
                                 (describeBranch "No drones to return."
                                     (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable } context)
@@ -471,7 +480,7 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                                         (returnDronesAndEnterAnomaly
                                             { ifNoAcceptableAnomalyAvailable =
                                                 describeBranch "Get out of this anomaly."
-                                                    (dockAtRandomStationOrStructure context.readingFromGameClient)
+                                                    (dockAtRandomStationOrStructure context)
                                             }
                                         )
 
@@ -497,11 +506,9 @@ undockUsingStationWindow context =
                             describeBranch "I see we are already undocking." waitForProgressInGame
 
                 Just undockButton ->
-                    endDecisionPath
-                        (actWithoutFurtherReadings
-                            ( "Click on the button to undock."
-                            , clickOnUIElement MouseButtonLeft undockButton
-                            )
+                    describeBranch "Click on the button to undock."
+                        (decideActionForCurrentStep
+                            (clickOnUIElement MouseButtonLeft undockButton)
                         )
 
 
@@ -536,7 +543,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                         (useContextMenuCascade
                             ( "locked target", targetToUnlock.barAndImageCont |> Maybe.withDefault targetToUnlock.uiNode )
                             (useMenuEntryWithTextContaining "unlock" menuCascadeCompleted)
-                            context.readingFromGameClient
+                            context
                         )
 
                 Nothing ->
@@ -547,7 +554,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                     [] ->
                                         describeBranch "I see no overview entry to lock."
                                             (if overviewEntriesToAttack |> List.isEmpty then
-                                                returnDronesToBay context.readingFromGameClient
+                                                returnDronesToBay context
                                                     |> Maybe.withDefault
                                                         (describeBranch "No drones to return." continueIfCombatComplete)
 
@@ -559,7 +566,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                         describeBranch "I see an overview entry to lock."
                                             (lockTargetFromOverviewEntry
                                                 nextOverviewEntryToLock
-                                                context.readingFromGameClient
+                                                context
                                             )
                                 )
 
@@ -568,7 +575,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                 (case seeUndockingComplete |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                     Nothing ->
                                         describeBranch "All attack modules are active."
-                                            (launchAndEngageDrones context.readingFromGameClient
+                                            (launchAndEngageDrones context
                                                 |> Maybe.withDefault
                                                     (describeBranch "No idling drones."
                                                         (if context.eventContext.appSettings.maxTargetCount <= (context.readingFromGameClient.targets |> List.length) then
@@ -583,7 +590,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                                                     describeBranch "Lock more targets."
                                                                         (lockTargetFromOverviewEntry
                                                                             nextOverviewEntryToLock
-                                                                            context.readingFromGameClient
+                                                                            context
                                                                         )
                                                         )
                                                     )
@@ -635,7 +642,7 @@ enterAnomaly { ifNoAcceptableAnomalyAvailable } context =
                             (useMenuEntryWithTextContaining "Warp to Within"
                                 (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
                             )
-                            context.readingFromGameClient
+                            context
                         )
 
 
@@ -646,22 +653,21 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
 
     else
         Just
-            (endDecisionPath
-                (actWithoutFurtherReadings
-                    ( "Press the 'W' key and click on the overview entry."
-                    , [ [ EffectOnWindow.KeyDown EffectOnWindow.vkey_W ]
-                      , overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
-                      , [ EffectOnWindow.KeyUp EffectOnWindow.vkey_W ]
-                      ]
+            (describeBranch "Press the 'W' key and click on the overview entry."
+                (decideActionForCurrentStep
+                    ([ [ EffectOnWindow.KeyDown EffectOnWindow.vkey_W ]
+                     , overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
+                     , [ EffectOnWindow.KeyUp EffectOnWindow.vkey_W ]
+                     ]
                         |> List.concat
                     )
                 )
             )
 
 
-launchAndEngageDrones : ReadingFromGameClient -> Maybe DecisionPathNode
-launchAndEngageDrones readingFromGameClient =
-    readingFromGameClient.dronesWindow
+launchAndEngageDrones : BotDecisionContext -> Maybe DecisionPathNode
+launchAndEngageDrones context =
+    context.readingFromGameClient.dronesWindow
         |> Maybe.andThen
             (\dronesWindow ->
                 case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
@@ -683,7 +689,7 @@ launchAndEngageDrones readingFromGameClient =
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                         (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
-                                        readingFromGameClient
+                                        context
                                     )
                                 )
 
@@ -693,7 +699,7 @@ launchAndEngageDrones readingFromGameClient =
                                     (useContextMenuCascade
                                         ( "drones group", droneGroupInBay.header.uiNode )
                                         (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
-                                        readingFromGameClient
+                                        context
                                     )
                                 )
 
@@ -705,9 +711,9 @@ launchAndEngageDrones readingFromGameClient =
             )
 
 
-returnDronesToBay : ReadingFromGameClient -> Maybe DecisionPathNode
-returnDronesToBay readingFromGameClient =
-    readingFromGameClient.dronesWindow
+returnDronesToBay : BotDecisionContext -> Maybe DecisionPathNode
+returnDronesToBay context =
+    context.readingFromGameClient.dronesWindow
         |> Maybe.andThen .droneGroupInLocalSpace
         |> Maybe.andThen
             (\droneGroupInLocalSpace ->
@@ -720,25 +726,25 @@ returnDronesToBay readingFromGameClient =
                             (useContextMenuCascade
                                 ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                 (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
-                                readingFromGameClient
+                                context
                             )
                         )
             )
 
 
-lockTargetFromOverviewEntry : OverviewWindowEntry -> ReadingFromGameClient -> DecisionPathNode
-lockTargetFromOverviewEntry overviewEntry readingFromGameClient =
+lockTargetFromOverviewEntry : OverviewWindowEntry -> BotDecisionContext -> DecisionPathNode
+lockTargetFromOverviewEntry overviewEntry context =
     describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
         (useContextMenuCascadeOnOverviewEntry
             (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
             overviewEntry
-            readingFromGameClient
+            context
         )
 
 
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
 readShipUIModuleButtonTooltips =
-    EveOnline.AppFramework.readShipUIModuleButtonTooltipWhereNotYetInMemory
+    EveOnline.AppFrameworkSeparatingMemory.readShipUIModuleButtonTooltipWhereNotYetInMemory
 
 
 knownModulesToActivateAlways : BotDecisionContext -> List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
@@ -779,7 +785,7 @@ tooltipLooksLikeModuleToActivateAlways context =
 initState : State
 initState =
     EveOnline.AppFramework.initState
-        (EveOnline.AppFramework.initStateWithMemoryAndDecisionTree
+        (EveOnline.AppFrameworkSeparatingMemory.initAppState
             { lastDockedStationNameFromInfoPanel = Nothing
             , shipModules = EveOnline.AppFramework.initShipModulesMemory
             , shipWarpingInLastReading = Nothing
@@ -803,11 +809,10 @@ processEveOnlineBotEvent :
     -> BotState
     -> ( BotState, EveOnline.AppFramework.AppEventResponse )
 processEveOnlineBotEvent =
-    EveOnline.AppFramework.processEveOnlineAppEventWithMemoryAndDecisionTree
+    EveOnline.AppFrameworkSeparatingMemory.processEveOnlineAppEvent
         { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
-        , statusTextFromState = statusTextFromState
-        , decisionTreeRoot = anomalyBotDecisionRoot
-        , millisecondsToNextReadingFromGame = .eventContext >> .appSettings >> .botStepDelayMilliseconds
+        , statusText = statusTextFromState
+        , decideNextAction = anomalyBotDecisionRoot
         }
 
 
@@ -882,11 +887,9 @@ clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
         describeBranch "Already clicked on this module button in previous step." waitForProgressInGame
 
     else
-        endDecisionPath
-            (actWithoutFurtherReadings
-                ( "Click on this module button."
-                , moduleButton.uiNode |> clickOnUIElement MouseButtonLeft
-                )
+        describeBranch "Click on this module button."
+            (decideActionForCurrentStep
+                (clickOnUIElement MouseButtonLeft moduleButton.uiNode)
             )
 
 
@@ -922,23 +925,23 @@ iconSpriteHasColorOfRat =
         >> Maybe.withDefault False
 
 
-updateMemoryForNewReadingFromGame : ReadingFromGameClient -> BotMemory -> BotMemory
-updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
+updateMemoryForNewReadingFromGame : UpdateMemoryContext -> BotMemory -> BotMemory
+updateMemoryForNewReadingFromGame context botMemoryBefore =
     let
         currentStationNameFromInfoPanel =
-            currentReading.infoPanelContainer
+            context.readingFromGameClient.infoPanelContainer
                 |> Maybe.andThen .infoPanelLocationInfo
                 |> Maybe.andThen .expandedContent
                 |> Maybe.andThen .currentStationName
 
         shipIsWarping =
-            currentReading.shipUI
+            context.readingFromGameClient.shipUI
                 |> Maybe.andThen .indication
                 |> Maybe.andThen .maneuverType
                 |> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverWarp)
 
         namesOfRatsInOverview =
-            getNamesOfRatsInOverview currentReading
+            getNamesOfRatsInOverview context.readingFromGameClient
 
         weJustArrivedOnGrid =
             (botMemoryBefore.shipWarpingInLastReading == Just True) && (shipIsWarping == Just False)
@@ -948,7 +951,7 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
                 botMemoryBefore.visitedAnomalies
 
             else
-                case currentReading |> getCurrentAnomalyIDAsSeenInProbeScanner of
+                case context.readingFromGameClient |> getCurrentAnomalyIDAsSeenInProbeScanner of
                     Nothing ->
                         botMemoryBefore.visitedAnomalies
 
@@ -962,7 +965,7 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
                             anomalyMemoryWithOtherPilotsOnArrival =
                                 if weJustArrivedOnGrid then
                                     { anomalyMemoryBefore
-                                        | otherPilotsFoundOnArrival = getNamesOfOtherPilotsInOverview currentReading
+                                        | otherPilotsFoundOnArrival = getNamesOfOtherPilotsInOverview context.readingFromGameClient
                                     }
 
                                 else
@@ -982,7 +985,7 @@ updateMemoryForNewReadingFromGame currentReading botMemoryBefore =
             |> List.head
     , shipModules =
         botMemoryBefore.shipModules
-            |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory currentReading
+            |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory context.readingFromGameClient
     , shipWarpingInLastReading = shipIsWarping
     , visitedAnomalies = visitedAnomalies
     }

@@ -15,7 +15,6 @@ module EveOnline.AppFramework exposing (..)
 
 import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.Basics
-import Common.DecisionTree
 import Common.EffectOnWindow
 import Common.FNV
 import Dict
@@ -127,6 +126,12 @@ type alias GameClientProcessSummary =
 type alias ShipModulesMemory =
     { tooltipFromModuleButton : Dict.Dict String EveOnline.ParseUserInterface.ModuleButtonTooltip
     , lastReadingTooltip : Maybe EveOnline.ParseUserInterface.ModuleButtonTooltip
+    }
+
+
+type alias SeeUndockingComplete =
+    { shipUI : EveOnline.ParseUserInterface.ShipUI
+    , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
     }
 
 
@@ -1021,80 +1026,32 @@ statusReportFromState state =
         |> String.join "\n"
 
 
-useContextMenuCascadeOnOverviewEntry :
+{-| This works only while the context menu model does not support branching. In this special case, we can unpack the tree into a list.
+-}
+unpackContextMenuTreeToListOfActionsDependingOnReadings :
     UseContextMenuCascadeNode
-    -> EveOnline.ParseUserInterface.OverviewWindowEntry
-    -> ReadingFromGameClient
-    -> DecisionPathNode
-useContextMenuCascadeOnOverviewEntry useContextMenu overviewEntry readingFromGameClient =
-    useContextMenuCascade
-        ( "overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'", overviewEntry.uiNode )
-        useContextMenu
-        readingFromGameClient
-
-
-useContextMenuCascadeOnListSurroundingsButton :
-    UseContextMenuCascadeNode
-    -> ReadingFromGameClient
-    -> DecisionPathNode
-useContextMenuCascadeOnListSurroundingsButton useContextMenu readingFromGameClient =
-    case readingFromGameClient.infoPanelContainer |> Maybe.andThen .infoPanelLocationInfo of
-        Nothing ->
-            Common.DecisionTree.describeBranch "I do not see the location info panel." askForHelpToGetUnstuck
-
-        Just infoPanelLocationInfo ->
-            useContextMenuCascade
-                ( "surroundings button", infoPanelLocationInfo.listSurroundingsButton )
-                useContextMenu
-                readingFromGameClient
-
-
-useContextMenuCascade :
-    ( String, UIElement )
-    -> UseContextMenuCascadeNode
-    -> ReadingFromGameClient
-    -> DecisionPathNode
-useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu readingFromGameClient =
+    -> List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
+unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
     let
-        occludingRegionsWithSafetyMargin =
-            readingFromGameClient.contextMenus
-                |> List.map (.uiNode >> .totalDisplayRegion >> growRegionOnAllSides 2)
+        actionFromChoice ( describeChoice, chooseEntry ) =
+            ( "Click menu entry " ++ describeChoice ++ "."
+            , chooseEntry
+                >> Maybe.map (.uiNode >> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft)
+            )
 
-        regionsRemainingAfterOcclusion =
-            subtractRegionsFromRegion
-                { minuend = initialUIElement.totalDisplayRegion, subtrahend = occludingRegionsWithSafetyMargin }
+        listFromNextChoiceAndFollowingNodes nextChoice following =
+            (nextChoice |> actionFromChoice) :: (following |> unpackContextMenuTreeToListOfActionsDependingOnReadings)
     in
-    case
-        regionsRemainingAfterOcclusion
-            |> List.filter (\region -> 3 < region.width && 3 < region.height)
-            |> List.sortBy (\region -> negate (min region.width region.height))
-            |> List.head
-    of
-        Nothing ->
-            Common.DecisionTree.describeBranch
-                ("All of "
-                    ++ initialUIElementName
-                    ++ " is occluded by context menus."
-                )
-                (Common.DecisionTree.endDecisionPath
-                    (actWithoutFurtherReadings
-                        ( "Click somewhere else to get rid of the occluding elements."
-                        , Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight { x = 4, y = 4 }
-                        )
-                    )
-                )
+    case treeNode of
+        MenuCascadeCompleted ->
+            []
 
-        Just preferredRegion ->
-            { actionsAlreadyDecided =
-                ( "Open context menu on " ++ initialUIElementName
-                , preferredRegion
-                    |> centerFromDisplayRegion
-                    |> Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight
+        MenuEntryWithCustomChoice custom following ->
+            listFromNextChoiceAndFollowingNodes
+                ( "'" ++ custom.describeChoice ++ "'"
+                , custom.chooseEntry
                 )
-            , actionsDependingOnNewReadings = useContextMenu |> unpackContextMenuTreeToListOfActionsDependingOnReadings
-            }
-                |> Act
-                |> Common.DecisionTree.endDecisionPath
+                following
 
 
 getEntropyIntFromReadingFromGameClient : EveOnline.ParseUserInterface.ParsedUserInterface -> Int
@@ -1230,34 +1187,6 @@ menuCascadeCompleted =
     MenuCascadeCompleted
 
 
-{-| This works only while the context menu model does not support branching. In this special case, we can unpack the tree into a list.
--}
-unpackContextMenuTreeToListOfActionsDependingOnReadings :
-    UseContextMenuCascadeNode
-    -> List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
-unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
-    let
-        actionFromChoice ( describeChoice, chooseEntry ) =
-            ( "Click menu entry " ++ describeChoice ++ "."
-            , chooseEntry
-                >> Maybe.map (.uiNode >> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft)
-            )
-
-        listFromNextChoiceAndFollowingNodes nextChoice following =
-            (nextChoice |> actionFromChoice) :: (following |> unpackContextMenuTreeToListOfActionsDependingOnReadings)
-    in
-    case treeNode of
-        MenuCascadeCompleted ->
-            []
-
-        MenuEntryWithCustomChoice custom following ->
-            listFromNextChoiceAndFollowingNodes
-                ( "'" ++ custom.describeChoice ++ "'"
-                , custom.chooseEntry
-                )
-                following
-
-
 {-| The names are at least sometimes displayed different: 'Moon 7' can become 'M7'
 -}
 menuEntryMatchesStationNameFromLocationInfoPanel : String -> EveOnline.ParseUserInterface.ContextMenuEntry -> Bool
@@ -1340,272 +1269,13 @@ doesPointIntersectRegion { x, y } region =
         && (y <= region.y + region.height)
 
 
-type alias TreeLeafAct =
-    { actionsAlreadyDecided : ( String, List Common.EffectOnWindow.EffectOnWindowStructure )
-    , actionsDependingOnNewReadings : List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
-    }
-
-
-type EndDecisionPathStructure
-    = Wait
-    | Act TreeLeafAct
-    | DecideFinishSession
-
-
-type alias DecisionPathNode =
-    Common.DecisionTree.DecisionPathNode EndDecisionPathStructure
-
-
-type alias StepDecisionContext appSettings appMemory =
-    { eventContext : AppEventContext appSettings
-    , readingFromGameClient : ReadingFromGameClient
-    , memory : appMemory
-    , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
-    }
-
-
-type alias AppStateWithMemoryAndDecisionTree appMemory =
-    { programState :
-        Maybe
-            { originalDecision : DecisionPathNode
-            , remainingActions : List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
-            }
-    , appMemory : appMemory
-    , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
-    }
-
-
-type alias SeeUndockingComplete =
-    { shipUI : EveOnline.ParseUserInterface.ShipUI
-    , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
-    }
-
-
-ensureInfoPanelLocationInfoIsExpanded : ReadingFromGameClient -> Maybe DecisionPathNode
-ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
-    case readingFromGameClient.infoPanelContainer |> Maybe.andThen .infoPanelLocationInfo of
-        Nothing ->
-            Just
-                (Common.DecisionTree.describeBranch "I do not see the location info panel. Enable the info panel."
-                    (case readingFromGameClient.infoPanelContainer |> Maybe.andThen .icons |> Maybe.andThen .locationInfo of
-                        Nothing ->
-                            Common.DecisionTree.describeBranch "I do not see the icon for the location info panel." askForHelpToGetUnstuck
-
-                        Just iconLocationInfoPanel ->
-                            Common.DecisionTree.endDecisionPath
-                                (actWithoutFurtherReadings
-                                    ( "Click on the icon to enable the info panel."
-                                    , iconLocationInfoPanel |> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft
-                                    )
-                                )
-                    )
-                )
-
-        Just infoPanelLocationInfo ->
-            if 35 < infoPanelLocationInfo.uiNode.totalDisplayRegion.height then
-                Nothing
-
-            else
-                Just
-                    (Common.DecisionTree.describeBranch "Location info panel seems collapsed."
-                        (Common.DecisionTree.endDecisionPath
-                            (actWithoutFurtherReadings
-                                ( "Click to expand the info panel."
-                                , Common.EffectOnWindow.effectsMouseClickAtLocation
-                                    Common.EffectOnWindow.MouseButtonLeft
-                                    { x = infoPanelLocationInfo.uiNode.totalDisplayRegion.x + 8
-                                    , y = infoPanelLocationInfo.uiNode.totalDisplayRegion.y + 8
-                                    }
-                                )
-                            )
-                        )
-                    )
-
-
-branchDependingOnDockedOrInSpace :
-    { ifDocked : DecisionPathNode
-    , ifSeeShipUI : EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
-    , ifUndockingComplete : SeeUndockingComplete -> DecisionPathNode
-    }
-    -> ReadingFromGameClient
-    -> DecisionPathNode
-branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI, ifUndockingComplete } readingFromGameClient =
-    case readingFromGameClient.shipUI of
-        Nothing ->
-            Common.DecisionTree.describeBranch "I see no ship UI, assume we are docked." ifDocked
-
-        Just shipUI ->
-            ifSeeShipUI shipUI
-                |> Maybe.withDefault
-                    (case readingFromGameClient.overviewWindow of
-                        Nothing ->
-                            Common.DecisionTree.describeBranch
-                                "I see no overview window, wait until undocking completed."
-                                waitForProgressInGame
-
-                        Just overviewWindow ->
-                            Common.DecisionTree.describeBranch "I see ship UI and overview, undocking complete."
-                                (ifUndockingComplete
-                                    { shipUI = shipUI, overviewWindow = overviewWindow }
-                                )
-                    )
-
-
-waitForProgressInGame : DecisionPathNode
-waitForProgressInGame =
-    Common.DecisionTree.endDecisionPath Wait
-
-
-askForHelpToGetUnstuck : DecisionPathNode
-askForHelpToGetUnstuck =
-    Common.DecisionTree.describeBranch "I am stuck here and need help to continue."
-        (Common.DecisionTree.endDecisionPath Wait)
-
-
-readShipUIModuleButtonTooltipWhereNotYetInMemory :
-    { a
-        | readingFromGameClient : ReadingFromGameClient
-        , memory : { b | shipModules : ShipModulesMemory }
-    }
-    -> Maybe DecisionPathNode
-readShipUIModuleButtonTooltipWhereNotYetInMemory context =
-    context.readingFromGameClient.shipUI
-        |> Maybe.map .moduleButtons
-        |> Maybe.withDefault []
-        |> List.filter (getModuleButtonTooltipFromModuleButton context.memory.shipModules >> (==) Nothing)
-        |> List.head
-        |> Maybe.map
-            (\moduleButtonWithoutMemoryOfTooltip ->
-                Common.DecisionTree.endDecisionPath
-                    (actWithoutFurtherReadings
-                        ( "Read tooltip for module button"
-                        , [ Common.EffectOnWindow.MouseMoveTo
-                                (moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
-                          ]
-                        )
-                    )
-            )
-
-
-actWithoutFurtherReadings : ( String, List Common.EffectOnWindow.EffectOnWindowStructure ) -> EndDecisionPathStructure
-actWithoutFurtherReadings actionsAlreadyDecided =
-    Act { actionsAlreadyDecided = actionsAlreadyDecided, actionsDependingOnNewReadings = [] }
-
-
-initStateWithMemoryAndDecisionTree : appMemory -> AppStateWithMemoryAndDecisionTree appMemory
-initStateWithMemoryAndDecisionTree appMemory =
-    { programState = Nothing
-    , appMemory = appMemory
-    , previousStepEffects = []
-    }
-
-
-processEveOnlineAppEventWithMemoryAndDecisionTree :
-    { updateMemoryForNewReadingFromGame : ReadingFromGameClient -> appMemory -> appMemory
-    , statusTextFromState : StepDecisionContext appSettings appMemory -> String
-    , decisionTreeRoot : StepDecisionContext appSettings appMemory -> DecisionPathNode
-    , millisecondsToNextReadingFromGame : StepDecisionContext appSettings appMemory -> Int
-    }
-    -> AppEventContext appSettings
-    -> AppEvent
-    -> AppStateWithMemoryAndDecisionTree appMemory
-    -> ( AppStateWithMemoryAndDecisionTree appMemory, AppEventResponse )
-processEveOnlineAppEventWithMemoryAndDecisionTree config eventContext event stateBefore =
-    case event of
-        ReadingFromGameClientCompleted readingFromGameClient ->
-            let
-                appMemory =
-                    stateBefore.appMemory |> config.updateMemoryForNewReadingFromGame readingFromGameClient
-
-                decisionContext =
-                    { eventContext = eventContext
-                    , memory = appMemory
-                    , readingFromGameClient = readingFromGameClient
-                    , previousStepEffects = stateBefore.previousStepEffects
-                    }
-
-                programStateIfEvalDecisionTreeNew =
-                    let
-                        originalDecision =
-                            config.decisionTreeRoot decisionContext
-
-                        originalRemainingActions =
-                            case Common.DecisionTree.unpackToDecisionStagesDescriptionsAndLeaf originalDecision |> Tuple.second of
-                                Wait ->
-                                    []
-
-                                Act act ->
-                                    (act.actionsAlreadyDecided |> Tuple.mapSecond (Just >> always))
-                                        :: act.actionsDependingOnNewReadings
-
-                                DecideFinishSession ->
-                                    []
-                    in
-                    { originalDecision = originalDecision, remainingActions = originalRemainingActions }
-
-                programStateToContinue =
-                    stateBefore.programState
-                        |> Maybe.andThen
-                            (\previousProgramState ->
-                                if 0 < (previousProgramState.remainingActions |> List.length) then
-                                    Just previousProgramState
-
-                                else
-                                    Nothing
-                            )
-                        |> Maybe.withDefault programStateIfEvalDecisionTreeNew
-
-                ( originalDecisionStagesDescriptions, originalDecisionLeaf ) =
-                    Common.DecisionTree.unpackToDecisionStagesDescriptionsAndLeaf programStateToContinue.originalDecision
-
-                ( currentStepDescription, effectsOnGameClientWindow, programState ) =
-                    case programStateToContinue.remainingActions of
-                        [] ->
-                            ( "Wait", [], Nothing )
-
-                        ( nextActionDescription, nextActionEffectFromGameClient ) :: remainingActions ->
-                            case readingFromGameClient |> nextActionEffectFromGameClient of
-                                Nothing ->
-                                    ( "Failed step: " ++ nextActionDescription, [], Nothing )
-
-                                Just effects ->
-                                    ( nextActionDescription
-                                    , effects
-                                    , Just { programStateToContinue | remainingActions = remainingActions }
-                                    )
-
-                effectsRequests =
-                    if effectsOnGameClientWindow == [] then
-                        []
-
-                    else
-                        [ effectsOnGameClientWindow |> EffectSequenceOnGameClientWindow ]
-
-                describeActivity =
-                    (originalDecisionStagesDescriptions ++ [ currentStepDescription ])
-                        |> List.indexedMap
-                            (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
-                        |> String.join "\n"
-
-                statusMessage =
-                    [ config.statusTextFromState decisionContext, describeActivity ]
-                        |> String.join "\n"
-            in
-            ( { stateBefore
-                | appMemory = appMemory
-                , programState = programState
-                , previousStepEffects = effectsOnGameClientWindow
-              }
-            , if originalDecisionLeaf == DecideFinishSession then
-                FinishSession { statusDescriptionText = statusMessage }
-
-              else
-                ContinueSession
-                    { effects = effectsRequests
-                    , millisecondsToNextReadingFromGame = config.millisecondsToNextReadingFromGame decisionContext
-                    , statusDescriptionText = statusMessage
-                    }
-            )
+cornersFromDisplayRegion : EveOnline.ParseUserInterface.DisplayRegion -> List { x : Int, y : Int }
+cornersFromDisplayRegion region =
+    [ { x = region.x, y = region.y }
+    , { x = region.x + region.width, y = region.y }
+    , { x = region.x, y = region.y + region.height }
+    , { x = region.x + region.width, y = region.y + region.height }
+    ]
 
 
 subtractRegionsFromRegion :

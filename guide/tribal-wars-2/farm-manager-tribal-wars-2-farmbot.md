@@ -9,7 +9,7 @@ It automatically detects barbarian villages, available troops and configured arm
 
 + Automatically reads the required information from the game: Locations of farms, available units, army presets, current attacks per village, etc.
 + Use the in-game army presets to configure which villages should attack and which units to use.
-+ Requires no input focus: You can continue using your device as usual while the bot runs in the background. 
++ Requires no input focus: You can continue using your PC as usual while the bot runs in the background. 
 
 ### Efficient
 
@@ -18,6 +18,7 @@ It automatically detects barbarian villages, available troops and configured arm
 + Fast enough to send 800 attacks per hour.
 + Option to avoid barbarian villages under a certain amount of points.
 + Avoid having your troops die at remaining walls: Option to avoid barbarian villages with specific coordinates.
++ Supports running on multiple accounts simultaneously on a single PC.
 
 ### Safe
 
@@ -98,7 +99,7 @@ When all your villages are out of units or at the attack limit, the bot stops wi
 ## Configuration Settings
 
 All settings are optional; you only need them in case the defaults don't fit your use-case.
-You can adjust six settings:
+Following is a list of available settings:
 
 + `number-of-farm-cycles` : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
 + `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
@@ -166,6 +167,23 @@ character-to-farm = player character three
 ```
 
 There is no limit to the number of characters here, you can add as many `character-to-farm` as you want.
+
+### How to use it with multiple accounts at the same time?
+
+Start a new instance of the bot for each account. This separation also means the instance configurations are separate. For example, you could assign each instance another break duration.
+
+To use multiple instances simultaneously, you need to expand the app-settings in the configuration of each instance. When the bot starts, it opens a new browser window and will also close other browser windows. To avoid it closing the browser window of another instance, we need to assign it a scope of browser instances in app-settings explicitly.
+
+To configure this scope, use the new `web-browser-user-profile-id` app-setting like this:
+
+```
+web-browser-user-profile-id = profile-beta
+```
+
+While running, the bot displays the profile ID, so you can check that each running instance has a unique value:
+![bot displays the web-browser-user-profile-id setting](./image/2021-01-09-tribal-wars-2-web-browser-user-profile-id.png)
+
+Note that browser state like bookmarks and cookies belong to that web browser profile. That means you need to log in to the game for each new profile that you create.
 
 ## Getting Help
 

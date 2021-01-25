@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2021-01-24
+{- EVE Online mining bot version 2021-01-25
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -912,39 +912,26 @@ tooltipLooksLikeModuleToActivateAlways context =
 
 initState : State
 initState =
-    EveOnline.AppFramework.initState
-        (EveOnline.AppFrameworkSeparatingMemory.initAppState
-            { lastDockedStationNameFromInfoPanel = Nothing
-            , timesUnloaded = 0
-            , volumeUnloadedCubicMeters = 0
-            , lastUsedCapacityInOreHold = Nothing
-            , shipModules = EveOnline.AppFramework.initShipModulesMemory
-            }
-        )
+    EveOnline.AppFrameworkSeparatingMemory.initState
+        { lastDockedStationNameFromInfoPanel = Nothing
+        , timesUnloaded = 0
+        , volumeUnloadedCubicMeters = 0
+        , lastUsedCapacityInOreHold = Nothing
+        , shipModules = EveOnline.AppFramework.initShipModulesMemory
+        }
 
 
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent =
-    EveOnline.AppFramework.processEvent
+    EveOnline.AppFrameworkSeparatingMemory.processEvent
         { parseAppSettings = parseBotSettings
         , selectGameClientInstance =
             Maybe.andThen .selectInstancePilotName
                 >> Maybe.map EveOnline.AppFramework.selectGameClientInstanceWithPilotName
                 >> Maybe.withDefault EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
-        , processEvent = processEveOnlineBotEvent
-        }
-
-
-processEveOnlineBotEvent :
-    EveOnline.AppFramework.AppEventContext BotSettings
-    -> EveOnline.AppFramework.AppEvent
-    -> BotState
-    -> ( BotState, EveOnline.AppFramework.AppEventResponse )
-processEveOnlineBotEvent =
-    EveOnline.AppFrameworkSeparatingMemory.processEveOnlineAppEvent
-        { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
-        , statusText = statusTextFromDecisionContext
-        , decideNextAction = miningBotDecisionRoot
+        , updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
+        , statusTextFromDecisionContext = statusTextFromDecisionContext
+        , decideNextStep = miningBotDecisionRoot
         }
 
 

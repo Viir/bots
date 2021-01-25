@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2021-01-24
+{- EVE Online Warp-to-0 auto-pilot version 2021-01-25
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
    Before starting the bot, set up the game client as follows:
@@ -84,12 +84,8 @@ type alias BotMemory =
     }
 
 
-type alias StateMemoryAndDecisionTree =
-    EveOnline.AppFrameworkSeparatingMemory.AppState BotMemory
-
-
 type alias State =
-    EveOnline.AppFramework.StateIncludingFramework BotSettings StateMemoryAndDecisionTree
+    EveOnline.AppFramework.StateIncludingFramework BotSettings (EveOnline.AppFrameworkSeparatingMemory.AppState BotMemory)
 
 
 type alias BotDecisionContext =
@@ -98,17 +94,15 @@ type alias BotDecisionContext =
 
 initState : State
 initState =
-    EveOnline.AppFramework.initState
-        (EveOnline.AppFrameworkSeparatingMemory.initAppState
-            { lastSolarSystemName = Nothing
-            , jumpsCompleted = 0
-            , shipModules = EveOnline.AppFramework.initShipModulesMemory
-            }
-        )
+    EveOnline.AppFrameworkSeparatingMemory.initState
+        { lastSolarSystemName = Nothing
+        , jumpsCompleted = 0
+        , shipModules = EveOnline.AppFramework.initShipModulesMemory
+        }
 
 
-statusTextFromState : BotDecisionContext -> String
-statusTextFromState context =
+statusTextFromDecisionContext : BotDecisionContext -> String
+statusTextFromDecisionContext context =
     let
         describeSessionPerformance =
             "jumps completed: " ++ (context.memory.jumpsCompleted |> String.fromInt)
@@ -128,24 +122,24 @@ autopilotBotDecisionRoot context =
     branchDependingOnDockedOrInSpace
         { ifDocked = describeBranch "To continue, undock manually." waitForProgressInGame
         , ifSeeShipUI = always Nothing
-        , ifUndockingComplete = decisionTreeWhenInSpace context
+        , ifUndockingComplete = decideStepWhenInSpace context
         }
         context.readingFromGameClient
         |> EveOnline.AppFrameworkSeparatingMemory.setMillisecondsToNextReadingFromGameBase 2000
 
 
-decisionTreeWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
-decisionTreeWhenInSpace context undockingComplete =
+decideStepWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
+decideStepWhenInSpace context undockingComplete =
     case context.readingFromGameClient |> infoPanelRouteFirstMarkerFromReadingFromGameClient of
         Nothing ->
             describeBranch "I see no route in the info panel. I will start when a route is set."
-                (waitingInSpaceDecisionTree context)
+                (decideStepWhenInSpaceWaiting context)
 
         Just infoPanelRouteFirstMarker ->
             if undockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
                 describeBranch
                     "I see the ship is warping or jumping. I wait until that maneuver ends."
-                    (waitingInSpaceDecisionTree context)
+                    (decideStepWhenInSpaceWaiting context)
 
             else
                 useContextMenuCascade
@@ -157,8 +151,8 @@ decisionTreeWhenInSpace context undockingComplete =
                     context
 
 
-waitingInSpaceDecisionTree : BotDecisionContext -> DecisionPathNode
-waitingInSpaceDecisionTree context =
+decideStepWhenInSpaceWaiting : BotDecisionContext -> DecisionPathNode
+decideStepWhenInSpaceWaiting context =
     case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> .isActive >> Maybe.withDefault False >> not) |> List.head of
         Just ( inactiveModuleMatchingText, inactiveModule ) ->
             describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
@@ -236,25 +230,14 @@ tooltipLooksLikeModuleToActivateAlways context =
         >> List.head
 
 
-processEveOnlineBotEvent :
-    EveOnline.AppFramework.AppEventContext BotSettings
-    -> EveOnline.AppFramework.AppEvent
-    -> StateMemoryAndDecisionTree
-    -> ( StateMemoryAndDecisionTree, EveOnline.AppFramework.AppEventResponse )
-processEveOnlineBotEvent =
-    EveOnline.AppFrameworkSeparatingMemory.processEveOnlineAppEvent
-        { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
-        , decideNextAction = autopilotBotDecisionRoot
-        , statusText = statusTextFromState
-        }
-
-
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent =
-    EveOnline.AppFramework.processEvent
+    EveOnline.AppFrameworkSeparatingMemory.processEvent
         { parseAppSettings = parseBotSettings
         , selectGameClientInstance = always EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
-        , processEvent = processEveOnlineBotEvent
+        , updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
+        , decideNextStep = autopilotBotDecisionRoot
+        , statusTextFromDecisionContext = statusTextFromDecisionContext
         }
 
 

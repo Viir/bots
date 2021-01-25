@@ -1,5 +1,6 @@
 module EveOnline.AppFrameworkSeparatingMemory exposing (..)
 
+import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
 import Common.DecisionPath
 import Common.EffectOnWindow
 import EveOnline.AppFramework
@@ -63,24 +64,52 @@ millisecondsToNextReadingFromGameDefault =
     1500
 
 
-initAppState : appMemory -> AppState appMemory
-initAppState appMemory =
+initState : appMemory -> EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory)
+initState appMemory =
+    EveOnline.AppFramework.initState (initStateInBaseFramework appMemory)
+
+
+initStateInBaseFramework : appMemory -> AppState appMemory
+initStateInBaseFramework appMemory =
     { appMemory = appMemory
     , lastStepEffects = []
     , lastReadingFromGameClient = Nothing
     }
 
 
-processEveOnlineAppEvent :
+processEvent :
+    { parseAppSettings : String -> Result String appSettings
+    , selectGameClientInstance : Maybe appSettings -> List EveOnline.AppFramework.GameClientProcessSummary -> Result String { selectedProcess : EveOnline.AppFramework.GameClientProcessSummary, report : List String }
+    , updateMemoryForNewReadingFromGame : UpdateMemoryContext -> appMemory -> appMemory
+    , statusTextFromDecisionContext : StepDecisionContext appSettings appMemory -> String
+    , decideNextStep : StepDecisionContext appSettings appMemory -> DecisionPathNode
+    }
+    -> InterfaceToHost.AppEvent
+    -> EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory)
+    -> ( EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory), InterfaceToHost.AppResponse )
+processEvent appConfiguration =
+    EveOnline.AppFramework.processEvent
+        { parseAppSettings = appConfiguration.parseAppSettings
+        , selectGameClientInstance = appConfiguration.selectGameClientInstance
+        , processEvent =
+            processEventInBaseFramework
+                { updateMemoryForNewReadingFromGame = appConfiguration.updateMemoryForNewReadingFromGame
+                , statusTextFromDecisionContext = appConfiguration.statusTextFromDecisionContext
+                , decideNextStep = appConfiguration.decideNextStep
+                }
+        }
+
+
+processEventInBaseFramework :
     { updateMemoryForNewReadingFromGame : UpdateMemoryContext -> appMemory -> appMemory
-    , statusText : StepDecisionContext appSettings appMemory -> String
-    , decideNextAction : StepDecisionContext appSettings appMemory -> DecisionPathNode
+    , statusTextFromDecisionContext : StepDecisionContext appSettings appMemory -> String
+    , decideNextStep : StepDecisionContext appSettings appMemory -> DecisionPathNode
     }
     -> EveOnline.AppFramework.AppEventContext appSettings
     -> EveOnline.AppFramework.AppEvent
     -> AppState appMemory
     -> ( AppState appMemory, EveOnline.AppFramework.AppEventResponse )
-processEveOnlineAppEvent config eventContext event stateBefore =
+processEventInBaseFramework config eventContext event stateBefore =
     case event of
         EveOnline.AppFramework.ReadingFromGameClientCompleted readingFromGameClient ->
             let
@@ -102,7 +131,7 @@ processEveOnlineAppEvent config eventContext event stateBefore =
                     }
 
                 ( decisionStagesDescriptions, decisionLeaf ) =
-                    config.decideNextAction decisionContext
+                    config.decideNextStep decisionContext
                         |> Common.DecisionPath.unpackToDecisionStagesDescriptionsAndLeaf
 
                 effectsOnGameClientWindow =
@@ -127,7 +156,7 @@ processEveOnlineAppEvent config eventContext event stateBefore =
                         |> String.join "\n"
 
                 statusMessage =
-                    [ config.statusText decisionContext, describeActivity ]
+                    [ config.statusTextFromDecisionContext decisionContext, describeActivity ]
                         |> String.join "\n"
             in
             ( { appMemory = appMemory

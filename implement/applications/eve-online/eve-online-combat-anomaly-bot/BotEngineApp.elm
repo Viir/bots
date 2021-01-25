@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2021-01-24
+{- EVE Online combat anomaly bot version 2021-01-25
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -784,35 +784,22 @@ tooltipLooksLikeModuleToActivateAlways context =
 
 initState : State
 initState =
-    EveOnline.AppFramework.initState
-        (EveOnline.AppFrameworkSeparatingMemory.initAppState
-            { lastDockedStationNameFromInfoPanel = Nothing
-            , shipModules = EveOnline.AppFramework.initShipModulesMemory
-            , shipWarpingInLastReading = Nothing
-            , visitedAnomalies = Dict.empty
-            }
-        )
+    EveOnline.AppFrameworkSeparatingMemory.initState
+        { lastDockedStationNameFromInfoPanel = Nothing
+        , shipModules = EveOnline.AppFramework.initShipModulesMemory
+        , shipWarpingInLastReading = Nothing
+        , visitedAnomalies = Dict.empty
+        }
 
 
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent =
-    EveOnline.AppFramework.processEvent
+    EveOnline.AppFrameworkSeparatingMemory.processEvent
         { parseAppSettings = parseBotSettings
         , selectGameClientInstance = always EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
-        , processEvent = processEveOnlineBotEvent
-        }
-
-
-processEveOnlineBotEvent :
-    EveOnline.AppFramework.AppEventContext BotSettings
-    -> EveOnline.AppFramework.AppEvent
-    -> BotState
-    -> ( BotState, EveOnline.AppFramework.AppEventResponse )
-processEveOnlineBotEvent =
-    EveOnline.AppFrameworkSeparatingMemory.processEveOnlineAppEvent
-        { updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
-        , statusText = statusTextFromState
-        , decideNextAction = anomalyBotDecisionRoot
+        , updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
+        , statusTextFromDecisionContext = statusTextFromState
+        , decideNextStep = anomalyBotDecisionRoot
         }
 
 

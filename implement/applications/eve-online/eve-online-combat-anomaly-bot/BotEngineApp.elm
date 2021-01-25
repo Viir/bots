@@ -96,6 +96,8 @@ defaultBotSettings =
     , modulesToActivateAlways = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1400
+    , hideWhenNeutralInLocalTimerDurationMin = 120
+    , hideWhenNeutralInLocalTimerDurationMax = 300
     }
 
 
@@ -142,6 +144,8 @@ type alias BotSettings =
     , modulesToActivateAlways : List String
     , maxTargetCount : Int
     , botStepDelayMilliseconds : Int
+    , hideWhenNeutralInLocalTimerDurationMin : Int
+    , hideWhenNeutralInLocalTimerDurationMax : Int
     }
 
 
@@ -154,6 +158,7 @@ type alias BotMemory =
     , shipModules : ShipModulesMemory
     , shipWarpingInLastReading : Maybe Bool
     , visitedAnomalies : Dict.Dict String MemoryOfAnomaly
+    , neutralInLocalLastTime : Maybe { timeInMilliseconds : Int }
     }
 
 
@@ -363,32 +368,43 @@ continueIfShouldHide config context =
                 Nothing
 
             else
-                case context.readingFromGameClient |> localChatWindowFromUserInterface of
-                    Nothing ->
-                        Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
+                case isNeutralVisibleInLocalFromWholeReading context.readingFromGameClient of
+                    Err error ->
+                        Just (describeBranch error askForHelpToGetUnstuck)
 
-                    Just localChatWindow ->
-                        let
-                            chatUserHasGoodStanding chatUser =
-                                goodStandingPatterns
-                                    |> List.any
-                                        (\goodStandingPattern ->
-                                            chatUser.standingIconHint
-                                                |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
-                                                |> Maybe.withDefault False
+                    Ok True ->
+                        Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+
+                    Ok False ->
+                        case context.memory.neutralInLocalLastTime of
+                            Nothing ->
+                                Nothing
+
+                            Just neutralInLocalLastTime ->
+                                let
+                                    neutralInLocalAge =
+                                        (context.eventContext.timeInMilliseconds - neutralInLocalLastTime.timeInMilliseconds) // 1000
+
+                                    timerRange =
+                                        context.eventContext.appSettings.hideWhenNeutralInLocalTimerDurationMax
+                                            - context.eventContext.appSettings.hideWhenNeutralInLocalTimerDurationMin
+
+                                    randomizedTimerDuration =
+                                        ((neutralInLocalLastTime.timeInMilliseconds * 23456) |> modBy timerRange)
+                                            + context.eventContext.appSettings.hideWhenNeutralInLocalTimerDurationMin
+                                in
+                                if neutralInLocalAge < randomizedTimerDuration then
+                                    Just
+                                        (describeBranch
+                                            ("Keep hiding because there was an enemy or neutral in local chat "
+                                                ++ String.fromInt neutralInLocalAge
+                                                ++ " seconds ago."
+                                            )
+                                            config.ifShouldHide
                                         )
 
-                            subsetOfUsersWithNoGoodStanding =
-                                localChatWindow.userlist
-                                    |> Maybe.map .visibleUsers
-                                    |> Maybe.withDefault []
-                                    |> List.filter (chatUserHasGoodStanding >> not)
-                        in
-                        if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
-                            Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
-
-                        else
-                            Nothing
+                                else
+                                    Nothing
 
 
 {-| 2020-07-11 Discovery by Viktor:
@@ -789,6 +805,7 @@ initState =
         , shipModules = EveOnline.AppFramework.initShipModulesMemory
         , shipWarpingInLastReading = Nothing
         , visitedAnomalies = Dict.empty
+        , neutralInLocalLastTime = Nothing
         }
 
 
@@ -965,6 +982,13 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
                                 }
                         in
                         botMemoryBefore.visitedAnomalies |> Dict.insert currentAnomalyID anomalyMemory
+
+        neutralInLocalLastTime =
+            if context.readingFromGameClient |> isNeutralVisibleInLocalFromWholeReading |> Result.withDefault True then
+                Just { timeInMilliseconds = context.timeInMilliseconds }
+
+            else
+                botMemoryBefore.neutralInLocalLastTime
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
@@ -975,7 +999,34 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
             |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory context.readingFromGameClient
     , shipWarpingInLastReading = shipIsWarping
     , visitedAnomalies = visitedAnomalies
+    , neutralInLocalLastTime = neutralInLocalLastTime
     }
+
+
+isNeutralVisibleInLocalFromWholeReading : ReadingFromGameClient -> Result String Bool
+isNeutralVisibleInLocalFromWholeReading readingFromGameClient =
+    case readingFromGameClient |> localChatWindowFromUserInterface of
+        Nothing ->
+            Err "I don't see the local chat window."
+
+        Just localChatWindow ->
+            let
+                chatUserHasGoodStanding chatUser =
+                    goodStandingPatterns
+                        |> List.any
+                            (\goodStandingPattern ->
+                                chatUser.standingIconHint
+                                    |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
+                                    |> Maybe.withDefault False
+                            )
+
+                subsetOfUsersWithNoGoodStanding =
+                    localChatWindow.userlist
+                        |> Maybe.map .visibleUsers
+                        |> Maybe.withDefault []
+                        |> List.filter (chatUserHasGoodStanding >> not)
+            in
+            Ok (1 < List.length subsetOfUsersWithNoGoodStanding)
 
 
 getCurrentAnomalyIDAsSeenInProbeScanner : ReadingFromGameClient -> Maybe String

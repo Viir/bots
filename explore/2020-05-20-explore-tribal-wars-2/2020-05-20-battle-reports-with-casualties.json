@@ -1,0 +1,28 @@
+{
+    "offset": 0,
+    "total": 2,
+    "reports": [
+        {
+            "id": 1137257,
+            "time_created": 1589744135,
+            "type": "attack",
+            "title": "Segundo pueblo de John ataca  (ESTRELLA DEL NORTE )",
+            "favourite": 0,
+            "haul": "partial",
+            "result": 2,
+            "token": "1137257.123456.714e8dfb9617327f1",
+            "read": 0
+        },
+        {
+            "id": 1093285,
+            "time_created": 1589698147,
+            "type": "attack",
+            "title": "Segundo pueblo de John ataca  (ESTRELLA DEL NORTE )",
+            "favourite": 0,
+            "haul": "full",
+            "result": 2,
+            "token": "1093285.123456.8468d4f2a7ca81afa",
+            "read": 0
+        }
+    ]
+}

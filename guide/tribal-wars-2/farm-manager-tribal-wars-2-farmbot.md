@@ -9,6 +9,7 @@ It automatically detects barbarian villages, available troops and configured arm
 
 + Automatically reads the required information from the game: Locations of farms, available units, army presets, current attacks per village, etc.
 + Use the in-game army presets to configure which villages should attack and which units to use.
++ Requires no input focus: You can continue using your PC as usual while the bot runs in the background. 
 
 ### Efficient
 
@@ -17,6 +18,7 @@ It automatically detects barbarian villages, available troops and configured arm
 + Fast enough to send 800 attacks per hour.
 + Option to avoid barbarian villages under a certain amount of points.
 + Avoid having your troops die at remaining walls: Option to avoid barbarian villages with specific coordinates.
++ Supports running on multiple accounts simultaneously on a single PC.
 
 ### Safe
 
@@ -30,7 +32,7 @@ This video shows the process of starting the farmbot and setting up your Tribal 
 
 https://youtu.be/yzkernqechE
 
-To start the farmbot, download the executable file from [https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-05-07.exe](https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-05-07.exe) and then run it.
+To start the farmbot, download the executable file from [https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-12-07.exe](https://botengine.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-12-07.exe) and then run it.
 
 The first time you start the bot, it will download a web browser component. This can take some time, depending on your internet connection.
 
@@ -76,8 +78,10 @@ In the console window, you can read about the number of sent attacks and what th
 
 ```text
 [...]
-Sent 129 attacks in this session, 129 in the current cycle.
-Checked 1413 coordinates and found 364 villages, 129 of wich are barbarian villages.
+Session performance: attacks sent: 129, coordinates read: 1478, completed farm cycles: 1
+---
+Sent 129 attacks in the current cycle.
+Checked 1413 unique coordinates and found 364 villages, 129 of wich are barbarian villages.
 Found 3 own villages.
 
 Current activity:  
@@ -95,15 +99,16 @@ When all your villages are out of units or at the attack limit, the bot stops wi
 ## Configuration Settings
 
 All settings are optional; you only need them in case the defaults don't fit your use-case.
-You can adjust five settings:
+Following is a list of available settings:
 
-+ 'number-of-farm-cycles' : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
-+ 'break-duration' : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
-+ 'farm-barb-min-points': Minimum points of barbarian villages to attack.
-+ 'farm-barb-max-distance': Maximum distance of barbarian villages to attack.
-+ 'farm-avoid-coordinates': List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
++ `number-of-farm-cycles` : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
++ `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
++ `farm-barb-min-points` : Minimum points of barbarian villages to attack.
++ `farm-barb-max-distance` : Maximum distance of barbarian villages to attack.
++ `farm-avoid-coordinates` : List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
++ `character-to-farm` : Name of a (player) character to farm like barbarians.
 
-To configure settings, open the configuration page at https://catalog.botengine.org/64AAE01CE30C88F2973264AC3F357943F3D640472E4A2DE64155016B4F83A498 in a web browser.
+To configure settings, open the configuration page at https://catalog.botengine.org/d0b382bd4254d5cba7394c6910580e0781810de86a5d0d568faf3215e78951b9 in a web browser.
 
 On this page, scroll down to the button `Configure app`.
 
@@ -115,10 +120,12 @@ Click this button to navigate into the configuration interface:
 
 Here we have multiple input fields, but to use any of the bot settings mentioned above, we only need the input field right of the `--app-settings` label.
 
+When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
 
 ```text
-number-of-farm-cycles = 3, break-duration = 20 - 40
+number-of-farm-cycles = 3
+break-duration = 20 - 40
 ```
 
 ![Input fields for configuration with app-settings](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-form-with-settings.png)
@@ -129,11 +136,11 @@ When you have applied settings for multiple farm cycles, the bot displays this m
 
 > Next farm cycle starts in 17 minutes. Last cycle completed 16 minutes ago. 
 
-## Pricing and Online Bot Sessions
+## Pricing and Online Sessions
 
-You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online-bot session as explained at [https://to.botengine.org/guide/online-session](https://to.botengine.org/guide/online-session)
+You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online session as explained at [https://to.botengine.org/guide/online-session](https://to.botengine.org/guide/online-session)
 
-Online bot sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
+Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
 
 For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
 
@@ -141,12 +148,42 @@ For more about purchasing and using credits, see the guide at [https://forum.bot
 
 ### How can I make the bot remember the locations of the barbarian villages?
 
-To make it remember the farm locations, configure more farm cycles. The bot remembers all those coordinates within the same session, so it can reuse this knowledge, starting with the second farm cycle. It sends only one attack per target per farm cycle, so the remembering does not affect the first farm cycle. If you don't use any configuration, the bot only performs one farm cycle and then stops.
+To make it remember the farm locations, configure the number of farm cycles to be at least two. The bot automatically remembers all locations of barbarian villages within the same session, so it can reuse this knowledge, starting with the second farm cycle. It sends only one attack per target per farm cycle, so the remembering does not affect the first farm cycle. If you don't use any configuration, the bot only performs one farm cycle and then stops.
 
 ### How much time does this bot need to send all attacks on my account?
 
 Sending one attack takes less than four seconds. The bot can cover 800 farms per hour. The first farm cycle per session is a special case: For the first cycle, it needs additional time to find the farm villages. The game limits us to 50 concurrent attacks per village, and the bot switches to the next village when the currently selected village hits that limit. One farm cycle is complete when all your villages are at the limit, either because of the attack limit or because no matching units are remaining.
 
+### How can I farm (multiple) inactive players?
+
+To select multiple player characters for farming, use the `character-to-farm` setting name multiple times. Here is an example of a complete app-settings string with multiple `character-to-farm`:
+
+```text
+number-of-farm-cycles = 36
+break-duration = 30 - 60
+character-to-farm = player character one
+character-to-farm = player character two
+character-to-farm = player character three
+```
+
+There is no limit to the number of characters here, you can add as many `character-to-farm` as you want.
+
+### How to use it with multiple accounts at the same time?
+
+Start a new instance of the bot for each account. This separation also means the instance configurations are separate. For example, you could assign each instance another break duration.
+
+To use multiple instances simultaneously, you need to expand the app-settings in the configuration of each instance. When the bot starts, it opens a new browser window and will also close other browser windows. To avoid it closing the browser window of another instance, we need to assign it a scope of browser instances in app-settings explicitly.
+
+To configure this scope, use the new `web-browser-user-profile-id` app-setting like this:
+
+```
+web-browser-user-profile-id = profile-beta
+```
+
+While running, the bot displays the profile ID, so you can check that each running instance has a unique value:
+![bot displays the web-browser-user-profile-id setting](./image/2021-01-09-tribal-wars-2-web-browser-user-profile-id.png)
+
+Note that browser state like bookmarks and cookies belong to that web browser profile. That means you need to log in to the game for each new profile that you create.
 
 ## Getting Help
 

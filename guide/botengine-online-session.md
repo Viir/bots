@@ -11,15 +11,16 @@ To see a list of your most recent online sessions, log in at https://reactor.bot
 Below is a screenshot of the website you can use to view your online sessions and monitor your apps:
 ![monitor your apps using online sessions](./image/2019-12-11.online-bot-session.png)
 
-Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
+Online sessions cost 2000 credits per hour. When you log in to your account for the first time, you automatically get 1000 credits. Using these initial credits balance, you can test the online session feature without paying anything (Creating an account is free).
+When you have used up the credits on your account, you can add more following the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
 
 For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
 
 ### Starting an Online Session
 
-In case you use the Command Prompt or PowerShell, you can start an online session by adding the `--online-session` option on the `botengine run` command. Here is an example:
+In case you use the Command Prompt or PowerShell, you can start an online session by adding the `--online-session` option on the `botengine  run` command. Here is an example:
 ```cmd
-botengine  run  --online-session  "https://github.com/Viir/bots/tree/652ed9fc83aa3f04cb21c1cbf28911201bd53925/implement/templates/remember-app-settings"
+botengine  run  --online-session  "https://github.com/Viir/bots/tree/25cd2fbc264b97bd15257bca6f3414e75f206b67/implement/templates/remember-app-settings"
 ```
 
 If you don't use the Command Prompt, use the app configuration interface on the catalog: Enable the checkbox labeled "Start in online session" as shown in this screenshot:
@@ -42,14 +43,14 @@ Copy the key from the web page and paste it into the botengine console window. P
 
 The engine also stores the entered key in the Windows user account, so you don't have to enter it the next time you start an online session.
 
-After the online session is started, you can also see it at https://reactor.botengine.org/ under `Most recent online sessions`:
+After the online session is started, you can also see it at https://reactor.botengine.org/ under `Most recent app sessions`:
 
 ![List of most recent online sessions](./image/2020-04-20-botengine-reactor-recent-online-sessions.png)
 
 
 Clicking on the session ID brings you to the details view of the session, where you can also see the status reported by the app.
 
-The sessions under `Most recent online sessions` are still available after stopping the Windows app, so you can continue to view details of past sessions.
+The sessions under `Most recent app sessions` are still available after stopping the Windows app, so you can continue to view details of past sessions.
 
 ## Getting Help
 

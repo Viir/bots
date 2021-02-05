@@ -1,7 +1,7 @@
 
 ## Guides
 
-+ Video on how to start a bot or botengine app: https://youtu.be/Q44uTEKw_aA
++ Video on how to start a bot or botengine app: https://vimeo.com/508935946
 
 + How to install/register the `botengine` command: https://to.botengine.org/failed-run-did-not-find-botengine-program
 

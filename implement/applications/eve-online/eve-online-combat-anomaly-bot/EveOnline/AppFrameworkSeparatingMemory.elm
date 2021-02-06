@@ -269,15 +269,16 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
                     beginCascade
 
                 cascadeFirstElement :: cascadeFollowingElements ->
-                    if
-                        cornersFromDisplayRegion cascadeFirstElement.uiNode.totalDisplayRegion
-                            |> List.any
-                                (\corner ->
-                                    doesPointIntersectRegion corner
-                                        (initialUIElement.totalDisplayRegion |> growRegionOnAllSides 10)
-                                )
-                            |> not
-                    then
+                    let
+                        cascadeFirstElementIsCloseToInitialUIElement =
+                            cornersFromDisplayRegion cascadeFirstElement.uiNode.totalDisplayRegion
+                                |> List.any
+                                    (\corner ->
+                                        doesPointIntersectRegion corner
+                                            (initialUIElement.totalDisplayRegion |> growRegionOnAllSides 10)
+                                    )
+                    in
+                    if not cascadeFirstElementIsCloseToInitialUIElement then
                         beginCascade
 
                     else if
@@ -302,8 +303,7 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
                                 Common.DecisionPath.describeBranch stepDescription
                                     (case actionFromReading context.readingFromGameClient of
                                         Nothing ->
-                                            Common.DecisionPath.describeBranch "Failed step."
-                                                askForHelpToGetUnstuck
+                                            beginCascade
 
                                         Just effectsToGameClient ->
                                             decideActionForCurrentStep effectsToGameClient

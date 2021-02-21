@@ -51,6 +51,9 @@ Wondering what outcome you can expect from following the guides? Below is a list
 
 + [Tribal Wars 2 farmbot](https://to.botengine.org/guide/app/tribal-wars-2-farmbot)
 
+## Related Guides
+
++ Learn to make online games using the Elm programming language: https://github.com/onlinegamemaker/making-online-games
 
 ## Experimental Tools and Guides
 

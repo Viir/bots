@@ -61,6 +61,10 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 More links to program codes are listed at [https://catalog.botengine.org](https://catalog.botengine.org)
 
+## Related Guides
+
++ Learn to make online games using the Elm programming language: https://github.com/onlinegamemaker/making-online-games
+
 ## Exploration
 
 In the ['explore'](./explore) subdirectory, I report on explorations in the world of botting in video games. These are raw chronological reports of experiments and discoveries. Some of the approaches and solutions discovered here become seeds for bots and guides.

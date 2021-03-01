@@ -22,6 +22,8 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + Elm programming language - forward pipe (`|>`) and function composition (`>>`) operators: https://to.botengine.org/guide/elm-programming-language-forward-pipe-and-function-composition-operators
 
++ Learning Elm? Download the Elm Cheat Sheet to support you during the learning process: https://github.com/lucamug/elm-cheat-sheet/
+
 + Get a guide for writing Elm code that reads from the EVE Online game client's user interface: Using types from the parsed user interface: https://to.botengine.org/guide/parsed-user-interface-of-the-eve-online-game-client
 
 + Inspect the UI tree of an EVE Online game client process (live or from archived samples): [Alternate UI for EVE Online](https://to.botengine.org/guide/alternate-ui-for-eve-online)

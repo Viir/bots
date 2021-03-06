@@ -47,6 +47,7 @@ type alias ParsedUserInterface =
     , neocom : Maybe Neocom
     , messageBoxes : List MessageBox
     , layerAbovemain : Maybe UITreeNodeWithDisplayRegion
+    , keyActivationWindow : Maybe KeyActivationWindow
     }
 ```
 
@@ -153,6 +154,50 @@ To work with items in the inventory, use the field `selectedContainerInventory` 
 Are looking for an item with a specific name? You could use the filtering function in the game client, but there is an easier way: Using the function `getAllContainedDisplayTexts` on the inventory item, you can filter the list of items immediately.
 
 As you can also see in the screenshot of the live inspector, we get the used, selected, and maximum capacity of the selected container with the field `selectedContainerCapacityGauge`. You can compare the `used` and `maximum` values to see if the container is (almost) full. The [mining bot does this](https://github.com/Viir/bots/blob/368c8d938a3a7781f81d5d9a29f9b9fd71173ec9/implement/applications/eve-online/eve-online-mining-bot/BotEngineApp.elm#L1132-L1137) on the ore hold to know when to travel to the unload location.
+
+## Drones Window
+
+The 'Drones' window offers controls for the drones in your ship's drone bay.
+
+![Drones window](./image/2021-02-23-briancorner-eve-online-drones-window.png)
+
+This window shows the drones aggregated into collapsible groups. These groups can be nested, as shown in the screenshot. Because of the possibility of nesting, the types represent these UI elements as tree structures. Each of the top-level groups has its tree structure that can contain other groups or individual drones. To command your drones, open a context menu on a drone or a drone group (header) and use one of the menu entries to let your drone(s) launch, engage, return, etc.
+To get a list of all drones in one group, for example, to check their hitpoints, use the `enumerateAllDronesFromDronesGroup` function.
+
+```Elm
+type alias DronesWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , droneGroups : List DronesWindowEntryGroupStructure
+    , droneGroupInBay : Maybe DronesWindowEntryGroupStructure
+    , droneGroupInLocalSpace : Maybe DronesWindowEntryGroupStructure
+    }
+
+
+type alias DronesWindowEntryGroupStructure =
+    { header : DronesWindowDroneGroupHeader
+    , children : List DronesWindowEntry
+    }
+
+
+type DronesWindowEntry
+    = DronesWindowEntryGroup DronesWindowEntryGroupStructure
+    | DronesWindowEntryDrone DronesWindowEntryDroneStructure
+
+
+type alias DronesWindowDroneGroupHeader =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , mainText : Maybe String
+    , expander : Expander
+    , quantityFromTitle : Maybe Int
+    }
+
+
+type alias DronesWindowEntryDroneStructure =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , mainText : Maybe String
+    , hitpointsPercent : Maybe Hitpoints
+    }
+```
 
 ## Repairshop Window
 

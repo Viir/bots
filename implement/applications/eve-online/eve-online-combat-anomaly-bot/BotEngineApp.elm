@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2021-02-19
+{- EVE Online combat anomaly bot version 2021-03-06
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -674,7 +674,8 @@ launchAndEngageDrones context =
                     ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
                         let
                             idlingDrones =
-                                droneGroupInLocalSpace.drones
+                                droneGroupInLocalSpace
+                                    |> EveOnline.ParseUserInterface.enumerateAllDronesFromDronesGroup
                                     |> List.filter (.uiNode >> .uiNode >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts >> List.any (String.toLower >> String.contains "idle"))
 
                             dronesInBayQuantity =

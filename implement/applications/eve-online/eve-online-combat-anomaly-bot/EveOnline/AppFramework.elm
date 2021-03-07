@@ -22,7 +22,9 @@ import EveOnline.MemoryReading
 import EveOnline.ParseUserInterface exposing (centerFromDisplayRegion)
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
+import Json.Decode
 import List.Extra
+import Result.Extra
 import String.Extra
 
 
@@ -86,7 +88,7 @@ type alias AppEffectQueue =
 type alias SetupState =
     { createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileHostErrorStructure InterfaceToHost.CreateVolatileHostComplete)
     , requestsToVolatileHostCount : Int
-    , lastRequestToVolatileHostResult : Maybe (Result String InterfaceToHost.RequestToVolatileHostComplete)
+    , lastRequestToVolatileHostResult : Maybe (Result String ( InterfaceToHost.RequestToVolatileHostComplete, Result String VolatileHostInterface.ResponseFromVolatileHost ))
     , gameClientProcesses : Maybe (List GameClientProcessSummary)
     , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
     , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : VolatileHostInterface.GetMemoryReadingResultStructure }
@@ -605,37 +607,36 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
             let
                 requestToVolatileHostResult =
                     case requestResult.exceptionToString of
-                        Nothing ->
-                            Ok requestResult
-
                         Just exception ->
                             Err ("Exception from host: " ++ exception)
 
-                maybeResponseFromVolatileHost =
-                    requestToVolatileHostResult
-                        |> Result.toMaybe
-                        |> Maybe.andThen
-                            (\fromHostResult ->
-                                fromHostResult.returnValueToString
-                                    |> Maybe.withDefault ""
-                                    |> VolatileHostInterface.deserializeResponseFromVolatileHost
-                                    |> Result.toMaybe
-                                    |> Maybe.map (\responseFromVolatileHost -> { fromHostResult = fromHostResult, responseFromVolatileHost = responseFromVolatileHost })
-                            )
+                        Nothing ->
+                            let
+                                decodeResponseResult =
+                                    case requestResult.returnValueToString of
+                                        Nothing ->
+                                            Err "Unexpected response: return value is empty"
+
+                                        Just returnValueToString ->
+                                            returnValueToString
+                                                |> VolatileHostInterface.deserializeResponseFromVolatileHost
+                                                |> Result.mapError Json.Decode.errorToString
+                            in
+                            Ok ( requestResult, decodeResponseResult )
 
                 setupStateWithScriptRunResult =
                     { setupStateBefore | lastRequestToVolatileHostResult = Just requestToVolatileHostResult }
             in
-            case maybeResponseFromVolatileHost of
+            case requestToVolatileHostResult |> Result.andThen Tuple.second |> Result.toMaybe of
                 Nothing ->
                     ( setupStateWithScriptRunResult, Nothing )
 
-                Just { fromHostResult, responseFromVolatileHost } ->
+                Just responseFromVolatileHostOk ->
                     setupStateWithScriptRunResult
                         |> integrateResponseFromVolatileHost
                             { timeInMilliseconds = timeInMilliseconds
-                            , responseFromVolatileHost = responseFromVolatileHost
-                            , runInVolatileHostDurationInMs = fromHostResult.durationInMilliseconds
+                            , responseFromVolatileHost = responseFromVolatileHostOk
+                            , runInVolatileHostDurationInMs = requestResult.durationInMilliseconds
                             }
 
         InterfaceToHost.CompleteWithoutResult ->
@@ -740,28 +741,28 @@ getSetupTaskWhenVolatileHostSetupCompleted :
     -> InterfaceToHost.VolatileHostId
     -> SetupTask
 getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBefore volatileHostId =
-    case stateBefore.searchUIRootAddressResult of
+    case stateBefore.gameClientProcesses of
         Nothing ->
-            case stateBefore.gameClientProcesses of
-                Nothing ->
-                    ContinueSetup stateBefore
-                        (InterfaceToHost.RequestToVolatileHost
-                            (InterfaceToHost.RequestNotRequiringInputFocus
-                                { hostId = volatileHostId
-                                , request =
-                                    VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                                        VolatileHostInterface.ListGameClientProcessesRequest
-                                }
-                            )
-                        )
-                        "Get list of EVE Online client processes."
+            ContinueSetup stateBefore
+                (InterfaceToHost.RequestToVolatileHost
+                    (InterfaceToHost.RequestNotRequiringInputFocus
+                        { hostId = volatileHostId
+                        , request =
+                            VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
+                                VolatileHostInterface.ListGameClientProcessesRequest
+                        }
+                    )
+                )
+                "Get list of EVE Online client processes."
 
-                Just gameClientProcesses ->
-                    case gameClientProcesses |> appConfiguration.selectGameClientInstance appSettings of
-                        Err selectGameClientProcessError ->
-                            FrameworkStopSession ("Failed to select the game client process: " ++ selectGameClientProcessError)
+        Just gameClientProcesses ->
+            case gameClientProcesses |> appConfiguration.selectGameClientInstance appSettings of
+                Err selectGameClientProcessError ->
+                    FrameworkStopSession ("Failed to select the game client process: " ++ selectGameClientProcessError)
 
-                        Ok gameClientSelection ->
+                Ok gameClientSelection ->
+                    let
+                        continueWithSearchUIRootAddress =
                             ContinueSetup stateBefore
                                 (InterfaceToHost.RequestToVolatileHost
                                     (InterfaceToHost.RequestNotRequiringInputFocus
@@ -779,79 +780,93 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                  )
                                     |> String.join "\n"
                                 )
-
-        Just searchResult ->
-            case searchResult.uiRootAddress of
-                Nothing ->
-                    FrameworkStopSession ("Did not find the UI root in process " ++ (searchResult.processId |> String.fromInt))
-
-                Just uiRootAddress ->
-                    let
-                        getMemoryReadingRequest =
-                            VolatileHostInterface.GetMemoryReading { processId = searchResult.processId, uiRootAddress = uiRootAddress }
                     in
-                    case stateBefore.lastMemoryReading of
+                    case stateBefore.searchUIRootAddressResult of
                         Nothing ->
-                            ContinueSetup stateBefore
-                                (InterfaceToHost.RequestToVolatileHost
-                                    (InterfaceToHost.RequestNotRequiringInputFocus
-                                        { hostId = volatileHostId
-                                        , request =
-                                            VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost getMemoryReadingRequest
-                                        }
-                                    )
-                                )
-                                "Get the first memory reading from the EVE Online client process. This can take several seconds."
+                            continueWithSearchUIRootAddress
 
-                        Just lastMemoryReadingTime ->
-                            case lastMemoryReadingTime.memoryReadingResult of
-                                VolatileHostInterface.ProcessNotFound ->
-                                    FrameworkStopSession "The EVE Online client process disappeared."
+                        Just searchResult ->
+                            if searchResult.processId /= gameClientSelection.selectedProcess.processId then
+                                continueWithSearchUIRootAddress
 
-                                VolatileHostInterface.Completed lastCompletedMemoryReading ->
-                                    let
-                                        buildTaskFromRequestToVolatileHost maybeAcquireInputFocus requestToVolatileHost =
-                                            let
-                                                requestBeforeConsideringInputFocus =
-                                                    { hostId = volatileHostId
-                                                    , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
-                                                    }
-                                            in
-                                            InterfaceToHost.RequestToVolatileHost
-                                                (case maybeAcquireInputFocus of
-                                                    Nothing ->
-                                                        InterfaceToHost.RequestNotRequiringInputFocus
-                                                            requestBeforeConsideringInputFocus
+                            else
+                                case searchResult.uiRootAddress of
+                                    Nothing ->
+                                        FrameworkStopSession
+                                            ("Did not find the root of the UI tree in game client instance '"
+                                                ++ gameClientSelection.selectedProcess.mainWindowTitle
+                                                ++ "' (pid "
+                                                ++ String.fromInt gameClientSelection.selectedProcess.processId
+                                                ++ "). Maybe the selected game client had not yet completed its startup? TODO: Check if we can read memory of that process at all."
+                                            )
 
-                                                    Just acquireInputFocus ->
-                                                        InterfaceToHost.RequestRequiringInputFocus
-                                                            { request = requestBeforeConsideringInputFocus
-                                                            , acquireInputFocus = acquireInputFocus
+                                    Just uiRootAddress ->
+                                        let
+                                            getMemoryReadingRequest =
+                                                VolatileHostInterface.GetMemoryReading { processId = searchResult.processId, uiRootAddress = uiRootAddress }
+                                        in
+                                        case stateBefore.lastMemoryReading of
+                                            Nothing ->
+                                                ContinueSetup stateBefore
+                                                    (InterfaceToHost.RequestToVolatileHost
+                                                        (InterfaceToHost.RequestNotRequiringInputFocus
+                                                            { hostId = volatileHostId
+                                                            , request =
+                                                                VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost getMemoryReadingRequest
                                                             }
-                                                )
-                                    in
-                                    OperateApp
-                                        { buildTaskFromAppEffect =
-                                            \effect ->
-                                                case effect of
-                                                    EffectSequenceOnGameClientWindow effectSequenceOnWindow ->
-                                                        { windowId = lastCompletedMemoryReading.mainWindowId
-                                                        , task =
-                                                            effectSequenceOnWindow
-                                                                |> List.map (effectOnWindowAsVolatileHostEffectOnWindow >> VolatileHostInterface.Effect)
-                                                                |> List.intersperse (VolatileHostInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
-                                                        , bringWindowToForeground = True
-                                                        }
-                                                            |> VolatileHostInterface.EffectSequenceOnWindow
-                                                            |> buildTaskFromRequestToVolatileHost (Just { maximumDelayMilliseconds = 500 })
+                                                        )
+                                                    )
+                                                    "Get the first memory reading from the EVE Online client process. This can take several seconds."
 
-                                                    EffectConsoleBeepSequence consoleBeepSequence ->
-                                                        consoleBeepSequence
-                                                            |> VolatileHostInterface.EffectConsoleBeepSequence
-                                                            |> buildTaskFromRequestToVolatileHost Nothing
-                                        , getMemoryReadingTask = getMemoryReadingRequest |> buildTaskFromRequestToVolatileHost Nothing
-                                        , releaseVolatileHostTask = InterfaceToHost.ReleaseVolatileHost { hostId = volatileHostId }
-                                        }
+                                            Just lastMemoryReadingTime ->
+                                                case lastMemoryReadingTime.memoryReadingResult of
+                                                    VolatileHostInterface.ProcessNotFound ->
+                                                        FrameworkStopSession "The EVE Online client process disappeared."
+
+                                                    VolatileHostInterface.Completed lastCompletedMemoryReading ->
+                                                        let
+                                                            buildTaskFromRequestToVolatileHost maybeAcquireInputFocus requestToVolatileHost =
+                                                                let
+                                                                    requestBeforeConsideringInputFocus =
+                                                                        { hostId = volatileHostId
+                                                                        , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
+                                                                        }
+                                                                in
+                                                                InterfaceToHost.RequestToVolatileHost
+                                                                    (case maybeAcquireInputFocus of
+                                                                        Nothing ->
+                                                                            InterfaceToHost.RequestNotRequiringInputFocus
+                                                                                requestBeforeConsideringInputFocus
+
+                                                                        Just acquireInputFocus ->
+                                                                            InterfaceToHost.RequestRequiringInputFocus
+                                                                                { request = requestBeforeConsideringInputFocus
+                                                                                , acquireInputFocus = acquireInputFocus
+                                                                                }
+                                                                    )
+                                                        in
+                                                        OperateApp
+                                                            { buildTaskFromAppEffect =
+                                                                \effect ->
+                                                                    case effect of
+                                                                        EffectSequenceOnGameClientWindow effectSequenceOnWindow ->
+                                                                            { windowId = lastCompletedMemoryReading.mainWindowId
+                                                                            , task =
+                                                                                effectSequenceOnWindow
+                                                                                    |> List.map (effectOnWindowAsVolatileHostEffectOnWindow >> VolatileHostInterface.Effect)
+                                                                                    |> List.intersperse (VolatileHostInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
+                                                                            , bringWindowToForeground = True
+                                                                            }
+                                                                                |> VolatileHostInterface.EffectSequenceOnWindow
+                                                                                |> buildTaskFromRequestToVolatileHost (Just { maximumDelayMilliseconds = 500 })
+
+                                                                        EffectConsoleBeepSequence consoleBeepSequence ->
+                                                                            consoleBeepSequence
+                                                                                |> VolatileHostInterface.EffectConsoleBeepSequence
+                                                                                |> buildTaskFromRequestToVolatileHost Nothing
+                                                            , getMemoryReadingTask = getMemoryReadingRequest |> buildTaskFromRequestToVolatileHost Nothing
+                                                            , releaseVolatileHostTask = InterfaceToHost.ReleaseVolatileHost { hostId = volatileHostId }
+                                                            }
 
 
 effectOnWindowAsVolatileHostEffectOnWindow : Common.EffectOnWindow.EffectOnWindowStructure -> VolatileHostInterface.EffectOnWindowStructure
@@ -935,14 +950,25 @@ selectGameClientInstanceWithPilotName pilotName gameClientProcesses =
                 Ok { selectedProcess = selectedProcess, report = report }
 
 
-requestToVolatileHostResultDisplayString : Result String InterfaceToHost.RequestToVolatileHostComplete -> { string : String, isErr : Bool }
-requestToVolatileHostResultDisplayString result =
-    case result of
-        Err error ->
-            { string = "Error: " ++ error, isErr = True }
+requestToVolatileHostResultDisplayString :
+    Result String ( InterfaceToHost.RequestToVolatileHostComplete, Result String VolatileHostInterface.ResponseFromVolatileHost )
+    -> Result String String
+requestToVolatileHostResultDisplayString =
+    Result.andThen
+        (\( runInVolatileHostComplete, decodeResult ) ->
+            let
+                describeReturnValue =
+                    runInVolatileHostComplete.returnValueToString
+                        |> Maybe.withDefault "null"
+            in
+            case decodeResult of
+                Ok _ ->
+                    Ok describeReturnValue
 
-        Ok runInVolatileHostComplete ->
-            { string = "Success: " ++ (runInVolatileHostComplete.returnValueToString |> Maybe.withDefault "null"), isErr = False }
+                Err decodeError ->
+                    Err
+                        ("Failed to decode response from volatile host: " ++ decodeError ++ " (" ++ describeReturnValue ++ ")")
+        )
 
 
 statusReportFromState : StateIncludingFramework appSettings s -> String
@@ -975,14 +1001,17 @@ statusReportFromState state =
                         |> Maybe.map requestToVolatileHostResultDisplayString
                         |> Maybe.map
                             (\resultDisplayInfo ->
-                                resultDisplayInfo.string
-                                    |> stringEllipsis
-                                        (if resultDisplayInfo.isErr then
-                                            640
+                                let
+                                    ( prefix, lengthLimit ) =
+                                        if Result.Extra.isErr resultDisplayInfo then
+                                            ( "Error", 640 )
 
-                                         else
-                                            140
-                                        )
+                                        else
+                                            ( "Success", 140 )
+                                in
+                                (prefix ++ ": " ++ Result.Extra.merge resultDisplayInfo)
+                                    |> stringEllipsis
+                                        lengthLimit
                                         "...."
                             )
                         |> Maybe.withDefault "Nothing"

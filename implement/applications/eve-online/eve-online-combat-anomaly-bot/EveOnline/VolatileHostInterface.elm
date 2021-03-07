@@ -20,6 +20,7 @@ import Common.EffectOnWindow exposing (MouseButton(..), VirtualKeyCode(..), virt
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
+import Maybe.Extra
 
 
 type RequestToVolatileHost
@@ -315,7 +316,7 @@ decodeSearchUIRootAddressResult : Json.Decode.Decoder SearchUIRootAddressResultS
 decodeSearchUIRootAddressResult =
     Json.Decode.map2 SearchUIRootAddressResultStructure
         (Json.Decode.field "processId" Json.Decode.int)
-        (Json.Decode.field "uiRootAddress" (Json.Decode.maybe Json.Decode.string))
+        (Json.Decode.Extra.optionalField "uiRootAddress" (Json.Decode.nullable Json.Decode.string) |> Json.Decode.map Maybe.Extra.join)
 
 
 decodeGetMemoryReadingResult : Json.Decode.Decoder GetMemoryReadingResultStructure

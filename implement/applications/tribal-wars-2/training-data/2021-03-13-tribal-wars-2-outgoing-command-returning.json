@@ -1,0 +1,95 @@
+{
+    "data": {
+        "command_id": 3440145,
+        "type": "attack",
+        "direction": "back",
+        "origin": {
+            "id": 4578
+        },
+        "target": {
+            "id": 1965,
+            "name": "Barbarian village",
+            "x": 470,
+            "y": 529,
+            "character_id": null
+        },
+        "id": 3440145,
+        "icon": 1049601,
+        "preset_id": 2356789,
+        "home": {
+            "id": 4578,
+            "name": "Village name given by player",
+            "x": 567,
+            "y": 678,
+            "character_id": 876543
+        },
+        "time_start": 1614123456,
+        "time_completed": 1614456789,
+        "report_id": 3341234,
+        "units": {
+            "spear": 0,
+            "sword": 0,
+            "axe": 0,
+            "archer": 0,
+            "light_cavalry": 30,
+            "heavy_cavalry": 0,
+            "mounted_archer": 0,
+            "ram": 0,
+            "catapult": 0,
+            "knight": 0,
+            "snob": 0,
+            "trebuchet": 0,
+            "doppelsoldner": 0
+        }
+    },
+    "time_start": 1614123456,
+    "time_completed": 1614456789,
+    "jobType": "command",
+    "id": 3440145,
+    "type": "attack",
+    "icon": 1049601,
+    "startVillageId": 4578,
+    "startVillageName": "Village name given by player",
+    "startCharacterName": null,
+    "startCharacterId": 876543,
+    "startX": 567,
+    "startY": 678,
+    "targetVillageId": 1965,
+    "targetVillageName": "Barbarian village",
+    "targetCharacterName": null,
+    "targetCharacterId": null,
+    "targetX": 470,
+    "targetY": 529,
+    "targetIsBarbarian": true,
+    "returning": true,
+    "units": {
+        "spear": 0,
+        "sword": 0,
+        "axe": 0,
+        "archer": 0,
+        "light_cavalry": 0,
+        "heavy_cavalry": 0,
+        "mounted_archer": 50,
+        "ram": 0,
+        "catapult": 0,
+        "knight": 0,
+        "snob": 0,
+        "trebuchet": 0,
+        "doppelsoldner": 0
+    },
+    "isSpy": false,
+    "isCommand": true,
+    "actionType": "attack",
+    "destination": {
+        "village": {
+            "id": 4578,
+            "name": "Village name given by player",
+            "x": 567,
+            "y": 678
+        },
+        "character": {
+            "name": null,
+            "id": 876543
+        }
+    }
+}

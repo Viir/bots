@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2021-01-14
+{- Tribal Wars 2 farmbot version 2021-03-13
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -61,6 +61,7 @@ import Common.DecisionTree
         )
 import Dict
 import Json.Decode
+import Json.Decode.Extra
 import Json.Encode
 import List.Extra
 import Result.Extra
@@ -331,11 +332,17 @@ type alias VillageUnitCount =
 
 type alias VillageCommands =
     { outgoing : List VillageCommand
+    , incoming : List {}
     }
 
 
 type alias VillageCommand =
     { time_start : Int
+    , time_completed : Int
+    , targetVillageId : Maybe Int
+    , targetX : Maybe Int
+    , targetY : Maybe Int
+    , returning : Maybe Bool
     }
 
 
@@ -1757,14 +1764,27 @@ decodeVillageDetailsUnits =
 
 decodeVillageDetailsCommands : Json.Decode.Decoder VillageCommands
 decodeVillageDetailsCommands =
-    Json.Decode.map VillageCommands
-        (Json.Decode.at [ "data", "commands", "outgoing" ] (Json.Decode.list decodeVillageDetailsCommand))
+    Json.Decode.at [ "data", "commands" ]
+        (Json.Decode.map2 VillageCommands
+            (Json.Decode.field "outgoing" (Json.Decode.list decodeVillageDetailsOutgoingCommand))
+            (Json.Decode.field "incoming" (Json.Decode.list decodeVillageDetailsIncomingCommand))
+        )
 
 
-decodeVillageDetailsCommand : Json.Decode.Decoder VillageCommand
-decodeVillageDetailsCommand =
-    Json.Decode.map VillageCommand
+decodeVillageDetailsOutgoingCommand : Json.Decode.Decoder VillageCommand
+decodeVillageDetailsOutgoingCommand =
+    Json.Decode.map6 VillageCommand
         (Json.Decode.field "time_start" Json.Decode.int)
+        (Json.Decode.field "time_completed" Json.Decode.int)
+        (Json.Decode.Extra.optionalField "targetVillageId" Json.Decode.int)
+        (Json.Decode.Extra.optionalField "targetX" Json.Decode.int)
+        (Json.Decode.Extra.optionalField "targetY" Json.Decode.int)
+        (Json.Decode.Extra.optionalField "returning" Json.Decode.bool)
+
+
+decodeVillageDetailsIncomingCommand : Json.Decode.Decoder {}
+decodeVillageDetailsIncomingCommand =
+    Json.Decode.succeed {}
 
 
 {-| 2020-01-16 Observed names: 'in\_town', 'support', 'total', 'available', 'own', 'inside', 'recruiting'

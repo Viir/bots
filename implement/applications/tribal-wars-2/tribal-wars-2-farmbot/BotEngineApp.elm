@@ -1,4 +1,8 @@
-{- Tribal Wars 2 farmbot version 2021-03-13
+{- Tribal Wars 2 farmbot version 2021-03-13 Drklord - avoid targets based on outgoing commands
+   This version deviates from the main one by not sending an attack to a village that has an army returning.
+   See the original discussion at https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/3038/222?u=viir
+   Also, this version skips targets when there is already an army on the way there.
+
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -1401,6 +1405,32 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
 
         remainingCapacityCommands =
             numberOfAttacksLimitPerVillage - numberOfCommandsFromThisVillage
+
+        allOutgoingCommands =
+            botState.ownVillagesDetails
+                |> Dict.values
+                |> List.concatMap (.villageDetails >> .commands >> .outgoing)
+
+        allOutgoingCommandsByTargetLocation =
+            allOutgoingCommands
+                |> List.filterMap
+                    (\command ->
+                        case command.targetX of
+                            Nothing ->
+                                Nothing
+
+                            Just targetX ->
+                                case command.targetY of
+                                    Nothing ->
+                                        Nothing
+
+                                    Just targetY ->
+                                        Just ( ( targetX, targetY ), command )
+                    )
+                |> Dict.fromList
+
+        getOutgoingCommandByTargetLocation targetLocation =
+            Dict.get ( targetLocation.x, targetLocation.y ) allOutgoingCommandsByTargetLocation
     in
     if remainingCapacityCommands < 1 then
         describeBranch
@@ -1419,7 +1449,10 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
                 List.map (offsetVillageCoordinates villageDetails.coordinates)
                     >> List.filter
                         (\coordinates ->
-                            if sentAttackToCoordinates coordinates then
+                            if
+                                sentAttackToCoordinates coordinates
+                                    || (getOutgoingCommandByTargetLocation coordinates /= Nothing)
+                            then
                                 False
 
                             else

@@ -440,7 +440,15 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                                 (case context.readingFromGameClient.targets |> List.head of
                                     Nothing ->
                                         describeBranch "I see no locked target."
-                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
+                                            (case context |> knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False) |> List.head of
+                                                Nothing ->
+                                                    describeBranch "All known mining modules are inactive."
+                                                        (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
+
+                                                Just inactiveModule ->
+                                                    describeBranch "I see an active mining module. Deactivate it."
+                                                        (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                                            )
 
                                     Just _ ->
                                         {- Depending on the UI configuration, the game client might automatically target rats.

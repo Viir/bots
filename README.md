@@ -30,7 +30,7 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + [Programming]: Adding a counter to a bot: https://forum.botengine.org/t/i-would-like-to-use-survey-scanner-for-every-even-numbers-of-targets-targetted/3807
 
-+ [Walkthrough, Programming]: Making an EVE Online bot see anomalies and other pilots: [https://youtu.be/pL1zLGYn8jQ](https://youtu.be/pL1zLGYn8jQ)
++ [Walkthrough, Programming]: Making an EVE Online bot see anomalies and other pilots: https://vimeo.com/526817258
 
 + [Walkthrough, Programming]: Programming an EVE Online mining bot to defend against rats: [https://youtu.be/dgV9Ce7f03I](https://youtu.be/dgV9Ce7f03I)
 

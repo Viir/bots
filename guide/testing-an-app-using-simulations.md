@@ -45,4 +45,4 @@ To make modifying the app-settings events easy, the `simulate-run` command offer
 
 ## Related Resources
 
-You can see an example of simulations in action in this video: https://youtu.be/pL1zLGYn8jQ?t=583
+You can see an example of simulations in action in this video: https://vimeo.com/user132945801/making-an-eve-online-bot-see-anomalies-and-other-pilots#t=583s

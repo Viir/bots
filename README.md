@@ -74,6 +74,8 @@ In the ['explore'](./explore) subdirectory, I report on explorations in the worl
 
 ## Experimental Tools and Guides
 
++ Use an integrated development environment to test your Elm code: https://elm-editor.com
+
 + Explore Elm syntax and core library with the Elm Explorer: https://botengine.blob.core.windows.net/blob-library/by-name/ElmExplorer.html
 
 + Inspection tool to explore the structure of EVE Online memory readings: https://botengine.blob.core.windows.net/blob-library/by-name/2020-12-11-eve-online-alternate-ui.html

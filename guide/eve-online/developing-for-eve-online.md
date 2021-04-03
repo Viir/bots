@@ -233,7 +233,7 @@ The `decideNextStep` and `statusTextFromDecisionContext` run in parallel. They d
 
 The diagram below visualizes the data flow for a single bot step:
 
-![Data flow in a bot step in the framework for EVE Online](./../image/2021-01-24-data-flow-in-bot-architecture-separating-memory.png)
+![Data flow in a bot step in the framework for EVE Online](./../image/2021-04-03-data-flow-in-bot-architecture-separating-memory.png)
 
 The arrows in this diagram illustrate how the framework forwards data between the functions we supplied to compose the app.
 

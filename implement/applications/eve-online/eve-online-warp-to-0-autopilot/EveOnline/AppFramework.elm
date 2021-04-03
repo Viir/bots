@@ -83,6 +83,7 @@ type alias SetupState =
     , gameClientProcesses : Maybe (List GameClientProcessSummary)
     , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
     , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : VolatileHostInterface.GetMemoryReadingResultStructure }
+    , lastImageDataFromReading : Maybe VolatileHostInterface.GetImageDataFromReadingResultStructure
     , memoryReadingDurations : List Int
     , lastEffectFailedToAcquireInputFocus : Maybe String
     }
@@ -96,7 +97,8 @@ type SetupTask
 
 type alias OperateAppConfiguration =
     { buildTaskFromEffectSequence : List Common.EffectOnWindow.EffectOnWindowStructure -> InterfaceToHost.Task
-    , getMemoryReadingTask : { screenshot1x1Rects : List Rect2dStructure } -> InterfaceToHost.Task
+    , getMemoryReadingTask : VolatileHostInterface.GetImageDataFromReadingStructure -> InterfaceToHost.Task
+    , getImageDataFromReadingTask : VolatileHostInterface.GetImageDataFromReadingStructure -> InterfaceToHost.Task
     , releaseVolatileHostTask : InterfaceToHost.Task
     }
 
@@ -221,6 +223,7 @@ initSetup =
     , gameClientProcesses = Nothing
     , searchUIRootAddressResult = Nothing
     , lastMemoryReading = Nothing
+    , lastImageDataFromReading = Nothing
     , memoryReadingDurations = []
     , lastEffectFailedToAcquireInputFocus = Nothing
     }
@@ -298,7 +301,7 @@ processEventAfterIntegrateEvent :
     -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
 processEventAfterIntegrateEvent appConfiguration maybeReadingFromGameClient stateBefore =
     let
-        ( state, responseBeforeAddingStatusMessage ) =
+        ( stateBeforeCountingRequests, responseBeforeAddingStatusMessage ) =
             case stateBefore.taskInProgress of
                 Nothing ->
                     case stateBefore.appSettings of
@@ -328,6 +331,36 @@ processEventAfterIntegrateEvent appConfiguration maybeReadingFromGameClient stat
                       }
                         |> InterfaceToHost.ContinueSession
                     )
+
+        newRequestsToVolatileHostCount =
+            case responseBeforeAddingStatusMessage of
+                InterfaceToHost.FinishSession _ ->
+                    0
+
+                InterfaceToHost.ContinueSession continueSession ->
+                    continueSession.startTasks
+                        |> List.filter
+                            (\task ->
+                                case task.task of
+                                    InterfaceToHost.RequestToVolatileHost _ ->
+                                        True
+
+                                    _ ->
+                                        False
+                            )
+                        |> List.length
+
+        setupBeforeCountingRequests =
+            stateBeforeCountingRequests.setup
+
+        state =
+            { stateBeforeCountingRequests
+                | setup =
+                    { setupBeforeCountingRequests
+                        | requestsToVolatileHostCount =
+                            setupBeforeCountingRequests.requestsToVolatileHostCount + newRequestsToVolatileHostCount
+                    }
+            }
 
         statusMessagePrefix =
             (state |> statusReportFromState) ++ "\nCurrent activity: "
@@ -493,76 +526,71 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                                     (continueSession.screenshotRegionsToRead readingFromGameClient.parsedMemoryReading).rects1x1
                                         |> List.map (offsetRect readingFromGameClient.windowClientRectOffset)
 
-        continueWithReadingFromGameClient isRenewForImage =
+        addMarginOnEachSide marginSize originalRect =
+            { x = originalRect.x - marginSize
+            , y = originalRect.y - marginSize
+            , width = originalRect.width + marginSize * 2
+            , height = originalRect.height + marginSize * 2
+            }
+
+        screenshot1x1RectsWithMargins =
+            screenshotRequiredRegions
+                |> List.map (addMarginOnEachSide 1)
+
+        getImageData =
+            { screenshot1x1Rects = screenshot1x1RectsWithMargins }
+
+        continueWithNamedTaskToWaitOn { taskDescription, taskIdString } task =
             let
-                addMarginOnEachSide marginSize originalRect =
-                    { x = originalRect.x - marginSize
-                    , y = originalRect.y - marginSize
-                    , width = originalRect.width + marginSize * 2
-                    , height = originalRect.height + marginSize * 2
-                    }
-
-                screenshot1x1RectsWithMargins =
-                    screenshotRequiredRegions
-                        |> List.map (addMarginOnEachSide 1)
-
-                task =
-                    operateApp.getMemoryReadingTask { screenshot1x1Rects = screenshot1x1RectsWithMargins }
-
                 ( taskInProgress, startTasks ) =
-                    let
-                        taskIdString =
-                            "operate-app-read-from-game"
-                                ++ (if isRenewForImage then
-                                        "-for-image"
-
-                                    else
-                                        ""
-                                   )
-                    in
-                    ( Just
-                        { startTimeInMilliseconds = stateBefore.timeInMilliseconds
-                        , taskIdString = taskIdString
-                        , taskDescription =
-                            "Reading from game"
-                                ++ (if isRenewForImage then
-                                        " for image"
-
-                                    else
-                                        ""
-                                   )
-                        }
+                    ( { startTimeInMilliseconds = stateBefore.timeInMilliseconds
+                      , taskIdString = taskIdString
+                      , taskDescription = taskDescription
+                      }
                     , [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task } ]
                     )
 
-                setupStateBefore =
-                    stateBefore.setup
-
-                setupState =
-                    { setupStateBefore
-                        | requestsToVolatileHostCount =
-                            setupStateBefore.requestsToVolatileHostCount + (startTasks |> List.length)
-                    }
-
                 state =
-                    { stateBefore
-                        | setup = setupState
-                        , taskInProgress = taskInProgress
-                    }
+                    { stateBefore | taskInProgress = Just taskInProgress }
             in
             ( state
             , { startTasks = startTasks
-              , statusDescriptionText = "Operate app - read from game"
+              , statusDescriptionText = "Operate app - " ++ taskDescription
               , notifyWhenArrivedAtTime = Nothing
               }
                 |> InterfaceToHost.ContinueSession
             )
+
+        continueWithReadingFromGameClient =
+            continueWithNamedTaskToWaitOn
+                { taskDescription = "Reading from game"
+                , taskIdString = "operate-app-read-from-game"
+                }
+                (operateApp.getMemoryReadingTask getImageData)
+
+        continueWithGetImageDataFromReading =
+            continueWithNamedTaskToWaitOn
+                { taskDescription = "Get image data from reading"
+                , taskIdString = "operate-app-get-image-data-from-reading"
+                }
+                (operateApp.getImageDataFromReadingTask getImageData)
     in
     case maybeReadingFromGameClient of
         Just readingFromGameClient ->
             let
+                screenshot1x1RectsFromReadImageDataResult =
+                    case stateBefore.setup.lastImageDataFromReading of
+                        Nothing ->
+                            []
+
+                        Just lastImageDataFromReading ->
+                            lastImageDataFromReading.screenshot1x1Rects
+
+                mergedScreenshot1x1Rects =
+                    readingFromGameClient.image.screenshot1x1Rects ++ screenshot1x1RectsFromReadImageDataResult
+
                 coveredRegions =
-                    readingFromGameClient.image.screenshot1x1Rects
+                    mergedScreenshot1x1Rects
                         |> List.map
                             (\imageCrop ->
                                 let
@@ -587,7 +615,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                         |> List.isEmpty
             in
             if List.any (isRegionCovered >> not) screenshotRequiredRegions then
-                continueWithReadingFromGameClient True
+                continueWithGetImageDataFromReading
 
             else
                 let
@@ -596,7 +624,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
 
                     image =
                         { pixels1x1 =
-                            readingFromGameClient.image.screenshot1x1Rects
+                            mergedScreenshot1x1Rects
                                 |> List.concatMap
                                     (\imageCrop ->
                                         imageCrop.pixels
@@ -715,7 +743,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                     timeForNextReadingFromGame - stateBefore.timeInMilliseconds
             in
             if remainingTimeToNextReadingFromGame <= 0 then
-                continueWithReadingFromGameClient False
+                continueWithReadingFromGameClient
 
             else
                 ( stateBefore
@@ -825,6 +853,7 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
                 state =
                     { stateBefore
                         | lastMemoryReading = Just { timeInMilliseconds = timeInMilliseconds, memoryReadingResult = getMemoryReadingResult }
+                        , lastImageDataFromReading = Nothing
                         , memoryReadingDurations = memoryReadingDurations
                     }
 
@@ -838,6 +867,9 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
                                 |> Result.toMaybe
             in
             ( state, maybeReadingFromGameClient )
+
+        VolatileHostInterface.GetImageDataFromReadingResult getImageDataFromReadingResult ->
+            ( { stateBefore | lastImageDataFromReading = Just getImageDataFromReadingResult }, Nothing )
 
         VolatileHostInterface.FailedToBringWindowToFront error ->
             ( { stateBefore | lastEffectFailedToAcquireInputFocus = Just error }, Nothing )
@@ -861,7 +893,7 @@ parseReadingFromGameClient completedReading =
                     (\parsedMemoryReading ->
                         { parsedMemoryReading = parsedMemoryReading
                         , windowClientRectOffset = completedReading.windowClientRectOffset
-                        , image = { screenshot1x1Rects = completedReading.screenshot1x1Rects }
+                        , image = { screenshot1x1Rects = completedReading.imageData.screenshot1x1Rects }
                         }
                     )
 
@@ -954,11 +986,17 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
 
                                     Just uiRootAddress ->
                                         let
-                                            getMemoryReadingRequest { screenshot1x1Rects } =
+                                            getMemoryReadingRequest getImageData =
                                                 VolatileHostInterface.GetMemoryReading
                                                     { processId = searchResult.processId
                                                     , uiRootAddress = uiRootAddress
-                                                    , screenshot1x1Rects = screenshot1x1Rects
+                                                    , getImageData = getImageData
+                                                    }
+
+                                            getImageDataFromReadingRequest readingId getImageData =
+                                                VolatileHostInterface.GetImageDataFromReading
+                                                    { readingId = readingId
+                                                    , getImageData = getImageData
                                                     }
                                         in
                                         case stateBefore.lastMemoryReading of
@@ -975,8 +1013,8 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                     )
                                                     "Get the first memory reading from the EVE Online client process. This can take several seconds."
 
-                                            Just lastMemoryReadingTime ->
-                                                case lastMemoryReadingTime.memoryReadingResult of
+                                            Just lastMemoryReading ->
+                                                case lastMemoryReading.memoryReadingResult of
                                                     VolatileHostInterface.ProcessNotFound ->
                                                         FrameworkStopSession "The EVE Online client process disappeared."
 
@@ -1015,16 +1053,14 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                                         |> VolatileHostInterface.EffectSequenceOnWindow
                                                                         |> buildTaskFromRequestToVolatileHost (Just { maximumDelayMilliseconds = 500 })
                                                             , getMemoryReadingTask =
-                                                                \{ screenshot1x1Rects } ->
+                                                                \getImageData ->
                                                                     getMemoryReadingRequest
-                                                                        { screenshot1x1Rects = screenshot1x1Rects }
+                                                                        getImageData
                                                                         |> buildTaskFromRequestToVolatileHost
-                                                                            (if screenshot1x1Rects == [] then
-                                                                                Nothing
-
-                                                                             else
-                                                                                Just { maximumDelayMilliseconds = 500 }
-                                                                            )
+                                                                            (Just { maximumDelayMilliseconds = 500 })
+                                                            , getImageDataFromReadingTask =
+                                                                getImageDataFromReadingRequest lastCompletedMemoryReading.readingId
+                                                                    >> buildTaskFromRequestToVolatileHost Nothing
                                                             , releaseVolatileHostTask = InterfaceToHost.ReleaseVolatileHost { hostId = volatileHostId }
                                                             }
 
@@ -1204,11 +1240,13 @@ statusReportFromState state =
                         VolatileHostInterface.Completed completedReading ->
                             let
                                 allPixels =
-                                    completedReading.screenshot1x1Rects
+                                    completedReading.imageData.screenshot1x1Rects
                                         |> List.map .pixels
                                         |> List.concat
                             in
-                            String.fromInt (List.length completedReading.screenshot1x1Rects)
+                            completedReading.readingId
+                                ++ ": "
+                                ++ String.fromInt (List.length completedReading.imageData.screenshot1x1Rects)
                                 ++ " rects containing "
                                 ++ String.fromInt (List.sum (List.map List.length allPixels))
                                 ++ " pixels"

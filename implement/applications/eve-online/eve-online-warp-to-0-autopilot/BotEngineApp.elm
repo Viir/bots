@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2021-03-07
+{- EVE Online Warp-to-0 auto-pilot version 2021-04-03
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
    Before starting the bot, set up the game client as follows:
@@ -27,13 +27,15 @@ module BotEngineApp exposing
     )
 
 import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
+import Color
 import Common.AppSettings as AppSettings
 import Common.DecisionPath exposing (describeBranch)
-import Common.EffectOnWindow exposing (MouseButton(..))
+import Common.EffectOnWindow exposing (Location2d, MouseButton(..))
 import Dict
 import EveOnline.AppFramework
     exposing
-        ( AppEffect(..)
+        ( AppEvent(..)
+        , PixelValue
         , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
@@ -52,7 +54,7 @@ import EveOnline.AppFrameworkSeparatingMemory
         , useContextMenuCascade
         , waitForProgressInGame
         )
-import EveOnline.ParseUserInterface exposing (getAllContainedDisplayTexts)
+import EveOnline.ParseUserInterface exposing (centerFromDisplayRegion, getAllContainedDisplayTexts)
 
 
 defaultBotSettings : BotSettings
@@ -110,6 +112,8 @@ statusTextFromDecisionContext context =
         describeCurrentReading =
             "current solar system: "
                 ++ (currentSolarSystemNameFromReading context.readingFromGameClient |> Maybe.withDefault "Unknown")
+                ++ "\nShip module buttons: "
+                ++ describeShipModuleButtons context
     in
     [ describeSessionPerformance
     , describeCurrentReading
@@ -153,7 +157,7 @@ decideStepWhenInSpace context undockingComplete =
 
 decideStepWhenInSpaceWaiting : BotDecisionContext -> DecisionPathNode
 decideStepWhenInSpaceWaiting context =
-    case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> .isActive >> Maybe.withDefault False >> not) |> List.head of
+    case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> moduleButtonLooksActive context >> Maybe.withDefault False >> not) |> List.head of
         Just ( inactiveModuleMatchingText, inactiveModule ) ->
             describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
                 (describeBranch "Click on the module."
@@ -232,9 +236,10 @@ tooltipLooksLikeModuleToActivateAlways context =
 
 processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
 processEvent =
-    EveOnline.AppFrameworkSeparatingMemory.processEvent
+    EveOnline.AppFrameworkSeparatingMemory.processEventWithImageProcessing
         { parseAppSettings = parseBotSettings
         , selectGameClientInstance = always EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
+        , screenshotRegionsToRead = screenshotRegionsToRead
         , updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
         , decideNextStep = autopilotBotDecisionRoot
         , statusTextFromDecisionContext = statusTextFromDecisionContext
@@ -251,3 +256,135 @@ currentSolarSystemNameFromReading readingFromGameClient =
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
 readShipUIModuleButtonTooltips =
     EveOnline.AppFrameworkSeparatingMemory.readShipUIModuleButtonTooltipWhereNotYetInMemory
+
+
+locationToMeasureGlowFromModuleButton : EveOnline.ParseUserInterface.ShipUIModuleButton -> Location2d
+locationToMeasureGlowFromModuleButton moduleButton =
+    let
+        moduleButtonCenter =
+            moduleButton.uiNode.totalDisplayRegion |> centerFromDisplayRegion
+    in
+    { x = moduleButtonCenter.x - 20, y = moduleButtonCenter.y }
+
+
+screenshotRegionsToRead :
+    ReadingFromGameClient
+    -> { rects1x1 : List EveOnline.AppFrameworkSeparatingMemory.Rect2dStructure }
+screenshotRegionsToRead memoryReading =
+    let
+        shipModuleButtons =
+            case memoryReading.shipUI of
+                Nothing ->
+                    []
+
+                Just shipUI ->
+                    shipUI.moduleButtons
+    in
+    { rects1x1 =
+        shipModuleButtons
+            |> List.map locationToMeasureGlowFromModuleButton
+            |> List.map (\location -> { x = location.x, y = location.y, width = 1, height = 1 })
+    }
+
+
+describeShipModuleButtons : BotDecisionContext -> String
+describeShipModuleButtons context =
+    case context.readingFromGameClient.shipUI of
+        Nothing ->
+            "I see no ship UI"
+
+        Just shipUI ->
+            let
+                moduleButtonsRowsList =
+                    [ shipUI.moduleButtonsRows.top
+                    , shipUI.moduleButtonsRows.middle
+                    , shipUI.moduleButtonsRows.bottom
+                    ]
+
+                describeGreenessOfPixelValue { activeIndicationPixelGreenAbsolute, activeIndicationPixelGreenessPercent } =
+                    String.fromInt activeIndicationPixelGreenessPercent
+                        ++ " % ("
+                        ++ String.fromInt activeIndicationPixelGreenAbsolute
+                        ++ ")"
+
+                describeAllModuleButtonsGreeness =
+                    moduleButtonsRowsList
+                        |> List.indexedMap
+                            (\rowIndex row ->
+                                row
+                                    |> List.indexedMap
+                                        (\columnIndex moduleButton ->
+                                            let
+                                                measurementLocation =
+                                                    locationToMeasureGlowFromModuleButton moduleButton
+
+                                                maybeGreennessText =
+                                                    moduleButtonImageProcessing context moduleButton
+                                                        |> Maybe.map describeGreenessOfPixelValue
+                                            in
+                                            "["
+                                                ++ String.fromInt rowIndex
+                                                ++ ","
+                                                ++ String.fromInt columnIndex
+                                                ++ "]: "
+                                                ++ (maybeGreennessText |> Maybe.withDefault "??")
+                                        )
+                                    |> String.join ", "
+                            )
+                        |> String.join "\n"
+            in
+            "I see "
+                ++ (moduleButtonsRowsList |> List.map List.length |> List.sum |> String.fromInt)
+                ++ " module buttons in total, with greenness as follows:\n"
+                ++ describeAllModuleButtonsGreeness
+
+
+moduleButtonLooksActive : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUIModuleButton -> Maybe Bool
+moduleButtonLooksActive context moduleButton =
+    if moduleButton.isActive == Just True then
+        moduleButton.isActive
+
+    else
+        {-
+           Adapt to discovery in March 2021 by Victor Santamaría Caballero and Samuel Pagé:
+           Some module buttons don't have the ramp:
+           https://forum.botengine.org/t/cloaking-device-in-warp-to-0-bot/3917/3
+        -}
+        case moduleButtonImageProcessing context moduleButton of
+            Nothing ->
+                moduleButton.isActive
+
+            Just greenness ->
+                Just (4 < greenness.activeIndicationPixelGreenessPercent)
+
+
+moduleButtonImageProcessing :
+    BotDecisionContext
+    -> EveOnline.ParseUserInterface.ShipUIModuleButton
+    -> Maybe { activeIndicationPixelGreenAbsolute : Int, activeIndicationPixelGreenessPercent : Int }
+moduleButtonImageProcessing context moduleButton =
+    let
+        measurementLocation =
+            locationToMeasureGlowFromModuleButton moduleButton
+    in
+    context.readingFromGameClientImage.pixels1x1
+        |> Dict.get ( measurementLocation.x, measurementLocation.y )
+        |> Maybe.map
+            (\pixelValue ->
+                { activeIndicationPixelGreenAbsolute = pixelValue.green
+                , activeIndicationPixelGreenessPercent = greenessPercentFromPixelValue pixelValue
+                }
+            )
+
+
+greenessPercentFromPixelValue : PixelValue -> Int
+greenessPercentFromPixelValue pixelValue =
+    -- https://www.w3.org/TR/css-color-3/#hsl-color
+    let
+        hsla =
+            Color.toHsla (Color.rgb255 pixelValue.red pixelValue.green pixelValue.blue)
+
+        hueGreenessFactor =
+            max 0 (1 - (abs (hsla.hue - 0.333) * 4))
+    in
+    round ((hueGreenessFactor * hsla.saturation) * 100)

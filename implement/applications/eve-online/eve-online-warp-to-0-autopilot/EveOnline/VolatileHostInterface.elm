@@ -4,7 +4,9 @@ module EveOnline.VolatileHostInterface exposing
     , EffectSequenceElement(..)
     , GameClientProcessSummaryStruct
     , GetMemoryReadingResultStructure(..)
+    , ImageCrop
     , Location2d
+    , MemoryReadingCompletedStructure
     , RequestToVolatileHost(..)
     , ResponseFromVolatileHost(..)
     , SearchUIRootAddressResultStructure
@@ -49,6 +51,7 @@ type alias GameClientProcessSummaryStruct =
 type alias GetMemoryReadingStructure =
     { processId : Int
     , uiRootAddress : String
+    , screenshot1x1Rects : List Rect2dStructure
     }
 
 
@@ -71,6 +74,8 @@ type GetMemoryReadingResultStructure
 type alias MemoryReadingCompletedStructure =
     { mainWindowId : WindowId
     , serialRepresentationJson : Maybe String
+    , windowClientRectOffset : Location2d
+    , screenshot1x1Rects : List ImageCrop
     }
 
 
@@ -123,6 +128,24 @@ type alias ConsoleBeepStructure =
     }
 
 
+type alias Rect2dStructure =
+    { x : Int
+    , y : Int
+    , width : Int
+    , height : Int
+    }
+
+
+type alias ImageCrop =
+    { offset : Location2d
+    , pixels : List (List PixelValue)
+    }
+
+
+type alias PixelValue =
+    { red : Int, green : Int, blue : Int }
+
+
 deserializeResponseFromVolatileHost : String -> Result Json.Decode.Error ResponseFromVolatileHost
 deserializeResponseFromVolatileHost =
     Json.Decode.decodeString decodeResponseFromVolatileHost
@@ -169,17 +192,17 @@ encodeEffectSequenceElement : EffectSequenceElement -> Json.Encode.Value
 encodeEffectSequenceElement sequenceElement =
     case sequenceElement of
         Effect effect ->
-            Json.Encode.object [ ( "Effect", encodeEffectOnWindowStructure effect ) ]
+            Json.Encode.object [ ( "effect", encodeEffectOnWindowStructure effect ) ]
 
         DelayMilliseconds delayMilliseconds ->
-            Json.Encode.object [ ( "DelayMilliseconds", Json.Encode.int delayMilliseconds ) ]
+            Json.Encode.object [ ( "delayMilliseconds", Json.Encode.int delayMilliseconds ) ]
 
 
 decodeEffectSequenceElement : Json.Decode.Decoder EffectSequenceElement
 decodeEffectSequenceElement =
     Json.Decode.oneOf
-        [ Json.Decode.field "Effect" (decodeEffectOnWindowStructure |> Json.Decode.map Effect)
-        , Json.Decode.field "DelayMilliseconds" (Json.Decode.int |> Json.Decode.map DelayMilliseconds)
+        [ Json.Decode.field "effect" (decodeEffectOnWindowStructure |> Json.Decode.map Effect)
+        , Json.Decode.field "delayMilliseconds" (Json.Decode.int |> Json.Decode.map DelayMilliseconds)
         ]
 
 
@@ -302,14 +325,16 @@ encodeGetMemoryReading getMemoryReading =
     Json.Encode.object
         [ ( "processId", getMemoryReading.processId |> Json.Encode.int )
         , ( "uiRootAddress", getMemoryReading.uiRootAddress |> Json.Encode.string )
+        , ( "screenshot1x1Rects", getMemoryReading.screenshot1x1Rects |> Json.Encode.list jsonEncodeRect2d )
         ]
 
 
 decodeGetMemoryReading : Json.Decode.Decoder GetMemoryReadingStructure
 decodeGetMemoryReading =
-    Json.Decode.map2 GetMemoryReadingStructure
+    Json.Decode.map3 GetMemoryReadingStructure
         (Json.Decode.field "processId" Json.Decode.int)
         (Json.Decode.field "uiRootAddress" Json.Decode.string)
+        (Json.Decode.field "screenshot1x1Rects" (Json.Decode.list jsonDecodeRect2d))
 
 
 decodeSearchUIRootAddressResult : Json.Decode.Decoder SearchUIRootAddressResultStructure
@@ -329,15 +354,57 @@ decodeGetMemoryReadingResult =
 
 decodeMemoryReadingCompleted : Json.Decode.Decoder MemoryReadingCompletedStructure
 decodeMemoryReadingCompleted =
-    Json.Decode.map2 MemoryReadingCompletedStructure
+    Json.Decode.map4 MemoryReadingCompletedStructure
         (Json.Decode.field "mainWindowId" Json.Decode.string)
         (Json.Decode.Extra.optionalField "serialRepresentationJson" Json.Decode.string)
+        (Json.Decode.field "windowClientRectOffset" jsonDecodeLocation2d)
+        (Json.Decode.Extra.optionalField "screenshot1x1Rects" (Json.Decode.nullable (Json.Decode.list jsonDecodeImageCrop))
+            |> Json.Decode.map (Maybe.Extra.join >> Maybe.withDefault [])
+        )
 
 
 buildRequestStringToGetResponseFromVolatileHost : RequestToVolatileHost -> String
 buildRequestStringToGetResponseFromVolatileHost =
     encodeRequestToVolatileHost
         >> Json.Encode.encode 0
+
+
+jsonEncodeRect2d : Rect2dStructure -> Json.Encode.Value
+jsonEncodeRect2d rect2d =
+    Json.Encode.object
+        [ ( "x", rect2d.x |> Json.Encode.int )
+        , ( "y", rect2d.y |> Json.Encode.int )
+        , ( "width", rect2d.width |> Json.Encode.int )
+        , ( "height", rect2d.height |> Json.Encode.int )
+        ]
+
+
+jsonDecodeRect2d : Json.Decode.Decoder Rect2dStructure
+jsonDecodeRect2d =
+    Json.Decode.map4 Rect2dStructure
+        (Json.Decode.field "x" Json.Decode.int)
+        (Json.Decode.field "y" Json.Decode.int)
+        (Json.Decode.field "width" Json.Decode.int)
+        (Json.Decode.field "height" Json.Decode.int)
+
+
+jsonDecodeImageCrop : Json.Decode.Decoder ImageCrop
+jsonDecodeImageCrop =
+    Json.Decode.map2 ImageCrop
+        (Json.Decode.field "offset" jsonDecodeLocation2d)
+        (Json.Decode.field "pixels" (Json.Decode.list (Json.Decode.list jsonDecodePixelValue)))
+
+
+jsonDecodePixelValue : Json.Decode.Decoder PixelValue
+jsonDecodePixelValue =
+    Json.Decode.int
+        |> Json.Decode.map
+            (\asInt ->
+                { red = asInt // (256 * 256)
+                , green = asInt // 256 |> modBy 256
+                , blue = asInt |> modBy 256
+                }
+            )
 
 
 encodeConsoleBeep : ConsoleBeepStructure -> Json.Encode.Value

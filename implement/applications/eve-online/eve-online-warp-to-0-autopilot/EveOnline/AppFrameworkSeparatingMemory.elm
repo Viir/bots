@@ -6,7 +6,8 @@ import Common.EffectOnWindow
 import Dict
 import EveOnline.AppFramework
     exposing
-        ( ReadingFromGameClient
+        ( PixelValueRGB
+        , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
@@ -82,7 +83,7 @@ type alias AppConfigurationWithImageProcessing appSettings appMemory =
 
 
 type alias ReadingFromGameClientImage =
-    { pixels1x1 : Dict.Dict ( Int, Int ) PixelValue
+    { pixels1x1 : Dict.Dict ( Int, Int ) PixelValueRGB
     }
 
 
@@ -92,10 +93,6 @@ type alias Rect2dStructure =
     , width : Int
     , height : Int
     }
-
-
-type alias PixelValue =
-    { red : Int, green : Int, blue : Int }
 
 
 millisecondsToNextReadingFromGameDefault : Int

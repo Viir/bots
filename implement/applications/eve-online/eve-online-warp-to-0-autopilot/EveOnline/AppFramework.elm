@@ -52,6 +52,14 @@ type alias ContinueSessionStructure =
     }
 
 
+type alias Rect2dStructure =
+    { x : Int
+    , y : Int
+    , width : Int
+    , height : Int
+    }
+
+
 type alias AppEventContext appSettings =
     { timeInMilliseconds : Int
     , appSettings : appSettings
@@ -82,10 +90,15 @@ type alias SetupState =
     , lastRequestToVolatileHostResult : Maybe (Result String ( InterfaceToHost.RequestToVolatileHostComplete, Result String VolatileHostInterface.ResponseFromVolatileHost ))
     , gameClientProcesses : Maybe (List GameClientProcessSummary)
     , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
-    , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : VolatileHostInterface.GetMemoryReadingResultStructure }
-    , lastImageDataFromReading : Maybe VolatileHostInterface.GetImageDataFromReadingResultStructure
-    , memoryReadingDurations : List Int
+    , lastReadingFromGame : Maybe { timeInMilliseconds : Int, aggregate : ReadingFromGameClientAggregateState }
+    , readingFromGameDurations : List Int
     , lastEffectFailedToAcquireInputFocus : Maybe String
+    }
+
+
+type alias ReadingFromGameClientAggregateState =
+    { initialReading : VolatileHostInterface.GetMemoryReadingResultStructure
+    , imageDataFromReadingResults : List VolatileHostInterface.GetImageDataFromReadingResultStructure
     }
 
 
@@ -128,11 +141,11 @@ type alias SeeUndockingComplete =
 
 
 type alias ReadingFromGameClientImage =
-    { pixels1x1 : Dict.Dict ( Int, Int ) PixelValue
+    { pixels1x1 : Dict.Dict ( Int, Int ) PixelValueRGB
     }
 
 
-type alias PixelValue =
+type alias PixelValueRGB =
     { red : Int, green : Int, blue : Int }
 
 
@@ -144,6 +157,11 @@ effectSequenceSpacingMilliseconds =
 volatileHostRecycleInterval : Int
 volatileHostRecycleInterval =
     400
+
+
+getImageDataFromReadingRequestLimit : Int
+getImageDataFromReadingRequestLimit =
+    3
 
 
 initShipModulesMemory : ShipModulesMemory
@@ -222,9 +240,8 @@ initSetup =
     , lastRequestToVolatileHostResult = Nothing
     , gameClientProcesses = Nothing
     , searchUIRootAddressResult = Nothing
-    , lastMemoryReading = Nothing
-    , lastImageDataFromReading = Nothing
-    , memoryReadingDurations = []
+    , lastReadingFromGame = Nothing
+    , readingFromGameDurations = []
     , lastEffectFailedToAcquireInputFocus = Nothing
     }
 
@@ -494,18 +511,13 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                     Just readingFromGameClient
 
                 Nothing ->
-                    case stateBefore.setup.lastMemoryReading of
+                    case stateBefore.setup.lastReadingFromGame of
                         Nothing ->
                             Nothing
 
                         Just lastReading ->
-                            case lastReading.memoryReadingResult of
-                                VolatileHostInterface.ProcessNotFound ->
-                                    Nothing
-
-                                VolatileHostInterface.Completed completedReading ->
-                                    parseReadingFromGameClient completedReading
-                                        |> Result.toMaybe
+                            parseReadingFromGameClient lastReading.aggregate
+                                |> Result.toMaybe
 
         screenshotRequiredRegions =
             case readingForScreenshotRequiredRegions of
@@ -578,19 +590,12 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
     case maybeReadingFromGameClient of
         Just readingFromGameClient ->
             let
-                screenshot1x1RectsFromReadImageDataResult =
-                    case stateBefore.setup.lastImageDataFromReading of
-                        Nothing ->
-                            []
-
-                        Just lastImageDataFromReading ->
-                            lastImageDataFromReading.screenshot1x1Rects
-
-                mergedScreenshot1x1Rects =
-                    readingFromGameClient.image.screenshot1x1Rects ++ screenshot1x1RectsFromReadImageDataResult
+                screenshot1x1Rects =
+                    readingFromGameClient.imageDataFromReadingResults
+                        |> List.concatMap .screenshot1x1Rects
 
                 coveredRegions =
-                    mergedScreenshot1x1Rects
+                    screenshot1x1Rects
                         |> List.map
                             (\imageCrop ->
                                 let
@@ -614,7 +619,10 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                     subtractRegionsFromRegion { minuend = region, subtrahend = coveredRegions }
                         |> List.isEmpty
             in
-            if List.any (isRegionCovered >> not) screenshotRequiredRegions then
+            if
+                List.any (isRegionCovered >> not) screenshotRequiredRegions
+                    && (List.length readingFromGameClient.imageDataFromReadingResults < getImageDataFromReadingRequestLimit)
+            then
                 continueWithGetImageDataFromReading
 
             else
@@ -624,7 +632,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
 
                     image =
                         { pixels1x1 =
-                            mergedScreenshot1x1Rects
+                            screenshot1x1Rects
                                 |> List.concatMap
                                     (\imageCrop ->
                                         imageCrop.pixels
@@ -685,7 +693,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                                                 ( Just
                                                     { startTimeInMilliseconds = stateBefore.timeInMilliseconds
                                                     , taskIdString = taskIdString
-                                                    , taskDescription = "From app effect or memory reading."
+                                                    , taskDescription = "Send effects to game client"
                                                     }
                                                 , [ { taskId = InterfaceToHost.taskIdFromString taskIdString
                                                     , task = task
@@ -694,7 +702,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                                                 )
                                 in
                                 { startTasks = startTasks
-                                , statusDescriptionText = "Operate app - send effects"
+                                , statusDescriptionText = "Operate app"
                                 , notifyWhenArrivedAtTime =
                                     if taskInProgress == Nothing then
                                         Just { timeInMilliseconds = timeForNextReadingFromGame }
@@ -718,7 +726,11 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
         Nothing ->
             let
                 timeForNextReadingFromGameGeneral =
-                    (stateBefore.setup.lastMemoryReading |> Maybe.map .timeInMilliseconds |> Maybe.withDefault 0) + 10000
+                    (stateBefore.setup.lastReadingFromGame
+                        |> Maybe.map .timeInMilliseconds
+                        |> Maybe.withDefault 0
+                    )
+                        + 10000
 
                 timeForNextReadingFromGameFromApp =
                     stateBefore.appState.lastEvent
@@ -758,15 +770,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
 type alias ReadingFromGameClientStructure =
     { parsedMemoryReading : EveOnline.ParseUserInterface.ParsedUserInterface
     , windowClientRectOffset : Location2d
-    , image : { screenshot1x1Rects : List VolatileHostInterface.ImageCrop }
-    }
-
-
-type alias Rect2dStructure =
-    { x : Int
-    , y : Int
-    , width : Int
-    , height : Int
+    , imageDataFromReadingResults : List VolatileHostInterface.GetImageDataFromReadingResultStructure
     }
 
 
@@ -845,31 +849,56 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
 
         VolatileHostInterface.GetMemoryReadingResult getMemoryReadingResult ->
             let
-                memoryReadingDurations =
+                readingFromGameDurations =
                     runInVolatileHostDurationInMs
-                        :: stateBefore.memoryReadingDurations
+                        :: stateBefore.readingFromGameDurations
                         |> List.take 10
+
+                lastReadingFromGame =
+                    { timeInMilliseconds = timeInMilliseconds
+                    , aggregate =
+                        { initialReading = getMemoryReadingResult
+                        , imageDataFromReadingResults = []
+                        }
+                    }
 
                 state =
                     { stateBefore
-                        | lastMemoryReading = Just { timeInMilliseconds = timeInMilliseconds, memoryReadingResult = getMemoryReadingResult }
-                        , lastImageDataFromReading = Nothing
-                        , memoryReadingDurations = memoryReadingDurations
+                        | lastReadingFromGame = Just lastReadingFromGame
+                        , readingFromGameDurations = readingFromGameDurations
                     }
 
                 maybeReadingFromGameClient =
-                    case getMemoryReadingResult of
-                        VolatileHostInterface.ProcessNotFound ->
-                            Nothing
-
-                        VolatileHostInterface.Completed completedReading ->
-                            parseReadingFromGameClient completedReading
-                                |> Result.toMaybe
+                    parseReadingFromGameClient lastReadingFromGame.aggregate
+                        |> Result.toMaybe
             in
             ( state, maybeReadingFromGameClient )
 
         VolatileHostInterface.GetImageDataFromReadingResult getImageDataFromReadingResult ->
-            ( { stateBefore | lastImageDataFromReading = Just getImageDataFromReadingResult }, Nothing )
+            case stateBefore.lastReadingFromGame of
+                Nothing ->
+                    ( stateBefore, Nothing )
+
+                Just lastReadingFromGameBefore ->
+                    let
+                        aggregateBefore =
+                            lastReadingFromGameBefore.aggregate
+
+                        imageDataFromReadingResults =
+                            getImageDataFromReadingResult :: aggregateBefore.imageDataFromReadingResults
+
+                        lastReadingFromGame =
+                            { lastReadingFromGameBefore
+                                | aggregate = { aggregateBefore | imageDataFromReadingResults = imageDataFromReadingResults }
+                            }
+
+                        maybeReadingFromGameClient =
+                            parseReadingFromGameClient lastReadingFromGame.aggregate
+                                |> Result.toMaybe
+                    in
+                    ( { stateBefore | lastReadingFromGame = Just lastReadingFromGame }
+                    , maybeReadingFromGameClient
+                    )
 
         VolatileHostInterface.FailedToBringWindowToFront error ->
             ( { stateBefore | lastEffectFailedToAcquireInputFocus = Just error }, Nothing )
@@ -878,24 +907,31 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
             ( { stateBefore | lastEffectFailedToAcquireInputFocus = Nothing }, Nothing )
 
 
-parseReadingFromGameClient : VolatileHostInterface.MemoryReadingCompletedStructure -> Result String ReadingFromGameClientStructure
-parseReadingFromGameClient completedReading =
-    case completedReading.serialRepresentationJson of
-        Nothing ->
-            Err "Missing json representation of memory reading"
+parseReadingFromGameClient :
+    ReadingFromGameClientAggregateState
+    -> Result String ReadingFromGameClientStructure
+parseReadingFromGameClient readingAggregate =
+    case readingAggregate.initialReading of
+        VolatileHostInterface.ProcessNotFound ->
+            Err "Initial reading failed with 'Process Not Found'"
 
-        Just serialRepresentationJson ->
-            serialRepresentationJson
-                |> EveOnline.MemoryReading.decodeMemoryReadingFromString
-                |> Result.mapError Json.Decode.errorToString
-                |> Result.map (EveOnline.ParseUserInterface.parseUITreeWithDisplayRegionFromUITree >> EveOnline.ParseUserInterface.parseUserInterfaceFromUITree)
-                |> Result.map
-                    (\parsedMemoryReading ->
-                        { parsedMemoryReading = parsedMemoryReading
-                        , windowClientRectOffset = completedReading.windowClientRectOffset
-                        , image = { screenshot1x1Rects = completedReading.imageData.screenshot1x1Rects }
-                        }
-                    )
+        VolatileHostInterface.Completed completedReading ->
+            case completedReading.serialRepresentationJson of
+                Nothing ->
+                    Err "Missing json representation of memory reading"
+
+                Just serialRepresentationJson ->
+                    serialRepresentationJson
+                        |> EveOnline.MemoryReading.decodeMemoryReadingFromString
+                        |> Result.mapError Json.Decode.errorToString
+                        |> Result.map (EveOnline.ParseUserInterface.parseUITreeWithDisplayRegionFromUITree >> EveOnline.ParseUserInterface.parseUserInterfaceFromUITree)
+                        |> Result.map
+                            (\parsedMemoryReading ->
+                                { parsedMemoryReading = parsedMemoryReading
+                                , windowClientRectOffset = completedReading.windowClientRectOffset
+                                , imageDataFromReadingResults = completedReading.imageData :: readingAggregate.imageDataFromReadingResults
+                                }
+                            )
 
 
 getNextSetupTask :
@@ -999,7 +1035,7 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                     , getImageData = getImageData
                                                     }
                                         in
-                                        case stateBefore.lastMemoryReading of
+                                        case stateBefore.lastReadingFromGame of
                                             Nothing ->
                                                 ContinueSetup stateBefore
                                                     (InterfaceToHost.RequestToVolatileHost
@@ -1014,7 +1050,7 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                     "Get the first memory reading from the EVE Online client process. This can take several seconds."
 
                                             Just lastMemoryReading ->
-                                                case lastMemoryReading.memoryReadingResult of
+                                                case lastMemoryReading.aggregate.initialReading of
                                                     VolatileHostInterface.ProcessNotFound ->
                                                         FrameworkStopSession "The EVE Online client process disappeared."
 
@@ -1228,12 +1264,12 @@ statusReportFromState state =
                "amrd=" ++ (averageMemoryReadingDuration |> String.fromInt) ++ "ms"
         -}
         describeLastReadingFromGame =
-            case state.setup.lastMemoryReading of
+            case state.setup.lastReadingFromGame of
                 Nothing ->
                     "None so far"
 
                 Just lastMemoryReading ->
-                    case lastMemoryReading.memoryReadingResult of
+                    case lastMemoryReading.aggregate.initialReading of
                         VolatileHostInterface.ProcessNotFound ->
                             "process not found"
 

@@ -61,7 +61,7 @@ struct ReadingFromGameClient
 
     public string readingId;
 
-    public int[][] pixels1x1;
+    public int[][] pixels_1x1_R8G8B8;
 }
 
 class Request
@@ -219,7 +219,7 @@ public struct ImageCrop
 {
     public Location2d offset;
 
-    public int[][] pixels;
+    public int[][] pixels_R8G8B8;
 }
 
 public struct Rect2d
@@ -330,13 +330,13 @@ Response request(Request request)
             }
         }
 
-        var pixels1x1 = GetScreenshotOfWindowAsPixelsValues(windowHandle);
+        var pixels_1x1_R8G8B8 = GetScreenshotOfWindowAsPixelsValues_R8G8B8(windowHandle);
 
         var historyEntry = new ReadingFromGameClient
         {
             windowHandle = windowHandle,
             readingId = readingId,
-            pixels1x1 = pixels1x1,
+            pixels_1x1_R8G8B8 = pixels_1x1_R8G8B8,
         };
 
         var imageData = CompileImageDataFromReadingResult(request.GetMemoryReading.getImageData, historyEntry);
@@ -445,22 +445,17 @@ Response.GetImageDataFromReadingResultStructure CompileImageDataFromReadingResul
 {
     ImageCrop[] screenshot1x1Rects = null;
 
-    if (historyEntry.pixels1x1 != null)
+    if (historyEntry.pixels_1x1_R8G8B8 != null)
     {
         screenshot1x1Rects =
             request.screenshot1x1Rects
             .Select(rect =>
             {
-                var cropPixels =
-                    historyEntry.pixels1x1
-                    .Skip(rect.y)
-                    .Take(rect.height)
-                    .Select(rowPixels => rowPixels.Skip(rect.x).Take(rect.width).ToArray())
-                    .ToArray();
+                var cropPixels = CopyRectangularCrop(historyEntry.pixels_1x1_R8G8B8, rect);
 
                 return new ImageCrop
                 {
-                    pixels = cropPixels,
+                    pixels_R8G8B8 = cropPixels,
                     offset = new Location2d { x = rect.x, y = rect.y },
                 };
             }).ToArray();
@@ -470,6 +465,26 @@ Response.GetImageDataFromReadingResultStructure CompileImageDataFromReadingResul
     {
         screenshot1x1Rects = screenshot1x1Rects,
     };
+}
+
+int[][] CopyRectangularCrop(int[][] original, Rect2d rect)
+{
+    return
+        original
+        .Skip(rect.y)
+        .Take(rect.height)
+        .Select(rowPixels =>
+        {
+            if (rect.x == 0 && rect.width == rowPixels.Length)
+                return rowPixels;
+
+            var cropRowPixels = new int[rect.width];
+
+            System.Buffer.BlockCopy(rowPixels, rect.x * 4, cropRowPixels, 0, rect.width * 4);
+
+            return cropRowPixels;
+        })
+        .ToArray();
 }
 
 ulong? FindUIRootAddressFromProcessId(int processId)
@@ -755,7 +770,7 @@ System.Collections.Generic.IReadOnlyList<Response.GameClientProcessSummaryStruct
     return processes;
 }
 
-public int[][] GetScreenshotOfWindowAsPixelsValues(IntPtr windowHandle)
+public int[][] GetScreenshotOfWindowAsPixelsValues_R8G8B8(IntPtr windowHandle)
 {
     var screenshotAsBitmap = GetScreenshotOfWindowAsBitmap(windowHandle);
 

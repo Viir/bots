@@ -139,11 +139,11 @@ type alias Rect2dStructure =
 
 type alias ImageCrop =
     { offset : Location2d
-    , pixels : List (List PixelValue)
+    , pixels : List (List PixelValueRGB)
     }
 
 
-type alias PixelValue =
+type alias PixelValueRGB =
     { red : Int, green : Int, blue : Int }
 
 
@@ -434,11 +434,11 @@ jsonDecodeImageCrop : Json.Decode.Decoder ImageCrop
 jsonDecodeImageCrop =
     Json.Decode.map2 ImageCrop
         (Json.Decode.field "offset" jsonDecodeLocation2d)
-        (Json.Decode.field "pixels" (Json.Decode.list (Json.Decode.list jsonDecodePixelValue)))
+        (Json.Decode.field "pixels_R8G8B8" (Json.Decode.list (Json.Decode.list jsonDecodePixelValue_R8G8B8)))
 
 
-jsonDecodePixelValue : Json.Decode.Decoder PixelValue
-jsonDecodePixelValue =
+jsonDecodePixelValue_R8G8B8 : Json.Decode.Decoder PixelValueRGB
+jsonDecodePixelValue_R8G8B8 =
     Json.Decode.int
         |> Json.Decode.map
             (\asInt ->

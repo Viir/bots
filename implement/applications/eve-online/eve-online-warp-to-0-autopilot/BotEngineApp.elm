@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2021-04-03
+{- EVE Online Warp-to-0 auto-pilot version 2021-04-04
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
    Before starting the bot, set up the game client as follows:
@@ -35,7 +35,7 @@ import Dict
 import EveOnline.AppFramework
     exposing
         ( AppEvent(..)
-        , PixelValue
+        , PixelValueRGB
         , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
@@ -110,10 +110,17 @@ statusTextFromDecisionContext context =
             "jumps completed: " ++ (context.memory.jumpsCompleted |> String.fromInt)
 
         describeCurrentReading =
-            "current solar system: "
-                ++ (currentSolarSystemNameFromReading context.readingFromGameClient |> Maybe.withDefault "Unknown")
-                ++ "\nShip module buttons: "
-                ++ describeShipModuleButtons context
+            [ [ "current solar system: "
+                    ++ (currentSolarSystemNameFromReading context.readingFromGameClient |> Maybe.withDefault "Unknown")
+              ]
+            , if List.isEmpty context.eventContext.appSettings.modulesToActivateAlways then
+                []
+
+              else
+                [ "Ship module buttons: " ++ describeShipModuleButtons context ]
+            ]
+                |> List.concat
+                |> String.join "\n"
     in
     [ describeSessionPerformance
     , describeCurrentReading
@@ -315,9 +322,6 @@ describeShipModuleButtons context =
                                     |> List.indexedMap
                                         (\columnIndex moduleButton ->
                                             let
-                                                measurementLocation =
-                                                    locationToMeasureGlowFromModuleButton moduleButton
-
                                                 maybeGreennessText =
                                                     moduleButtonImageProcessing context moduleButton
                                                         |> Maybe.map describeGreenessOfPixelValue
@@ -377,7 +381,7 @@ moduleButtonImageProcessing context moduleButton =
             )
 
 
-greenessPercentFromPixelValue : PixelValue -> Int
+greenessPercentFromPixelValue : PixelValueRGB -> Int
 greenessPercentFromPixelValue pixelValue =
     -- https://www.w3.org/TR/css-color-3/#hsl-color
     let

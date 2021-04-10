@@ -1,20 +1,4 @@
-module EveOnline.VolatileHostInterface exposing
-    ( ConsoleBeepStructure
-    , EffectOnWindowStructure(..)
-    , EffectSequenceElement(..)
-    , GameClientProcessSummaryStruct
-    , GetMemoryReadingResultStructure(..)
-    , Location2d
-    , RequestToVolatileHost(..)
-    , ResponseFromVolatileHost(..)
-    , SearchUIRootAddressResultStructure
-    , SearchUIRootAddressStructure
-    , WindowId
-    , buildRequestStringToGetResponseFromVolatileHost
-    , decodeRequestToVolatileHost
-    , deserializeResponseFromVolatileHost
-    , encodeRequestToVolatileHost
-    )
+module EveOnline.VolatileHostInterface exposing (..)
 
 import Common.EffectOnWindow exposing (MouseButton(..), VirtualKeyCode(..), virtualKeyCodeAsInteger)
 import Json.Decode
@@ -29,12 +13,14 @@ type RequestToVolatileHost
     | GetMemoryReading GetMemoryReadingStructure
     | EffectSequenceOnWindow (TaskOnWindowStructure (List EffectSequenceElement))
     | EffectConsoleBeepSequence (List ConsoleBeepStructure)
+    | GetImageDataFromReading GetImageDataFromSpecificReadingStructure
 
 
 type ResponseFromVolatileHost
     = ListGameClientProcessesResponse (List GameClientProcessSummaryStruct)
     | SearchUIRootAddressResult SearchUIRootAddressResultStructure
     | GetMemoryReadingResult GetMemoryReadingResultStructure
+    | GetImageDataFromReadingResult GetImageDataFromReadingResultStructure
     | FailedToBringWindowToFront String
     | CompletedEffectSequenceOnWindow
 
@@ -49,6 +35,18 @@ type alias GameClientProcessSummaryStruct =
 type alias GetMemoryReadingStructure =
     { processId : Int
     , uiRootAddress : String
+    , getImageData : GetImageDataFromReadingStructure
+    }
+
+
+type alias GetImageDataFromSpecificReadingStructure =
+    { readingId : String
+    , getImageData : GetImageDataFromReadingStructure
+    }
+
+
+type alias GetImageDataFromReadingStructure =
+    { screenshot1x1Rects : List Rect2dStructure
     }
 
 
@@ -70,7 +68,15 @@ type GetMemoryReadingResultStructure
 
 type alias MemoryReadingCompletedStructure =
     { mainWindowId : WindowId
+    , readingId : String
     , serialRepresentationJson : Maybe String
+    , windowClientRectOffset : Location2d
+    , imageData : GetImageDataFromReadingResultStructure
+    }
+
+
+type alias GetImageDataFromReadingResultStructure =
+    { screenshot1x1Rects : List ImageCrop
     }
 
 
@@ -123,6 +129,24 @@ type alias ConsoleBeepStructure =
     }
 
 
+type alias Rect2dStructure =
+    { x : Int
+    , y : Int
+    , width : Int
+    , height : Int
+    }
+
+
+type alias ImageCrop =
+    { offset : Location2d
+    , pixels : List (List PixelValueRGB)
+    }
+
+
+type alias PixelValueRGB =
+    { red : Int, green : Int, blue : Int }
+
+
 deserializeResponseFromVolatileHost : String -> Result Json.Decode.Error ResponseFromVolatileHost
 deserializeResponseFromVolatileHost =
     Json.Decode.decodeString decodeResponseFromVolatileHost
@@ -137,6 +161,8 @@ decodeResponseFromVolatileHost =
             |> Json.Decode.map SearchUIRootAddressResult
         , Json.Decode.field "GetMemoryReadingResult" decodeGetMemoryReadingResult
             |> Json.Decode.map GetMemoryReadingResult
+        , Json.Decode.field "GetImageDataFromReadingResult" jsonDecodeGetImageDataFromReadingResult
+            |> Json.Decode.map GetImageDataFromReadingResult
         , Json.Decode.field "FailedToBringWindowToFront" (Json.Decode.map FailedToBringWindowToFront Json.Decode.string)
         , Json.Decode.field "CompletedEffectSequenceOnWindow" (jsonDecodeSucceedWhenNotNull CompletedEffectSequenceOnWindow)
         ]
@@ -154,6 +180,9 @@ encodeRequestToVolatileHost request =
         GetMemoryReading getMemoryReading ->
             Json.Encode.object [ ( "GetMemoryReading", getMemoryReading |> encodeGetMemoryReading ) ]
 
+        GetImageDataFromReading getImageDataFromReading ->
+            Json.Encode.object [ ( "GetImageDataFromReading", getImageDataFromReading |> encodeGetImageDataFromSpecificReading ) ]
+
         EffectSequenceOnWindow taskOnWindow ->
             Json.Encode.object
                 [ ( "EffectSequenceOnWindow"
@@ -165,21 +194,33 @@ encodeRequestToVolatileHost request =
             Json.Encode.object [ ( "EffectConsoleBeepSequence", effectConsoleBeepSequence |> Json.Encode.list encodeConsoleBeep ) ]
 
 
+decodeRequestToVolatileHost : Json.Decode.Decoder RequestToVolatileHost
+decodeRequestToVolatileHost =
+    Json.Decode.oneOf
+        [ Json.Decode.field "ListGameClientProcessesRequest" (jsonDecodeSucceedWhenNotNull ListGameClientProcessesRequest)
+        , Json.Decode.field "SearchUIRootAddress" (decodeSearchUIRootAddress |> Json.Decode.map SearchUIRootAddress)
+        , Json.Decode.field "GetMemoryReading" (decodeGetMemoryReading |> Json.Decode.map GetMemoryReading)
+        , Json.Decode.field "GetImageDataFromReading" (decodeGetImageDataFromSpecificReading |> Json.Decode.map GetImageDataFromReading)
+        , Json.Decode.field "EffectSequenceOnWindow" (decodeTaskOnWindow (Json.Decode.list decodeEffectSequenceElement) |> Json.Decode.map EffectSequenceOnWindow)
+        , Json.Decode.field "EffectConsoleBeepSequence" (Json.Decode.list decodeConsoleBeep |> Json.Decode.map EffectConsoleBeepSequence)
+        ]
+
+
 encodeEffectSequenceElement : EffectSequenceElement -> Json.Encode.Value
 encodeEffectSequenceElement sequenceElement =
     case sequenceElement of
         Effect effect ->
-            Json.Encode.object [ ( "Effect", encodeEffectOnWindowStructure effect ) ]
+            Json.Encode.object [ ( "effect", encodeEffectOnWindowStructure effect ) ]
 
         DelayMilliseconds delayMilliseconds ->
-            Json.Encode.object [ ( "DelayMilliseconds", Json.Encode.int delayMilliseconds ) ]
+            Json.Encode.object [ ( "delayMilliseconds", Json.Encode.int delayMilliseconds ) ]
 
 
 decodeEffectSequenceElement : Json.Decode.Decoder EffectSequenceElement
 decodeEffectSequenceElement =
     Json.Decode.oneOf
-        [ Json.Decode.field "Effect" (decodeEffectOnWindowStructure |> Json.Decode.map Effect)
-        , Json.Decode.field "DelayMilliseconds" (Json.Decode.int |> Json.Decode.map DelayMilliseconds)
+        [ Json.Decode.field "effect" (decodeEffectOnWindowStructure |> Json.Decode.map Effect)
+        , Json.Decode.field "delayMilliseconds" (Json.Decode.int |> Json.Decode.map DelayMilliseconds)
         ]
 
 
@@ -189,17 +230,6 @@ jsonDecodeGameClientProcessSummary =
         (Json.Decode.field "processId" Json.Decode.int)
         (Json.Decode.field "mainWindowTitle" Json.Decode.string)
         (Json.Decode.field "mainWindowZIndex" Json.Decode.int)
-
-
-decodeRequestToVolatileHost : Json.Decode.Decoder RequestToVolatileHost
-decodeRequestToVolatileHost =
-    Json.Decode.oneOf
-        [ Json.Decode.field "ListGameClientProcessesRequest" (jsonDecodeSucceedWhenNotNull ListGameClientProcessesRequest)
-        , Json.Decode.field "SearchUIRootAddress" (decodeSearchUIRootAddress |> Json.Decode.map SearchUIRootAddress)
-        , Json.Decode.field "GetMemoryReading" (decodeGetMemoryReading |> Json.Decode.map GetMemoryReading)
-        , Json.Decode.field "EffectSequenceOnWindow" (decodeTaskOnWindow (Json.Decode.list decodeEffectSequenceElement) |> Json.Decode.map EffectSequenceOnWindow)
-        , Json.Decode.field "EffectConsoleBeepSequence" (Json.Decode.list decodeConsoleBeep |> Json.Decode.map EffectConsoleBeepSequence)
-        ]
 
 
 encodeTaskOnWindow : (task -> Json.Encode.Value) -> TaskOnWindowStructure task -> Json.Encode.Value
@@ -302,14 +332,44 @@ encodeGetMemoryReading getMemoryReading =
     Json.Encode.object
         [ ( "processId", getMemoryReading.processId |> Json.Encode.int )
         , ( "uiRootAddress", getMemoryReading.uiRootAddress |> Json.Encode.string )
+        , ( "getImageData", getMemoryReading.getImageData |> encodeGetImageDataFromReading )
         ]
 
 
 decodeGetMemoryReading : Json.Decode.Decoder GetMemoryReadingStructure
 decodeGetMemoryReading =
-    Json.Decode.map2 GetMemoryReadingStructure
+    Json.Decode.map3 GetMemoryReadingStructure
         (Json.Decode.field "processId" Json.Decode.int)
         (Json.Decode.field "uiRootAddress" Json.Decode.string)
+        (Json.Decode.field "getImageData" decodeGetImageDataFromReading)
+
+
+encodeGetImageDataFromSpecificReading : GetImageDataFromSpecificReadingStructure -> Json.Encode.Value
+encodeGetImageDataFromSpecificReading getImageData =
+    Json.Encode.object
+        [ ( "readingId", getImageData.readingId |> Json.Encode.string )
+        , ( "getImageData", getImageData.getImageData |> encodeGetImageDataFromReading )
+        ]
+
+
+decodeGetImageDataFromSpecificReading : Json.Decode.Decoder GetImageDataFromSpecificReadingStructure
+decodeGetImageDataFromSpecificReading =
+    Json.Decode.map2 GetImageDataFromSpecificReadingStructure
+        (Json.Decode.field "readingId" Json.Decode.string)
+        (Json.Decode.field "getImageData" decodeGetImageDataFromReading)
+
+
+encodeGetImageDataFromReading : GetImageDataFromReadingStructure -> Json.Encode.Value
+encodeGetImageDataFromReading getImageData =
+    Json.Encode.object
+        [ ( "screenshot1x1Rects", getImageData.screenshot1x1Rects |> Json.Encode.list jsonEncodeRect2d )
+        ]
+
+
+decodeGetImageDataFromReading : Json.Decode.Decoder GetImageDataFromReadingStructure
+decodeGetImageDataFromReading =
+    Json.Decode.map GetImageDataFromReadingStructure
+        (Json.Decode.field "screenshot1x1Rects" (Json.Decode.list jsonDecodeRect2d))
 
 
 decodeSearchUIRootAddressResult : Json.Decode.Decoder SearchUIRootAddressResultStructure
@@ -329,15 +389,64 @@ decodeGetMemoryReadingResult =
 
 decodeMemoryReadingCompleted : Json.Decode.Decoder MemoryReadingCompletedStructure
 decodeMemoryReadingCompleted =
-    Json.Decode.map2 MemoryReadingCompletedStructure
+    Json.Decode.map5 MemoryReadingCompletedStructure
         (Json.Decode.field "mainWindowId" Json.Decode.string)
+        (Json.Decode.field "readingId" Json.Decode.string)
         (Json.Decode.Extra.optionalField "serialRepresentationJson" Json.Decode.string)
+        (Json.Decode.field "windowClientRectOffset" jsonDecodeLocation2d)
+        (Json.Decode.field "imageData" jsonDecodeGetImageDataFromReadingResult)
+
+
+jsonDecodeGetImageDataFromReadingResult : Json.Decode.Decoder GetImageDataFromReadingResultStructure
+jsonDecodeGetImageDataFromReadingResult =
+    Json.Decode.map GetImageDataFromReadingResultStructure
+        (Json.Decode.Extra.optionalField "screenshot1x1Rects" (Json.Decode.nullable (Json.Decode.list jsonDecodeImageCrop))
+            |> Json.Decode.map (Maybe.Extra.join >> Maybe.withDefault [])
+        )
 
 
 buildRequestStringToGetResponseFromVolatileHost : RequestToVolatileHost -> String
 buildRequestStringToGetResponseFromVolatileHost =
     encodeRequestToVolatileHost
         >> Json.Encode.encode 0
+
+
+jsonEncodeRect2d : Rect2dStructure -> Json.Encode.Value
+jsonEncodeRect2d rect2d =
+    Json.Encode.object
+        [ ( "x", rect2d.x |> Json.Encode.int )
+        , ( "y", rect2d.y |> Json.Encode.int )
+        , ( "width", rect2d.width |> Json.Encode.int )
+        , ( "height", rect2d.height |> Json.Encode.int )
+        ]
+
+
+jsonDecodeRect2d : Json.Decode.Decoder Rect2dStructure
+jsonDecodeRect2d =
+    Json.Decode.map4 Rect2dStructure
+        (Json.Decode.field "x" Json.Decode.int)
+        (Json.Decode.field "y" Json.Decode.int)
+        (Json.Decode.field "width" Json.Decode.int)
+        (Json.Decode.field "height" Json.Decode.int)
+
+
+jsonDecodeImageCrop : Json.Decode.Decoder ImageCrop
+jsonDecodeImageCrop =
+    Json.Decode.map2 ImageCrop
+        (Json.Decode.field "offset" jsonDecodeLocation2d)
+        (Json.Decode.field "pixels_R8G8B8" (Json.Decode.list (Json.Decode.list jsonDecodePixelValue_R8G8B8)))
+
+
+jsonDecodePixelValue_R8G8B8 : Json.Decode.Decoder PixelValueRGB
+jsonDecodePixelValue_R8G8B8 =
+    Json.Decode.int
+        |> Json.Decode.map
+            (\asInt ->
+                { red = asInt // (256 * 256)
+                , green = asInt // 256 |> modBy 256
+                , blue = asInt |> modBy 256
+                }
+            )
 
 
 encodeConsoleBeep : ConsoleBeepStructure -> Json.Encode.Value

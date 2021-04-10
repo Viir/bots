@@ -19,7 +19,7 @@ import Common.EffectOnWindow
 import Common.FNV
 import Dict
 import EveOnline.MemoryReading
-import EveOnline.ParseUserInterface exposing (centerFromDisplayRegion)
+import EveOnline.ParseUserInterface exposing (Location2d, centerFromDisplayRegion)
 import EveOnline.VolatileHostInterface as VolatileHostInterface
 import EveOnline.VolatileHostScript as VolatileHostScript
 import Json.Decode
@@ -36,7 +36,7 @@ type alias AppConfiguration appSettings appState =
 
 
 type AppEvent
-    = ReadingFromGameClientCompleted EveOnline.ParseUserInterface.ParsedUserInterface
+    = ReadingFromGameClientCompleted EveOnline.ParseUserInterface.ParsedUserInterface ReadingFromGameClientImage
 
 
 type AppEventResponse
@@ -45,15 +45,19 @@ type AppEventResponse
 
 
 type alias ContinueSessionStructure =
-    { effects : List AppEffect
+    { effects : List Common.EffectOnWindow.EffectOnWindowStructure
     , millisecondsToNextReadingFromGame : Int
+    , screenshotRegionsToRead : ReadingFromGameClient -> { rects1x1 : List Rect2dStructure }
     , statusDescriptionText : String
     }
 
 
-type AppEffect
-    = EffectSequenceOnGameClientWindow (List Common.EffectOnWindow.EffectOnWindowStructure)
-    | EffectConsoleBeepSequence (List ConsoleBeepStructure)
+type alias Rect2dStructure =
+    { x : Int
+    , y : Int
+    , width : Int
+    , height : Int
+    }
 
 
 type alias AppEventContext appSettings =
@@ -77,12 +81,7 @@ type alias StateIncludingFramework appSettings appState =
 type alias AppAndLastEventState appState =
     { appState : appState
     , lastEvent : Maybe { timeInMilliseconds : Int, eventResult : ( appState, AppEventResponse ) }
-    , effectQueue : AppEffectQueue
     }
-
-
-type alias AppEffectQueue =
-    List { timeInMilliseconds : Int, effect : AppEffect }
 
 
 type alias SetupState =
@@ -91,25 +90,29 @@ type alias SetupState =
     , lastRequestToVolatileHostResult : Maybe (Result String ( InterfaceToHost.RequestToVolatileHostComplete, Result String VolatileHostInterface.ResponseFromVolatileHost ))
     , gameClientProcesses : Maybe (List GameClientProcessSummary)
     , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
-    , lastMemoryReading : Maybe { timeInMilliseconds : Int, memoryReadingResult : VolatileHostInterface.GetMemoryReadingResultStructure }
-    , memoryReadingDurations : List Int
+    , lastReadingFromGame : Maybe { timeInMilliseconds : Int, aggregate : ReadingFromGameClientAggregateState }
+    , readingFromGameDurations : List Int
     , lastEffectFailedToAcquireInputFocus : Maybe String
+    }
+
+
+type alias ReadingFromGameClientAggregateState =
+    { initialReading : VolatileHostInterface.GetMemoryReadingResultStructure
+    , imageDataFromReadingResults : List VolatileHostInterface.GetImageDataFromReadingResultStructure
     }
 
 
 type SetupTask
     = ContinueSetup SetupState InterfaceToHost.Task String
-    | OperateApp
-        { buildTaskFromAppEffect : AppEffect -> InterfaceToHost.Task
-        , getMemoryReadingTask : InterfaceToHost.Task
-        , releaseVolatileHostTask : InterfaceToHost.Task
-        }
+    | OperateApp OperateAppConfiguration
     | FrameworkStopSession String
 
 
-type alias ConsoleBeepStructure =
-    { frequency : Int
-    , durationInMs : Int
+type alias OperateAppConfiguration =
+    { buildTaskFromEffectSequence : List Common.EffectOnWindow.EffectOnWindowStructure -> InterfaceToHost.Task
+    , getMemoryReadingTask : VolatileHostInterface.GetImageDataFromReadingStructure -> InterfaceToHost.Task
+    , getImageDataFromReadingTask : VolatileHostInterface.GetImageDataFromReadingStructure -> InterfaceToHost.Task
+    , releaseVolatileHostTask : InterfaceToHost.Task
     }
 
 
@@ -137,6 +140,15 @@ type alias SeeUndockingComplete =
     }
 
 
+type alias ReadingFromGameClientImage =
+    { pixels1x1 : Dict.Dict ( Int, Int ) PixelValueRGB
+    }
+
+
+type alias PixelValueRGB =
+    { red : Int, green : Int, blue : Int }
+
+
 effectSequenceSpacingMilliseconds : Int
 effectSequenceSpacingMilliseconds =
     30
@@ -145,6 +157,11 @@ effectSequenceSpacingMilliseconds =
 volatileHostRecycleInterval : Int
 volatileHostRecycleInterval =
     400
+
+
+getImageDataFromReadingRequestLimit : Int
+getImageDataFromReadingRequestLimit =
+    3
 
 
 initShipModulesMemory : ShipModulesMemory
@@ -223,8 +240,8 @@ initSetup =
     , lastRequestToVolatileHostResult = Nothing
     , gameClientProcesses = Nothing
     , searchUIRootAddressResult = Nothing
-    , lastMemoryReading = Nothing
-    , memoryReadingDurations = []
+    , lastReadingFromGame = Nothing
+    , readingFromGameDurations = []
     , lastEffectFailedToAcquireInputFocus = Nothing
     }
 
@@ -235,7 +252,6 @@ initState appState =
     , appState =
         { appState = appState
         , lastEvent = Nothing
-        , effectQueue = []
         }
     , timeInMilliseconds = 0
     , lastTaskIndex = 0
@@ -297,12 +313,12 @@ processEvent appConfiguration fromHostEvent stateBeforeUpdateTime =
 
 processEventAfterIntegrateEvent :
     AppConfiguration appSettings appState
-    -> Maybe AppEvent
+    -> Maybe ReadingFromGameClientStructure
     -> StateIncludingFramework appSettings appState
     -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
-processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
+processEventAfterIntegrateEvent appConfiguration maybeReadingFromGameClient stateBefore =
     let
-        ( state, responseBeforeAddingStatusMessage ) =
+        ( stateBeforeCountingRequests, responseBeforeAddingStatusMessage ) =
             case stateBefore.taskInProgress of
                 Nothing ->
                     case stateBefore.appSettings of
@@ -317,17 +333,11 @@ processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
                         Just appSettings ->
                             processEventNotWaitingForTaskCompletion
                                 appConfiguration
-                                (maybeAppEvent
-                                    |> Maybe.map
-                                        (\appEvent ->
-                                            ( appEvent
-                                            , { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                              , appSettings = appSettings
-                                              , sessionTimeLimitInMilliseconds = stateBefore.sessionTimeLimitInMilliseconds
-                                              }
-                                            )
-                                        )
-                                )
+                                { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                , appSettings = appSettings
+                                , sessionTimeLimitInMilliseconds = stateBefore.sessionTimeLimitInMilliseconds
+                                }
+                                maybeReadingFromGameClient
                                 stateBefore
 
                 Just taskInProgress ->
@@ -338,6 +348,36 @@ processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
                       }
                         |> InterfaceToHost.ContinueSession
                     )
+
+        newRequestsToVolatileHostCount =
+            case responseBeforeAddingStatusMessage of
+                InterfaceToHost.FinishSession _ ->
+                    0
+
+                InterfaceToHost.ContinueSession continueSession ->
+                    continueSession.startTasks
+                        |> List.filter
+                            (\task ->
+                                case task.task of
+                                    InterfaceToHost.RequestToVolatileHost _ ->
+                                        True
+
+                                    _ ->
+                                        False
+                            )
+                        |> List.length
+
+        setupBeforeCountingRequests =
+            stateBeforeCountingRequests.setup
+
+        state =
+            { stateBeforeCountingRequests
+                | setup =
+                    { setupBeforeCountingRequests
+                        | requestsToVolatileHostCount =
+                            setupBeforeCountingRequests.requestsToVolatileHostCount + newRequestsToVolatileHostCount
+                    }
+            }
 
         statusMessagePrefix =
             (state |> statusReportFromState) ++ "\nCurrent activity: "
@@ -372,10 +412,11 @@ processEventAfterIntegrateEvent appConfiguration maybeAppEvent stateBefore =
 
 processEventNotWaitingForTaskCompletion :
     AppConfiguration appSettings appState
-    -> Maybe ( AppEvent, AppEventContext appSettings )
+    -> AppEventContext appSettings
+    -> Maybe ReadingFromGameClientStructure
     -> StateIncludingFramework appSettings appState
     -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
-processEventNotWaitingForTaskCompletion appConfiguration maybeAppEvent stateBefore =
+processEventNotWaitingForTaskCompletion appConfiguration appEventContext maybeReadingFromGameClient stateBefore =
     case stateBefore.setup |> getNextSetupTask appConfiguration stateBefore.appSettings of
         ContinueSetup setupState setupTask setupTaskDescription ->
             let
@@ -442,143 +483,12 @@ processEventNotWaitingForTaskCompletion appConfiguration maybeAppEvent stateBefo
                 )
 
             else
-                let
-                    appStateBefore =
-                        stateBefore.appState
-
-                    maybeAppEventResult =
-                        maybeAppEvent
-                            |> Maybe.map
-                                (\( appEvent, appEventContext ) -> appStateBefore.appState |> appConfiguration.processEvent appEventContext appEvent)
-
-                    appStateBeforeProcessEffects =
-                        case maybeAppEventResult of
-                            Nothing ->
-                                stateBefore.appState
-
-                            Just ( newAppState, appEventResponse ) ->
-                                let
-                                    effectQueue =
-                                        case appEventResponse of
-                                            FinishSession _ ->
-                                                []
-
-                                            ContinueSession continueSessionResponse ->
-                                                continueSessionResponse.effects
-                                                    |> List.map
-                                                        (\appEffect ->
-                                                            { timeInMilliseconds = stateBefore.timeInMilliseconds, effect = appEffect }
-                                                        )
-                                in
-                                { appStateBefore
-                                    | appState = newAppState
-                                    , lastEvent = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, eventResult = ( newAppState, appEventResponse ) }
-                                    , effectQueue = effectQueue
-                                }
-
-                    ( appEffectQueue, appEffectTask ) =
-                        case
-                            appStateBeforeProcessEffects.effectQueue
-                                |> dequeueNextEffectFromAppState { currentTimeInMs = stateBefore.timeInMilliseconds }
-                        of
-                            NoEffect ->
-                                ( appStateBeforeProcessEffects.effectQueue, Nothing )
-
-                            ForwardEffect forward ->
-                                ( forward.newQueueState, forward.effect |> operateApp.buildTaskFromAppEffect |> Just )
-
-                    appState =
-                        { appStateBeforeProcessEffects | effectQueue = appEffectQueue }
-
-                    timeForNextReadingFromGameGeneral =
-                        (stateBefore.setup.lastMemoryReading |> Maybe.map .timeInMilliseconds |> Maybe.withDefault 0) + 10000
-
-                    timeForNextReadingFromGameFromApp =
-                        appState.lastEvent
-                            |> Maybe.andThen
-                                (\appLastEvent ->
-                                    case appLastEvent.eventResult |> Tuple.second of
-                                        ContinueSession continueSessionResponse ->
-                                            Just (appLastEvent.timeInMilliseconds + continueSessionResponse.millisecondsToNextReadingFromGame)
-
-                                        FinishSession _ ->
-                                            Nothing
-                                )
-                            |> Maybe.withDefault 0
-
-                    timeForNextReadingFromGame =
-                        min timeForNextReadingFromGameGeneral timeForNextReadingFromGameFromApp
-
-                    remainingTimeToNextReadingFromGame =
-                        timeForNextReadingFromGame - stateBefore.timeInMilliseconds
-
-                    memoryReadingTasks =
-                        if remainingTimeToNextReadingFromGame <= 0 then
-                            [ operateApp.getMemoryReadingTask ]
-
-                        else
-                            []
-
-                    appFinishesSession =
-                        appState.lastEvent
-                            |> Maybe.map
-                                (\appLastEvent ->
-                                    case appLastEvent.eventResult |> Tuple.second of
-                                        ContinueSession _ ->
-                                            False
-
-                                        FinishSession _ ->
-                                            True
-                                )
-                            |> Maybe.withDefault False
-
-                    ( taskInProgress, startTasks ) =
-                        (appEffectTask |> Maybe.map List.singleton |> Maybe.withDefault [])
-                            ++ memoryReadingTasks
-                            |> List.head
-                            |> Maybe.map
-                                (\task ->
-                                    let
-                                        taskIdString =
-                                            "operate-app"
-                                    in
-                                    ( Just
-                                        { startTimeInMilliseconds = stateBefore.timeInMilliseconds
-                                        , taskIdString = taskIdString
-                                        , taskDescription = "From app effect or memory reading."
-                                        }
-                                    , [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task } ]
-                                    )
-                                )
-                            |> Maybe.withDefault ( stateBefore.taskInProgress, [] )
-
-                    setupStateBefore =
-                        stateBefore.setup
-
-                    setupState =
-                        { setupStateBefore
-                            | requestsToVolatileHostCount = setupStateBefore.requestsToVolatileHostCount + (startTasks |> List.length)
-                        }
-
-                    state =
-                        { stateBefore | setup = setupState, appState = appState, taskInProgress = taskInProgress }
-                in
-                if appFinishesSession then
-                    ( state, { statusDescriptionText = "The app finished the session." } |> InterfaceToHost.FinishSession )
-
-                else
-                    ( state
-                    , { startTasks = startTasks
-                      , statusDescriptionText = "Operate app."
-                      , notifyWhenArrivedAtTime =
-                            if taskInProgress == Nothing then
-                                Just { timeInMilliseconds = timeForNextReadingFromGame }
-
-                            else
-                                Nothing
-                      }
-                        |> InterfaceToHost.ContinueSession
-                    )
+                operateAppExceptRenewingVolatileHost
+                    appConfiguration
+                    appEventContext
+                    maybeReadingFromGameClient
+                    stateBefore
+                    operateApp
 
         FrameworkStopSession reason ->
             ( stateBefore
@@ -586,7 +496,285 @@ processEventNotWaitingForTaskCompletion appConfiguration maybeAppEvent stateBefo
             )
 
 
-integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe AppEvent )
+operateAppExceptRenewingVolatileHost :
+    AppConfiguration appSettings appState
+    -> AppEventContext appSettings
+    -> Maybe ReadingFromGameClientStructure
+    -> StateIncludingFramework appSettings appState
+    -> OperateAppConfiguration
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
+operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadingFromGameClient stateBefore operateApp =
+    let
+        readingForScreenshotRequiredRegions =
+            case maybeReadingFromGameClient of
+                Just readingFromGameClient ->
+                    Just readingFromGameClient
+
+                Nothing ->
+                    case stateBefore.setup.lastReadingFromGame of
+                        Nothing ->
+                            Nothing
+
+                        Just lastReading ->
+                            parseReadingFromGameClient lastReading.aggregate
+                                |> Result.toMaybe
+
+        screenshotRequiredRegions =
+            case readingForScreenshotRequiredRegions of
+                Nothing ->
+                    []
+
+                Just readingFromGameClient ->
+                    case stateBefore.appState.lastEvent of
+                        Nothing ->
+                            []
+
+                        Just lastEvent ->
+                            case Tuple.second lastEvent.eventResult of
+                                FinishSession _ ->
+                                    []
+
+                                ContinueSession continueSession ->
+                                    (continueSession.screenshotRegionsToRead readingFromGameClient.parsedMemoryReading).rects1x1
+                                        |> List.map (offsetRect readingFromGameClient.windowClientRectOffset)
+
+        addMarginOnEachSide marginSize originalRect =
+            { x = originalRect.x - marginSize
+            , y = originalRect.y - marginSize
+            , width = originalRect.width + marginSize * 2
+            , height = originalRect.height + marginSize * 2
+            }
+
+        screenshot1x1RectsWithMargins =
+            screenshotRequiredRegions
+                |> List.map (addMarginOnEachSide 1)
+
+        getImageData =
+            { screenshot1x1Rects = screenshot1x1RectsWithMargins }
+
+        continueWithNamedTaskToWaitOn { taskDescription, taskIdString } task =
+            let
+                ( taskInProgress, startTasks ) =
+                    ( { startTimeInMilliseconds = stateBefore.timeInMilliseconds
+                      , taskIdString = taskIdString
+                      , taskDescription = taskDescription
+                      }
+                    , [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task } ]
+                    )
+
+                state =
+                    { stateBefore | taskInProgress = Just taskInProgress }
+            in
+            ( state
+            , { startTasks = startTasks
+              , statusDescriptionText = "Operate app - " ++ taskDescription
+              , notifyWhenArrivedAtTime = Nothing
+              }
+                |> InterfaceToHost.ContinueSession
+            )
+
+        continueWithReadingFromGameClient =
+            continueWithNamedTaskToWaitOn
+                { taskDescription = "Reading from game"
+                , taskIdString = "operate-app-read-from-game"
+                }
+                (operateApp.getMemoryReadingTask getImageData)
+
+        continueWithGetImageDataFromReading =
+            continueWithNamedTaskToWaitOn
+                { taskDescription = "Get image data from reading"
+                , taskIdString = "operate-app-get-image-data-from-reading"
+                }
+                (operateApp.getImageDataFromReadingTask getImageData)
+    in
+    case maybeReadingFromGameClient of
+        Just readingFromGameClient ->
+            let
+                screenshot1x1Rects =
+                    readingFromGameClient.imageDataFromReadingResults
+                        |> List.concatMap .screenshot1x1Rects
+
+                coveredRegions =
+                    screenshot1x1Rects
+                        |> List.map
+                            (\imageCrop ->
+                                let
+                                    width =
+                                        imageCrop.pixels
+                                            |> List.map List.length
+                                            |> List.minimum
+                                            |> Maybe.withDefault 0
+
+                                    height =
+                                        List.length imageCrop.pixels
+                                in
+                                { x = imageCrop.offset.x
+                                , y = imageCrop.offset.y
+                                , width = width
+                                , height = height
+                                }
+                            )
+
+                isRegionCovered region =
+                    subtractRegionsFromRegion { minuend = region, subtrahend = coveredRegions }
+                        |> List.isEmpty
+            in
+            if
+                List.any (isRegionCovered >> not) screenshotRequiredRegions
+                    && (List.length readingFromGameClient.imageDataFromReadingResults < getImageDataFromReadingRequestLimit)
+            then
+                continueWithGetImageDataFromReading
+
+            else
+                let
+                    appStateBefore =
+                        stateBefore.appState
+
+                    image =
+                        { pixels1x1 =
+                            screenshot1x1Rects
+                                |> List.concatMap
+                                    (\imageCrop ->
+                                        imageCrop.pixels
+                                            |> List.indexedMap
+                                                (\rowIndexInCrop rowPixels ->
+                                                    rowPixels
+                                                        |> List.indexedMap
+                                                            (\columnIndexInCrop pixelValue ->
+                                                                ( ( columnIndexInCrop + imageCrop.offset.x - readingFromGameClient.windowClientRectOffset.x
+                                                                  , rowIndexInCrop + imageCrop.offset.y - readingFromGameClient.windowClientRectOffset.y
+                                                                  )
+                                                                , pixelValue
+                                                                )
+                                                            )
+                                                )
+                                            |> List.concat
+                                    )
+                                |> Dict.fromList
+                        }
+
+                    appEvent =
+                        ReadingFromGameClientCompleted readingFromGameClient.parsedMemoryReading image
+
+                    ( newAppState, appEventResponse ) =
+                        appStateBefore.appState
+                            |> appConfiguration.processEvent appEventContext appEvent
+
+                    lastEvent =
+                        { timeInMilliseconds = stateBefore.timeInMilliseconds
+                        , eventResult = ( newAppState, appEventResponse )
+                        }
+
+                    response =
+                        case appEventResponse of
+                            FinishSession _ ->
+                                InterfaceToHost.FinishSession
+                                    { statusDescriptionText = "The app finished the session." }
+
+                            ContinueSession continueSession ->
+                                let
+                                    timeForNextReadingFromGame =
+                                        stateBefore.timeInMilliseconds
+                                            + continueSession.millisecondsToNextReadingFromGame
+
+                                    ( taskInProgress, startTasks ) =
+                                        case continueSession.effects of
+                                            [] ->
+                                                ( stateBefore.taskInProgress, [] )
+
+                                            effects ->
+                                                let
+                                                    task =
+                                                        operateApp.buildTaskFromEffectSequence effects
+
+                                                    taskIdString =
+                                                        "operate-app-send-effects"
+                                                in
+                                                ( Just
+                                                    { startTimeInMilliseconds = stateBefore.timeInMilliseconds
+                                                    , taskIdString = taskIdString
+                                                    , taskDescription = "Send effects to game client"
+                                                    }
+                                                , [ { taskId = InterfaceToHost.taskIdFromString taskIdString
+                                                    , task = task
+                                                    }
+                                                  ]
+                                                )
+                                in
+                                { startTasks = startTasks
+                                , statusDescriptionText = "Operate app"
+                                , notifyWhenArrivedAtTime =
+                                    if taskInProgress == Nothing then
+                                        Just { timeInMilliseconds = timeForNextReadingFromGame }
+
+                                    else
+                                        Nothing
+                                }
+                                    |> InterfaceToHost.ContinueSession
+
+                    state =
+                        { stateBefore
+                            | appState =
+                                { appStateBefore
+                                    | appState = newAppState
+                                    , lastEvent = Just lastEvent
+                                }
+                        }
+                in
+                ( state, response )
+
+        Nothing ->
+            let
+                timeForNextReadingFromGameGeneral =
+                    (stateBefore.setup.lastReadingFromGame
+                        |> Maybe.map .timeInMilliseconds
+                        |> Maybe.withDefault 0
+                    )
+                        + 10000
+
+                timeForNextReadingFromGameFromApp =
+                    stateBefore.appState.lastEvent
+                        |> Maybe.andThen
+                            (\appLastEvent ->
+                                case appLastEvent.eventResult |> Tuple.second of
+                                    ContinueSession continueSessionResponse ->
+                                        Just
+                                            (appLastEvent.timeInMilliseconds
+                                                + continueSessionResponse.millisecondsToNextReadingFromGame
+                                            )
+
+                                    FinishSession _ ->
+                                        Nothing
+                            )
+                        |> Maybe.withDefault 0
+
+                timeForNextReadingFromGame =
+                    min timeForNextReadingFromGameGeneral timeForNextReadingFromGameFromApp
+
+                remainingTimeToNextReadingFromGame =
+                    timeForNextReadingFromGame - stateBefore.timeInMilliseconds
+            in
+            if remainingTimeToNextReadingFromGame <= 0 then
+                continueWithReadingFromGameClient
+
+            else
+                ( stateBefore
+                , { startTasks = []
+                  , statusDescriptionText = "Operate app."
+                  , notifyWhenArrivedAtTime = Just { timeInMilliseconds = timeForNextReadingFromGame }
+                  }
+                    |> InterfaceToHost.ContinueSession
+                )
+
+
+type alias ReadingFromGameClientStructure =
+    { parsedMemoryReading : EveOnline.ParseUserInterface.ParsedUserInterface
+    , windowClientRectOffset : Location2d
+    , imageDataFromReadingResults : List VolatileHostInterface.GetImageDataFromReadingResultStructure
+    }
+
+
+integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe ReadingFromGameClientStructure )
 integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
     case taskResult of
         InterfaceToHost.CreateVolatileHostResponse createVolatileHostResult ->
@@ -646,7 +834,7 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
 integrateResponseFromVolatileHost :
     { timeInMilliseconds : Int, responseFromVolatileHost : VolatileHostInterface.ResponseFromVolatileHost, runInVolatileHostDurationInMs : Int }
     -> SetupState
-    -> ( SetupState, Maybe AppEvent )
+    -> ( SetupState, Maybe ReadingFromGameClientStructure )
 integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost, runInVolatileHostDurationInMs } stateBefore =
     case responseFromVolatileHost of
         VolatileHostInterface.ListGameClientProcessesResponse gameClientProcesses ->
@@ -661,33 +849,56 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
 
         VolatileHostInterface.GetMemoryReadingResult getMemoryReadingResult ->
             let
-                memoryReadingDurations =
+                readingFromGameDurations =
                     runInVolatileHostDurationInMs
-                        :: stateBefore.memoryReadingDurations
+                        :: stateBefore.readingFromGameDurations
                         |> List.take 10
+
+                lastReadingFromGame =
+                    { timeInMilliseconds = timeInMilliseconds
+                    , aggregate =
+                        { initialReading = getMemoryReadingResult
+                        , imageDataFromReadingResults = []
+                        }
+                    }
 
                 state =
                     { stateBefore
-                        | lastMemoryReading = Just { timeInMilliseconds = timeInMilliseconds, memoryReadingResult = getMemoryReadingResult }
-                        , memoryReadingDurations = memoryReadingDurations
+                        | lastReadingFromGame = Just lastReadingFromGame
+                        , readingFromGameDurations = readingFromGameDurations
                     }
 
-                maybeAppEvent =
-                    case getMemoryReadingResult of
-                        VolatileHostInterface.ProcessNotFound ->
-                            Nothing
-
-                        VolatileHostInterface.Completed completedMemoryReading ->
-                            let
-                                maybeParsedMemoryReading =
-                                    completedMemoryReading.serialRepresentationJson
-                                        |> Maybe.andThen (EveOnline.MemoryReading.decodeMemoryReadingFromString >> Result.toMaybe)
-                                        |> Maybe.map (EveOnline.ParseUserInterface.parseUITreeWithDisplayRegionFromUITree >> EveOnline.ParseUserInterface.parseUserInterfaceFromUITree)
-                            in
-                            maybeParsedMemoryReading
-                                |> Maybe.map ReadingFromGameClientCompleted
+                maybeReadingFromGameClient =
+                    parseReadingFromGameClient lastReadingFromGame.aggregate
+                        |> Result.toMaybe
             in
-            ( state, maybeAppEvent )
+            ( state, maybeReadingFromGameClient )
+
+        VolatileHostInterface.GetImageDataFromReadingResult getImageDataFromReadingResult ->
+            case stateBefore.lastReadingFromGame of
+                Nothing ->
+                    ( stateBefore, Nothing )
+
+                Just lastReadingFromGameBefore ->
+                    let
+                        aggregateBefore =
+                            lastReadingFromGameBefore.aggregate
+
+                        imageDataFromReadingResults =
+                            getImageDataFromReadingResult :: aggregateBefore.imageDataFromReadingResults
+
+                        lastReadingFromGame =
+                            { lastReadingFromGameBefore
+                                | aggregate = { aggregateBefore | imageDataFromReadingResults = imageDataFromReadingResults }
+                            }
+
+                        maybeReadingFromGameClient =
+                            parseReadingFromGameClient lastReadingFromGame.aggregate
+                                |> Result.toMaybe
+                    in
+                    ( { stateBefore | lastReadingFromGame = Just lastReadingFromGame }
+                    , maybeReadingFromGameClient
+                    )
 
         VolatileHostInterface.FailedToBringWindowToFront error ->
             ( { stateBefore | lastEffectFailedToAcquireInputFocus = Just error }, Nothing )
@@ -696,22 +907,31 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
             ( { stateBefore | lastEffectFailedToAcquireInputFocus = Nothing }, Nothing )
 
 
-type NextAppEffectFromQueue
-    = NoEffect
-    | ForwardEffect { newQueueState : AppEffectQueue, effect : AppEffect }
+parseReadingFromGameClient :
+    ReadingFromGameClientAggregateState
+    -> Result String ReadingFromGameClientStructure
+parseReadingFromGameClient readingAggregate =
+    case readingAggregate.initialReading of
+        VolatileHostInterface.ProcessNotFound ->
+            Err "Initial reading failed with 'Process Not Found'"
 
+        VolatileHostInterface.Completed completedReading ->
+            case completedReading.serialRepresentationJson of
+                Nothing ->
+                    Err "Missing json representation of memory reading"
 
-dequeueNextEffectFromAppState : { currentTimeInMs : Int } -> AppEffectQueue -> NextAppEffectFromQueue
-dequeueNextEffectFromAppState _ effectQueueBefore =
-    case effectQueueBefore of
-        [] ->
-            NoEffect
-
-        nextEntry :: remainingEntries ->
-            ForwardEffect
-                { newQueueState = remainingEntries
-                , effect = nextEntry.effect
-                }
+                Just serialRepresentationJson ->
+                    serialRepresentationJson
+                        |> EveOnline.MemoryReading.decodeMemoryReadingFromString
+                        |> Result.mapError Json.Decode.errorToString
+                        |> Result.map (EveOnline.ParseUserInterface.parseUITreeWithDisplayRegionFromUITree >> EveOnline.ParseUserInterface.parseUserInterfaceFromUITree)
+                        |> Result.map
+                            (\parsedMemoryReading ->
+                                { parsedMemoryReading = parsedMemoryReading
+                                , windowClientRectOffset = completedReading.windowClientRectOffset
+                                , imageDataFromReadingResults = completedReading.imageData :: readingAggregate.imageDataFromReadingResults
+                                }
+                            )
 
 
 getNextSetupTask :
@@ -802,24 +1022,35 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
 
                                     Just uiRootAddress ->
                                         let
-                                            getMemoryReadingRequest =
-                                                VolatileHostInterface.GetMemoryReading { processId = searchResult.processId, uiRootAddress = uiRootAddress }
+                                            getMemoryReadingRequest getImageData =
+                                                VolatileHostInterface.GetMemoryReading
+                                                    { processId = searchResult.processId
+                                                    , uiRootAddress = uiRootAddress
+                                                    , getImageData = getImageData
+                                                    }
+
+                                            getImageDataFromReadingRequest readingId getImageData =
+                                                VolatileHostInterface.GetImageDataFromReading
+                                                    { readingId = readingId
+                                                    , getImageData = getImageData
+                                                    }
                                         in
-                                        case stateBefore.lastMemoryReading of
+                                        case stateBefore.lastReadingFromGame of
                                             Nothing ->
                                                 ContinueSetup stateBefore
                                                     (InterfaceToHost.RequestToVolatileHost
                                                         (InterfaceToHost.RequestNotRequiringInputFocus
                                                             { hostId = volatileHostId
                                                             , request =
-                                                                VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost getMemoryReadingRequest
+                                                                VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
+                                                                    (getMemoryReadingRequest { screenshot1x1Rects = [] })
                                                             }
                                                         )
                                                     )
                                                     "Get the first memory reading from the EVE Online client process. This can take several seconds."
 
-                                            Just lastMemoryReadingTime ->
-                                                case lastMemoryReadingTime.memoryReadingResult of
+                                            Just lastMemoryReading ->
+                                                case lastMemoryReading.aggregate.initialReading of
                                                     VolatileHostInterface.ProcessNotFound ->
                                                         FrameworkStopSession "The EVE Online client process disappeared."
 
@@ -846,25 +1077,26 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                                     )
                                                         in
                                                         OperateApp
-                                                            { buildTaskFromAppEffect =
-                                                                \effect ->
-                                                                    case effect of
-                                                                        EffectSequenceOnGameClientWindow effectSequenceOnWindow ->
-                                                                            { windowId = lastCompletedMemoryReading.mainWindowId
-                                                                            , task =
-                                                                                effectSequenceOnWindow
-                                                                                    |> List.map (effectOnWindowAsVolatileHostEffectOnWindow >> VolatileHostInterface.Effect)
-                                                                                    |> List.intersperse (VolatileHostInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
-                                                                            , bringWindowToForeground = True
-                                                                            }
-                                                                                |> VolatileHostInterface.EffectSequenceOnWindow
-                                                                                |> buildTaskFromRequestToVolatileHost (Just { maximumDelayMilliseconds = 500 })
-
-                                                                        EffectConsoleBeepSequence consoleBeepSequence ->
-                                                                            consoleBeepSequence
-                                                                                |> VolatileHostInterface.EffectConsoleBeepSequence
-                                                                                |> buildTaskFromRequestToVolatileHost Nothing
-                                                            , getMemoryReadingTask = getMemoryReadingRequest |> buildTaskFromRequestToVolatileHost Nothing
+                                                            { buildTaskFromEffectSequence =
+                                                                \effectSequenceOnWindow ->
+                                                                    { windowId = lastCompletedMemoryReading.mainWindowId
+                                                                    , task =
+                                                                        effectSequenceOnWindow
+                                                                            |> List.map (effectOnWindowAsVolatileHostEffectOnWindow >> VolatileHostInterface.Effect)
+                                                                            |> List.intersperse (VolatileHostInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
+                                                                    , bringWindowToForeground = True
+                                                                    }
+                                                                        |> VolatileHostInterface.EffectSequenceOnWindow
+                                                                        |> buildTaskFromRequestToVolatileHost (Just { maximumDelayMilliseconds = 500 })
+                                                            , getMemoryReadingTask =
+                                                                \getImageData ->
+                                                                    getMemoryReadingRequest
+                                                                        getImageData
+                                                                        |> buildTaskFromRequestToVolatileHost
+                                                                            (Just { maximumDelayMilliseconds = 500 })
+                                                            , getImageDataFromReadingTask =
+                                                                getImageDataFromReadingRequest lastCompletedMemoryReading.readingId
+                                                                    >> buildTaskFromRequestToVolatileHost Nothing
                                                             , releaseVolatileHostTask = InterfaceToHost.ReleaseVolatileHost { hostId = volatileHostId }
                                                             }
 
@@ -1017,9 +1249,6 @@ statusReportFromState state =
                         |> Maybe.withDefault "Nothing"
                    )
 
-        appEffectQueueLength =
-            state.appState.effectQueue |> List.length
-
         {-
            memoryReadingDurations =
                state.setup.memoryReadingDurations
@@ -1034,12 +1263,29 @@ statusReportFromState state =
            runtimeExpensesReport =
                "amrd=" ++ (averageMemoryReadingDuration |> String.fromInt) ++ "ms"
         -}
-        appEffectQueueLengthWarning =
-            if appEffectQueueLength < 6 then
-                []
+        describeLastReadingFromGame =
+            case state.setup.lastReadingFromGame of
+                Nothing ->
+                    "None so far"
 
-            else
-                [ "App effect queue length is " ++ (appEffectQueueLength |> String.fromInt) ]
+                Just lastMemoryReading ->
+                    case lastMemoryReading.aggregate.initialReading of
+                        VolatileHostInterface.ProcessNotFound ->
+                            "process not found"
+
+                        VolatileHostInterface.Completed completedReading ->
+                            let
+                                allPixels =
+                                    completedReading.imageData.screenshot1x1Rects
+                                        |> List.map .pixels
+                                        |> List.concat
+                            in
+                            completedReading.readingId
+                                ++ ": "
+                                ++ String.fromInt (List.length completedReading.imageData.screenshot1x1Rects)
+                                ++ " rects containing "
+                                ++ String.fromInt (List.sum (List.map List.length allPixels))
+                                ++ " pixels"
     in
     [ [ fromApp ]
     , [ "----"
@@ -1047,8 +1293,8 @@ statusReportFromState state =
       ]
 
     --, [ runtimeExpensesReport ]
+    , [ "Last reading from game client: " ++ describeLastReadingFromGame ]
     , [ lastResultFromVolatileHost ]
-    , appEffectQueueLengthWarning
     , inputFocusLines
     ]
         |> List.concat
@@ -1398,3 +1644,8 @@ growRegionOnAllSides growthAmount region =
     , width = region.width + growthAmount * 2
     , height = region.height + growthAmount * 2
     }
+
+
+offsetRect : Location2d -> Rect2dStructure -> Rect2dStructure
+offsetRect offset rect =
+    { rect | x = rect.x + offset.x, y = rect.y + offset.y }

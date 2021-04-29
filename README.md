@@ -32,12 +32,6 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + [Walkthrough, Programming]: Making an EVE Online bot see anomalies and other pilots: https://vimeo.com/526817258
 
-+ [Walkthrough, Programming]: Programming an EVE Online mining bot to defend against rats: [https://youtu.be/dgV9Ce7f03I](https://youtu.be/dgV9Ce7f03I)
-
-+ [Walkthrough, Programming]: Adding a counter to an EVE Online bot: [https://youtu.be/HLerePMeD3w](https://youtu.be/HLerePMeD3w)
-
-+ [Walkthrough, Programming]: How to add a setting to a botengine app: [https://youtu.be/A-tbRE9S2ss](https://youtu.be/A-tbRE9S2ss)
-
 + How to collect samples for 64-bit memory reading development: https://to.botengine.org/guide/collect-samples-for-memory-reading-development
 
 + Syntax highlighting of code blocks - How to format code on the forum: https://forum.botengine.org/t/syntax-highlighting-of-code-blocks-how-to-format-code-on-the-forum/738

@@ -70,8 +70,7 @@ class Request
 
     public SearchUIRootAddressStructure SearchUIRootAddress;
 
-    // TODO: Rename: GetReading or ReadFromWindow
-    public GetMemoryReadingStructure GetMemoryReading;
+    public ReadFromWindowStructure ReadFromWindow;
 
     public TaskOnWindow<EffectSequenceElement[]> EffectSequenceOnWindow;
 
@@ -84,16 +83,13 @@ class Request
         public int processId;
     }
 
-    // TODO: Rename: GetReadingStructure or ReadFromWindowStructure
-    public class GetMemoryReadingStructure
+    public class ReadFromWindowStructure
     {
-        // TODO: Use same kind of identifier as for the effects? -> Why not use window handle? `string windowId`
-        public int processId;
-
-        // TODO: Rename: memoryReadingUIRootAddress
-        public ulong uiRootAddress;
+        public string windowId;
 
         public GetImageDataFromReadingStructure getImageData;
+
+        public ulong uiRootAddress;
     }
 
     public struct GetImageDataFromSpecificReadingStructure
@@ -162,7 +158,7 @@ class Response
 
     public SearchUIRootAddressResultStructure SearchUIRootAddressResult;
 
-    public GetMemoryReadingResultStructure GetMemoryReadingResult;
+    public ReadFromWindowResultStructure ReadFromWindowResult;
 
     public GetImageDataFromReadingResultStructure? GetImageDataFromReadingResult;
 
@@ -176,6 +172,8 @@ class Response
     {
         public int processId;
 
+        public string mainWindowId;
+
         public string mainWindowTitle;
 
         public int mainWindowZIndex;
@@ -188,7 +186,7 @@ class Response
         public string uiRootAddress;
     }
 
-    public class GetMemoryReadingResultStructure
+    public class ReadFromWindowResultStructure
     {
         public object ProcessNotFound;
 
@@ -196,7 +194,7 @@ class Response
 
         public class CompletedStructure
         {
-            public string mainWindowId;
+            public int processId;
 
             public Location2d windowClientRectOffset;
 
@@ -204,8 +202,7 @@ class Response
 
             public GetImageDataFromReadingResultStructure imageData;
 
-            // TODO: Rename: Reflect this is specific to memory reading.
-            public string serialRepresentationJson;
+            public string memoryReadingSerialRepresentationJson;
         }
     }
 
@@ -268,27 +265,27 @@ Response request(Request request)
         };
     }
 
-    if (request.GetMemoryReading != null)
+    if (request.ReadFromWindow != null)
     {
         var readingFromGameIndex = System.Threading.Interlocked.Increment(ref readingFromGameCount);
 
         var readingId = readingFromGameIndex.ToString("D6") + "-" + generalStopwatch.ElapsedMilliseconds;
 
-        var processId = request.GetMemoryReading.processId;
+        var windowId = request.ReadFromWindow.windowId;
+        var windowHandle = new IntPtr(long.Parse(windowId));
 
-        if (!GetWindowsProcessesLookingLikeEVEOnlineClient().Select(proc => proc.Id).Contains(processId))
+        WinApi.GetWindowThreadProcessId(windowHandle, out var processIdUnsigned);
+
+        if (processIdUnsigned == 0)
             return new Response
             {
-                GetMemoryReadingResult = new Response.GetMemoryReadingResultStructure
+                ReadFromWindowResult = new Response.ReadFromWindowResultStructure
                 {
                     ProcessNotFound = new object(),
                 }
             };
 
-        var process = System.Diagnostics.Process.GetProcessById(processId);
-
-        var mainWindowHandle = process.MainWindowHandle;
-        var windowHandle = mainWindowHandle;
+        var processId = (int)processIdUnsigned;
 
         var windowRect = new WinApi.Rect();
         WinApi.GetWindowRect(windowHandle, ref windowRect);
@@ -300,18 +297,20 @@ Response request(Request request)
             new Location2d
             { x = clientRectOffsetFromScreen.x - windowRect.left, y = clientRectOffsetFromScreen.y - windowRect.top };
 
-        string serialRepresentationJson = null;
+        string memoryReadingSerialRepresentationJson = null;
 
         using (var memoryReader = new read_memory_64_bit.MemoryReaderFromLiveProcess(processId))
         {
-            var uiTree = read_memory_64_bit.EveOnline64.ReadUITreeFromAddress(request.GetMemoryReading.uiRootAddress, memoryReader, 99);
+            var uiTree = read_memory_64_bit.EveOnline64.ReadUITreeFromAddress(request.ReadFromWindow.uiRootAddress, memoryReader, 99);
 
             if(uiTree != null)
-                serialRepresentationJson = Newtonsoft.Json.JsonConvert.SerializeObject(
+            {
+                memoryReadingSerialRepresentationJson = Newtonsoft.Json.JsonConvert.SerializeObject(
                     uiTree.WithOtherDictEntriesRemoved(),
                     //  Support popular JSON parsers: Wrap large integers in a string to work around limitations there. (https://discourse.elm-lang.org/t/how-to-parse-a-json-object/4977)
                     new read_memory_64_bit.IntegersToStringJsonConverter()
                     );
+            }
         }
 
         {
@@ -339,7 +338,7 @@ Response request(Request request)
             pixels_1x1_R8G8B8 = pixels_1x1_R8G8B8,
         };
 
-        var imageData = CompileImageDataFromReadingResult(request.GetMemoryReading.getImageData, historyEntry);
+        var imageData = CompileImageDataFromReadingResult(request.ReadFromWindow.getImageData, historyEntry);
 
         readingFromGameHistory.Enqueue(historyEntry);
 
@@ -350,13 +349,13 @@ Response request(Request request)
 
         return new Response
         {
-            GetMemoryReadingResult = new Response.GetMemoryReadingResultStructure
+            ReadFromWindowResult = new Response.ReadFromWindowResultStructure
             {
-                Completed = new Response.GetMemoryReadingResultStructure.CompletedStructure
+                Completed = new Response.ReadFromWindowResultStructure.CompletedStructure
                 {
-                    mainWindowId = mainWindowHandle.ToInt64().ToString(),
+                    processId = processId,
                     windowClientRectOffset = windowClientRectOffset,
-                    serialRepresentationJson = serialRepresentationJson,
+                    memoryReadingSerialRepresentationJson = memoryReadingSerialRepresentationJson,
                     readingId = readingId,
                     imageData = imageData,
                 },
@@ -672,6 +671,9 @@ static public class WinApi
 
     [DllImport("user32.dll")]
     static public extern bool ClientToScreen(IntPtr hWnd, ref Point lpPoint);
+
+    [DllImport("user32.dll", SetLastError=true)]
+    static public extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 }
 
 static public class SetForegroundWindowInWindows
@@ -761,6 +763,7 @@ System.Collections.Generic.IReadOnlyList<Response.GameClientProcessSummaryStruct
             return new Response.GameClientProcessSummaryStruct
             {
                 processId = process.Id,
+                mainWindowId = process.MainWindowHandle.ToInt64().ToString(),
                 mainWindowTitle = process.MainWindowTitle,
                 mainWindowZIndex = zIndexFromWindowHandle(process.MainWindowHandle) ?? 9999,
             };

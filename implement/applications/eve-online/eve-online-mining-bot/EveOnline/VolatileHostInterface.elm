@@ -10,7 +10,7 @@ import Maybe.Extra
 type RequestToVolatileHost
     = ListGameClientProcessesRequest
     | SearchUIRootAddress SearchUIRootAddressStructure
-    | GetMemoryReading GetMemoryReadingStructure
+    | ReadFromWindow ReadFromWindowStructure
     | EffectSequenceOnWindow (TaskOnWindowStructure (List EffectSequenceElement))
     | EffectConsoleBeepSequence (List ConsoleBeepStructure)
     | GetImageDataFromReading GetImageDataFromSpecificReadingStructure
@@ -19,7 +19,7 @@ type RequestToVolatileHost
 type ResponseFromVolatileHost
     = ListGameClientProcessesResponse (List GameClientProcessSummaryStruct)
     | SearchUIRootAddressResult SearchUIRootAddressResultStructure
-    | GetMemoryReadingResult GetMemoryReadingResultStructure
+    | ReadFromWindowResult ReadFromWindowResultStructure
     | GetImageDataFromReadingResult GetImageDataFromReadingResultStructure
     | FailedToBringWindowToFront String
     | CompletedEffectSequenceOnWindow
@@ -27,13 +27,14 @@ type ResponseFromVolatileHost
 
 type alias GameClientProcessSummaryStruct =
     { processId : Int
+    , mainWindowId : String
     , mainWindowTitle : String
     , mainWindowZIndex : Int
     }
 
 
-type alias GetMemoryReadingStructure =
-    { processId : Int
+type alias ReadFromWindowStructure =
+    { windowId : String
     , uiRootAddress : String
     , getImageData : GetImageDataFromReadingStructure
     }
@@ -61,15 +62,15 @@ type alias SearchUIRootAddressResultStructure =
     }
 
 
-type GetMemoryReadingResultStructure
+type ReadFromWindowResultStructure
     = ProcessNotFound
     | Completed MemoryReadingCompletedStructure
 
 
 type alias MemoryReadingCompletedStructure =
-    { mainWindowId : WindowId
+    { processId : Int
     , readingId : String
-    , serialRepresentationJson : Maybe String
+    , memoryReadingSerialRepresentationJson : Maybe String
     , windowClientRectOffset : Location2d
     , imageData : GetImageDataFromReadingResultStructure
     }
@@ -159,8 +160,8 @@ decodeResponseFromVolatileHost =
             |> Json.Decode.map ListGameClientProcessesResponse
         , Json.Decode.field "SearchUIRootAddressResult" decodeSearchUIRootAddressResult
             |> Json.Decode.map SearchUIRootAddressResult
-        , Json.Decode.field "GetMemoryReadingResult" decodeGetMemoryReadingResult
-            |> Json.Decode.map GetMemoryReadingResult
+        , Json.Decode.field "ReadFromWindowResult" decodeReadFromWindowResult
+            |> Json.Decode.map ReadFromWindowResult
         , Json.Decode.field "GetImageDataFromReadingResult" jsonDecodeGetImageDataFromReadingResult
             |> Json.Decode.map GetImageDataFromReadingResult
         , Json.Decode.field "FailedToBringWindowToFront" (Json.Decode.map FailedToBringWindowToFront Json.Decode.string)
@@ -177,8 +178,8 @@ encodeRequestToVolatileHost request =
         SearchUIRootAddress searchUIRootAddress ->
             Json.Encode.object [ ( "SearchUIRootAddress", searchUIRootAddress |> encodeSearchUIRootAddress ) ]
 
-        GetMemoryReading getMemoryReading ->
-            Json.Encode.object [ ( "GetMemoryReading", getMemoryReading |> encodeGetMemoryReading ) ]
+        ReadFromWindow readFromWindow ->
+            Json.Encode.object [ ( "ReadFromWindow", readFromWindow |> encodeReadFromWindow ) ]
 
         GetImageDataFromReading getImageDataFromReading ->
             Json.Encode.object [ ( "GetImageDataFromReading", getImageDataFromReading |> encodeGetImageDataFromSpecificReading ) ]
@@ -199,7 +200,7 @@ decodeRequestToVolatileHost =
     Json.Decode.oneOf
         [ Json.Decode.field "ListGameClientProcessesRequest" (jsonDecodeSucceedWhenNotNull ListGameClientProcessesRequest)
         , Json.Decode.field "SearchUIRootAddress" (decodeSearchUIRootAddress |> Json.Decode.map SearchUIRootAddress)
-        , Json.Decode.field "GetMemoryReading" (decodeGetMemoryReading |> Json.Decode.map GetMemoryReading)
+        , Json.Decode.field "ReadFromWindow" (decodeReadFromWindow |> Json.Decode.map ReadFromWindow)
         , Json.Decode.field "GetImageDataFromReading" (decodeGetImageDataFromSpecificReading |> Json.Decode.map GetImageDataFromReading)
         , Json.Decode.field "EffectSequenceOnWindow" (decodeTaskOnWindow (Json.Decode.list decodeEffectSequenceElement) |> Json.Decode.map EffectSequenceOnWindow)
         , Json.Decode.field "EffectConsoleBeepSequence" (Json.Decode.list decodeConsoleBeep |> Json.Decode.map EffectConsoleBeepSequence)
@@ -226,8 +227,9 @@ decodeEffectSequenceElement =
 
 jsonDecodeGameClientProcessSummary : Json.Decode.Decoder GameClientProcessSummaryStruct
 jsonDecodeGameClientProcessSummary =
-    Json.Decode.map3 GameClientProcessSummaryStruct
+    Json.Decode.map4 GameClientProcessSummaryStruct
         (Json.Decode.field "processId" Json.Decode.int)
+        (Json.Decode.field "mainWindowId" Json.Decode.string)
         (Json.Decode.field "mainWindowTitle" Json.Decode.string)
         (Json.Decode.field "mainWindowZIndex" Json.Decode.int)
 
@@ -315,9 +317,9 @@ jsonDecodeLocation2d =
 
 
 encodeSearchUIRootAddress : SearchUIRootAddressStructure -> Json.Encode.Value
-encodeSearchUIRootAddress getMemoryReading =
+encodeSearchUIRootAddress searchUIRootAddress =
     Json.Encode.object
-        [ ( "processId", getMemoryReading.processId |> Json.Encode.int )
+        [ ( "processId", searchUIRootAddress.processId |> Json.Encode.int )
         ]
 
 
@@ -327,19 +329,19 @@ decodeSearchUIRootAddress =
         (Json.Decode.field "processId" Json.Decode.int)
 
 
-encodeGetMemoryReading : GetMemoryReadingStructure -> Json.Encode.Value
-encodeGetMemoryReading getMemoryReading =
+encodeReadFromWindow : ReadFromWindowStructure -> Json.Encode.Value
+encodeReadFromWindow readFromWindow =
     Json.Encode.object
-        [ ( "processId", getMemoryReading.processId |> Json.Encode.int )
-        , ( "uiRootAddress", getMemoryReading.uiRootAddress |> Json.Encode.string )
-        , ( "getImageData", getMemoryReading.getImageData |> encodeGetImageDataFromReading )
+        [ ( "windowId", readFromWindow.windowId |> Json.Encode.string )
+        , ( "uiRootAddress", readFromWindow.uiRootAddress |> Json.Encode.string )
+        , ( "getImageData", readFromWindow.getImageData |> encodeGetImageDataFromReading )
         ]
 
 
-decodeGetMemoryReading : Json.Decode.Decoder GetMemoryReadingStructure
-decodeGetMemoryReading =
-    Json.Decode.map3 GetMemoryReadingStructure
-        (Json.Decode.field "processId" Json.Decode.int)
+decodeReadFromWindow : Json.Decode.Decoder ReadFromWindowStructure
+decodeReadFromWindow =
+    Json.Decode.map3 ReadFromWindowStructure
+        (Json.Decode.field "windowId" Json.Decode.string)
         (Json.Decode.field "uiRootAddress" Json.Decode.string)
         (Json.Decode.field "getImageData" decodeGetImageDataFromReading)
 
@@ -379,8 +381,8 @@ decodeSearchUIRootAddressResult =
         (Json.Decode.Extra.optionalField "uiRootAddress" (Json.Decode.nullable Json.Decode.string) |> Json.Decode.map Maybe.Extra.join)
 
 
-decodeGetMemoryReadingResult : Json.Decode.Decoder GetMemoryReadingResultStructure
-decodeGetMemoryReadingResult =
+decodeReadFromWindowResult : Json.Decode.Decoder ReadFromWindowResultStructure
+decodeReadFromWindowResult =
     Json.Decode.oneOf
         [ Json.Decode.field "ProcessNotFound" (Json.Decode.succeed ProcessNotFound)
         , Json.Decode.field "Completed" decodeMemoryReadingCompleted |> Json.Decode.map Completed
@@ -390,9 +392,9 @@ decodeGetMemoryReadingResult =
 decodeMemoryReadingCompleted : Json.Decode.Decoder MemoryReadingCompletedStructure
 decodeMemoryReadingCompleted =
     Json.Decode.map5 MemoryReadingCompletedStructure
-        (Json.Decode.field "mainWindowId" Json.Decode.string)
+        (Json.Decode.field "processId" Json.Decode.int)
         (Json.Decode.field "readingId" Json.Decode.string)
-        (Json.Decode.Extra.optionalField "serialRepresentationJson" Json.Decode.string)
+        (Json.Decode.Extra.optionalField "memoryReadingSerialRepresentationJson" Json.Decode.string)
         (Json.Decode.field "windowClientRectOffset" jsonDecodeLocation2d)
         (Json.Decode.field "imageData" jsonDecodeGetImageDataFromReadingResult)
 

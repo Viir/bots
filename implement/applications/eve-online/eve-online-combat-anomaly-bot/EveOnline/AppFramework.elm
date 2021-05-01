@@ -97,7 +97,7 @@ type alias SetupState =
 
 
 type alias ReadingFromGameClientAggregateState =
-    { initialReading : VolatileHostInterface.GetMemoryReadingResultStructure
+    { initialReading : VolatileHostInterface.ReadFromWindowResultStructure
     , imageDataFromReadingResults : List VolatileHostInterface.GetImageDataFromReadingResultStructure
     }
 
@@ -110,7 +110,7 @@ type SetupTask
 
 type alias OperateAppConfiguration =
     { buildTaskFromEffectSequence : List Common.EffectOnWindow.EffectOnWindowStructure -> InterfaceToHost.Task
-    , getMemoryReadingTask : VolatileHostInterface.GetImageDataFromReadingStructure -> InterfaceToHost.Task
+    , readFromWindowTask : VolatileHostInterface.GetImageDataFromReadingStructure -> InterfaceToHost.Task
     , getImageDataFromReadingTask : VolatileHostInterface.GetImageDataFromReadingStructure -> InterfaceToHost.Task
     , releaseVolatileHostTask : InterfaceToHost.Task
     }
@@ -578,7 +578,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                 { taskDescription = "Reading from game"
                 , taskIdString = "operate-app-read-from-game"
                 }
-                (operateApp.getMemoryReadingTask getImageData)
+                (operateApp.readFromWindowTask getImageData)
 
         continueWithGetImageDataFromReading =
             continueWithNamedTaskToWaitOn
@@ -847,7 +847,7 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
             in
             ( state, Nothing )
 
-        VolatileHostInterface.GetMemoryReadingResult getMemoryReadingResult ->
+        VolatileHostInterface.ReadFromWindowResult readFromWindowResult ->
             let
                 readingFromGameDurations =
                     runInVolatileHostDurationInMs
@@ -857,7 +857,7 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
                 lastReadingFromGame =
                     { timeInMilliseconds = timeInMilliseconds
                     , aggregate =
-                        { initialReading = getMemoryReadingResult
+                        { initialReading = readFromWindowResult
                         , imageDataFromReadingResults = []
                         }
                     }
@@ -916,12 +916,12 @@ parseReadingFromGameClient readingAggregate =
             Err "Initial reading failed with 'Process Not Found'"
 
         VolatileHostInterface.Completed completedReading ->
-            case completedReading.serialRepresentationJson of
+            case completedReading.memoryReadingSerialRepresentationJson of
                 Nothing ->
                     Err "Missing json representation of memory reading"
 
-                Just serialRepresentationJson ->
-                    serialRepresentationJson
+                Just memoryReadingSerialRepresentationJson ->
+                    memoryReadingSerialRepresentationJson
                         |> EveOnline.MemoryReading.decodeMemoryReadingFromString
                         |> Result.mapError Json.Decode.errorToString
                         |> Result.map (EveOnline.ParseUserInterface.parseUITreeWithDisplayRegionFromUITree >> EveOnline.ParseUserInterface.parseUserInterfaceFromUITree)
@@ -1022,9 +1022,9 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
 
                                     Just uiRootAddress ->
                                         let
-                                            getMemoryReadingRequest getImageData =
-                                                VolatileHostInterface.GetMemoryReading
-                                                    { processId = searchResult.processId
+                                            readFromWindowRequest getImageData =
+                                                VolatileHostInterface.ReadFromWindow
+                                                    { windowId = gameClientSelection.selectedProcess.mainWindowId
                                                     , uiRootAddress = uiRootAddress
                                                     , getImageData = getImageData
                                                     }
@@ -1043,7 +1043,7 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                             { hostId = volatileHostId
                                                             , request =
                                                                 VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                                                                    (getMemoryReadingRequest { screenshot1x1Rects = [] })
+                                                                    (readFromWindowRequest { screenshot1x1Rects = [] })
                                                             }
                                                         )
                                                     )
@@ -1079,7 +1079,7 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                         OperateApp
                                                             { buildTaskFromEffectSequence =
                                                                 \effectSequenceOnWindow ->
-                                                                    { windowId = lastCompletedMemoryReading.mainWindowId
+                                                                    { windowId = gameClientSelection.selectedProcess.mainWindowId
                                                                     , task =
                                                                         effectSequenceOnWindow
                                                                             |> List.map (effectOnWindowAsVolatileHostEffectOnWindow >> VolatileHostInterface.Effect)
@@ -1088,9 +1088,9 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                                     }
                                                                         |> VolatileHostInterface.EffectSequenceOnWindow
                                                                         |> buildTaskFromRequestToVolatileHost (Just { maximumDelayMilliseconds = 500 })
-                                                            , getMemoryReadingTask =
+                                                            , readFromWindowTask =
                                                                 \getImageData ->
-                                                                    getMemoryReadingRequest
+                                                                    readFromWindowRequest
                                                                         getImageData
                                                                         |> buildTaskFromRequestToVolatileHost
                                                                             (Just { maximumDelayMilliseconds = 500 })

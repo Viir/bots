@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2021-05-01
+{- EVE Online combat anomaly bot version 2021-05-08
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:

@@ -320,7 +320,7 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
                                 |> List.any
                                     (\corner ->
                                         doesPointIntersectRegion corner
-                                            (initialUIElement.totalDisplayRegion |> growRegionOnAllSides 10)
+                                            (initialUIElement.totalDisplayRegion |> growRegionOnAllSides 20)
                                     )
                     in
                     if not cascadeFirstElementIsCloseToInitialUIElement then

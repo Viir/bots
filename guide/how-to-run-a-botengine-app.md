@@ -3,7 +3,7 @@
 ## Starting an App
 
 Download the BotEngine Windows console app from 
-[https://botengine.blob.core.windows.net/blob-library/by-name/2021-04-10-botengine-console.zip](https://botengine.blob.core.windows.net/blob-library/by-name/2021-04-10-botengine-console.zip).
+https://botengine.blob.core.windows.net/blob-library/by-name/2021-06-05-botengine-console.zip
 
 Extract this Zip-Archive. This will give you a file named `BotEngine.exe`. To start an app, call this program with a command like the following:
 
@@ -31,7 +31,7 @@ Most of the time, you don't need to watch this. After all, that is the point of 
 
 To go back in time and see past status information from the app, you can use the time-travel functionality in the devtools: https://to.botengine.org/guide/observing-and-inspecting-an-app
 
-But in case an app gets stuck, you want to take a look at this status display. Among general information from the engine, this display can also contain information as coded by the author. This way, the app can tell about the goal of its current actions or inform you about problems. For example, this [auto-pilot bot](https://github.com/Viir/bots/tree/25cd2fbc264b97bd15257bca6f3414e75f206b67/implement/applications/eve-online/eve-online-warp-to-0-autopilot) shows diverse messages to inform you what it is doing at the moment. When you run this bot, the console window might show a text like the following:
+But in case an app gets stuck, you want to take a look at this status display. Among general information from the engine, this display can also contain information as coded by the author. This way, the app can tell about the goal of its current actions or inform you about problems. For example, this [auto-pilot bot](https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/applications/eve-online/eve-online-warp-to-0-autopilot) shows diverse messages to inform you what it is doing at the moment. When you run this bot, the console window might show a text like the following:
 
 ```
 App ebb5faf0d1... in session '' ('2020-09-02T19-04-33-d96095') is running. Press SHIFT + CTRL + ALT keys to pause the app.
@@ -52,22 +52,45 @@ You can pause the app by pressing the `SHIFT` + `CTRL` + `ALT` keys. To let the 
 Some apps offer customization using settings. When starting an app from the command line, you can use the `--app-settings` parameter to apply settings. The complete command line can then look as follows:
 
 ```cmd
-C:\path\to\the\botengine.exe  run  --app-settings="My app settings"  "https://github.com/Viir/bots/tree/25cd2fbc264b97bd15257bca6f3414e75f206b67/implement/templates/remember-app-settings"
+C:\path\to\the\botengine.exe  run  --app-settings="My app settings"  "https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings"
 ```
 
 The supported settings depend entirely on the app that you chose. To learn which settings are supported in your case, read the description for the app or contact its author.
 
 ## Viewing App Description
 
-Authors often include a human-readable description with the app code, for example, in this app: https://github.com/Viir/bots/blob/25cd2fbc264b97bd15257bca6f3414e75f206b67/implement/templates/remember-app-settings/BotEngineApp.elm
+Authors often include a human-readable description with the app code, for example, in this app: https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings/BotEngineApp.elm
 
 You can display this description using the `botengine  describe` command:
 
 ```cmd
-C:\path\to\the\BotEngine.exe  describe  "https://github.com/Viir/bots/tree/25cd2fbc264b97bd15257bca6f3414e75f206b67/implement/templates/remember-app-settings"
+C:\path\to\the\BotEngine.exe  describe  "https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings"
 ```
 
 The `describe` command works with any app source that is supported by the `run` command.
 
 The information you get this way includes the description given by the author of the app. This description often contains a guide on how to use the app.
 
+Here is the output we get when running this command in PowerShell:
+
+````PowerShell
+PS C:\Users\John> botengine  describe  "https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings"
+This path looks like a URL. I try to load from a remote git repository.
+I found 5 files in 'https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings'.
+This path points to composition 54daa2a766f4845fd7cac0e1e092f251157e81f47a074c004f25e55738489701
+This path points to commit e9cf4964fbed5d314c76386f1eef75474c5f59dd
+The first parent commit with 54daa2a766f4845fd7cac0e1e092f251157e81f47a074c004f25e55738489701 is https://github.com/Viir/bots/tree/38f0f74d4784b648e4cd9b5d57b02e62813f0bd1/implement/templates/remember-app-settings
+Participants from commit 38f0f74d4784b648e4cd9b5d57b02e62813f0bd1:
+Author: Michael Rätzel <viir@viir.de>
+Committer: Michael Rätzel <viir@viir.de>
+Composition 54daa2a766f4845fd7cac0e1e092f251157e81f47a074c004f25e55738489701 has the structure of an app program code.
+Description of app 54daa2a766f4845fd7cac0e1e092f251157e81f47a074c004f25e55738489701:
+framework ID: 1768122f3a17d67ee499ca42ad83baecac7e649a8ea52b3ffe0adcb47a216f87
+I found the following description in the app code:
+{- This bot demonstrates how to remember the app settings string.
+   It takes any settings string received from the user and stores it in the app state.
+   This app also updates the status message to show the last received settings string, so you can check that a method (e.g., via command line) of applying the settings works.
+-}
+app-catalog-tags: template, app-settings, demo-interface-to-host
+authors forum usernames: viir
+```

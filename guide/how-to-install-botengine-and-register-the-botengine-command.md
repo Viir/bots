@@ -1,4 +1,4 @@
-# Failed to Run App - Did Not Find the BotEngine Program
+# How to Install BotEngine and Register the `botengine` Command
 
 When you land here, you might have tried to use the `botengine` program in some form. Maybe you downloaded a script from the [botengine catalog](https://to.botengine.org/catalog), and got this error message when running the script:
 

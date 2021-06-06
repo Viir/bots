@@ -2,11 +2,13 @@
 
 ## Comparing Live Run and Simulated Run
 
-There are two main reasons to run an app:
+Running an app can serve various goals. We categorize those goals broadly into two groups as follows:
 
-1. To achieve an effect in some other system or app, like a game client. In this case, we want the app to interact with the world around it to automate a process. The app reads information from and sends inputs to another app. We call this a 'live' or 'productive' run.
-2. To understand how the app works or to test if it works as expected. In this case, we isolate the app in a simulation, which means it cannot send any inputs and not affect any other app. We call this a 'simulated' or 'test' run.
+1. **To achieve an effect in some other system or app, like a game client.** In this case, we want the app to interact with the world around it. The app reads information from and sends inputs to another app. We call this a 'live' or 'productive' run.
 
+2. **To understand how the app works or to test if it works as expected.** In this case, we isolate the app in a simulation, which means it cannot send any inputs and not affect any other app. We call this a 'simulated' or 'test' run.
+
+Every time we start to run an app, we choose one of these two modes, depending on whether we want it to work in a live environment or test it.
 From the app's perspective, there is no difference between a live run and a simulated run. The app does not know if it is running in a simulation.
 
 ## Prerequisites - Installing and Registering the Botengine Command

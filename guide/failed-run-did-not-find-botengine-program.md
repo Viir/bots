@@ -9,11 +9,11 @@ Or maybe you tried following instructions to run a command in the Windows Comman
 > 'botengine' is not recognized as an internal or external command,
 operable program or batch file.
 
-The botengine program is a tool for developing and running bots, and many guides implicitly assume it is registered on your Windows system. To make these guides and scripts work, follow these steps:
+The botengine program is a tool for developing and running bots, and many guides assume it is registered on your Windows system. To make these guides and scripts work, follow these steps:
 
 + Download the file from https://botengine.blob.core.windows.net/blob-library/by-name/2021-06-05-botengine-console.zip
 + Extract the downloaded zip-archive. The extraction will give you a file named `BotEngine.exe`.
-+ Run the `BotEngine.exe` program. It will open a window like in this screenshot:
++ Run the `BotEngine.exe` program, for example by double clicking the file in the Windows Explorer. It will open a window like in this screenshot:
   ![botengine offers to install](./image/2021-06-05-botengine-guide-offer-install.png)
   At the bottom, we find this text:
   > I see the 'BotEngine' command is not yet installed. Do you want me to install it, so that you can use the 'BotEngine' command from the Command Prompt? [Y/N]:

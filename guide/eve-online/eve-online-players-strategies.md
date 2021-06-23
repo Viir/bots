@@ -2,7 +2,7 @@
 
 ### Travel - Bounce of Celestial to Avoid Gate Campers
 
-[MutantWizard](https://forum.botengine.org/u/MutantWizard) described it at https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/61?u=viir:
+[MutantWizard](https://forum.botlab.org/u/MutantWizard) described it at https://forum.botlab.org/t/how-to-automate-mining-asteroids-in-eve-online/628/61?u=viir:
 
 > Do you think it might be interesting to implement a bounce of a random celestial where the route takes one through a system other than high sec?
 

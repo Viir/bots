@@ -108,7 +108,7 @@ Following is a list of available settings:
 + `farm-avoid-coordinates` : List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
 + `character-to-farm` : Name of a (player) character to farm like barbarians.
 
-To configure settings, open the configuration page at https://catalog.botengine.org/d0b382bd4254d5cba7394c6910580e0781810de86a5d0d568faf3215e78951b9 in a web browser.
+To configure settings, open the configuration page at https://catalog.botlab.org/d0b382bd4254d5cba7394c6910580e0781810de86a5d0d568faf3215e78951b9 in a web browser.
 
 On this page, scroll down to the button `Configure app`.
 
@@ -138,11 +138,11 @@ When you have applied settings for multiple farm cycles, the bot displays this m
 
 ## Pricing and Online Sessions
 
-You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online session as explained at [https://to.botengine.org/guide/online-session](https://to.botengine.org/guide/online-session)
+You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online session as explained at [https://to.botlab.org/guide/online-session](https://to.botlab.org/guide/online-session)
 
-Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botengine.org/billing/add-credits](https://reactor.botengine.org/billing/add-credits)
+Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at https://reactor.botlab.org/billing/add-credits
 
-For more about purchasing and using credits, see the guide at [https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837](https://forum.botengine.org/t/purchasing-and-using-botengine-credits-frequently-asked-questions-faq/837)
+For more about purchasing and using credits, see the guide at https://forum.botlab.org/t/purchasing-and-using-botlab-credits-frequently-asked-questions-faq/837
 
 ## Frequently Asked Questions
 
@@ -187,6 +187,6 @@ Note that browser state like bookmarks and cookies belong to that web browser pr
 
 ## Getting Help
 
-If you have any questions, the [BotEngine forum](https://forum.botengine.org) is a good place to learn more. You can also contact me at [support@botengine.org](mailto:support@botengine.org?subject=Tribal%20Wars%202%20Farmbot%20-%20your%20issue%20here)
+If you have any questions, the [BotLab forum](https://forum.botlab.org) is a good place to learn more. You can also contact me at [support@botlab.org](mailto:support@botlab.org?subject=Tribal%20Wars%202%20Farmbot%20-%20your%20issue%20here)
 
 When asking for help with the bot, include the complete text from the console window or a screenshot. Make sure screenshots are well readable. Don't try to insert a screenshot directly into the forum, as it will be compressed and unreadable. When posting on the forum, you can link screenshots hosted at other sites like Github or imgur.

@@ -4,7 +4,7 @@ Do you want to learn how to build a bot or intel tool for EVE Online or customiz
 
 In part, this is a summary of my ~~failings~~ learnings from development projects. But most importantly, this guide lives from and evolves with your questions, so thank you for the feedback!
 
-Wondering what outcome to expect? Two examples are the [mining bot](https://to.botengine.org/guide/app/eve-online-mining-bot) and [warp-to-0 autopilot](https://to.botengine.org/guide/app/eve-online-autopilot-bot).
+Wondering what outcome to expect? Two examples are the [mining bot](https://to.botlab.org/guide/app/eve-online-mining-bot) and [warp-to-0 autopilot](https://to.botlab.org/guide/app/eve-online-autopilot-bot).
 
 ## Comparing to Alternatives
 
@@ -30,7 +30,7 @@ First, let's look at one of the EVE Online apps in the example projects. Run thi
 botengine  run  "https://github.com/Viir/bots/tree/12f8a8ca4f79fbb14f47e79095cfc5ca5abb581e/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
-If the botengine program is not yet installed on your system, you need to install it first, as described in the guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
+If the botengine program is not yet installed on your system, you need to install it first, as described in the guide at https://to.botlab.org/failed-run-did-not-find-botengine-program
 
 The `botengine run` command loads the app code from the given address to run it on your system. Before running this app, you need to start an EVE Online client, no need to go beyond character selection.
 
@@ -95,8 +95,8 @@ But we don't have to make it so difficult for ourselves. These problems with obs
 The first step to enable observability is to decouple the observation time from the app running time. Our development tools allow us to go back to any point in time and see everything as it was back then.
 
 Let's see how this works in practice.
-Before we can travel back in time, we need to run a botengine app (or get a session archive from somewhere else, as we will see later). You can use any of the example apps in the bots repository, miner, autopilot, or anomaly bot. When we run a bot, the engine saves a recording to disk by default.
-After running an app, we can use the `botengine  devtools` command to open the development tools:
+Before we can travel back in time, we need to run a bot (or get a session archive from somewhere else, as we will see later). You can use any of the example bot programs in the bots repository, miner, autopilot, or anomaly bot. When we run a bot, the BotLab client saves a recording to disk by default.
+After running a bot, we can use the `botlab  devtools` command to open the development tools:
 
 ![Opening DevTools from the command-line](./../image/2020-07-18-open-botengine-devtools.png)
 
@@ -388,4 +388,4 @@ Now you can invoke the formatting using the `Format Document` command in the VSC
 
 ----
 
-Any questions? The [BotEngine forum](https://forum.botengine.org) is the place to meet other developers and get help.
+Any questions? The [BotLab forum](https://forum.botlab.org) is the place to meet other developers and get help.

@@ -1,6 +1,6 @@
-# How to Install BotEngine and Register the `botengine` Command
+# How to Install the Botlab Client and Register the `botlab` Command
 
-When you land here, you might have tried to use the `botengine` program in some form. Maybe you downloaded a script from the [botengine catalog](https://to.botengine.org/catalog), and got this error message when running the script:
+When you land here, you might have tried to use the `botengine` program in some form. Maybe you downloaded a script from the [botengine catalog](https://to.botlab.org/catalog), and got this error message when running the script:
 
 > I failed to run the app because I did not find the 'botengine.exe' program.
 
@@ -23,4 +23,4 @@ The botengine program is a tool for developing and running bots, and many guides
 
 That's it; the installation is complete. Now you can use the `botengine` command in the Windows Command Prompt in any directory. Note that this will not work in Command Prompt windows that were already open before. Open a new window to use the newly registered program.
 
-If you have any questions, the [BotEngine forum](https://forum.botengine.org) is a good place to learn more.
+If you have any questions, the [BotLab forum](https://forum.botlab.org) is a good place to learn more.

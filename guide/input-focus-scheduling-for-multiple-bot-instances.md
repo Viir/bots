@@ -22,7 +22,7 @@ The botengine software comes with built-in support for input focus scheduling. T
 
 From the user's perspective, there is no big difference to running just one bot instance. Each bot is still started the same way, in a separate process. Each instance of the botengine automatically connects to the other currently running instances. They then elect one instance to act as a central scheduler. This scheduling instance takes requests from the other ones and assigns time slots. When the scheduling instance disappears, the remaining ones will elect a new scheduler.
 
-This design means there is no need to start or stop the bots together. And we can use any mixture of bot apps since all the scheduling program is on the engine side.
+This design means there is no need to start or stop the bots together. And we can use any mixture of bots since all the scheduling program is on the engine side.
 
 When two or more bots run on the same machine, they display information about the scheduling functionality. The engine window lists the other botengine instances found on a line starting with `Found X botengine process instances:`
 

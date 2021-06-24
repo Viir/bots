@@ -4,7 +4,7 @@ This file lists some of the customizations of bot programs found on the internet
 The list serves as an additional way to find customizations again, besides the general [catalog](https://catalog.botlab.org).
 If you think a change should be merged into the main branch, you can post on the [forum](https://forum.botlab.org) or create an issue on the [bots GitHub page](https://github.com/Viir/bots/issues).
 If a majority of users choose to apply a change to an program code, that change is more likely to be merged into the main branch. You can see the popularity displayed at `Total running time in hours` on the programs catalog entry.
-To find a program on the catalog, you can also enter the commit as a search term, or use the `botengine  describe` command.
+To find a program on the catalog, you can also enter the commit as a search term, or use the `botlab  describe` command.
 
 ## 2020-03-19 - goondola - EVE Online - print the list of pilots in local
 

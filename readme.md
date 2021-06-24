@@ -4,7 +4,7 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + Video on how to run a bot live: https://to.botlab.org/guide/video/how-to-run-a-bot-live
 
-+ How to install the BotLab client and register the `botlab` command: https://to.botlab.org/failed-run-did-not-find-botengine-program
++ How to install the BotLab client and register the `botlab` command: https://to.botlab.org/how-to-install-the-botlab-client-and-register-the-botlab-command
 
 + How to run a bot: https://to.botlab.org/guide/how-to-run-a-bot
 
@@ -57,7 +57,7 @@ What is more interesting than playing video games? - Programming bots to play vi
   + Program code: [./implement/applications/tribal-wars-2/tribal-wars-2-farmbot](./implement/applications/tribal-wars-2/tribal-wars-2-farmbot)
 
 
-More links to program codes are listed at [https://catalog.botengine.org](https://catalog.botengine.org)
+More links to program codes are listed at [https://catalog.botlab.org](https://catalog.botlab.org)
 
 ## Related Guides
 
@@ -72,10 +72,10 @@ In the ['explore'](./explore) subdirectory, I report on explorations in the worl
 
 + Use an integrated development environment to test your Elm code: https://elm-editor.com
 
-+ Explore Elm syntax and core library with the Elm Explorer: https://botengine.blob.core.windows.net/blob-library/by-name/ElmExplorer.html
++ Explore Elm syntax and core library with the Elm Explorer: https://botlabs.blob.core.windows.net/blob-library/by-name/ElmExplorer.html
 
 + Learn about recursion, a concept we frequently use in programming: https://www.recursively.xyz
 
-+ Inspection tool to explore the structure of EVE Online memory readings: https://botengine.blob.core.windows.net/blob-library/by-name/2020-12-11-eve-online-alternate-ui.html
++ Inspection tool to explore the structure of EVE Online memory readings: https://botlabs.blob.core.windows.net/blob-library/by-name/2020-12-11-eve-online-alternate-ui.html
 
 + How to Allow Multiple RDP Sessions in Windows 10: http://woshub.com/how-to-allow-multiple-rdp-sessions-in-windows-10/

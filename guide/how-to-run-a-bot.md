@@ -13,7 +13,7 @@ From the bot's perspective, there is no difference between a live run and a simu
 
 ## Prerequisites - Installing and Registering the `botlab` Command
 
-Before running any bot for the first time, we install the BotLab client on Windows and register the `botlab` command. If you are not sure you have done this for your system, check the installation guide at https://to.botlab.org/failed-run-did-not-find-botengine-program
+Before running any bot for the first time, we install the BotLab client on Windows and register the `botlab` command. If you are not sure you have done this for your system, check the installation guide at https://to.botlab.org/how-to-install-the-botlab-client-and-register-the-botlab-command
 
 ## Running a Bot Live
 
@@ -26,7 +26,7 @@ A common way to run a bot is to use a script file downloaded from the [catalog w
 Besides running a `.bat` script file, an alternative way to run a bot live is entering a command like the following:
 
 ```cmd
-botengine  run  "https://github.com/Viir/bots/tree/25cd2fbc264b97bd15257bca6f3414e75f206b67/implement/templates/remember-app-settings"
+botlab  run  "https://github.com/Viir/bots/tree/25cd2fbc264b97bd15257bca6f3414e75f206b67/implement/templates/remember-app-settings"
 ```
 
 You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe) or in [PowerShell](https://en.wikipedia.org/wiki/PowerShell). Both 'Command Prompt' and PowerShell are included in any Windows 10 installation by default.
@@ -70,7 +70,7 @@ You can pause the bot by pressing the `SHIFT` + `CTRL` + `ALT` keys. To let the 
 Some bots offer customization using settings. When starting a bot from the command line, you can use the `--app-settings` parameter to apply settings. The complete command line can then look as follows:
 
 ```cmd
-botengine  run  --app-settings="My app settings"  "https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings"
+botlab  run  --app-settings="My app settings"  "https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings"
 ```
 
 The supported settings depend entirely on the bot that you chose. To learn which settings are supported in your case, read the description for the bot or contact its author.
@@ -79,10 +79,10 @@ The supported settings depend entirely on the bot that you chose. To learn which
 
 Authors often include a human-readable description with the program code, for example, in this bot: https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings/BotEngineApp.elm
 
-You can display this description using the `botengine  describe` command:
+You can display this description using the `botlab  describe` command:
 
 ```cmd
-botengine  describe  "https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings"
+botlab  describe  "https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings"
 ```
 
 The `describe` command works with any program source that is supported by the `run` command.
@@ -92,7 +92,7 @@ The information you get this way includes the description given by the author of
 Here is the output we get when running this command in PowerShell:
 
 ```txt
-PS C:\Users\John> botengine  describe  "https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings"
+PS C:\Users\John> botlab  describe  "https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings"
 This path looks like a URL. I try to load from a remote git repository.
 I found 5 files in 'https://github.com/Viir/bots/tree/e9cf4964fbed5d314c76386f1eef75474c5f59dd/implement/templates/remember-app-settings'.
 This path points to composition 54daa2a766f4845fd7cac0e1e092f251157e81f47a074c004f25e55738489701

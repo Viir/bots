@@ -18,9 +18,9 @@ For more about purchasing and using credits, see the guide at https://forum.botl
 
 ### Starting an Online Session
 
-In case you use the Command Prompt or PowerShell, you can start an online session by adding the `--online-session` option on the `botengine  run` command. Here is an example:
+In case you use the Command Prompt or PowerShell, you can start an online session by adding the `--online-session` option on the `botlab  run` command. Here is an example:
 ```cmd
-botengine  run  --online-session  "https://github.com/Viir/bots/tree/25cd2fbc264b97bd15257bca6f3414e75f206b67/implement/templates/remember-app-settings"
+botlab  run  --online-session  "https://github.com/Viir/bots/tree/25cd2fbc264b97bd15257bca6f3414e75f206b67/implement/templates/remember-app-settings"
 ```
 
 If you don't use the Command Prompt, use the bot configuration interface on the catalog: Enable the checkbox labeled "Start in online session" as shown in this screenshot:

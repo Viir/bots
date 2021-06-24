@@ -18,13 +18,13 @@ In the case of productive use, the app events encode information from the user (
 
 The simplest type of simulation is replaying a session. This is a kind of off-policy simulation, which means the app's output is not fed back into the simulation.
 
-To create a simulation by session replay, we only need the recording of a session as input. Here we can use a session archive as we get it from the [export function in DevTools](https://to.botengine.org/guide/how-to-report-an-issue-with-an-app-or-request-a-new-feature).
+To create a simulation by session replay, we only need the recording of a session as input. Here we can use a session archive as we get it from the [export function in DevTools](https://to.botlab.org/guide/how-to-report-an-issue-with-an-app-or-request-a-new-feature).
 
-We can start a session replay by using the `botengine  simulate-run` command with the `--replay-session` option. We use the `--replay-session` to point to the file containing the session recording archive. After the `--replay-session` option, we add the path to the app program code, the same way as with the `botengine  run` command.
+We can start a session replay by using the `botlab  simulate-run` command with the `--replay-session` option. We use the `--replay-session` to point to the file containing the session recording archive. After the `--replay-session` option, we add the path to the app program code, the same way as with the `botlab  run` command.
 Here is an example of the final command as we can run it in the Windows Command Prompt:
 
 ```
-botengine  simulate-run  --replay-session="C:\Users\John\Downloads\session-2020-08-04T06-44-41-3bfe2b.zip"  https://github.com/Viir/bots/tree/1ab3cf1de8bfbedd22641f1d9918f0188894e013/implement/applications/eve-online/eve-online-combat-anomaly-bot
+botlab  simulate-run  --replay-session="C:\Users\John\Downloads\session-2020-08-04T06-44-41-3bfe2b.zip"  https://github.com/Viir/bots/tree/1ab3cf1de8bfbedd22641f1d9918f0188894e013/implement/applications/eve-online/eve-online-combat-anomaly-bot
 ```
 
 ![command to simulate-run in Command Prompt](./image/2020-08-08-simulate-run-cmd.png)
@@ -35,7 +35,7 @@ When running this command, the output looks similar to when running an app live.
 
 The simulation runs faster than the original session because it never has to wait for another process, and the passing of time is encoded in the app event data.
 
-When the simulation is complete, we find the recording in the list of sessions shown in DevTools. (You might have to restart DevTools to make a new session visible). By selecting the session recording in DevTools, you can inspect it the same way as any other session recording. The guide on observing and inspecting an app explains how this works: https://to.botengine.org/guide/observing-and-inspecting-an-app
+When the simulation is complete, we find the recording in the list of sessions shown in DevTools. (You might have to restart DevTools to make a new session visible). By selecting the session recording in DevTools, you can inspect it the same way as any other session recording. The guide on observing and inspecting an app explains how this works: https://to.botlab.org/guide/observing-and-inspecting-an-app
 
 ### Replacing App-Settings in a Session Replay
 

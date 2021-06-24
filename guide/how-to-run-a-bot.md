@@ -13,7 +13,7 @@ From the bot's perspective, there is no difference between a live run and a simu
 
 ## Prerequisites - Installing and Registering the `botlab` Command
 
-Before running any bot for the first time, we install the BotLab client on Windows and register the `botlab` command. If you are not sure you have done this for your system, check the installation guide at https://to.botlab.org/how-to-install-the-botlab-client-and-register-the-botlab-command
+Before running any bot for the first time, we install the BotLab client on Windows and register the `botlab` command. If you are not sure you have done this for your system, check the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
 
 ## Running a Bot Live
 

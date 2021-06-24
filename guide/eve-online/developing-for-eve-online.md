@@ -30,7 +30,7 @@ First, let's look at one of the EVE Online apps in the example projects. Run thi
 botlab  run  "https://github.com/Viir/bots/tree/12f8a8ca4f79fbb14f47e79095cfc5ca5abb581e/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
-In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/how-to-install-the-botlab-client-and-register-the-botlab-command
+In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
 
 The `botlab run` command loads the app code from the given address to run it on your system. Before running this app, you need to start an EVE Online client, no need to go beyond character selection.
 

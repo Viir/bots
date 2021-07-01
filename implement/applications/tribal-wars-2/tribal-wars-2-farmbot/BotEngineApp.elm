@@ -27,7 +27,7 @@
    + `farm-barb-min-points`: Minimum points of barbarian villages to attack.
    + `farm-barb-max-distance`: Maximum distance of barbarian villages to attack.
    + `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'. This filter applies to both target and sending villages.
-   + `character-to-farm`: Name of a (player) character to farm like barbarians.
+   + `farm-player`: Name of a player/character to farm. By default, the bot only farms barbarians, but this setting allows you to also farm players.
    + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
 
    When using more than one setting, start a new line for each setting in the text input field.
@@ -77,7 +77,7 @@ initBotSettings =
     , farmBarbarianVillageMinimumPoints = Nothing
     , farmBarbarianVillageMaximumDistance = 50
     , farmAvoidCoordinates = []
-    , charactersToFarm = []
+    , playersToFarm = []
     , farmArmyPresetPatterns = []
     , webBrowserUserProfileId = "default"
     }
@@ -101,11 +101,11 @@ parseBotSettings =
          , ( "farm-avoid-coordinates"
            , parseSettingFarmAvoidCoordinates
            )
-         , ( "character-to-farm"
+         , ( "farm-player"
            , AppSettings.valueTypeString
-                (\characterName ->
+                (\playerName ->
                     \settings ->
-                        { settings | charactersToFarm = characterName :: settings.charactersToFarm }
+                        { settings | playersToFarm = playerName :: settings.playersToFarm }
                 )
            )
          , ( "farm-army-preset-pattern"
@@ -223,7 +223,7 @@ type alias BotSettings =
     , farmBarbarianVillageMinimumPoints : Maybe Int
     , farmBarbarianVillageMaximumDistance : Int
     , farmAvoidCoordinates : List VillageCoordinates
-    , charactersToFarm : List String
+    , playersToFarm : List String
     , farmArmyPresetPatterns : List String
     , webBrowserUserProfileId : String
     }
@@ -1511,7 +1511,7 @@ villageMatchesSettingsForFarm settings villageCoordinates village =
                         False
 
                     else
-                        settings.charactersToFarm |> List.member characterName
+                        settings.playersToFarm |> List.member characterName
     in
     (((village.affiliation == Just AffiliationBarbarian)
         && (settings.farmBarbarianVillageMinimumPoints

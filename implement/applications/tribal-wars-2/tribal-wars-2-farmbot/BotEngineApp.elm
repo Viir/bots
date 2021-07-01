@@ -29,6 +29,7 @@
    + `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'. This filter applies to both target and sending villages.
    + `farm-player`: Name of a player/character to farm. By default, the bot only farms barbarians, but this setting allows you to also farm players.
    + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
+   + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
@@ -79,6 +80,7 @@ initBotSettings =
     , farmAvoidCoordinates = []
     , playersToFarm = []
     , farmArmyPresetPatterns = []
+    , limitOutgoingCommandsPerVillage = 50
     , webBrowserUserProfileId = "default"
     }
 
@@ -114,6 +116,10 @@ parseBotSettings =
                     \settings ->
                         { settings | farmArmyPresetPatterns = presetPattern :: settings.farmArmyPresetPatterns }
                 )
+           )
+         , ( "limit-outgoing-commands-per-village"
+           , AppSettings.valueTypeInteger
+                (\limit settings -> { settings | limitOutgoingCommandsPerVillage = limit })
            )
          , ( "web-browser-user-profile-id"
            , AppSettings.valueTypeString (\webBrowserUserProfileId settings -> { settings | webBrowserUserProfileId = webBrowserUserProfileId })
@@ -154,11 +160,6 @@ gameRootInformationQueryInterval =
 waitDurationAfterReloadWebPage : Int
 waitDurationAfterReloadWebPage =
     15
-
-
-numberOfAttacksLimitPerVillage : Int
-numberOfAttacksLimitPerVillage =
-    50
 
 
 ownVillageInfoMaxAge : Int
@@ -225,6 +226,7 @@ type alias BotSettings =
     , farmAvoidCoordinates : List VillageCoordinates
     , playersToFarm : List String
     , farmArmyPresetPatterns : List String
+    , limitOutgoingCommandsPerVillage : Int
     , webBrowserUserProfileId : String
     }
 
@@ -1421,7 +1423,7 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
             villageDetails.commands.outgoing |> List.length
 
         remainingCapacityCommands =
-            numberOfAttacksLimitPerVillage - numberOfCommandsFromThisVillage
+            botState.settings.limitOutgoingCommandsPerVillage - numberOfCommandsFromThisVillage
     in
     if remainingCapacityCommands < 1 then
         describeBranch

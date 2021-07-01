@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2021-03-13
+{- Tribal Wars 2 farmbot version 2021-07-01
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -26,7 +26,7 @@
    + `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
    + `farm-barb-min-points`: Minimum points of barbarian villages to attack.
    + `farm-barb-max-distance`: Maximum distance of barbarian villages to attack.
-   + `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
+   + `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'. This filter applies to both target and sending villages.
    + `character-to-farm`: Name of a (player) character to farm like barbarians.
    + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
 
@@ -407,6 +407,7 @@ type VillageCompletedStructure
     | NotEnoughUnits
     | ExhaustedAttackLimit
     | AllFarmsInSearchedAreaAlreadyAttackedInThisCycle
+    | VillageDisabledInSettings
 
 
 type VillageEndDecisionPathStructure
@@ -782,7 +783,10 @@ parseSettingFarmAvoidCoordinates : String -> Result String (BotSettings -> BotSe
 parseSettingFarmAvoidCoordinates listOfCoordinatesAsString =
     listOfCoordinatesAsString
         |> parseSettingListCoordinates
-        |> Result.map (\farmAvoidCoordinates -> \settings -> { settings | farmAvoidCoordinates = farmAvoidCoordinates })
+        |> Result.map
+            (\farmAvoidCoordinates ->
+                \settings -> { settings | farmAvoidCoordinates = settings.farmAvoidCoordinates ++ farmAvoidCoordinates }
+            )
 
 
 parseSettingListCoordinates : String -> Result String (List VillageCoordinates)
@@ -1332,16 +1336,29 @@ describeVillageCompletion : VillageCompletedStructure -> { decisionBranch : Stri
 describeVillageCompletion villageCompletion =
     case villageCompletion of
         NoMatchingArmyPresetEnabledForThisVillage ->
-            { decisionBranch = "No matching preset for this village.", cycleStatsGroup = "No preset" }
+            { decisionBranch = "No matching preset for this village."
+            , cycleStatsGroup = "No preset"
+            }
 
         NotEnoughUnits ->
-            { decisionBranch = "Not enough units.", cycleStatsGroup = "Out of units" }
+            { decisionBranch = "Not enough units."
+            , cycleStatsGroup = "Out of units"
+            }
 
         ExhaustedAttackLimit ->
-            { decisionBranch = "Exhausted the attack limit.", cycleStatsGroup = "Attack limit" }
+            { decisionBranch = "Exhausted the attack limit."
+            , cycleStatsGroup = "Attack limit"
+            }
 
         AllFarmsInSearchedAreaAlreadyAttackedInThisCycle ->
-            { decisionBranch = "All farms in the search area have already been attacked in this farm cycle.", cycleStatsGroup = "Out of farms" }
+            { decisionBranch = "All farms in the search area have already been attacked in this farm cycle."
+            , cycleStatsGroup = "Out of farms"
+            }
+
+        VillageDisabledInSettings ->
+            { decisionBranch = "Farming for this village is disabled in the settings."
+            , cycleStatsGroup = "Disabled in settings"
+            }
 
 
 lastStartWebBrowserAgeInSecondsFromState : BotState -> Maybe Int
@@ -1378,11 +1395,15 @@ decideNextActionForVillage :
     -> ( Int, VillageDetails )
     -> DecisionPathNode VillageEndDecisionPathStructure
 decideNextActionForVillage botState farmCycleState ( villageId, villageDetails ) =
-    pickBestMatchingArmyPresetForVillage
-        (implicitSettingsFromExplicitSettings botState.settings)
-        (farmCycleState.getArmyPresetsResult |> Maybe.withDefault [])
-        ( villageId, villageDetails )
-        (decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ))
+    if botState.settings.farmAvoidCoordinates |> List.member villageDetails.coordinates then
+        endDecisionPath (CompletedThisVillage VillageDisabledInSettings)
+
+    else
+        pickBestMatchingArmyPresetForVillage
+            (implicitSettingsFromExplicitSettings botState.settings)
+            (farmCycleState.getArmyPresetsResult |> Maybe.withDefault [])
+            ( villageId, villageDetails )
+            (decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ))
 
 
 decideNextActionForVillageAfterChoosingPreset :

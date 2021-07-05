@@ -13,9 +13,9 @@ It automatically detects barbarian villages, available troops and configured arm
 
 ### Efficient
 
++ Fast enough to send 800 attacks per hour.
 + Supports multiple army presets per village to make the best use of your troops.
 + Takes into account the limit of 50 attacks per village.
-+ Fast enough to send 800 attacks per hour.
 + Option to avoid barbarian villages under a certain amount of points.
 + Avoid having your troops die at remaining walls: Option to avoid barbarian villages with specific coordinates.
 + Supports running on multiple accounts simultaneously on a single PC.
@@ -36,7 +36,7 @@ To start the farmbot, download the executable file from https://botlabs.blob.cor
 
 The first time you start the bot, it will download a web browser component. This can take some time, depending on your internet connection.
 
-![Tribal Wars 2 Farmbot Starting](./image/2020-01-25.tribal-wars-2-farmbot-before-login.png)
+![Tribal Wars 2 Farmbot Starting](./image/2021-07-05-tribal-wars-2-farmbot-before-login.png)
 
 When the browser download is finished, the bot opens a 'chromium' web browser window, which is a variant of googles chrome web browser. In the Windows taskbar, it appears with an icon that is a blueish version of the google chrome logo:
 
@@ -103,12 +103,14 @@ Following is a list of available settings:
 
 + `number-of-farm-cycles` : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
 + `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
-+ `farm-barb-min-points` : Minimum points of barbarian villages to attack.
-+ `farm-barb-max-distance` : Maximum distance of barbarian villages to attack.
-+ `farm-avoid-coordinates` : List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'
-+ `character-to-farm` : Name of a (player) character to farm like barbarians.
++ `farm-barb-min-points`: Minimum points of barbarian villages to attack.
++ `farm-barb-max-distance`: Maximum distance of barbarian villages to attack.
++ `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'. This filter applies to both target and sending villages.
++ `farm-player`: Name of a player/character to farm. By default, the bot only farms barbarians, but this setting allows you to also farm players.
++ `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
++ `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village.
 
-To configure settings, open the configuration page at https://catalog.botlab.org/d0b382bd4254d5cba7394c6910580e0781810de86a5d0d568faf3215e78951b9 in a web browser.
+To configure settings, open the configuration page at https://catalog.botlab.org/f238299ce5a0e8e64e474016058e35f7edf0929637d33783b74fe1c256b4cd33 in a web browser.
 
 On this page, scroll down to the button `Configure app`.
 

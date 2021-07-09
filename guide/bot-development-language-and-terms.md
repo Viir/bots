@@ -4,7 +4,7 @@ This document explains terms and language specific to the use and development of
 
 ## Agent
 
-Agent in a play session can be either a bot or a human. We use bots as agents for productive use. For development, we sometimes let a human take the role of the agent. After a human has demonstrated how to perform a task, we can use the recording of that session for training bots.
+Agent in a play session can be either a bot or a human. We use bots as agents for productive use. For development, we sometimes let a human take the role of the agent. After a human has demonstrated how to perform a task, we can use the recording of that session for training bots. (Process mining)
 
 ## Program
 

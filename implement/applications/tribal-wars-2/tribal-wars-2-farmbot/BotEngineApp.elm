@@ -23,13 +23,13 @@
    Following is a list of available settings:
 
    + `number-of-farm-cycles` : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
-   + `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. The bot then picks a random value in this range.
+   + `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60 - 120`. The bot then picks a random value in this range.
    + `farm-barb-min-points`: Minimum points of barbarian villages to attack.
    + `farm-barb-max-distance`: Maximum distance of barbarian villages to attack.
    + `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'. This filter applies to both target and sending villages.
    + `farm-player`: Name of a player/character to farm. By default, the bot only farms barbarians, but this setting allows you to also farm players.
    + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
-   + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45-48`. The bot then picks a random value in this range.
+   + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45 - 48`. The bot then picks a random value in this range for each village.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:

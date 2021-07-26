@@ -102,15 +102,15 @@ All settings are optional; you only need them in case the defaults don't fit you
 Following is a list of available settings:
 
 + `number-of-farm-cycles` : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
-+ `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
++ `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. The bot then picks a random value in this range.
 + `farm-barb-min-points`: Minimum points of barbarian villages to attack.
 + `farm-barb-max-distance`: Maximum distance of barbarian villages to attack.
 + `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'. This filter applies to both target and sending villages.
 + `farm-player`: Name of a player/character to farm. By default, the bot only farms barbarians, but this setting allows you to also farm players.
 + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
-+ `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village.
++ `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45-48`. The bot then picks a random value in this range.
 
-To configure settings, open the configuration page at https://catalog.botlab.org/f238299ce5a0e8e64e474016058e35f7edf0929637d33783b74fe1c256b4cd33 in a web browser.
+To configure settings, open the configuration page at https://catalog.botlab.org/f48b4ab519a09bd2e94ee75ade0bc5793b9366fc12c40804216d8fe13ae45ec3 in a web browser.
 
 On this page, scroll down to the button `Configure app`.
 

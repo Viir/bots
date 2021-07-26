@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2021-07-01
+{- Tribal Wars 2 farmbot version 2021-07-26
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -73,8 +73,7 @@ import WebBrowser.BotFramework as BotFramework exposing (BotEvent, BotResponse)
 initBotSettings : BotSettings
 initBotSettings =
     { numberOfFarmCycles = 1
-    , breakDurationMinMinutes = 90
-    , breakDurationMaxMinutes = 120
+    , breakDurationMinutes = { minimum = 90, maximum = 120 }
     , farmBarbarianVillageMinimumPoints = Nothing
     , farmBarbarianVillageMaximumDistance = 50
     , farmAvoidCoordinates = []
@@ -219,8 +218,7 @@ type alias BotState =
 
 type alias BotSettings =
     { numberOfFarmCycles : Int
-    , breakDurationMinMinutes : Int
-    , breakDurationMaxMinutes : Int
+    , breakDurationMinutes : IntervalInt
     , farmBarbarianVillageMinimumPoints : Maybe Int
     , farmBarbarianVillageMaximumDistance : Int
     , farmAvoidCoordinates : List VillageCoordinates
@@ -420,6 +418,10 @@ type VillageEndDecisionPathStructure
 type ActionFromVillage
     = GetVillageInfoAtCoordinates VillageCoordinates
     | AttackAtCoordinates ArmyPreset VillageCoordinates
+
+
+type alias IntervalInt =
+    { minimum : Int, maximum : Int }
 
 
 initState : State
@@ -703,8 +705,8 @@ decideNextAction { lastPageLocation } stateBefore =
                                     stateBefore.timeInMilliseconds // 1000
 
                                 breakLengthRange =
-                                    (stateBefore.settings.breakDurationMaxMinutes
-                                        - stateBefore.settings.breakDurationMinMinutes
+                                    (stateBefore.settings.breakDurationMinutes.maximum
+                                        - stateBefore.settings.breakDurationMinutes.minimum
                                     )
                                         * 60
 
@@ -716,7 +718,8 @@ decideNextAction { lastPageLocation } stateBefore =
                                         stateBefore.timeInMilliseconds |> modBy breakLengthRange
 
                                 breakLength =
-                                    (stateBefore.settings.breakDurationMinMinutes * 60) + breakLengthRandomComponent
+                                    (stateBefore.settings.breakDurationMinutes.minimum * 60)
+                                        + breakLengthRandomComponent
 
                                 nextCycleStartTime =
                                     currentTimeInSeconds + breakLength
@@ -761,10 +764,16 @@ decideNextAction { lastPageLocation } stateBefore =
 
 
 parseBotSettingBreakDurationMinutes : String -> Result String (BotSettings -> BotSettings)
-parseBotSettingBreakDurationMinutes breakDurationString =
+parseBotSettingBreakDurationMinutes =
+    parseIntervalIntFromPointOrIntervalString
+        >> Result.map (\interval -> \settings -> { settings | breakDurationMinutes = interval })
+
+
+parseIntervalIntFromPointOrIntervalString : String -> Result String IntervalInt
+parseIntervalIntFromPointOrIntervalString intervalAsString =
     let
         boundsParseResults =
-            breakDurationString
+            intervalAsString
                 |> String.split "-"
                 |> List.map (\boundString -> boundString |> String.trim |> String.toInt |> Result.fromMaybe ("Failed to parse '" ++ boundString ++ "'"))
     in
@@ -774,7 +783,7 @@ parseBotSettingBreakDurationMinutes breakDurationString =
             (\bounds ->
                 case ( bounds |> List.minimum, bounds |> List.maximum ) of
                     ( Just minimum, Just maximum ) ->
-                        Ok (\settings -> { settings | breakDurationMinMinutes = minimum, breakDurationMaxMinutes = maximum })
+                        Ok { minimum = minimum, maximum = maximum }
 
                     _ ->
                         Err "Missing value"
@@ -2309,9 +2318,9 @@ statusMessageFromState state { activityDecisionStages } =
             "Settings: "
                 ++ ([ ( "cycles", state.settings.numberOfFarmCycles |> String.fromInt )
                     , ( "breaks"
-                      , (state.settings.breakDurationMinMinutes |> String.fromInt)
+                      , (state.settings.breakDurationMinutes.minimum |> String.fromInt)
                             ++ " - "
-                            ++ (state.settings.breakDurationMaxMinutes |> String.fromInt)
+                            ++ (state.settings.breakDurationMinutes.maximum |> String.fromInt)
                       )
                     , ( "max dist", state.settings.farmBarbarianVillageMaximumDistance |> String.fromInt )
                     , ( "web-browser-user-profile-id", state.settings.webBrowserUserProfileId )

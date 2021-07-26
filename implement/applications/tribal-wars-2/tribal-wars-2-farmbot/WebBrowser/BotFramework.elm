@@ -143,7 +143,7 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
         ( state, responseBeforeAddingStatusMessageAndSubscribeToTime ) =
             if botRequestedFinishSession then
                 ( stateBefore
-                , { statusDescriptionText = "The app finished the session."
+                , { statusDescriptionText = "The bot finished the session."
                   }
                     |> InterfaceToHost.FinishSession
                 )

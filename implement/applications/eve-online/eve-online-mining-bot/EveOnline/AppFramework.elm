@@ -669,7 +669,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                         case appEventResponse of
                             FinishSession _ ->
                                 InterfaceToHost.FinishSession
-                                    { statusDescriptionText = "The app finished the session." }
+                                    { statusDescriptionText = "The bot finished the session." }
 
                             ContinueSession continueSession ->
                                 let

@@ -23,13 +23,13 @@
    Following is a list of available settings:
 
    + `number-of-farm-cycles` : Number of farm cycles before the bot stops. The default is only one (`1`) cycle.
-   + `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. It will then pick a random value in this range.
+   + `break-duration` : Duration of breaks between farm cycles, in minutes. You can also specify a range like `60-120`. The bot then picks a random value in this range.
    + `farm-barb-min-points`: Minimum points of barbarian villages to attack.
    + `farm-barb-max-distance`: Maximum distance of barbarian villages to attack.
    + `farm-avoid-coordinates`: List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'. This filter applies to both target and sending villages.
    + `farm-player`: Name of a player/character to farm. By default, the bot only farms barbarians, but this setting allows you to also farm players.
    + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
-   + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village.
+   + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45-48`. The bot then picks a random value in this range.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
@@ -79,7 +79,7 @@ initBotSettings =
     , farmAvoidCoordinates = []
     , playersToFarm = []
     , farmArmyPresetPatterns = []
-    , limitOutgoingCommandsPerVillage = 50
+    , limitOutgoingCommandsPerVillage = { minimum = 50, maximum = 50 }
     , webBrowserUserProfileId = "default"
     }
 
@@ -117,8 +117,7 @@ parseBotSettings =
                 )
            )
          , ( "limit-outgoing-commands-per-village"
-           , AppSettings.valueTypeInteger
-                (\limit settings -> { settings | limitOutgoingCommandsPerVillage = limit })
+           , parseBotSettingLimitOutgoingCommandsPerVillage
            )
          , ( "web-browser-user-profile-id"
            , AppSettings.valueTypeString (\webBrowserUserProfileId settings -> { settings | webBrowserUserProfileId = webBrowserUserProfileId })
@@ -224,7 +223,7 @@ type alias BotSettings =
     , farmAvoidCoordinates : List VillageCoordinates
     , playersToFarm : List String
     , farmArmyPresetPatterns : List String
-    , limitOutgoingCommandsPerVillage : Int
+    , limitOutgoingCommandsPerVillage : IntervalInt
     , webBrowserUserProfileId : String
     }
 
@@ -767,6 +766,12 @@ parseBotSettingBreakDurationMinutes : String -> Result String (BotSettings -> Bo
 parseBotSettingBreakDurationMinutes =
     parseIntervalIntFromPointOrIntervalString
         >> Result.map (\interval -> \settings -> { settings | breakDurationMinutes = interval })
+
+
+parseBotSettingLimitOutgoingCommandsPerVillage : String -> Result String (BotSettings -> BotSettings)
+parseBotSettingLimitOutgoingCommandsPerVillage =
+    parseIntervalIntFromPointOrIntervalString
+        >> Result.map (\interval -> \settings -> { settings | limitOutgoingCommandsPerVillage = interval })
 
 
 parseIntervalIntFromPointOrIntervalString : String -> Result String IntervalInt
@@ -1431,8 +1436,23 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
         numberOfCommandsFromThisVillage =
             villageDetails.commands.outgoing |> List.length
 
+        limitOutgoingCommandsPerVillageRandomizedAmount =
+            botState.settings.limitOutgoingCommandsPerVillage.maximum
+                - botState.settings.limitOutgoingCommandsPerVillage.minimum
+
+        limitOutgoingCommandsPerVillageRandomAmount =
+            if 0 < limitOutgoingCommandsPerVillageRandomizedAmount then
+                botState.timeInMilliseconds |> modBy limitOutgoingCommandsPerVillageRandomizedAmount
+
+            else
+                0
+
+        limitOutgoingCommandsPerVillage =
+            botState.settings.limitOutgoingCommandsPerVillage.minimum
+                + limitOutgoingCommandsPerVillageRandomAmount
+
         remainingCapacityCommands =
-            botState.settings.limitOutgoingCommandsPerVillage - numberOfCommandsFromThisVillage
+            limitOutgoingCommandsPerVillage - numberOfCommandsFromThisVillage
     in
     if remainingCapacityCommands < 1 then
         describeBranch

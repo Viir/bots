@@ -4,7 +4,7 @@
    A good way to test and visualize the mouse paths is to use this bot on a canvas in the MS Paint app.
 -}
 {-
-   app-catalog-tags:template,send-input-to-window,test
+   catalog-tags:template,send-input-to-window,test
 -}
 
 

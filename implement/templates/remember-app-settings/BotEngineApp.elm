@@ -3,7 +3,7 @@
    This app also updates the status message to show the last received settings string, so you can check that a method (e.g., via command line) of applying the settings works.
 -}
 {-
-   app-catalog-tags:template,app-settings,demo-interface-to-host
+   catalog-tags:template,app-settings,demo-interface-to-host
    authors-forum-usernames:viir
 -}
 

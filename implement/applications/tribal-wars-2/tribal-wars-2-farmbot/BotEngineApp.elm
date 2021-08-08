@@ -39,7 +39,7 @@
 
 -}
 {-
-   app-catalog-tags:tribal-wars-2,farmbot
+   catalog-tags:tribal-wars-2,farmbot
    authors-forum-usernames:viir
 -}
 

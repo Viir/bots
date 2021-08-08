@@ -15,7 +15,7 @@
 
 -}
 {-
-   app-catalog-tags:eve-online,auto-pilot,travel
+   catalog-tags:eve-online,auto-pilot,travel
    authors-forum-usernames:viir
 -}
 

@@ -4,7 +4,7 @@
    It also computes the remaining time as the difference between the present time and the configured limit and displays the result via the status text.
 -}
 {-
-   app-catalog-tags:template,demo-interface-to-host
+   catalog-tags:template,demo-interface-to-host
    authors-forum-usernames:viir
 -}
 

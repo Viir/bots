@@ -15,7 +15,7 @@
     > [ { x = 23, y = 57 }, { x = 33, y = 57 }, { x = 43, y = 57 }, { x = 53, y = 57 } ]
 -}
 {-
-   app-catalog-tags:devtool,test,locate-object-in-image
+   catalog-tags:devtool,test,locate-object-in-image
    authors-forum-usernames:viir
 -}
 
@@ -55,7 +55,8 @@ type alias VolatileHostCreatedStructure =
 type alias FileContentsReadStructure =
     { volatileHost : VolatileHostCreatedStructure
     , decodeImageResult :
-        Result String
+        Result
+            String
             { image : DecodeBMPImageResult
             , imageSearchResultLocations : List { x : Int, y : Int }
             }

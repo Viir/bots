@@ -27,7 +27,7 @@
    module-to-activate-always = afterburner
 -}
 {-
-   app-catalog-tags:eve-online,mining
+   catalog-tags:eve-online,mining
    authors-forum-usernames:viir
 -}
 

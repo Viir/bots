@@ -30,7 +30,7 @@
    module-to-activate-always = shield hardener
 -}
 {-
-   app-catalog-tags:eve-online,anomaly,ratting
+   catalog-tags:eve-online,anomaly,ratting
    authors-forum-usernames:viir
 -}
 

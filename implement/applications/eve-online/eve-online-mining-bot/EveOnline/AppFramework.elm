@@ -13,7 +13,7 @@
 
 module EveOnline.AppFramework exposing (..)
 
-import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
+import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Common.Basics
 import Common.EffectOnWindow
 import Common.FNV
@@ -85,9 +85,9 @@ type alias AppAndLastEventState appState =
 
 
 type alias SetupState =
-    { createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileHostErrorStructure InterfaceToHost.CreateVolatileHostComplete)
+    { createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
     , requestsToVolatileHostCount : Int
-    , lastRequestToVolatileHostResult : Maybe (Result String ( InterfaceToHost.RequestToVolatileHostComplete, Result String VolatileHostInterface.ResponseFromVolatileHost ))
+    , lastRequestToVolatileHostResult : Maybe (Result String ( InterfaceToHost.RequestToVolatileProcessComplete, Result String VolatileHostInterface.ResponseFromVolatileHost ))
     , gameClientProcesses : Maybe (List GameClientProcessSummary)
     , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
     , lastReadingFromGame : Maybe { timeInMilliseconds : Int, aggregate : ReadingFromGameClientAggregateState }
@@ -263,9 +263,9 @@ initState appState =
 
 processEvent :
     AppConfiguration appSettings appState
-    -> InterfaceToHost.AppEvent
+    -> InterfaceToHost.BotEvent
     -> StateIncludingFramework appSettings appState
-    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotEventResponse )
 processEvent appConfiguration fromHostEvent stateBeforeUpdateTime =
     let
         stateBefore =
@@ -288,12 +288,12 @@ processEvent appConfiguration fromHostEvent stateBeforeUpdateTime =
                 maybeAppEventFromTaskComplete
                 { stateBefore | setup = setupState, taskInProgress = Nothing }
 
-        InterfaceToHost.AppSettingsChangedEvent appSettings ->
-            case appConfiguration.parseAppSettings appSettings of
+        InterfaceToHost.BotSettingsChangedEvent botSettings ->
+            case appConfiguration.parseAppSettings botSettings of
                 Err parseSettingsError ->
                     ( stateBefore
                     , InterfaceToHost.FinishSession
-                        { statusDescriptionText = "Failed to parse these app-settings: " ++ parseSettingsError }
+                        { statusDescriptionText = "Failed to parse these bot-settings: " ++ parseSettingsError }
                     )
 
                 Ok parsedAppSettings ->
@@ -315,7 +315,7 @@ processEventAfterIntegrateEvent :
     AppConfiguration appSettings appState
     -> Maybe ReadingFromGameClientStructure
     -> StateIncludingFramework appSettings appState
-    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotEventResponse )
 processEventAfterIntegrateEvent appConfiguration maybeReadingFromGameClient stateBefore =
     let
         ( stateBeforeCountingRequests, responseBeforeAddingStatusMessage ) =
@@ -359,7 +359,7 @@ processEventAfterIntegrateEvent appConfiguration maybeReadingFromGameClient stat
                         |> List.filter
                             (\task ->
                                 case task.task of
-                                    InterfaceToHost.RequestToVolatileHost _ ->
+                                    InterfaceToHost.RequestToVolatileProcess _ ->
                                         True
 
                                     _ ->
@@ -415,7 +415,7 @@ processEventNotWaitingForTaskCompletion :
     -> AppEventContext appSettings
     -> Maybe ReadingFromGameClientStructure
     -> StateIncludingFramework appSettings appState
-    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotEventResponse )
 processEventNotWaitingForTaskCompletion appConfiguration appEventContext maybeReadingFromGameClient stateBefore =
     case stateBefore.setup |> getNextSetupTask appConfiguration stateBefore.appSettings of
         ContinueSetup setupState setupTask setupTaskDescription ->
@@ -502,7 +502,7 @@ operateAppExceptRenewingVolatileHost :
     -> Maybe ReadingFromGameClientStructure
     -> StateIncludingFramework appSettings appState
     -> OperateAppConfiguration
-    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.AppResponse )
+    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotEventResponse )
 operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadingFromGameClient stateBefore operateApp =
     let
         readingForScreenshotRequiredRegions =
@@ -777,7 +777,7 @@ type alias ReadingFromGameClientStructure =
 integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe ReadingFromGameClientStructure )
 integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
     case taskResult of
-        InterfaceToHost.CreateVolatileHostResponse createVolatileHostResult ->
+        InterfaceToHost.CreateVolatileProcessResponse createVolatileHostResult ->
             ( { setupStateBefore
                 | createVolatileHostResult = Just createVolatileHostResult
                 , requestsToVolatileHostCount = 0
@@ -785,18 +785,18 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
             , Nothing
             )
 
-        InterfaceToHost.RequestToVolatileHostResponse (Err InterfaceToHost.HostNotFound) ->
+        InterfaceToHost.RequestToVolatileProcessResponse (Err InterfaceToHost.ProcessNotFound) ->
             ( { setupStateBefore | createVolatileHostResult = Nothing }, Nothing )
 
-        InterfaceToHost.RequestToVolatileHostResponse (Err InterfaceToHost.FailedToAcquireInputFocus) ->
+        InterfaceToHost.RequestToVolatileProcessResponse (Err InterfaceToHost.FailedToAcquireInputFocus) ->
             ( { setupStateBefore | lastEffectFailedToAcquireInputFocus = Just "Failed before entering volatile host." }, Nothing )
 
-        InterfaceToHost.RequestToVolatileHostResponse (Ok requestResult) ->
+        InterfaceToHost.RequestToVolatileProcessResponse (Ok requestResult) ->
             let
                 requestToVolatileHostResult =
                     case requestResult.exceptionToString of
                         Just exception ->
-                            Err ("Exception from host: " ++ exception)
+                            Err ("Exception from volatile process: " ++ exception)
 
                         Nothing ->
                             let
@@ -944,29 +944,29 @@ getNextSetupTask appConfiguration appSettings stateBefore =
         Nothing ->
             ContinueSetup
                 stateBefore
-                (InterfaceToHost.CreateVolatileHost { script = VolatileHostScript.setupScript })
-                "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
+                (InterfaceToHost.CreateVolatileProcess { programCode = VolatileHostScript.setupScript })
+                "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
 
         Just (Err error) ->
-            FrameworkStopSession ("Create volatile host failed with exception: " ++ error.exceptionToString)
+            FrameworkStopSession ("Create volatile process failed with exception: " ++ error.exceptionToString)
 
         Just (Ok createVolatileHostComplete) ->
-            getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBefore createVolatileHostComplete.hostId
+            getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBefore createVolatileHostComplete.processId
 
 
 getSetupTaskWhenVolatileHostSetupCompleted :
     AppConfiguration appSettings appState
     -> Maybe appSettings
     -> SetupState
-    -> InterfaceToHost.VolatileHostId
+    -> InterfaceToHost.VolatileProcessId
     -> SetupTask
-getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBefore volatileHostId =
+getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBefore volatileProcessId =
     case stateBefore.gameClientProcesses of
         Nothing ->
             ContinueSetup stateBefore
-                (InterfaceToHost.RequestToVolatileHost
+                (InterfaceToHost.RequestToVolatileProcess
                     (InterfaceToHost.RequestNotRequiringInputFocus
-                        { hostId = volatileHostId
+                        { processId = volatileProcessId
                         , request =
                             VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
                                 VolatileHostInterface.ListGameClientProcessesRequest
@@ -984,9 +984,9 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                     let
                         continueWithSearchUIRootAddress =
                             ContinueSetup stateBefore
-                                (InterfaceToHost.RequestToVolatileHost
+                                (InterfaceToHost.RequestToVolatileProcess
                                     (InterfaceToHost.RequestNotRequiringInputFocus
-                                        { hostId = volatileHostId
+                                        { processId = volatileProcessId
                                         , request =
                                             VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
                                                 (VolatileHostInterface.SearchUIRootAddress { processId = gameClientSelection.selectedProcess.processId })
@@ -1038,9 +1038,9 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                         case stateBefore.lastReadingFromGame of
                                             Nothing ->
                                                 ContinueSetup stateBefore
-                                                    (InterfaceToHost.RequestToVolatileHost
+                                                    (InterfaceToHost.RequestToVolatileProcess
                                                         (InterfaceToHost.RequestNotRequiringInputFocus
-                                                            { hostId = volatileHostId
+                                                            { processId = volatileProcessId
                                                             , request =
                                                                 VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
                                                                     (readFromWindowRequest { screenshot1x1Rects = [] })
@@ -1059,11 +1059,11 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                             buildTaskFromRequestToVolatileHost maybeAcquireInputFocus requestToVolatileHost =
                                                                 let
                                                                     requestBeforeConsideringInputFocus =
-                                                                        { hostId = volatileHostId
+                                                                        { processId = volatileProcessId
                                                                         , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
                                                                         }
                                                                 in
-                                                                InterfaceToHost.RequestToVolatileHost
+                                                                InterfaceToHost.RequestToVolatileProcess
                                                                     (case maybeAcquireInputFocus of
                                                                         Nothing ->
                                                                             InterfaceToHost.RequestNotRequiringInputFocus
@@ -1097,7 +1097,7 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                             , getImageDataFromReadingTask =
                                                                 getImageDataFromReadingRequest lastCompletedMemoryReading.readingId
                                                                     >> buildTaskFromRequestToVolatileHost Nothing
-                                                            , releaseVolatileHostTask = InterfaceToHost.ReleaseVolatileHost { hostId = volatileHostId }
+                                                            , releaseVolatileHostTask = InterfaceToHost.ReleaseVolatileProcess { processId = volatileProcessId }
                                                             }
 
 
@@ -1183,7 +1183,7 @@ selectGameClientInstanceWithPilotName pilotName gameClientProcesses =
 
 
 requestToVolatileHostResultDisplayString :
-    Result String ( InterfaceToHost.RequestToVolatileHostComplete, Result String VolatileHostInterface.ResponseFromVolatileHost )
+    Result String ( InterfaceToHost.RequestToVolatileProcessComplete, Result String VolatileHostInterface.ResponseFromVolatileHost )
     -> Result String String
 requestToVolatileHostResultDisplayString =
     Result.andThen

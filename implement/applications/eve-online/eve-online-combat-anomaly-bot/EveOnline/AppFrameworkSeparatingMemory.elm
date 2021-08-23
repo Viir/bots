@@ -1,6 +1,6 @@
 module EveOnline.AppFrameworkSeparatingMemory exposing (..)
 
-import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
+import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Common.DecisionPath
 import Common.EffectOnWindow
 import Dict
@@ -115,9 +115,9 @@ initStateInBaseFramework appMemory =
 
 processEvent :
     AppConfiguration appSettings appMemory
-    -> InterfaceToHost.AppEvent
+    -> InterfaceToHost.BotEvent
     -> EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory)
-    -> ( EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory), InterfaceToHost.AppResponse )
+    -> ( EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory), InterfaceToHost.BotEventResponse )
 processEvent appConfiguration =
     processEventWithImageProcessing
         { parseAppSettings = appConfiguration.parseAppSettings
@@ -131,9 +131,9 @@ processEvent appConfiguration =
 
 processEventWithImageProcessing :
     AppConfigurationWithImageProcessing appSettings appMemory
-    -> InterfaceToHost.AppEvent
+    -> InterfaceToHost.BotEvent
     -> EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory)
-    -> ( EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory), InterfaceToHost.AppResponse )
+    -> ( EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory), InterfaceToHost.BotEventResponse )
 processEventWithImageProcessing appConfiguration =
     EveOnline.AppFramework.processEvent
         { parseAppSettings = appConfiguration.parseAppSettings

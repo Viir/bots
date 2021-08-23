@@ -32,7 +32,7 @@ This video shows the process of starting the farmbot and setting up your Tribal 
 
 https://youtu.be/yzkernqechE
 
-To start the farmbot, download the executable file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2020-12-07.exe and then run it.
+To start the farmbot, download the executable file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2021-08-23.exe and then run it.
 
 The first time you start the bot, it will download a web browser component. This can take some time, depending on your internet connection.
 
@@ -110,9 +110,9 @@ Following is a list of available settings:
 + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
 + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45-48`. The bot then picks a random value in this range.
 
-To configure settings, open the configuration page at https://catalog.botlab.org/f48b4ab519a09bd2e94ee75ade0bc5793b9366fc12c40804216d8fe13ae45ec3 in a web browser.
+To configure settings, open the configuration page at https://catalog.botlab.org/8881e86b0ce82d9da6b4a5f89234a6406cc0c067ca2666f4c31f0982029e25ee in a web browser.
 
-On this page, scroll down to the button `Configure app`.
+On this page, scroll down to the button `Configure bot`.
 
 ![Button to enter configuration](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-button.png)
 
@@ -120,19 +120,19 @@ Click this button to navigate into the configuration interface:
 
 ![Input fields for configuration](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-form.png)
 
-Here we have multiple input fields, but to use any of the bot settings mentioned above, we only need the input field right of the `--app-settings` label.
+Here we have multiple input fields, but to use any of the bot settings mentioned above, we only need the input field right of the `--bot-settings` label.
 
 When using more than one setting, start a new line for each setting in the text input field.
-Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
+Here is an example of `bot-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
 
 ```text
 number-of-farm-cycles = 3
 break-duration = 20 - 40
 ```
 
-![Input fields for configuration with app-settings](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-form-with-settings.png)
+![Input fields for configuration with bot-settings](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-form-with-settings.png)
 
-Use the button `Download script with this command line to run the app` to download a script to run the bot with the entered settings.
+Use the button `Download script with this command line to run the bot` to download a script to run the bot with the entered settings.
 
 When you have applied settings for multiple farm cycles, the bot displays this message during the breaks between farm cycles:
 
@@ -158,7 +158,7 @@ Sending one attack takes less than four seconds. The bot can cover 800 farms per
 
 ### How can I farm (multiple) inactive players?
 
-To select multiple player characters for farming, use the `character-to-farm` setting name multiple times. Here is an example of a complete app-settings string with multiple `character-to-farm`:
+To select multiple player characters for farming, use the `character-to-farm` setting name multiple times. Here is an example of a complete bot-settings string with multiple `character-to-farm`:
 
 ```text
 number-of-farm-cycles = 36
@@ -174,9 +174,9 @@ There is no limit to the number of characters here, you can add as many `charact
 
 Start a new instance of the bot for each account. This separation also means the instance configurations are separate. For example, you could assign each instance another break duration.
 
-To use multiple instances simultaneously, you need to expand the app-settings in the configuration of each instance. When the bot starts, it opens a new browser window and will also close other browser windows. To avoid it closing the browser window of another instance, we need to assign it a scope of browser instances in app-settings explicitly.
+To use multiple instances simultaneously, you need to expand the bot-settings in the configuration of each instance. When the bot starts, it opens a new browser window and will also close other browser windows. To avoid it closing the browser window of another instance, we need to assign it a scope of browser instances in bot-settings explicitly.
 
-To configure this scope, use the new `web-browser-user-profile-id` app-setting like this:
+To configure this scope, use the new `web-browser-user-profile-id` bot-setting like this:
 
 ```
 web-browser-user-profile-id = profile-beta

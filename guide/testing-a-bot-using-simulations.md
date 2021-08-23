@@ -12,7 +12,7 @@ To test and compare bots faster and without risk, we use simulations. Simulation
 
 How does this work? Remember that all information that a bot receives comes through events. This also implies that the sequence of events in a session determines all outputs of a bot.
 
-In the case of productive use, the events encode information from the user (app-settings) and the game client (e.g. screenshots). When we run a simulation, another program generates the events that the bot receives.
+In the case of productive use, the events encode information from the user (bot-settings) and the game client (e.g. screenshots). When we run a simulation, another program generates the events that the bot receives.
 
 ## Simulation from Session Replay
 
@@ -24,7 +24,7 @@ We can start a session replay by using the `botlab  sim-run` command with the `-
 Here is an example of the final command as we can run it in the Windows Command Prompt:
 
 ```
-botlab  sim-run  --replay-session="C:\Users\John\Downloads\session-2020-08-04T06-44-41-3bfe2b.zip"  https://github.com/Viir/bots/tree/1ab3cf1de8bfbedd22641f1d9918f0188894e013/implement/applications/eve-online/eve-online-combat-anomaly-bot
+botlab  sim-run  --replay-session="C:\Users\John\Downloads\session-2020-08-04T06-44-41-3bfe2b.zip"  https://github.com/Viir/bots/tree/358bc43a64ec864cc2402e58f6d9a0dc66f6d4f3/implement/applications/eve-online/eve-online-combat-anomaly-bot
 ```
 
 ![command to simulate-run in Command Prompt](./image/2020-08-08-simulate-run-cmd.png)
@@ -33,15 +33,15 @@ When running this command, the output looks similar to when running a bot live. 
 
 ![BotLab displays progress during simulate-run](./image/2020-08-08-simulate-run-progress.png)
 
-The simulation runs faster than the original session because it never has to wait for another process, and the passing of time is encoded in the app event data.
+The simulation runs faster than the original session because it never has to wait for another process, and the passing of time is encoded in the bot event data.
 
-When the simulation is complete, we find the recording in the list of sessions shown in DevTools. (You might have to restart DevTools to make a new session visible). By selecting the session recording in DevTools, you can inspect it the same way as any other session recording. The guide on observing and inspecting an app explains how this works: https://to.botlab.org/guide/observing-and-inspecting-an-app
+When the simulation is complete, we find the recording in the list of sessions shown in DevTools. (You might have to restart DevTools to make a new session visible). By selecting the session recording in DevTools, you can inspect it the same way as any other session recording. The guide on observing and inspecting a bot explains how this works: https://to.botlab.org/guide/observing-and-inspecting-a-bot
 
-### Replacing App-Settings in a Session Replay
+### Replacing Bot-Settings in a Session Replay
 
-When developing a new feature for your bot, you sometimes want to add a new app-setting to let users configure that feature. But how do you test this with a session replay? The app-settings are defined in the session events, so we don't want an exact replay but one with modified events.
+When developing a new feature for a bot, we sometimes want to add a new setting to let users configure that feature. But how do we test this with a session replay? The session replay contains an event with the bot-settings string, so the replay determines the settings. What we want in this case is not an exact replay but one with modified events.
 
-To make modifying the app-settings events easy, the `simulate-run` command offers the `--replace-app-settings` option. When you use this option, BotLab replaces the app-settings string with the new value for each app-settings event in the loaded session, before giving it to the bot.
+To make modifying the bot-settings events easy, the `simulate-run` command offers the `--replace-bot-settings` option. When you use this option, BotLab replaces the bot-settings string with the new value for each bot-settings event in the loaded session before giving it to the bot.
 
 ## Related Resources
 

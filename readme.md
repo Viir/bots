@@ -40,6 +40,8 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 ## Example Projects
 
+Wondering what outcome you can expect from following the guides? Below is a list of example projects. You can test these bots for free:
+
 + EVE Online warp-to-0 autopilot
   + User guide: [./guide/eve-online/eve-online-warp-to-0-autopilot-bot.md](./guide/eve-online/eve-online-warp-to-0-autopilot-bot.md)
   + Program code: [./implement/applications/eve-online/eve-online-warp-to-0-autopilot](./implement/applications/eve-online/eve-online-warp-to-0-autopilot)

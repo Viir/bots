@@ -1,8 +1,8 @@
-module WebBrowser.VolatileHostScript exposing (setupScript)
+module WebBrowser.VolatileProcessProgram exposing (programCode)
 
 
-setupScript : String
-setupScript =
+programCode : String
+programCode =
     """
 // "Newtonsoft.Json"
 #r "sha256:B9B4E633EA6C728BAD5F7CBBEF7F8B842F7E10181731DBE5EC3CD995A6F60287"

@@ -1,16 +1,11 @@
-module WebBrowser.VolatileHostInterface exposing
-    ( RequestToVolatileHost(..)
-    , ResponseFromVolatileHost(..)
-    , buildRequestStringToGetResponseFromVolatileHost
-    , deserializeResponseFromVolatileHost
-    )
+module WebBrowser.VolatileProcessInterface exposing (..)
 
 import Json.Decode
 import Json.Decode.Extra
 import Json.Encode
 
 
-type RequestToVolatileHost
+type RequestToVolatileProcess
     = StartWebBrowserRequest { pageGoToUrl : Maybe String, userProfileId : String, remoteDebuggingPort : Int }
     | RunJavascriptInCurrentPageRequest RunJavascriptInCurrentPageRequestStructure
 
@@ -22,7 +17,7 @@ type alias RunJavascriptInCurrentPageRequestStructure =
     }
 
 
-type ResponseFromVolatileHost
+type ResponseFromVolatileProcess
     = WebBrowserStarted
     | RunJavascriptInCurrentPageResponse RunJavascriptInCurrentPageResponseStructure
 
@@ -35,13 +30,13 @@ type alias RunJavascriptInCurrentPageResponseStructure =
     }
 
 
-deserializeResponseFromVolatileHost : String -> Result Json.Decode.Error ResponseFromVolatileHost
-deserializeResponseFromVolatileHost =
-    Json.Decode.decodeString decodeResponseFromVolatileHost
+deserializeResponseFromVolatileProcess : String -> Result Json.Decode.Error ResponseFromVolatileProcess
+deserializeResponseFromVolatileProcess =
+    Json.Decode.decodeString decodeResponseFromVolatileProcess
 
 
-decodeResponseFromVolatileHost : Json.Decode.Decoder ResponseFromVolatileHost
-decodeResponseFromVolatileHost =
+decodeResponseFromVolatileProcess : Json.Decode.Decoder ResponseFromVolatileProcess
+decodeResponseFromVolatileProcess =
     Json.Decode.oneOf
         [ Json.Decode.field "WebBrowserStarted" (Json.Decode.succeed WebBrowserStarted)
         , Json.Decode.field "RunJavascriptInCurrentPageResponse" decodeRunJavascriptInCurrentPageResponse
@@ -49,8 +44,8 @@ decodeResponseFromVolatileHost =
         ]
 
 
-encodeRequestToVolatileHost : RequestToVolatileHost -> Json.Encode.Value
-encodeRequestToVolatileHost request =
+encodeRequestToVolatileProcess : RequestToVolatileProcess -> Json.Encode.Value
+encodeRequestToVolatileProcess request =
     case request of
         StartWebBrowserRequest startWebBrowserRequest ->
             Json.Encode.object
@@ -91,7 +86,7 @@ decodeRunJavascriptInCurrentPageResponse =
         (Json.Decode.Extra.optionalField "callbackReturnValueAsString" Json.Decode.string)
 
 
-buildRequestStringToGetResponseFromVolatileHost : RequestToVolatileHost -> String
-buildRequestStringToGetResponseFromVolatileHost =
-    encodeRequestToVolatileHost
+buildRequestStringToGetResponseFromVolatileProcess : RequestToVolatileProcess -> String
+buildRequestStringToGetResponseFromVolatileProcess =
+    encodeRequestToVolatileProcess
         >> Json.Encode.encode 0

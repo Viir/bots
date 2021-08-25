@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2021-08-23
+{- EVE Online Warp-to-0 auto-pilot version 2021-08-25
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
    Before starting the bot, set up the game client as follows:
@@ -31,9 +31,9 @@ import Common.AppSettings as AppSettings
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow exposing (Location2d, MouseButton(..))
 import Dict
-import EveOnline.AppFramework
+import EveOnline.BotFramework
     exposing
-        ( AppEvent(..)
+        ( BotEvent(..)
         , PixelValueRGB
         , ReadingFromGameClient
         , SeeUndockingComplete
@@ -44,7 +44,7 @@ import EveOnline.AppFramework
         , shipUIIndicatesShipIsWarpingOrJumping
         , useMenuEntryWithTextContainingFirstOf
         )
-import EveOnline.AppFrameworkSeparatingMemory
+import EveOnline.BotFrameworkSeparatingMemory
     exposing
         ( DecisionPathNode
         , UpdateMemoryContext
@@ -86,18 +86,18 @@ type alias BotMemory =
 
 
 type alias State =
-    EveOnline.AppFramework.StateIncludingFramework BotSettings (EveOnline.AppFrameworkSeparatingMemory.AppState BotMemory)
+    EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory
 
 
 type alias BotDecisionContext =
-    EveOnline.AppFrameworkSeparatingMemory.StepDecisionContext BotSettings BotMemory
+    EveOnline.BotFrameworkSeparatingMemory.StepDecisionContext BotSettings BotMemory
 
 
 initBotMemory : BotMemory
 initBotMemory =
     { lastSolarSystemName = Nothing
     , jumpsCompleted = 0
-    , shipModules = EveOnline.AppFramework.initShipModulesMemory
+    , shipModules = EveOnline.BotFramework.initShipModulesMemory
     }
 
 
@@ -111,7 +111,7 @@ statusTextFromDecisionContext context =
             [ [ "current solar system: "
                     ++ (currentSolarSystemNameFromReading context.readingFromGameClient |> Maybe.withDefault "Unknown")
               ]
-            , if List.isEmpty context.eventContext.appSettings.modulesToActivateAlways then
+            , if List.isEmpty context.eventContext.botSettings.modulesToActivateAlways then
                 []
 
               else
@@ -134,7 +134,7 @@ autopilotBotDecisionRoot context =
         , ifUndockingComplete = decideStepWhenInSpace context
         }
         context.readingFromGameClient
-        |> EveOnline.AppFrameworkSeparatingMemory.setMillisecondsToNextReadingFromGameBase 2000
+        |> EveOnline.BotFrameworkSeparatingMemory.setMillisecondsToNextReadingFromGameBase 2000
 
 
 decideStepWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
@@ -198,7 +198,7 @@ updateMemoryForNewReadingFromGame context memoryBefore =
     { jumpsCompleted = memoryBefore.jumpsCompleted + newJumpsCompleted
     , lastSolarSystemName = lastSolarSystemName
     , shipModules =
-        EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory
+        EveOnline.BotFramework.integrateCurrentReadingsIntoShipModulesMemory
             context.readingFromGameClient
             memoryBefore.shipModules
     }
@@ -212,7 +212,7 @@ knownModulesToActivateAlways context =
         |> List.filterMap
             (\moduleButton ->
                 moduleButton
-                    |> EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                    |> EveOnline.BotFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
                     |> Maybe.andThen (tooltipLooksLikeModuleToActivateAlways context)
                     |> Maybe.map (\moduleName -> ( moduleName, moduleButton ))
             )
@@ -225,7 +225,7 @@ tooltipLooksLikeModuleToActivateAlways context =
         >> getAllContainedDisplayTexts
         >> List.filterMap
             (\tooltipText ->
-                context.eventContext.appSettings.modulesToActivateAlways
+                context.eventContext.botSettings.modulesToActivateAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
                             if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
@@ -241,11 +241,11 @@ tooltipLooksLikeModuleToActivateAlways context =
 
 botMain : InterfaceToHost.BotConfig State
 botMain =
-    { init = EveOnline.AppFrameworkSeparatingMemory.initState initBotMemory
+    { init = EveOnline.BotFrameworkSeparatingMemory.initState initBotMemory
     , processEvent =
-        EveOnline.AppFrameworkSeparatingMemory.processEventWithImageProcessing
-            { parseAppSettings = parseBotSettings
-            , selectGameClientInstance = always EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
+        EveOnline.BotFrameworkSeparatingMemory.processEventWithImageProcessing
+            { parseBotSettings = parseBotSettings
+            , selectGameClientInstance = always EveOnline.BotFramework.selectGameClientInstanceWithTopmostWindow
             , screenshotRegionsToRead = screenshotRegionsToRead
             , updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
             , decideNextStep = autopilotBotDecisionRoot
@@ -263,7 +263,7 @@ currentSolarSystemNameFromReading readingFromGameClient =
 
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
 readShipUIModuleButtonTooltips =
-    EveOnline.AppFrameworkSeparatingMemory.readShipUIModuleButtonTooltipWhereNotYetInMemory
+    EveOnline.BotFrameworkSeparatingMemory.readShipUIModuleButtonTooltipWhereNotYetInMemory
 
 
 locationToMeasureGlowFromModuleButton : EveOnline.ParseUserInterface.ShipUIModuleButton -> Location2d
@@ -277,7 +277,7 @@ locationToMeasureGlowFromModuleButton moduleButton =
 
 screenshotRegionsToRead :
     ReadingFromGameClient
-    -> { rects1x1 : List EveOnline.AppFrameworkSeparatingMemory.Rect2dStructure }
+    -> { rects1x1 : List EveOnline.BotFrameworkSeparatingMemory.Rect2dStructure }
 screenshotRegionsToRead memoryReading =
     let
         shipModuleButtons =

@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2021-08-23
+{- EVE Online mining bot version 2021-08-25
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
 
@@ -43,7 +43,7 @@ import Common.Basics exposing (listElementAtWrappedIndex)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
-import EveOnline.AppFramework
+import EveOnline.BotFramework
     exposing
         ( ReadingFromGameClient
         , SeeUndockingComplete
@@ -61,7 +61,7 @@ import EveOnline.AppFramework
         , useMenuEntryWithTextEqual
         , useRandomMenuEntry
         )
-import EveOnline.AppFrameworkSeparatingMemory
+import EveOnline.BotFrameworkSeparatingMemory
     exposing
         ( DecisionPathNode
         , EndDecisionPathStructure(..)
@@ -172,22 +172,18 @@ type alias BotMemory =
 
 
 type alias BotDecisionContext =
-    EveOnline.AppFrameworkSeparatingMemory.StepDecisionContext BotSettings BotMemory
-
-
-type alias BotState =
-    EveOnline.AppFrameworkSeparatingMemory.AppState BotMemory
+    EveOnline.BotFrameworkSeparatingMemory.StepDecisionContext BotSettings BotMemory
 
 
 type alias State =
-    EveOnline.AppFramework.StateIncludingFramework BotSettings BotState
+    EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory
 
 
 miningBotDecisionRoot : BotDecisionContext -> DecisionPathNode
 miningBotDecisionRoot context =
     miningBotDecisionRootBeforeApplyingSettings context
-        |> EveOnline.AppFrameworkSeparatingMemory.setMillisecondsToNextReadingFromGameBase
-            context.eventContext.appSettings.botStepDelayMilliseconds
+        |> EveOnline.BotFrameworkSeparatingMemory.setMillisecondsToNextReadingFromGameBase
+            context.eventContext.botSettings.botStepDelayMilliseconds
 
 
 {-| A first outline of the decision tree for a mining bot came from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
@@ -264,7 +260,7 @@ continueIfShouldHide config context =
 
 shouldHideWhenNeutralInLocal : BotDecisionContext -> Bool
 shouldHideWhenNeutralInLocal context =
-    case context.eventContext.appSettings.hideWhenNeutralInLocal of
+    case context.eventContext.botSettings.hideWhenNeutralInLocal of
         Just AppSettings.No ->
             False
 
@@ -284,14 +280,14 @@ returnDronesAndRunAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.Par
 returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
     let
         returnDronesShieldHitpointsThresholdPercent =
-            context.eventContext.appSettings.runAwayShieldHitpointsThresholdPercent + 5
+            context.eventContext.botSettings.runAwayShieldHitpointsThresholdPercent + 5
 
         runAwayWithDescription =
             describeBranch
                 ("Shield hitpoints are at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%. Run away.")
                 (runAway context)
     in
-    if shipUI.hitpointsPercent.shield < context.eventContext.appSettings.runAwayShieldHitpointsThresholdPercent then
+    if shipUI.hitpointsPercent.shield < context.eventContext.botSettings.runAwayShieldHitpointsThresholdPercent then
         Just runAwayWithDescription
 
     else if shipUI.hitpointsPercent.shield < returnDronesShieldHitpointsThresholdPercent then
@@ -425,9 +421,9 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                     Just fillPercent ->
                         let
                             describeThresholdToUnload =
-                                (context.eventContext.appSettings.oreHoldMaxPercent |> String.fromInt) ++ "%"
+                                (context.eventContext.botSettings.oreHoldMaxPercent |> String.fromInt) ++ "%"
                         in
-                        if context.eventContext.appSettings.oreHoldMaxPercent <= fillPercent then
+                        if context.eventContext.botSettings.oreHoldMaxPercent <= fillPercent then
                             describeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
                                 (returnDronesToBay context
                                     |> Maybe.withDefault (dockToUnloadOre context)
@@ -504,8 +500,8 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
                             |> Maybe.withDefault
                                 (lockTargetFromOverviewEntryAndEnsureIsInRange
                                     context
-                                    (min context.eventContext.appSettings.targetingRange
-                                        context.eventContext.appSettings.miningModuleRange
+                                    (min context.eventContext.botSettings.targetingRange
+                                        context.eventContext.botSettings.miningModuleRange
                                     )
                                     asteroidInOverview
                                 )
@@ -650,7 +646,7 @@ dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSetting
     matchingOverviewEntry
         |> Maybe.map
             (\entry ->
-                EveOnline.AppFrameworkSeparatingMemory.useContextMenuCascadeOnOverviewEntry
+                EveOnline.BotFrameworkSeparatingMemory.useContextMenuCascadeOnOverviewEntry
                     (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
                     entry
                     context
@@ -767,14 +763,14 @@ runAway =
 
 dockToUnloadOre : BotDecisionContext -> DecisionPathNode
 dockToUnloadOre context =
-    case context.eventContext.appSettings.unloadStationName of
+    case context.eventContext.botSettings.unloadStationName of
         Just unloadStationName ->
             dockToStationOrStructureWithMatchingName
                 { prioritizeStructures = False, nameFromSettingOrInfoPanel = unloadStationName }
                 context
 
         Nothing ->
-            case context.eventContext.appSettings.unloadStructureName of
+            case context.eventContext.botSettings.unloadStructureName of
                 Just unloadStructureName ->
                     dockToStationOrStructureWithMatchingName
                         { prioritizeStructures = True, nameFromSettingOrInfoPanel = unloadStructureName }
@@ -849,7 +845,7 @@ returnDronesToBay context =
 
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
 readShipUIModuleButtonTooltips =
-    EveOnline.AppFrameworkSeparatingMemory.readShipUIModuleButtonTooltipWhereNotYetInMemory
+    EveOnline.BotFrameworkSeparatingMemory.readShipUIModuleButtonTooltipWhereNotYetInMemory
 
 
 knownMiningModules : BotDecisionContext -> List EveOnline.ParseUserInterface.ShipUIModuleButton
@@ -858,7 +854,7 @@ knownMiningModules context =
         |> Maybe.map .moduleButtons
         |> Maybe.withDefault []
         |> List.filter
-            (EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+            (EveOnline.BotFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
                 >> Maybe.map tooltipLooksLikeMiningModule
                 >> Maybe.withDefault False
             )
@@ -872,7 +868,7 @@ knownModulesToActivateAlways context =
         |> List.filterMap
             (\moduleButton ->
                 moduleButton
-                    |> EveOnline.AppFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                    |> EveOnline.BotFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
                     |> Maybe.andThen (tooltipLooksLikeModuleToActivateAlways context)
                     |> Maybe.map (\moduleName -> ( moduleName, moduleButton ))
             )
@@ -894,7 +890,7 @@ tooltipLooksLikeModuleToActivateAlways context =
         >> getAllContainedDisplayTexts
         >> List.filterMap
             (\tooltipText ->
-                context.eventContext.appSettings.modulesToActivateAlways
+                context.eventContext.botSettings.modulesToActivateAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
                             if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
@@ -910,14 +906,14 @@ tooltipLooksLikeModuleToActivateAlways context =
 
 botMain : InterfaceToHost.BotConfig State
 botMain =
-    { init = EveOnline.AppFrameworkSeparatingMemory.initState initBotMemory
+    { init = EveOnline.BotFrameworkSeparatingMemory.initState initBotMemory
     , processEvent =
-        EveOnline.AppFrameworkSeparatingMemory.processEvent
-            { parseAppSettings = parseBotSettings
+        EveOnline.BotFrameworkSeparatingMemory.processEvent
+            { parseBotSettings = parseBotSettings
             , selectGameClientInstance =
                 Maybe.andThen .selectInstancePilotName
-                    >> Maybe.map EveOnline.AppFramework.selectGameClientInstanceWithPilotName
-                    >> Maybe.withDefault EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
+                    >> Maybe.map EveOnline.BotFramework.selectGameClientInstanceWithPilotName
+                    >> Maybe.withDefault EveOnline.BotFramework.selectGameClientInstanceWithTopmostWindow
             , updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
             , statusTextFromDecisionContext = statusTextFromDecisionContext
             , decideNextStep = miningBotDecisionRoot
@@ -931,7 +927,7 @@ initBotMemory =
     , timesUnloaded = 0
     , volumeUnloadedCubicMeters = 0
     , lastUsedCapacityInOreHold = Nothing
-    , shipModules = EveOnline.AppFramework.initShipModulesMemory
+    , shipModules = EveOnline.BotFramework.initShipModulesMemory
     }
 
 
@@ -1001,7 +997,7 @@ statusTextFromDecisionContext context =
         |> String.join "\n"
 
 
-updateMemoryForNewReadingFromGame : EveOnline.AppFrameworkSeparatingMemory.UpdateMemoryContext -> BotMemory -> BotMemory
+updateMemoryForNewReadingFromGame : EveOnline.BotFrameworkSeparatingMemory.UpdateMemoryContext -> BotMemory -> BotMemory
 updateMemoryForNewReadingFromGame context botMemoryBefore =
     let
         currentStationNameFromInfoPanel =
@@ -1060,7 +1056,7 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
     , lastUsedCapacityInOreHold = lastUsedCapacityInOreHold
     , shipModules =
         botMemoryBefore.shipModules
-            |> EveOnline.AppFramework.integrateCurrentReadingsIntoShipModulesMemory context.readingFromGameClient
+            |> EveOnline.BotFramework.integrateCurrentReadingsIntoShipModulesMemory context.readingFromGameClient
     }
 
 

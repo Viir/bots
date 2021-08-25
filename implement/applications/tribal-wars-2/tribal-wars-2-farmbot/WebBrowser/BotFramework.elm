@@ -1,6 +1,6 @@
 {- This module contains a framework to build bots to work in web browsers.
    This framework automatically starts a new web browser window.
-   To use this framework, import this module and use the `initState` and `processEvent` functions.
+   To use this framework, import this module and use the `webBrowserBotMain` function.
 -}
 
 
@@ -17,8 +17,8 @@ module WebBrowser.BotFramework exposing
     )
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
-import WebBrowser.VolatileHostInterface as VolatileHostInterface
-import WebBrowser.VolatileHostScript as VolatileHostScript
+import WebBrowser.VolatileProcessInterface as VolatileProcessInterface
+import WebBrowser.VolatileProcessProgram as VolatileProcessProgram
 
 
 type alias BotConfig botState =
@@ -89,7 +89,7 @@ type alias BotState botState =
 
 
 type alias SetupState =
-    { createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
+    { createVolatileProcessResult : Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
     , lastRunScriptResult : Maybe (Result String (Maybe String))
     , webBrowserStarted : Bool
     }
@@ -99,14 +99,6 @@ type SetupTask
     = ContinueSetup SetupState InterfaceToHost.Task String
     | OperateBot { taskFromBotRequestRunJavascript : RunJavascriptInCurrentPageRequestStructure -> InterfaceToHost.Task }
     | FailSetup String
-
-
-initSetup : SetupState
-initSetup =
-    { createVolatileHostResult = Nothing
-    , lastRunScriptResult = Nothing
-    , webBrowserStarted = False
-    }
 
 
 webBrowserBotMain : BotConfig state -> InterfaceToHost.BotConfig (StateIncludingSetup state)
@@ -128,6 +120,14 @@ initState botState =
     , timeInMilliseconds = 0
     , lastTaskIndex = 0
     , taskInProgress = Nothing
+    }
+
+
+initSetup : SetupState
+initSetup =
+    { createVolatileProcessResult = Nothing
+    , lastRunScriptResult = Nothing
+    , webBrowserStarted = False
     }
 
 
@@ -250,10 +250,10 @@ processEventNotWaitingForTask stateBefore =
                                         StartWebBrowser startWebBrowser ->
                                             let
                                                 releaseVolatileHostTasks =
-                                                    case stateBefore.setup.createVolatileHostResult of
-                                                        Just (Ok createVolatileHostSuccess) ->
+                                                    case stateBefore.setup.createVolatileProcessResult of
+                                                        Just (Ok createVolatileProcessSuccess) ->
                                                             [ InterfaceToHost.ReleaseVolatileProcess
-                                                                { processId = createVolatileHostSuccess.processId }
+                                                                { processId = createVolatileProcessSuccess.processId }
                                                             ]
 
                                                         _ ->
@@ -401,8 +401,8 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBeforeUpdateTime =
 integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe BotEvent )
 integrateTaskResult ( time, taskResult ) setupStateBefore =
     case taskResult of
-        InterfaceToHost.CreateVolatileProcessResponse createVolatileHostResponse ->
-            ( { setupStateBefore | createVolatileHostResult = Just createVolatileHostResponse }, Nothing )
+        InterfaceToHost.CreateVolatileProcessResponse createVolatileProcessResponse ->
+            ( { setupStateBefore | createVolatileProcessResult = Just createVolatileProcessResponse }, Nothing )
 
         InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileHostResponse ->
             let
@@ -418,44 +418,44 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                                         "FailedToAcquireInputFocus"
                             )
                         |> Result.andThen
-                            (\fromHostResult ->
-                                case fromHostResult.exceptionToString of
+                            (\fromVolatileProcessResult ->
+                                case fromVolatileProcessResult.exceptionToString of
                                     Nothing ->
-                                        Ok fromHostResult.returnValueToString
+                                        Ok fromVolatileProcessResult.returnValueToString
 
                                     Just exception ->
-                                        Err ("Exception from host: " ++ exception)
+                                        Err ("Exception from volatile process: " ++ exception)
                             )
 
-                maybeResponseFromVolatileHost =
+                maybeResponseFromVolatileProcess =
                     runScriptResult
                         |> Result.toMaybe
                         |> Maybe.andThen identity
-                        |> Maybe.map VolatileHostInterface.deserializeResponseFromVolatileHost
+                        |> Maybe.map VolatileProcessInterface.deserializeResponseFromVolatileProcess
                         |> Maybe.andThen Result.toMaybe
 
                 setupStateWithScriptRunResult =
                     { setupStateBefore | lastRunScriptResult = Just runScriptResult }
             in
-            case maybeResponseFromVolatileHost of
+            case maybeResponseFromVolatileProcess of
                 Nothing ->
                     ( setupStateWithScriptRunResult, Nothing )
 
-                Just responseFromVolatileHost ->
+                Just responseFromVolatileProcess ->
                     setupStateWithScriptRunResult
-                        |> integrateResponseFromVolatileHost ( time, responseFromVolatileHost )
+                        |> integrateResponseFromVolatileProcess ( time, responseFromVolatileProcess )
 
         InterfaceToHost.CompleteWithoutResult ->
             ( setupStateBefore, Nothing )
 
 
-integrateResponseFromVolatileHost : ( Int, VolatileHostInterface.ResponseFromVolatileHost ) -> SetupState -> ( SetupState, Maybe BotEvent )
-integrateResponseFromVolatileHost ( _, response ) stateBefore =
+integrateResponseFromVolatileProcess : ( Int, VolatileProcessInterface.ResponseFromVolatileProcess ) -> SetupState -> ( SetupState, Maybe BotEvent )
+integrateResponseFromVolatileProcess ( _, response ) stateBefore =
     case response of
-        VolatileHostInterface.WebBrowserStarted ->
+        VolatileProcessInterface.WebBrowserStarted ->
             ( { stateBefore | webBrowserStarted = True }, Nothing )
 
-        VolatileHostInterface.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
+        VolatileProcessInterface.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
             let
                 botEvent =
                     RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse
@@ -465,18 +465,21 @@ integrateResponseFromVolatileHost ( _, response ) stateBefore =
 
 getNextSetupTask : Maybe RequestToRestartWebBrowserStructure -> SetupState -> SetupTask
 getNextSetupTask startWebBrowserRequest stateBefore =
-    case stateBefore.createVolatileHostResult of
+    case stateBefore.createVolatileProcessResult of
         Nothing ->
             ContinueSetup
                 stateBefore
-                (InterfaceToHost.CreateVolatileProcess { programCode = VolatileHostScript.setupScript })
-                "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
+                (InterfaceToHost.CreateVolatileProcess { programCode = VolatileProcessProgram.programCode })
+                "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
 
         Just (Err error) ->
-            FailSetup ("Set up the volatile host failed with exception: " ++ error.exceptionToString)
+            FailSetup ("Set up the volatile process failed with exception: " ++ error.exceptionToString)
 
-        Just (Ok createVolatileHostComplete) ->
-            getSetupTaskWhenVolatileHostSetupCompleted startWebBrowserRequest stateBefore createVolatileHostComplete.processId
+        Just (Ok createVolatileProcessComplete) ->
+            getSetupTaskWhenVolatileHostSetupCompleted
+                startWebBrowserRequest
+                stateBefore
+                createVolatileProcessComplete.processId
 
 
 getSetupTaskWhenVolatileHostSetupCompleted : Maybe RequestToRestartWebBrowserStructure -> SetupState -> InterfaceToHost.VolatileProcessId -> SetupTask
@@ -488,8 +491,8 @@ getSetupTaskWhenVolatileHostSetupCompleted maybeStartWebBrowserRequest stateBefo
                     (InterfaceToHost.RequestNotRequiringInputFocus
                         { processId = volatileProcessId
                         , request =
-                            VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                                (VolatileHostInterface.StartWebBrowserRequest
+                            VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
+                                (VolatileProcessInterface.StartWebBrowserRequest
                                     { pageGoToUrl = startWebBrowserRequest.pageGoToUrl
                                     , userProfileId = startWebBrowserRequest.userProfileId
                                     , remoteDebuggingPort = 13485
@@ -505,13 +508,13 @@ getSetupTaskWhenVolatileHostSetupCompleted maybeStartWebBrowserRequest stateBefo
                 { taskFromBotRequestRunJavascript =
                     \runJavascriptInCurrentPageRequest ->
                         let
-                            requestToVolatileHost =
-                                VolatileHostInterface.RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest
+                            requestToVolatileProcess =
+                                VolatileProcessInterface.RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest
                         in
                         InterfaceToHost.RequestToVolatileProcess
                             (InterfaceToHost.RequestNotRequiringInputFocus
                                 { processId = volatileProcessId
-                                , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
+                                , request = VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess requestToVolatileProcess
                                 }
                             )
                 }

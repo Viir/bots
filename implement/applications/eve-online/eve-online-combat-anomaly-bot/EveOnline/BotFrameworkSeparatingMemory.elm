@@ -1,10 +1,10 @@
-module EveOnline.AppFrameworkSeparatingMemory exposing (..)
+module EveOnline.BotFrameworkSeparatingMemory exposing (..)
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Common.DecisionPath
 import Common.EffectOnWindow
 import Dict
-import EveOnline.AppFramework
+import EveOnline.BotFramework
     exposing
         ( PixelValueRGB
         , ReadingFromGameClient
@@ -46,39 +46,43 @@ type alias UpdateMemoryContext =
     }
 
 
-type alias StepDecisionContext appSettings appMemory =
-    { eventContext : EveOnline.AppFramework.AppEventContext appSettings
+type alias StepDecisionContext botSettings botMemory =
+    { eventContext : EveOnline.BotFramework.BotEventContext botSettings
     , readingFromGameClient : ReadingFromGameClient
     , readingFromGameClientImage : ReadingFromGameClientImage
-    , memory : appMemory
+    , memory : botMemory
     , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
     , previousReadingFromGameClient : Maybe ReadingFromGameClient
     }
 
 
-type alias AppState appMemory =
-    { appMemory : appMemory
+type alias StateIncludingFramework botSettings botMemory =
+    EveOnline.BotFramework.StateIncludingFramework botSettings (BotState botMemory)
+
+
+type alias BotState botMemory =
+    { botMemory : botMemory
     , lastStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
     , lastReadingFromGameClient : Maybe ReadingFromGameClient
     }
 
 
-type alias AppConfiguration appSettings appMemory =
-    { parseAppSettings : String -> Result String appSettings
-    , selectGameClientInstance : Maybe appSettings -> List EveOnline.AppFramework.GameClientProcessSummary -> Result String { selectedProcess : EveOnline.AppFramework.GameClientProcessSummary, report : List String }
-    , updateMemoryForNewReadingFromGame : UpdateMemoryContext -> appMemory -> appMemory
-    , statusTextFromDecisionContext : StepDecisionContext appSettings appMemory -> String
-    , decideNextStep : StepDecisionContext appSettings appMemory -> DecisionPathNode
+type alias BotConfiguration botSettings botMemory =
+    { parseBotSettings : String -> Result String botSettings
+    , selectGameClientInstance : Maybe botSettings -> List EveOnline.BotFramework.GameClientProcessSummary -> Result String { selectedProcess : EveOnline.BotFramework.GameClientProcessSummary, report : List String }
+    , updateMemoryForNewReadingFromGame : UpdateMemoryContext -> botMemory -> botMemory
+    , statusTextFromDecisionContext : StepDecisionContext botSettings botMemory -> String
+    , decideNextStep : StepDecisionContext botSettings botMemory -> DecisionPathNode
     }
 
 
-type alias AppConfigurationWithImageProcessing appSettings appMemory =
-    { parseAppSettings : String -> Result String appSettings
-    , selectGameClientInstance : Maybe appSettings -> List EveOnline.AppFramework.GameClientProcessSummary -> Result String { selectedProcess : EveOnline.AppFramework.GameClientProcessSummary, report : List String }
+type alias BotConfigurationWithImageProcessing botSettings botMemory =
+    { parseBotSettings : String -> Result String botSettings
+    , selectGameClientInstance : Maybe botSettings -> List EveOnline.BotFramework.GameClientProcessSummary -> Result String { selectedProcess : EveOnline.BotFramework.GameClientProcessSummary, report : List String }
     , screenshotRegionsToRead : ReadingFromGameClient -> { rects1x1 : List Rect2dStructure }
-    , updateMemoryForNewReadingFromGame : UpdateMemoryContext -> appMemory -> appMemory
-    , statusTextFromDecisionContext : StepDecisionContext appSettings appMemory -> String
-    , decideNextStep : StepDecisionContext appSettings appMemory -> DecisionPathNode
+    , updateMemoryForNewReadingFromGame : UpdateMemoryContext -> botMemory -> botMemory
+    , statusTextFromDecisionContext : StepDecisionContext botSettings botMemory -> String
+    , decideNextStep : StepDecisionContext botSettings botMemory -> DecisionPathNode
     }
 
 
@@ -100,67 +104,67 @@ millisecondsToNextReadingFromGameDefault =
     1500
 
 
-initState : appMemory -> EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory)
-initState appMemory =
-    EveOnline.AppFramework.initState (initStateInBaseFramework appMemory)
+initState : botMemory -> EveOnline.BotFramework.StateIncludingFramework botSettings (BotState botMemory)
+initState botMemory =
+    EveOnline.BotFramework.initState (initStateInBaseFramework botMemory)
 
 
-initStateInBaseFramework : appMemory -> AppState appMemory
-initStateInBaseFramework appMemory =
-    { appMemory = appMemory
+initStateInBaseFramework : botMemory -> BotState botMemory
+initStateInBaseFramework botMemory =
+    { botMemory = botMemory
     , lastStepEffects = []
     , lastReadingFromGameClient = Nothing
     }
 
 
 processEvent :
-    AppConfiguration appSettings appMemory
+    BotConfiguration botSettings botMemory
     -> InterfaceToHost.BotEvent
-    -> EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory)
-    -> ( EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory), InterfaceToHost.BotEventResponse )
-processEvent appConfiguration =
+    -> EveOnline.BotFramework.StateIncludingFramework botSettings (BotState botMemory)
+    -> ( EveOnline.BotFramework.StateIncludingFramework botSettings (BotState botMemory), InterfaceToHost.BotEventResponse )
+processEvent botConfiguration =
     processEventWithImageProcessing
-        { parseAppSettings = appConfiguration.parseAppSettings
-        , selectGameClientInstance = appConfiguration.selectGameClientInstance
+        { parseBotSettings = botConfiguration.parseBotSettings
+        , selectGameClientInstance = botConfiguration.selectGameClientInstance
         , screenshotRegionsToRead = always { rects1x1 = [] }
-        , updateMemoryForNewReadingFromGame = appConfiguration.updateMemoryForNewReadingFromGame
-        , statusTextFromDecisionContext = appConfiguration.statusTextFromDecisionContext
-        , decideNextStep = appConfiguration.decideNextStep
+        , updateMemoryForNewReadingFromGame = botConfiguration.updateMemoryForNewReadingFromGame
+        , statusTextFromDecisionContext = botConfiguration.statusTextFromDecisionContext
+        , decideNextStep = botConfiguration.decideNextStep
         }
 
 
 processEventWithImageProcessing :
-    AppConfigurationWithImageProcessing appSettings appMemory
+    BotConfigurationWithImageProcessing botSettings botMemory
     -> InterfaceToHost.BotEvent
-    -> EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory)
-    -> ( EveOnline.AppFramework.StateIncludingFramework appSettings (AppState appMemory), InterfaceToHost.BotEventResponse )
-processEventWithImageProcessing appConfiguration =
-    EveOnline.AppFramework.processEvent
-        { parseAppSettings = appConfiguration.parseAppSettings
-        , selectGameClientInstance = appConfiguration.selectGameClientInstance
+    -> EveOnline.BotFramework.StateIncludingFramework botSettings (BotState botMemory)
+    -> ( EveOnline.BotFramework.StateIncludingFramework botSettings (BotState botMemory), InterfaceToHost.BotEventResponse )
+processEventWithImageProcessing botConfiguration =
+    EveOnline.BotFramework.processEvent
+        { parseBotSettings = botConfiguration.parseBotSettings
+        , selectGameClientInstance = botConfiguration.selectGameClientInstance
         , processEvent =
             processEventInBaseFramework
-                { updateMemoryForNewReadingFromGame = appConfiguration.updateMemoryForNewReadingFromGame
-                , statusTextFromDecisionContext = appConfiguration.statusTextFromDecisionContext
-                , decideNextStep = appConfiguration.decideNextStep
-                , screenshotRegionsToRead = appConfiguration.screenshotRegionsToRead
+                { updateMemoryForNewReadingFromGame = botConfiguration.updateMemoryForNewReadingFromGame
+                , statusTextFromDecisionContext = botConfiguration.statusTextFromDecisionContext
+                , decideNextStep = botConfiguration.decideNextStep
+                , screenshotRegionsToRead = botConfiguration.screenshotRegionsToRead
                 }
         }
 
 
 processEventInBaseFramework :
-    { updateMemoryForNewReadingFromGame : UpdateMemoryContext -> appMemory -> appMemory
-    , statusTextFromDecisionContext : StepDecisionContext appSettings appMemory -> String
-    , decideNextStep : StepDecisionContext appSettings appMemory -> DecisionPathNode
+    { updateMemoryForNewReadingFromGame : UpdateMemoryContext -> botMemory -> botMemory
+    , statusTextFromDecisionContext : StepDecisionContext botSettings botMemory -> String
+    , decideNextStep : StepDecisionContext botSettings botMemory -> DecisionPathNode
     , screenshotRegionsToRead : ReadingFromGameClient -> { rects1x1 : List Rect2dStructure }
     }
-    -> EveOnline.AppFramework.AppEventContext appSettings
-    -> EveOnline.AppFramework.AppEvent
-    -> AppState appMemory
-    -> ( AppState appMemory, EveOnline.AppFramework.AppEventResponse )
+    -> EveOnline.BotFramework.BotEventContext botSettings
+    -> EveOnline.BotFramework.BotEvent
+    -> BotState botMemory
+    -> ( BotState botMemory, EveOnline.BotFramework.BotEventResponse )
 processEventInBaseFramework config eventContext event stateBefore =
     case event of
-        EveOnline.AppFramework.ReadingFromGameClientCompleted readingFromGameClient readingFromGameClientImage ->
+        EveOnline.BotFramework.ReadingFromGameClientCompleted readingFromGameClient readingFromGameClientImage ->
             let
                 updateMemoryContext =
                     { timeInMilliseconds = eventContext.timeInMilliseconds
@@ -168,13 +172,13 @@ processEventInBaseFramework config eventContext event stateBefore =
                     , readingFromGameClientImage = readingFromGameClientImage
                     }
 
-                appMemory =
-                    stateBefore.appMemory
+                botMemory =
+                    stateBefore.botMemory
                         |> config.updateMemoryForNewReadingFromGame updateMemoryContext
 
                 decisionContext =
                     { eventContext = eventContext
-                    , memory = appMemory
+                    , memory = botMemory
                     , readingFromGameClient = readingFromGameClient
                     , readingFromGameClientImage = readingFromGameClientImage
                     , previousStepEffects = stateBefore.lastStepEffects
@@ -203,7 +207,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                     [ config.statusTextFromDecisionContext decisionContext, describeActivity ]
                         |> String.join "\n"
             in
-            ( { appMemory = appMemory
+            ( { botMemory = botMemory
               , lastStepEffects = effectsOnGameClientWindow
               , lastReadingFromGameClient = Just readingFromGameClient
               }
@@ -218,7 +222,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                             )
                                 // 100
                     in
-                    EveOnline.AppFramework.ContinueSession
+                    EveOnline.BotFramework.ContinueSession
                         { effects = effectsOnGameClientWindow
                         , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
                         , screenshotRegionsToRead = config.screenshotRegionsToRead
@@ -226,7 +230,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                         }
 
                 FinishSession ->
-                    EveOnline.AppFramework.FinishSession { statusDescriptionText = statusMessage }
+                    EveOnline.BotFramework.FinishSession { statusDescriptionText = statusMessage }
             )
 
 

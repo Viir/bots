@@ -3,7 +3,7 @@
    + Read from the game client using Sanderling memory reading and parse the user interface from the memory reading (https://github.com/Arcitectus/Sanderling).
    + Play sounds.
    + Send mouse and keyboard input to the game client.
-   + Parse the app-settings and inform the user about the result.
+   + Parse the bot-settings and inform the user about the result.
 
    The framework automatically selects an EVE Online client process and finishes the session when that process disappears.
    When multiple game clients are open, the framework prioritizes the one with the topmost window. This approach helps users control which game client is picked by an app.
@@ -11,7 +11,7 @@
 -}
 
 
-module EveOnline.AppFramework exposing (..)
+module EveOnline.BotFramework exposing (..)
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Common.Basics
@@ -20,26 +20,26 @@ import Common.FNV
 import Dict
 import EveOnline.MemoryReading
 import EveOnline.ParseUserInterface exposing (Location2d, centerFromDisplayRegion)
-import EveOnline.VolatileHostInterface as VolatileHostInterface
-import EveOnline.VolatileHostScript as VolatileHostScript
+import EveOnline.VolatileProcessInterface as VolatileProcessInterface
+import EveOnline.VolatileProcessProgram
 import Json.Decode
 import List.Extra
 import Result.Extra
 import String.Extra
 
 
-type alias AppConfiguration appSettings appState =
-    { parseAppSettings : String -> Result String appSettings
-    , selectGameClientInstance : Maybe appSettings -> List GameClientProcessSummary -> Result String { selectedProcess : GameClientProcessSummary, report : List String }
-    , processEvent : AppEventContext appSettings -> AppEvent -> appState -> ( appState, AppEventResponse )
+type alias BotConfiguration botSettings botState =
+    { parseBotSettings : String -> Result String botSettings
+    , selectGameClientInstance : Maybe botSettings -> List GameClientProcessSummary -> Result String { selectedProcess : GameClientProcessSummary, report : List String }
+    , processEvent : BotEventContext botSettings -> BotEvent -> botState -> ( botState, BotEventResponse )
     }
 
 
-type AppEvent
+type BotEvent
     = ReadingFromGameClientCompleted EveOnline.ParseUserInterface.ParsedUserInterface ReadingFromGameClientImage
 
 
-type AppEventResponse
+type BotEventResponse
     = ContinueSession ContinueSessionStructure
     | FinishSession { statusDescriptionText : String }
 
@@ -60,36 +60,36 @@ type alias Rect2dStructure =
     }
 
 
-type alias AppEventContext appSettings =
+type alias BotEventContext botSettings =
     { timeInMilliseconds : Int
-    , appSettings : appSettings
+    , botSettings : botSettings
     , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
 
-type alias StateIncludingFramework appSettings appState =
+type alias StateIncludingFramework botSettings botState =
     { setup : SetupState
-    , appState : AppAndLastEventState appState
+    , botState : BotAndLastEventState botState
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
     , taskInProgress : Maybe { startTimeInMilliseconds : Int, taskIdString : String, taskDescription : String }
-    , appSettings : Maybe appSettings
+    , botSettings : Maybe botSettings
     , sessionTimeLimitInMilliseconds : Maybe Int
     }
 
 
-type alias AppAndLastEventState appState =
-    { appState : appState
-    , lastEvent : Maybe { timeInMilliseconds : Int, eventResult : ( appState, AppEventResponse ) }
+type alias BotAndLastEventState botState =
+    { botState : botState
+    , lastEvent : Maybe { timeInMilliseconds : Int, eventResult : ( botState, BotEventResponse ) }
     }
 
 
 type alias SetupState =
-    { createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
-    , requestsToVolatileHostCount : Int
-    , lastRequestToVolatileHostResult : Maybe (Result String ( InterfaceToHost.RequestToVolatileProcessComplete, Result String VolatileHostInterface.ResponseFromVolatileHost ))
+    { createVolatileProcessResult : Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
+    , requestsToVolatileProcessCount : Int
+    , lastRequestToVolatileProcessResult : Maybe (Result String ( InterfaceToHost.RequestToVolatileProcessComplete, Result String VolatileProcessInterface.ResponseFromVolatileHost ))
     , gameClientProcesses : Maybe (List GameClientProcessSummary)
-    , searchUIRootAddressResult : Maybe VolatileHostInterface.SearchUIRootAddressResultStructure
+    , searchUIRootAddressResult : Maybe VolatileProcessInterface.SearchUIRootAddressResultStructure
     , lastReadingFromGame : Maybe { timeInMilliseconds : Int, aggregate : ReadingFromGameClientAggregateState }
     , readingFromGameDurations : List Int
     , lastEffectFailedToAcquireInputFocus : Maybe String
@@ -97,22 +97,22 @@ type alias SetupState =
 
 
 type alias ReadingFromGameClientAggregateState =
-    { initialReading : VolatileHostInterface.ReadFromWindowResultStructure
-    , imageDataFromReadingResults : List VolatileHostInterface.GetImageDataFromReadingResultStructure
+    { initialReading : VolatileProcessInterface.ReadFromWindowResultStructure
+    , imageDataFromReadingResults : List VolatileProcessInterface.GetImageDataFromReadingResultStructure
     }
 
 
 type SetupTask
     = ContinueSetup SetupState InterfaceToHost.Task String
-    | OperateApp OperateAppConfiguration
+    | OperateBot OperateBotConfiguration
     | FrameworkStopSession String
 
 
-type alias OperateAppConfiguration =
+type alias OperateBotConfiguration =
     { buildTaskFromEffectSequence : List Common.EffectOnWindow.EffectOnWindowStructure -> InterfaceToHost.Task
-    , readFromWindowTask : VolatileHostInterface.GetImageDataFromReadingStructure -> InterfaceToHost.Task
-    , getImageDataFromReadingTask : VolatileHostInterface.GetImageDataFromReadingStructure -> InterfaceToHost.Task
-    , releaseVolatileHostTask : InterfaceToHost.Task
+    , readFromWindowTask : VolatileProcessInterface.GetImageDataFromReadingStructure -> InterfaceToHost.Task
+    , getImageDataFromReadingTask : VolatileProcessInterface.GetImageDataFromReadingStructure -> InterfaceToHost.Task
+    , releaseVolatileProcessTask : InterfaceToHost.Task
     }
 
 
@@ -125,7 +125,7 @@ type alias UIElement =
 
 
 type alias GameClientProcessSummary =
-    VolatileHostInterface.GameClientProcessSummaryStruct
+    VolatileProcessInterface.GameClientProcessSummaryStruct
 
 
 type alias ShipModulesMemory =
@@ -154,8 +154,8 @@ effectSequenceSpacingMilliseconds =
     30
 
 
-volatileHostRecycleInterval : Int
-volatileHostRecycleInterval =
+volatileProcessRecycleInterval : Int
+volatileProcessRecycleInterval =
     400
 
 
@@ -235,9 +235,9 @@ getModuleButtonIdentifierInMemory =
 
 initSetup : SetupState
 initSetup =
-    { createVolatileHostResult = Nothing
-    , requestsToVolatileHostCount = 0
-    , lastRequestToVolatileHostResult = Nothing
+    { createVolatileProcessResult = Nothing
+    , requestsToVolatileProcessCount = 0
+    , lastRequestToVolatileProcessResult = Nothing
     , gameClientProcesses = Nothing
     , searchUIRootAddressResult = Nothing
     , lastReadingFromGame = Nothing
@@ -246,33 +246,33 @@ initSetup =
     }
 
 
-initState : appState -> StateIncludingFramework appSettings appState
-initState appState =
+initState : botState -> StateIncludingFramework botSettings botState
+initState botState =
     { setup = initSetup
-    , appState =
-        { appState = appState
+    , botState =
+        { botState = botState
         , lastEvent = Nothing
         }
     , timeInMilliseconds = 0
     , lastTaskIndex = 0
     , taskInProgress = Nothing
-    , appSettings = Nothing
+    , botSettings = Nothing
     , sessionTimeLimitInMilliseconds = Nothing
     }
 
 
 processEvent :
-    AppConfiguration appSettings appState
+    BotConfiguration botSettings botState
     -> InterfaceToHost.BotEvent
-    -> StateIncludingFramework appSettings appState
-    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotEventResponse )
-processEvent appConfiguration fromHostEvent stateBeforeUpdateTime =
+    -> StateIncludingFramework botSettings botState
+    -> ( StateIncludingFramework botSettings botState, InterfaceToHost.BotEventResponse )
+processEvent botConfiguration fromHostEvent stateBeforeUpdateTime =
     let
         stateBefore =
             { stateBeforeUpdateTime | timeInMilliseconds = fromHostEvent.timeInMilliseconds }
 
         continueAfterIntegrateEvent =
-            processEventAfterIntegrateEvent appConfiguration
+            processEventAfterIntegrateEvent botConfiguration
     in
     case fromHostEvent.eventAtTime of
         InterfaceToHost.TimeArrivedEvent ->
@@ -280,26 +280,26 @@ processEvent appConfiguration fromHostEvent stateBeforeUpdateTime =
 
         InterfaceToHost.TaskCompletedEvent taskComplete ->
             let
-                ( setupState, maybeAppEventFromTaskComplete ) =
+                ( setupState, maybeBotEventFromTaskComplete ) =
                     stateBefore.setup
                         |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
             in
             continueAfterIntegrateEvent
-                maybeAppEventFromTaskComplete
+                maybeBotEventFromTaskComplete
                 { stateBefore | setup = setupState, taskInProgress = Nothing }
 
         InterfaceToHost.BotSettingsChangedEvent botSettings ->
-            case appConfiguration.parseAppSettings botSettings of
+            case botConfiguration.parseBotSettings botSettings of
                 Err parseSettingsError ->
                     ( stateBefore
                     , InterfaceToHost.FinishSession
                         { statusDescriptionText = "Failed to parse these bot-settings: " ++ parseSettingsError }
                     )
 
-                Ok parsedAppSettings ->
-                    ( { stateBefore | appSettings = Just parsedAppSettings }
+                Ok parsedBotSettings ->
+                    ( { stateBefore | botSettings = Just parsedBotSettings }
                     , InterfaceToHost.ContinueSession
-                        { statusDescriptionText = "Succeeded parsing these app-settings."
+                        { statusDescriptionText = "Succeeded parsing these bot-settings."
                         , startTasks = []
                         , notifyWhenArrivedAtTime = Just { timeInMilliseconds = 0 }
                         }
@@ -312,29 +312,29 @@ processEvent appConfiguration fromHostEvent stateBeforeUpdateTime =
 
 
 processEventAfterIntegrateEvent :
-    AppConfiguration appSettings appState
+    BotConfiguration botSettings botState
     -> Maybe ReadingFromGameClientStructure
-    -> StateIncludingFramework appSettings appState
-    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotEventResponse )
-processEventAfterIntegrateEvent appConfiguration maybeReadingFromGameClient stateBefore =
+    -> StateIncludingFramework botSettings botState
+    -> ( StateIncludingFramework botSettings botState, InterfaceToHost.BotEventResponse )
+processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stateBefore =
     let
         ( stateBeforeCountingRequests, responseBeforeAddingStatusMessage ) =
             case stateBefore.taskInProgress of
                 Nothing ->
-                    case stateBefore.appSettings of
+                    case stateBefore.botSettings of
                         Nothing ->
                             ( stateBefore
                             , InterfaceToHost.FinishSession
                                 { statusDescriptionText =
-                                    "Unexpected order of events: I did not receive any app-settings changed event."
+                                    "Unexpected order of events: I did not receive any bot-settings changed event."
                                 }
                             )
 
-                        Just appSettings ->
+                        Just botSettings ->
                             processEventNotWaitingForTaskCompletion
-                                appConfiguration
+                                botConfiguration
                                 { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                , appSettings = appSettings
+                                , botSettings = botSettings
                                 , sessionTimeLimitInMilliseconds = stateBefore.sessionTimeLimitInMilliseconds
                                 }
                                 maybeReadingFromGameClient
@@ -349,7 +349,7 @@ processEventAfterIntegrateEvent appConfiguration maybeReadingFromGameClient stat
                         |> InterfaceToHost.ContinueSession
                     )
 
-        newRequestsToVolatileHostCount =
+        newRequestsToVolatileProcessCount =
             case responseBeforeAddingStatusMessage of
                 InterfaceToHost.FinishSession _ ->
                     0
@@ -374,8 +374,8 @@ processEventAfterIntegrateEvent appConfiguration maybeReadingFromGameClient stat
             { stateBeforeCountingRequests
                 | setup =
                     { setupBeforeCountingRequests
-                        | requestsToVolatileHostCount =
-                            setupBeforeCountingRequests.requestsToVolatileHostCount + newRequestsToVolatileHostCount
+                        | requestsToVolatileProcessCount =
+                            setupBeforeCountingRequests.requestsToVolatileProcessCount + newRequestsToVolatileProcessCount
                     }
             }
 
@@ -411,13 +411,13 @@ processEventAfterIntegrateEvent appConfiguration maybeReadingFromGameClient stat
 
 
 processEventNotWaitingForTaskCompletion :
-    AppConfiguration appSettings appState
-    -> AppEventContext appSettings
+    BotConfiguration botSettings botState
+    -> BotEventContext botSettings
     -> Maybe ReadingFromGameClientStructure
-    -> StateIncludingFramework appSettings appState
-    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotEventResponse )
-processEventNotWaitingForTaskCompletion appConfiguration appEventContext maybeReadingFromGameClient stateBefore =
-    case stateBefore.setup |> getNextSetupTask appConfiguration stateBefore.appSettings of
+    -> StateIncludingFramework botSettings botState
+    -> ( StateIncludingFramework botSettings botState, InterfaceToHost.BotEventResponse )
+processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeReadingFromGameClient stateBefore =
+    case stateBefore.setup |> getNextSetupTask botConfiguration stateBefore.botSettings of
         ContinueSetup setupState setupTask setupTaskDescription ->
             let
                 taskIndex =
@@ -443,8 +443,8 @@ processEventNotWaitingForTaskCompletion appConfiguration appEventContext maybeRe
                 |> InterfaceToHost.ContinueSession
             )
 
-        OperateApp operateApp ->
-            if volatileHostRecycleInterval < stateBefore.setup.requestsToVolatileHostCount then
+        OperateBot operateBot ->
+            if volatileProcessRecycleInterval < stateBefore.setup.requestsToVolatileProcessCount then
                 let
                     taskIndex =
                         stateBefore.lastTaskIndex + 1
@@ -456,10 +456,10 @@ processEventNotWaitingForTaskCompletion appConfiguration appEventContext maybeRe
                         stateBefore.setup
 
                     setupState =
-                        { setupStateBefore | createVolatileHostResult = Nothing }
+                        { setupStateBefore | createVolatileProcessResult = Nothing }
 
                     setupTaskDescription =
-                        "Recycle the volatile host after " ++ (setupStateBefore.requestsToVolatileHostCount |> String.fromInt) ++ " requests."
+                        "Recycle the volatile process after " ++ (setupStateBefore.requestsToVolatileProcessCount |> String.fromInt) ++ " requests."
                 in
                 ( { stateBefore
                     | setup = setupState
@@ -473,7 +473,7 @@ processEventNotWaitingForTaskCompletion appConfiguration appEventContext maybeRe
                   }
                 , { startTasks =
                         [ { taskId = InterfaceToHost.taskIdFromString taskIdString
-                          , task = operateApp.releaseVolatileHostTask
+                          , task = operateBot.releaseVolatileProcessTask
                           }
                         ]
                   , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
@@ -483,12 +483,12 @@ processEventNotWaitingForTaskCompletion appConfiguration appEventContext maybeRe
                 )
 
             else
-                operateAppExceptRenewingVolatileHost
-                    appConfiguration
-                    appEventContext
+                operateBotExceptRenewingVolatileProcess
+                    botConfiguration
+                    botEventContext
                     maybeReadingFromGameClient
                     stateBefore
-                    operateApp
+                    operateBot
 
         FrameworkStopSession reason ->
             ( stateBefore
@@ -496,14 +496,14 @@ processEventNotWaitingForTaskCompletion appConfiguration appEventContext maybeRe
             )
 
 
-operateAppExceptRenewingVolatileHost :
-    AppConfiguration appSettings appState
-    -> AppEventContext appSettings
+operateBotExceptRenewingVolatileProcess :
+    BotConfiguration botSettings botState
+    -> BotEventContext botSettings
     -> Maybe ReadingFromGameClientStructure
-    -> StateIncludingFramework appSettings appState
-    -> OperateAppConfiguration
-    -> ( StateIncludingFramework appSettings appState, InterfaceToHost.BotEventResponse )
-operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadingFromGameClient stateBefore operateApp =
+    -> StateIncludingFramework botSettings botState
+    -> OperateBotConfiguration
+    -> ( StateIncludingFramework botSettings botState, InterfaceToHost.BotEventResponse )
+operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeReadingFromGameClient stateBefore operateBot =
     let
         readingForScreenshotRequiredRegions =
             case maybeReadingFromGameClient of
@@ -525,7 +525,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                     []
 
                 Just readingFromGameClient ->
-                    case stateBefore.appState.lastEvent of
+                    case stateBefore.botState.lastEvent of
                         Nothing ->
                             []
 
@@ -567,7 +567,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
             in
             ( state
             , { startTasks = startTasks
-              , statusDescriptionText = "Operate app - " ++ taskDescription
+              , statusDescriptionText = "Operate bot - " ++ taskDescription
               , notifyWhenArrivedAtTime = Nothing
               }
                 |> InterfaceToHost.ContinueSession
@@ -576,16 +576,16 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
         continueWithReadingFromGameClient =
             continueWithNamedTaskToWaitOn
                 { taskDescription = "Reading from game"
-                , taskIdString = "operate-app-read-from-game"
+                , taskIdString = "operate-bot-read-from-game"
                 }
-                (operateApp.readFromWindowTask getImageData)
+                (operateBot.readFromWindowTask getImageData)
 
         continueWithGetImageDataFromReading =
             continueWithNamedTaskToWaitOn
                 { taskDescription = "Get image data from reading"
-                , taskIdString = "operate-app-get-image-data-from-reading"
+                , taskIdString = "operate-bot-get-image-data-from-reading"
                 }
-                (operateApp.getImageDataFromReadingTask getImageData)
+                (operateBot.getImageDataFromReadingTask getImageData)
     in
     case maybeReadingFromGameClient of
         Just readingFromGameClient ->
@@ -627,8 +627,8 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
 
             else
                 let
-                    appStateBefore =
-                        stateBefore.appState
+                    botStateBefore =
+                        stateBefore.botState
 
                     image =
                         { pixels1x1 =
@@ -653,20 +653,20 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                                 |> Dict.fromList
                         }
 
-                    appEvent =
+                    botEvent =
                         ReadingFromGameClientCompleted readingFromGameClient.parsedMemoryReading image
 
-                    ( newAppState, appEventResponse ) =
-                        appStateBefore.appState
-                            |> appConfiguration.processEvent appEventContext appEvent
+                    ( newBotState, botEventResponse ) =
+                        botStateBefore.botState
+                            |> botConfiguration.processEvent botEventContext botEvent
 
                     lastEvent =
                         { timeInMilliseconds = stateBefore.timeInMilliseconds
-                        , eventResult = ( newAppState, appEventResponse )
+                        , eventResult = ( newBotState, botEventResponse )
                         }
 
                     response =
-                        case appEventResponse of
+                        case botEventResponse of
                             FinishSession _ ->
                                 InterfaceToHost.FinishSession
                                     { statusDescriptionText = "The bot finished the session." }
@@ -685,10 +685,10 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                                             effects ->
                                                 let
                                                     task =
-                                                        operateApp.buildTaskFromEffectSequence effects
+                                                        operateBot.buildTaskFromEffectSequence effects
 
                                                     taskIdString =
-                                                        "operate-app-send-effects"
+                                                        "operate-bot-send-effects"
                                                 in
                                                 ( Just
                                                     { startTimeInMilliseconds = stateBefore.timeInMilliseconds
@@ -702,7 +702,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                                                 )
                                 in
                                 { startTasks = startTasks
-                                , statusDescriptionText = "Operate app"
+                                , statusDescriptionText = "Operate bot"
                                 , notifyWhenArrivedAtTime =
                                     if taskInProgress == Nothing then
                                         Just { timeInMilliseconds = timeForNextReadingFromGame }
@@ -714,9 +714,9 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
 
                     state =
                         { stateBefore
-                            | appState =
-                                { appStateBefore
-                                    | appState = newAppState
+                            | botState =
+                                { botStateBefore
+                                    | botState = newBotState
                                     , lastEvent = Just lastEvent
                                 }
                         }
@@ -732,14 +732,14 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                     )
                         + 10000
 
-                timeForNextReadingFromGameFromApp =
-                    stateBefore.appState.lastEvent
+                timeForNextReadingFromGameFromBot =
+                    stateBefore.botState.lastEvent
                         |> Maybe.andThen
-                            (\appLastEvent ->
-                                case appLastEvent.eventResult |> Tuple.second of
+                            (\botLastEvent ->
+                                case botLastEvent.eventResult |> Tuple.second of
                                     ContinueSession continueSessionResponse ->
                                         Just
-                                            (appLastEvent.timeInMilliseconds
+                                            (botLastEvent.timeInMilliseconds
                                                 + continueSessionResponse.millisecondsToNextReadingFromGame
                                             )
 
@@ -749,7 +749,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
                         |> Maybe.withDefault 0
 
                 timeForNextReadingFromGame =
-                    min timeForNextReadingFromGameGeneral timeForNextReadingFromGameFromApp
+                    min timeForNextReadingFromGameGeneral timeForNextReadingFromGameFromBot
 
                 remainingTimeToNextReadingFromGame =
                     timeForNextReadingFromGame - stateBefore.timeInMilliseconds
@@ -760,7 +760,7 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
             else
                 ( stateBefore
                 , { startTasks = []
-                  , statusDescriptionText = "Operate app."
+                  , statusDescriptionText = "Operate bot."
                   , notifyWhenArrivedAtTime = Just { timeInMilliseconds = timeForNextReadingFromGame }
                   }
                     |> InterfaceToHost.ContinueSession
@@ -770,30 +770,30 @@ operateAppExceptRenewingVolatileHost appConfiguration appEventContext maybeReadi
 type alias ReadingFromGameClientStructure =
     { parsedMemoryReading : EveOnline.ParseUserInterface.ParsedUserInterface
     , windowClientRectOffset : Location2d
-    , imageDataFromReadingResults : List VolatileHostInterface.GetImageDataFromReadingResultStructure
+    , imageDataFromReadingResults : List VolatileProcessInterface.GetImageDataFromReadingResultStructure
     }
 
 
 integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe ReadingFromGameClientStructure )
 integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
     case taskResult of
-        InterfaceToHost.CreateVolatileProcessResponse createVolatileHostResult ->
+        InterfaceToHost.CreateVolatileProcessResponse createVolatileProcessResult ->
             ( { setupStateBefore
-                | createVolatileHostResult = Just createVolatileHostResult
-                , requestsToVolatileHostCount = 0
+                | createVolatileProcessResult = Just createVolatileProcessResult
+                , requestsToVolatileProcessCount = 0
               }
             , Nothing
             )
 
         InterfaceToHost.RequestToVolatileProcessResponse (Err InterfaceToHost.ProcessNotFound) ->
-            ( { setupStateBefore | createVolatileHostResult = Nothing }, Nothing )
+            ( { setupStateBefore | createVolatileProcessResult = Nothing }, Nothing )
 
         InterfaceToHost.RequestToVolatileProcessResponse (Err InterfaceToHost.FailedToAcquireInputFocus) ->
-            ( { setupStateBefore | lastEffectFailedToAcquireInputFocus = Just "Failed before entering volatile host." }, Nothing )
+            ( { setupStateBefore | lastEffectFailedToAcquireInputFocus = Just "Failed before entering volatile process." }, Nothing )
 
         InterfaceToHost.RequestToVolatileProcessResponse (Ok requestResult) ->
             let
-                requestToVolatileHostResult =
+                requestToVolatileProcessResult =
                     case requestResult.exceptionToString of
                         Just exception ->
                             Err ("Exception from volatile process: " ++ exception)
@@ -807,50 +807,50 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
 
                                         Just returnValueToString ->
                                             returnValueToString
-                                                |> VolatileHostInterface.deserializeResponseFromVolatileHost
+                                                |> VolatileProcessInterface.deserializeResponseFromVolatileHost
                                                 |> Result.mapError Json.Decode.errorToString
                             in
                             Ok ( requestResult, decodeResponseResult )
 
                 setupStateWithScriptRunResult =
-                    { setupStateBefore | lastRequestToVolatileHostResult = Just requestToVolatileHostResult }
+                    { setupStateBefore | lastRequestToVolatileProcessResult = Just requestToVolatileProcessResult }
             in
-            case requestToVolatileHostResult |> Result.andThen Tuple.second |> Result.toMaybe of
+            case requestToVolatileProcessResult |> Result.andThen Tuple.second |> Result.toMaybe of
                 Nothing ->
                     ( setupStateWithScriptRunResult, Nothing )
 
-                Just responseFromVolatileHostOk ->
+                Just responseFromVolatileProcessOk ->
                     setupStateWithScriptRunResult
-                        |> integrateResponseFromVolatileHost
+                        |> integrateResponseFromVolatileProcess
                             { timeInMilliseconds = timeInMilliseconds
-                            , responseFromVolatileHost = responseFromVolatileHostOk
-                            , runInVolatileHostDurationInMs = requestResult.durationInMilliseconds
+                            , responseFromVolatileProcess = responseFromVolatileProcessOk
+                            , runInVolatileProcessDurationInMs = requestResult.durationInMilliseconds
                             }
 
         InterfaceToHost.CompleteWithoutResult ->
             ( setupStateBefore, Nothing )
 
 
-integrateResponseFromVolatileHost :
-    { timeInMilliseconds : Int, responseFromVolatileHost : VolatileHostInterface.ResponseFromVolatileHost, runInVolatileHostDurationInMs : Int }
+integrateResponseFromVolatileProcess :
+    { timeInMilliseconds : Int, responseFromVolatileProcess : VolatileProcessInterface.ResponseFromVolatileHost, runInVolatileProcessDurationInMs : Int }
     -> SetupState
     -> ( SetupState, Maybe ReadingFromGameClientStructure )
-integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost, runInVolatileHostDurationInMs } stateBefore =
-    case responseFromVolatileHost of
-        VolatileHostInterface.ListGameClientProcessesResponse gameClientProcesses ->
+integrateResponseFromVolatileProcess { timeInMilliseconds, responseFromVolatileProcess, runInVolatileProcessDurationInMs } stateBefore =
+    case responseFromVolatileProcess of
+        VolatileProcessInterface.ListGameClientProcessesResponse gameClientProcesses ->
             ( { stateBefore | gameClientProcesses = Just gameClientProcesses }, Nothing )
 
-        VolatileHostInterface.SearchUIRootAddressResult searchUIRootAddressResult ->
+        VolatileProcessInterface.SearchUIRootAddressResult searchUIRootAddressResult ->
             let
                 state =
                     { stateBefore | searchUIRootAddressResult = Just searchUIRootAddressResult }
             in
             ( state, Nothing )
 
-        VolatileHostInterface.ReadFromWindowResult readFromWindowResult ->
+        VolatileProcessInterface.ReadFromWindowResult readFromWindowResult ->
             let
                 readingFromGameDurations =
-                    runInVolatileHostDurationInMs
+                    runInVolatileProcessDurationInMs
                         :: stateBefore.readingFromGameDurations
                         |> List.take 10
 
@@ -874,7 +874,7 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
             in
             ( state, maybeReadingFromGameClient )
 
-        VolatileHostInterface.GetImageDataFromReadingResult getImageDataFromReadingResult ->
+        VolatileProcessInterface.GetImageDataFromReadingResult getImageDataFromReadingResult ->
             case stateBefore.lastReadingFromGame of
                 Nothing ->
                     ( stateBefore, Nothing )
@@ -900,10 +900,10 @@ integrateResponseFromVolatileHost { timeInMilliseconds, responseFromVolatileHost
                     , maybeReadingFromGameClient
                     )
 
-        VolatileHostInterface.FailedToBringWindowToFront error ->
+        VolatileProcessInterface.FailedToBringWindowToFront error ->
             ( { stateBefore | lastEffectFailedToAcquireInputFocus = Just error }, Nothing )
 
-        VolatileHostInterface.CompletedEffectSequenceOnWindow ->
+        VolatileProcessInterface.CompletedEffectSequenceOnWindow ->
             ( { stateBefore | lastEffectFailedToAcquireInputFocus = Nothing }, Nothing )
 
 
@@ -912,10 +912,10 @@ parseReadingFromGameClient :
     -> Result String ReadingFromGameClientStructure
 parseReadingFromGameClient readingAggregate =
     case readingAggregate.initialReading of
-        VolatileHostInterface.ProcessNotFound ->
+        VolatileProcessInterface.ProcessNotFound ->
             Err "Initial reading failed with 'Process Not Found'"
 
-        VolatileHostInterface.Completed completedReading ->
+        VolatileProcessInterface.Completed completedReading ->
             case completedReading.memoryReadingSerialRepresentationJson of
                 Nothing ->
                     Err "Missing json representation of memory reading"
@@ -935,32 +935,36 @@ parseReadingFromGameClient readingAggregate =
 
 
 getNextSetupTask :
-    AppConfiguration appSettings appState
-    -> Maybe appSettings
+    BotConfiguration botSettings botState
+    -> Maybe botSettings
     -> SetupState
     -> SetupTask
-getNextSetupTask appConfiguration appSettings stateBefore =
-    case stateBefore.createVolatileHostResult of
+getNextSetupTask botConfiguration botSettings stateBefore =
+    case stateBefore.createVolatileProcessResult of
         Nothing ->
             ContinueSetup
                 stateBefore
-                (InterfaceToHost.CreateVolatileProcess { programCode = VolatileHostScript.setupScript })
+                (InterfaceToHost.CreateVolatileProcess { programCode = EveOnline.VolatileProcessProgram.programCode })
                 "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
 
         Just (Err error) ->
             FrameworkStopSession ("Create volatile process failed with exception: " ++ error.exceptionToString)
 
-        Just (Ok createVolatileHostComplete) ->
-            getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBefore createVolatileHostComplete.processId
+        Just (Ok createVolatileProcessComplete) ->
+            getSetupTaskWhenVolatileProcessSetupCompleted
+                botConfiguration
+                botSettings
+                stateBefore
+                createVolatileProcessComplete.processId
 
 
-getSetupTaskWhenVolatileHostSetupCompleted :
-    AppConfiguration appSettings appState
-    -> Maybe appSettings
+getSetupTaskWhenVolatileProcessSetupCompleted :
+    BotConfiguration botSettings appState
+    -> Maybe botSettings
     -> SetupState
     -> InterfaceToHost.VolatileProcessId
     -> SetupTask
-getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBefore volatileProcessId =
+getSetupTaskWhenVolatileProcessSetupCompleted botConfiguration botSettings stateBefore volatileProcessId =
     case stateBefore.gameClientProcesses of
         Nothing ->
             ContinueSetup stateBefore
@@ -968,15 +972,15 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                     (InterfaceToHost.RequestNotRequiringInputFocus
                         { processId = volatileProcessId
                         , request =
-                            VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                                VolatileHostInterface.ListGameClientProcessesRequest
+                            VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost
+                                VolatileProcessInterface.ListGameClientProcessesRequest
                         }
                     )
                 )
                 "Get list of EVE Online client processes."
 
         Just gameClientProcesses ->
-            case gameClientProcesses |> appConfiguration.selectGameClientInstance appSettings of
+            case gameClientProcesses |> botConfiguration.selectGameClientInstance botSettings of
                 Err selectGameClientProcessError ->
                     FrameworkStopSession ("Failed to select the game client process: " ++ selectGameClientProcessError)
 
@@ -988,8 +992,8 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                     (InterfaceToHost.RequestNotRequiringInputFocus
                                         { processId = volatileProcessId
                                         , request =
-                                            VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
-                                                (VolatileHostInterface.SearchUIRootAddress { processId = gameClientSelection.selectedProcess.processId })
+                                            VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost
+                                                (VolatileProcessInterface.SearchUIRootAddress { processId = gameClientSelection.selectedProcess.processId })
                                         }
                                     )
                                 )
@@ -1023,14 +1027,14 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                     Just uiRootAddress ->
                                         let
                                             readFromWindowRequest getImageData =
-                                                VolatileHostInterface.ReadFromWindow
+                                                VolatileProcessInterface.ReadFromWindow
                                                     { windowId = gameClientSelection.selectedProcess.mainWindowId
                                                     , uiRootAddress = uiRootAddress
                                                     , getImageData = getImageData
                                                     }
 
                                             getImageDataFromReadingRequest readingId getImageData =
-                                                VolatileHostInterface.GetImageDataFromReading
+                                                VolatileProcessInterface.GetImageDataFromReading
                                                     { readingId = readingId
                                                     , getImageData = getImageData
                                                     }
@@ -1042,7 +1046,7 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                         (InterfaceToHost.RequestNotRequiringInputFocus
                                                             { processId = volatileProcessId
                                                             , request =
-                                                                VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost
+                                                                VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost
                                                                     (readFromWindowRequest { screenshot1x1Rects = [] })
                                                             }
                                                         )
@@ -1051,16 +1055,16 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
 
                                             Just lastMemoryReading ->
                                                 case lastMemoryReading.aggregate.initialReading of
-                                                    VolatileHostInterface.ProcessNotFound ->
+                                                    VolatileProcessInterface.ProcessNotFound ->
                                                         FrameworkStopSession "The EVE Online client process disappeared."
 
-                                                    VolatileHostInterface.Completed lastCompletedMemoryReading ->
+                                                    VolatileProcessInterface.Completed lastCompletedMemoryReading ->
                                                         let
-                                                            buildTaskFromRequestToVolatileHost maybeAcquireInputFocus requestToVolatileHost =
+                                                            buildTaskFromRequestToVolatileProcess maybeAcquireInputFocus requestToVolatileProcess =
                                                                 let
                                                                     requestBeforeConsideringInputFocus =
                                                                         { processId = volatileProcessId
-                                                                        , request = VolatileHostInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileHost
+                                                                        , request = VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileProcess
                                                                         }
                                                                 in
                                                                 InterfaceToHost.RequestToVolatileProcess
@@ -1076,42 +1080,42 @@ getSetupTaskWhenVolatileHostSetupCompleted appConfiguration appSettings stateBef
                                                                                 }
                                                                     )
                                                         in
-                                                        OperateApp
+                                                        OperateBot
                                                             { buildTaskFromEffectSequence =
                                                                 \effectSequenceOnWindow ->
                                                                     { windowId = gameClientSelection.selectedProcess.mainWindowId
                                                                     , task =
                                                                         effectSequenceOnWindow
-                                                                            |> List.map (effectOnWindowAsVolatileHostEffectOnWindow >> VolatileHostInterface.Effect)
-                                                                            |> List.intersperse (VolatileHostInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
+                                                                            |> List.map (effectOnWindowAsVolatileProcessEffectOnWindow >> VolatileProcessInterface.Effect)
+                                                                            |> List.intersperse (VolatileProcessInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
                                                                     , bringWindowToForeground = True
                                                                     }
-                                                                        |> VolatileHostInterface.EffectSequenceOnWindow
-                                                                        |> buildTaskFromRequestToVolatileHost (Just { maximumDelayMilliseconds = 500 })
+                                                                        |> VolatileProcessInterface.EffectSequenceOnWindow
+                                                                        |> buildTaskFromRequestToVolatileProcess (Just { maximumDelayMilliseconds = 500 })
                                                             , readFromWindowTask =
                                                                 \getImageData ->
                                                                     readFromWindowRequest
                                                                         getImageData
-                                                                        |> buildTaskFromRequestToVolatileHost
+                                                                        |> buildTaskFromRequestToVolatileProcess
                                                                             (Just { maximumDelayMilliseconds = 500 })
                                                             , getImageDataFromReadingTask =
                                                                 getImageDataFromReadingRequest lastCompletedMemoryReading.readingId
-                                                                    >> buildTaskFromRequestToVolatileHost Nothing
-                                                            , releaseVolatileHostTask = InterfaceToHost.ReleaseVolatileProcess { processId = volatileProcessId }
+                                                                    >> buildTaskFromRequestToVolatileProcess Nothing
+                                                            , releaseVolatileProcessTask = InterfaceToHost.ReleaseVolatileProcess { processId = volatileProcessId }
                                                             }
 
 
-effectOnWindowAsVolatileHostEffectOnWindow : Common.EffectOnWindow.EffectOnWindowStructure -> VolatileHostInterface.EffectOnWindowStructure
-effectOnWindowAsVolatileHostEffectOnWindow effectOnWindow =
+effectOnWindowAsVolatileProcessEffectOnWindow : Common.EffectOnWindow.EffectOnWindowStructure -> VolatileProcessInterface.EffectOnWindowStructure
+effectOnWindowAsVolatileProcessEffectOnWindow effectOnWindow =
     case effectOnWindow of
         Common.EffectOnWindow.MouseMoveTo mouseMoveTo ->
-            VolatileHostInterface.MouseMoveTo { location = mouseMoveTo }
+            VolatileProcessInterface.MouseMoveTo { location = mouseMoveTo }
 
         Common.EffectOnWindow.KeyDown key ->
-            VolatileHostInterface.KeyDown key
+            VolatileProcessInterface.KeyDown key
 
         Common.EffectOnWindow.KeyUp key ->
-            VolatileHostInterface.KeyUp key
+            VolatileProcessInterface.KeyUp key
 
 
 selectGameClientInstanceWithTopmostWindow :
@@ -1182,15 +1186,15 @@ selectGameClientInstanceWithPilotName pilotName gameClientProcesses =
                 Ok { selectedProcess = selectedProcess, report = report }
 
 
-requestToVolatileHostResultDisplayString :
-    Result String ( InterfaceToHost.RequestToVolatileProcessComplete, Result String VolatileHostInterface.ResponseFromVolatileHost )
+requestToVolatileProcessResultDisplayString :
+    Result String ( InterfaceToHost.RequestToVolatileProcessComplete, Result String VolatileProcessInterface.ResponseFromVolatileHost )
     -> Result String String
-requestToVolatileHostResultDisplayString =
+requestToVolatileProcessResultDisplayString =
     Result.andThen
-        (\( runInVolatileHostComplete, decodeResult ) ->
+        (\( runInVolatileProcessComplete, decodeResult ) ->
             let
                 describeReturnValue =
-                    runInVolatileHostComplete.returnValueToString
+                    runInVolatileProcessComplete.returnValueToString
                         |> Maybe.withDefault "null"
             in
             case decodeResult of
@@ -1199,15 +1203,15 @@ requestToVolatileHostResultDisplayString =
 
                 Err decodeError ->
                     Err
-                        ("Failed to decode response from volatile host: " ++ decodeError ++ " (" ++ describeReturnValue ++ ")")
+                        ("Failed to decode response from volatile process: " ++ decodeError ++ " (" ++ describeReturnValue ++ ")")
         )
 
 
-statusReportFromState : StateIncludingFramework appSettings s -> String
+statusReportFromState : StateIncludingFramework botSettings s -> String
 statusReportFromState state =
     let
-        fromApp =
-            state.appState.lastEvent
+        fromBot =
+            state.botState.lastEvent
                 |> Maybe.map
                     (\lastEvent ->
                         case lastEvent.eventResult |> Tuple.second of
@@ -1227,10 +1231,10 @@ statusReportFromState state =
                 Just error ->
                     [ "Failed to acquire input focus: " ++ error ]
 
-        lastResultFromVolatileHost =
-            "Last result from volatile host is: "
-                ++ (state.setup.lastRequestToVolatileHostResult
-                        |> Maybe.map requestToVolatileHostResultDisplayString
+        lastResultFromVolatileProcess =
+            "Last result from volatile process is: "
+                ++ (state.setup.lastRequestToVolatileProcessResult
+                        |> Maybe.map requestToVolatileProcessResultDisplayString
                         |> Maybe.map
                             (\resultDisplayInfo ->
                                 let
@@ -1270,10 +1274,10 @@ statusReportFromState state =
 
                 Just lastMemoryReading ->
                     case lastMemoryReading.aggregate.initialReading of
-                        VolatileHostInterface.ProcessNotFound ->
+                        VolatileProcessInterface.ProcessNotFound ->
                             "process not found"
 
-                        VolatileHostInterface.Completed completedReading ->
+                        VolatileProcessInterface.Completed completedReading ->
                             let
                                 allPixels =
                                     completedReading.imageData.screenshot1x1Rects
@@ -1287,14 +1291,14 @@ statusReportFromState state =
                                 ++ String.fromInt (List.sum (List.map List.length allPixels))
                                 ++ " pixels"
     in
-    [ [ fromApp ]
+    [ [ fromBot ]
     , [ "----"
       , "EVE Online framework status:"
       ]
 
     --, [ runtimeExpensesReport ]
     , [ "Last reading from game client: " ++ describeLastReadingFromGame ]
-    , [ lastResultFromVolatileHost ]
+    , [ lastResultFromVolatileProcess ]
     , inputFocusLines
     ]
         |> List.concat
@@ -1380,10 +1384,10 @@ stringEllipsis howLong append string =
         String.left (howLong - String.length append) string ++ append
 
 
-secondsToSessionEnd : AppEventContext a -> Maybe Int
-secondsToSessionEnd appEventContext =
-    appEventContext.sessionTimeLimitInMilliseconds
-        |> Maybe.map (\sessionTimeLimitInMilliseconds -> (sessionTimeLimitInMilliseconds - appEventContext.timeInMilliseconds) // 1000)
+secondsToSessionEnd : BotEventContext a -> Maybe Int
+secondsToSessionEnd botEventContext =
+    botEventContext.sessionTimeLimitInMilliseconds
+        |> Maybe.map (\sessionTimeLimitInMilliseconds -> (sessionTimeLimitInMilliseconds - botEventContext.timeInMilliseconds) // 1000)
 
 
 clickOnUIElement : Common.EffectOnWindow.MouseButton -> UIElement -> List Common.EffectOnWindow.EffectOnWindowStructure

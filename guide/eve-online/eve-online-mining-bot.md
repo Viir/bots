@@ -26,9 +26,9 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from https://catalog.botengine.org/eea8dd5c95589825f4a3f62eebe9e97c36a358cd68efdcca0e23fba1d78f8115 and then run it.
+To start the mining bot, download the script from https://catalog.botlab.org/43c957667cfc973196b9852a08a6c928427b0fc4f8ca1c6f71cf32f60350a4a9 and then run it.
 
-In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
+In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
 
 After completing the installation, run the script again to start the mining bot.
 
@@ -67,10 +67,10 @@ module-to-activate-always = afterburner
 
 ## Running Multiple Instances
 
-This bot supports running multiple instances on the same desktop. In such a scenario, the individual bot instances take turns sending input and coordinate to avoid interfering with each other's input. To learn more about multi-instance setup, see https://to.botengine.org/guide/running-bots-on-multiple-game-clients
+This bot supports running multiple instances on the same desktop. In such a scenario, the individual bot instances take turns sending input and coordinate to avoid interfering with each other's input. To learn more about multi-instance setup, see https://to.botlab.org/guide/running-bots-on-multiple-game-clients
 
 ----
 
-If you want to learn how this bot or other apps for EVE Online are developed, have a look at the directory of development guides at https://to.botengine.org/guide/overview
+If you want to learn how this bot or other apps for EVE Online are developed, have a look at the directory of development guides at https://to.botlab.org/guide/overview
 
-In case I forgot to add something here or you have any questions, don't hesitate to ask on the [BotEngine forum](https://forum.botengine.org/).
+In case I forgot to add something here or you have any questions, don't hesitate to ask on the [BotLab forum](https://forum.botlab.org/).

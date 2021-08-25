@@ -18,18 +18,18 @@ Such interference will slow down the bot as it has to repeat the inputs more oft
 
 When we run multiple bots simultaneously on the same machine, the input focus becomes a shared resource. Scheduling enables us to make the best use of this resource and prevent the interference problems described above.
 
-The botengine software comes with built-in support for input focus scheduling. The bot program code sends a sequence of inputs, like the one in the drag&drop example above, to the engine in one package. The botengine hosting this bot then coordinates with the other instances to find a time slot for the input package. When giving such a package to the engine, the bot also specifies a maximum wait time to acquire input focus. In case there is no time-slot available soon enough, the engine informs the bot that the acquisition of input focus failed.
+The BotLab client software comes with built-in support for input focus scheduling. The bot program code sends a sequence of inputs, like the one in the drag&drop example above, to the host in one package. The client instance hosting this bot then coordinates with the other instances to find a time slot for the input package. When giving such a package to the host, the bot also specifies a maximum wait time to acquire input focus. In case there is no time-slot available soon enough, the host informs the bot that the acquisition of input focus failed.
 
-From the user's perspective, there is no big difference to running just one bot instance. Each bot is still started the same way, in a separate process. Each instance of the botengine automatically connects to the other currently running instances. They then elect one instance to act as a central scheduler. This scheduling instance takes requests from the other ones and assigns time slots. When the scheduling instance disappears, the remaining ones will elect a new scheduler.
+From the user's perspective, there is no big difference to running just one bot instance. Each bot is still started the same way, in a separate process. Each instance of the BotLab client automatically connects to the other currently running instances. They then elect one instance to act as a central scheduler. This scheduling instance takes requests from the other ones and assigns time slots. When the scheduling instance disappears, the remaining ones will elect a new scheduler.
 
-This design means there is no need to start or stop the bots together. And we can use any mixture of bot apps since all the scheduling program is on the engine side.
+This design means there is no need to start or stop the bots together. And we can use any mixture of bots since all the scheduling program is on the host side.
 
-When two or more bots run on the same machine, they display information about the scheduling functionality. The engine window lists the other botengine instances found on a line starting with `Found X botengine process instances:`
+When two or more bots run on the same machine, they display information about the scheduling functionality. The BotLab client window lists the other client instances found on a line starting with `Found X BotLab client instances:`
 
 The screenshot below is an example with two bots running:
 
-![two botengine instances coordinating for input scheduling](./image/2020-12-08-input-focus-scheduling-runtime-engine-windows.png)
+![two botlab client instances coordinating for input scheduling](./image/2020-12-08-input-focus-scheduling-runtime-engine-windows.png)
 
 For each found instance, it lists their process ID and the TCP port they use for communicating. The number left of the `ms` label is the number of milliseconds it took the displaying instance to get a response from the displayed instance. In the screenshot above, we can see it was less than two milliseconds for all the directions.
-At the label `Scheduling via`, the engine window also shows which instance currently has the scheduler role.
+At the label `Scheduling via`, the BotLab client window also shows which instance currently has the scheduler role.
 

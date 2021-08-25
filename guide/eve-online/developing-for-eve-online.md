@@ -4,7 +4,7 @@ Do you want to learn how to build a bot or intel tool for EVE Online or customiz
 
 In part, this is a summary of my ~~failings~~ learnings from development projects. But most importantly, this guide lives from and evolves with your questions, so thank you for the feedback!
 
-Wondering what outcome to expect? Two examples are the [mining bot](https://to.botengine.org/guide/app/eve-online-mining-bot) and [warp-to-0 autopilot](https://to.botengine.org/guide/app/eve-online-autopilot-bot).
+Wondering what outcome to expect? Two examples are the [mining bot](https://to.botlab.org/guide/app/eve-online-mining-bot) and [warp-to-0 autopilot](https://to.botlab.org/guide/app/eve-online-autopilot-bot).
 
 ## Comparing to Alternatives
 
@@ -27,12 +27,12 @@ In this section, we take the fastest way to a custom app.
 First, let's look at one of the EVE Online apps in the example projects. Run this autopilot bot:
 
 ```cmd
-botengine  run  "https://github.com/Viir/bots/tree/12f8a8ca4f79fbb14f47e79095cfc5ca5abb581e/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+botlab  run  "https://github.com/Viir/bots/tree/12f8a8ca4f79fbb14f47e79095cfc5ca5abb581e/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
 ```
 
-If the botengine program is not yet installed on your system, you need to install it first, as described in the guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
+In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
 
-The `botengine run` command loads the app code from the given address to run it on your system. Before running this app, you need to start an EVE Online client, no need to go beyond character selection.
+The `botlab run` command loads the app code from the given address to run it on your system. Before running this app, you need to start an EVE Online client, no need to go beyond character selection.
 
 When the bot has started, it will display this message:
 
@@ -40,15 +40,15 @@ When the bot has started, it will display this message:
 
 That is unless you have set a route in the autopilot.
 
-To customize this bot, we change the app code. The app code is made up of the files behind the address we gave to the botengine program.
+To customize this bot, we change the app code. The app code is made up of the files behind the address we gave to the BotLab program.
 To edit the app code files, we download them first. Use this link to download all the files packaged in a zip-archive: https://github.com/Viir/bots/archive/12f8a8ca4f79fbb14f47e79095cfc5ca5abb581e.zip
 
 Extract the downloaded zip-archive, and you will find the same subdirectory we used in the command to run the app: `implement\applications\eve-online\eve-online-warp-to-0-autopilot`.
 
-Now you can use the `botengine  run` command on this directory as well:
+Now you can use the `botlab  run` command on this directory as well:
 
 ```cmd
-botengine  run  "C:\Users\John\Downloads\bots-12f8a8ca4f79fbb14f47e79095cfc5ca5abb581e\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
+botlab  run  "C:\Users\John\Downloads\bots-12f8a8ca4f79fbb14f47e79095cfc5ca5abb581e\implement\applications\eve-online\eve-online-warp-to-0-autopilot"
 ```
 
 Running this command gives you the same app with the same behavior because the app code files are still the same.
@@ -78,7 +78,7 @@ In the remainder of this guide, I show how to speed up this process of discoveri
 
 ## Observing and Inspecting an App
 
-One way of observing an app is to watch the botengine window and the game client on a screen. That is what you see anyway when running a bot. The engine window displays the status text from the app and thus helps with the inspection.
+One way of observing an app is to watch the BotLab client window and the game client on a screen. That is what you see anyway when running a bot. The engine window displays the status text from the app and thus helps with the inspection.
 
 But this mode of observing an app is limiting in two ways.
 
@@ -95,8 +95,8 @@ But we don't have to make it so difficult for ourselves. These problems with obs
 The first step to enable observability is to decouple the observation time from the app running time. Our development tools allow us to go back to any point in time and see everything as it was back then.
 
 Let's see how this works in practice.
-Before we can travel back in time, we need to run a botengine app (or get a session archive from somewhere else, as we will see later). You can use any of the example apps in the bots repository, miner, autopilot, or anomaly bot. When we run a bot, the engine saves a recording to disk by default.
-After running an app, we can use the `botengine  devtools` command to open the development tools:
+Before we can travel back in time, we need to run a bot (or get a session archive from somewhere else, as we will see later). You can use any of the example bot programs in the bots repository, miner, autopilot, or anomaly bot. When we run a bot, the BotLab client saves a recording to disk by default.
+After running a bot, we can use the `botlab  devtools` command to open the development tools:
 
 ![Opening DevTools from the command-line](./../image/2020-07-18-open-botengine-devtools.png)
 
@@ -127,7 +127,7 @@ This visualization shows the display regions of UI elements and some of the disp
 
 To collaborate on the development of a bot, we often need to communicate scenarios, situations in which we want the bot to work. One way to describe such a scenario is to use the recording of an actual session as it happened. To export any session displayed in the DevTools, use the "Download session archive" button. This gets you a zip-archive that you can then share with other people. Now you can get help from other developers for your exact situation, no matter if the solution requires a change in program code or just different app-settings.
 
-To import such a session archive in DevTools, use the `botengine  devtools` command with the path to the zip-archive as an additional argument:
+To import such a session archive in DevTools, use the `botlab  devtools` command with the path to the zip-archive as an additional argument:
 
 ![Opening DevTools from the command-line](./../image/2020-07-18-open-botengine-devtools-additional-source.png)
 
@@ -182,7 +182,7 @@ In our framework for EVE Online, the events are simplified as follows: The only 
 
 In the `BotEngineApp.elm` file of each app program code, you can find a declaration named [`processEvent`](https://github.com/Viir/bots/blob/12f8a8ca4f79fbb14f47e79095cfc5ca5abb581e/implement/applications/eve-online/eve-online-warp-to-0-autopilot/BotEngineApp.elm#L233-L241).
 
-In contrast to other declarations in that file, `processEvent` has a unique role. This is a function that the botengine calls directly. All other declarations are only relevant for the program execution if integrated into `processEvent`. Because of its unique role, we also call it the 'entry point'.
+In contrast to other declarations in that file, `processEvent` has a unique role. This is a function that the BotEngine client calls directly. All other declarations are only relevant for the program execution if integrated into `processEvent`. Because of its unique role, we also call it the 'entry point'.
 
 The type of `processEvent` is not specific to EVE Online. Apps for other games use the same structure. Apps for the EVE Online client use the `EveOnline.AppFrameworkSeparatingMemory.processEvent` function to produce the more general `processEvent` function. We can see this in the example projects, no matter if the app is a mining bot, ratting bot, or just a monitor that watches local chat and alerts the user when a hostile pilot enters. 
 
@@ -233,7 +233,7 @@ The `decideNextStep` and `statusTextFromDecisionContext` run in parallel. They d
 
 The diagram below visualizes the data flow for a single bot step:
 
-![Data flow in a bot step in the framework for EVE Online](./../image/2021-01-24-data-flow-in-bot-architecture-separating-memory.png)
+![Data flow in a bot step in the framework for EVE Online](./../image/2021-04-03-data-flow-in-bot-architecture-separating-memory.png)
 
 The arrows in this diagram illustrate how the framework forwards data between the functions we supplied to compose the app.
 
@@ -388,4 +388,4 @@ Now you can invoke the formatting using the `Format Document` command in the VSC
 
 ----
 
-Any questions? The [BotEngine forum](https://forum.botengine.org) is the place to meet other developers and get help.
+Any questions? The [BotLab forum](https://forum.botlab.org) is the place to meet other developers and get help.

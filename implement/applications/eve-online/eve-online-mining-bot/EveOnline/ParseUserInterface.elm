@@ -4,6 +4,7 @@ import Common.EffectOnWindow
 import Dict
 import EveOnline.MemoryReading
 import Json.Decode
+import List.Extra
 import Maybe.Extra
 import Regex
 import Set
@@ -37,6 +38,7 @@ type alias ParsedUserInterface =
     , neocom : Maybe Neocom
     , messageBoxes : List MessageBox
     , layerAbovemain : Maybe UITreeNodeWithDisplayRegion
+    , keyActivationWindow : Maybe KeyActivationWindow
     }
 
 
@@ -300,27 +302,32 @@ type alias ColorComponents =
 
 type alias DronesWindow =
     { uiNode : UITreeNodeWithDisplayRegion
-    , droneGroups : List DronesWindowDroneGroup
-    , droneGroupInBay : Maybe DronesWindowDroneGroup
-    , droneGroupInLocalSpace : Maybe DronesWindowDroneGroup
+    , droneGroups : List DronesWindowEntryGroupStructure
+    , droneGroupInBay : Maybe DronesWindowEntryGroupStructure
+    , droneGroupInLocalSpace : Maybe DronesWindowEntryGroupStructure
     }
 
 
-type alias DronesWindowDroneGroup =
+type alias DronesWindowEntryGroupStructure =
     { header : DronesWindowDroneGroupHeader
-    , drones : List DronesWindowEntry
+    , children : List DronesWindowEntry
     }
+
+
+type DronesWindowEntry
+    = DronesWindowEntryGroup DronesWindowEntryGroupStructure
+    | DronesWindowEntryDrone DronesWindowEntryDroneStructure
 
 
 type alias DronesWindowDroneGroupHeader =
     { uiNode : UITreeNodeWithDisplayRegion
     , mainText : Maybe String
-    , expander : Maybe Expander
+    , expander : Expander
     , quantityFromTitle : Maybe Int
     }
 
 
-type alias DronesWindowEntry =
+type alias DronesWindowEntryDroneStructure =
     { uiNode : UITreeNodeWithDisplayRegion
     , mainText : Maybe String
     , hitpointsPercent : Maybe Hitpoints
@@ -494,6 +501,12 @@ type alias StandaloneBookmarkWindow =
     }
 
 
+type alias KeyActivationWindow =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , activateButton : Maybe UITreeNodeWithDisplayRegion
+    }
+
+
 parseUITreeWithDisplayRegionFromUITree : EveOnline.MemoryReading.UITreeNode -> UITreeNodeWithDisplayRegion
 parseUITreeWithDisplayRegionFromUITree uiTree =
     let
@@ -536,6 +549,7 @@ parseUserInterfaceFromUITree uiTree =
     , neocom = parseNeocomFromUITreeRoot uiTree
     , messageBoxes = parseMessageBoxesFromUITreeRoot uiTree
     , layerAbovemain = parseLayerAbovemainFromUITreeRoot uiTree
+    , keyActivationWindow = parseKeyActivationWindowFromUITreeRoot uiTree
     }
 
 
@@ -680,16 +694,10 @@ parseInfoPanelLocationInfoFromInfoPanelContainer infoPanelContainerNode =
 
         Just infoPanelNode ->
             let
-                getSecurityStatusPercentFromUINodeText : String -> Maybe Int
-                getSecurityStatusPercentFromUINodeText =
-                    getSubstringBetweenXmlTagsAfterMarker "hint='Security status'"
-                        >> Maybe.andThen (String.trim >> String.toFloat)
-                        >> Maybe.map ((*) 100 >> round)
-
                 securityStatusPercent =
                     infoPanelNode.uiNode
                         |> getAllContainedDisplayTexts
-                        |> List.filterMap getSecurityStatusPercentFromUINodeText
+                        |> List.filterMap parseSecurityStatusPercentFromUINodeText
                         |> List.head
 
                 currentSolarSystemName =
@@ -734,6 +742,16 @@ parseInfoPanelLocationInfoFromInfoPanelContainer infoPanelContainerNode =
                         , expandedContent = expandedContent
                         }
                     )
+
+
+parseSecurityStatusPercentFromUINodeText : String -> Maybe Int
+parseSecurityStatusPercentFromUINodeText =
+    Maybe.Extra.oneOf
+        [ getSubstringBetweenXmlTagsAfterMarker "hint='Security status'"
+        , getSubstringBetweenXmlTagsAfterMarker "hint=\"Security status\"><color="
+        ]
+        >> Maybe.andThen (String.trim >> String.toFloat)
+        >> Maybe.map ((*) 100 >> round)
 
 
 parseCurrentStationNameFromInfoPanelLocationInfoLabelText : String -> Maybe String
@@ -1405,30 +1423,23 @@ parseDronesWindowFromUITreeRoot uiTreeRoot =
                 droneGroupHeaders =
                     windowNode
                         |> listDescendantsWithDisplayRegion
-                        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "DroneMainGroup")
-                        |> List.map parseDronesWindowDroneGroupHeader
+                        |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "Group")
+                        |> List.filterMap parseDronesWindowDroneGroupHeader
 
                 droneEntries =
                     windowNode
                         |> listDescendantsWithDisplayRegion
                         |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "DroneEntry")
-                        |> List.map parseDronesWindowEntry
-
-                headerFromDroneEntry droneEntry =
-                    droneGroupHeaders
-                        |> List.filter (\header -> header.uiNode.totalDisplayRegion.y < droneEntry.uiNode.totalDisplayRegion.y)
-                        |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
-                        |> List.reverse
-                        |> List.head
+                        |> List.map parseDronesWindowDroneEntry
 
                 droneGroups =
-                    droneGroupHeaders
-                        |> List.map
-                            (\header ->
-                                { header = header
-                                , drones = droneEntries |> List.filter (headerFromDroneEntry >> (==) (Just header))
-                                }
-                            )
+                    [ droneEntries |> List.map DronesWindowEntryDrone
+                    , droneGroupHeaders
+                        |> List.map (\header -> { header = header, children = [] })
+                        |> List.map DronesWindowEntryGroup
+                    ]
+                        |> List.concat
+                        |> dronesGroupTreesFromFlatListOfEntries
 
                 droneGroupFromHeaderTextPart headerTextPart =
                     droneGroups
@@ -1444,34 +1455,152 @@ parseDronesWindowFromUITreeRoot uiTreeRoot =
                 }
 
 
-parseDronesWindowDroneGroupHeader : UITreeNodeWithDisplayRegion -> DronesWindowDroneGroupHeader
-parseDronesWindowDroneGroupHeader groupHeaderUiNode =
+dronesGroupTreesFromFlatListOfEntries : List DronesWindowEntry -> List DronesWindowEntryGroupStructure
+dronesGroupTreesFromFlatListOfEntries entriesBeforeOrdering =
     let
-        mainText =
-            groupHeaderUiNode
-                |> getAllContainedDisplayTextsWithRegion
-                |> List.sortBy (Tuple.second >> .totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
-                |> List.map Tuple.first
-                |> List.head
+        verticalOffsetFromEntry entry =
+            case entry of
+                DronesWindowEntryDrone droneEntry ->
+                    droneEntry.uiNode.totalDisplayRegion.y
 
-        expanderNode =
-            groupHeaderUiNode
-                |> listDescendantsWithDisplayRegion
-                |> List.filter
-                    (.uiNode
-                        >> getNameFromDictEntries
-                        >> (Maybe.map (String.toLower >> String.contains "expander") >> Maybe.withDefault False)
-                    )
-                |> List.head
+                DronesWindowEntryGroup groupEntry ->
+                    groupEntry.header.uiNode.totalDisplayRegion.y
 
-        quantityFromTitle =
-            mainText |> Maybe.andThen (parseQuantityFromDroneGroupTitleText >> Result.withDefault Nothing)
+        entriesOrderedVertically =
+            entriesBeforeOrdering
+                |> List.sortBy verticalOffsetFromEntry
     in
-    { uiNode = groupHeaderUiNode
-    , mainText = mainText
-    , expander = expanderNode |> Maybe.map parseExpander
-    , quantityFromTitle = quantityFromTitle
-    }
+    entriesOrderedVertically
+        |> List.filterMap
+            (\entry ->
+                case entry of
+                    DronesWindowEntryDrone _ ->
+                        Nothing
+
+                    DronesWindowEntryGroup group ->
+                        Just group
+            )
+        |> List.head
+        |> Maybe.map
+            (\topmostGroupEntry ->
+                let
+                    entriesUpToSibling =
+                        entriesOrderedVertically
+                            |> List.Extra.dropWhile
+                                (verticalOffsetFromEntry
+                                    >> (\offset -> offset <= verticalOffsetFromEntry (DronesWindowEntryGroup topmostGroupEntry))
+                                )
+                            |> List.Extra.takeWhile
+                                (\entry ->
+                                    case entry of
+                                        DronesWindowEntryDrone _ ->
+                                            True
+
+                                        DronesWindowEntryGroup group ->
+                                            topmostGroupEntry.header.expander.uiNode.totalDisplayRegion.x
+                                                < (group.header.expander.uiNode.totalDisplayRegion.x - 3)
+                                )
+
+                    childGroupTrees =
+                        dronesGroupTreesFromFlatListOfEntries entriesUpToSibling
+
+                    childDrones =
+                        entriesUpToSibling
+                            |> List.Extra.takeWhile
+                                (\entry ->
+                                    case entry of
+                                        DronesWindowEntryDrone _ ->
+                                            True
+
+                                        DronesWindowEntryGroup _ ->
+                                            False
+                                )
+
+                    children =
+                        [ childDrones, childGroupTrees |> List.map DronesWindowEntryGroup ]
+                            |> List.concat
+                            |> List.sortBy verticalOffsetFromEntry
+
+                    topmostGroupTree =
+                        { header = topmostGroupEntry.header
+                        , children = children
+                        }
+
+                    bottommostDescendantOffset =
+                        enumerateDescendantsOfDronesGroup topmostGroupTree
+                            |> List.map verticalOffsetFromEntry
+                            |> List.maximum
+                            |> Maybe.withDefault (verticalOffsetFromEntry (DronesWindowEntryGroup topmostGroupTree))
+
+                    entriesBelow =
+                        entriesOrderedVertically
+                            |> List.Extra.dropWhile (verticalOffsetFromEntry >> (\offset -> offset <= bottommostDescendantOffset))
+                in
+                topmostGroupTree :: dronesGroupTreesFromFlatListOfEntries entriesBelow
+            )
+        |> Maybe.withDefault []
+
+
+enumerateAllDronesFromDronesGroup : DronesWindowEntryGroupStructure -> List DronesWindowEntryDroneStructure
+enumerateAllDronesFromDronesGroup =
+    enumerateDescendantsOfDronesGroup
+        >> List.filterMap
+            (\entry ->
+                case entry of
+                    DronesWindowEntryDrone drone ->
+                        Just drone
+
+                    DronesWindowEntryGroup _ ->
+                        Nothing
+            )
+
+
+enumerateDescendantsOfDronesGroup : DronesWindowEntryGroupStructure -> List DronesWindowEntry
+enumerateDescendantsOfDronesGroup group =
+    group.children
+        |> List.concatMap
+            (\child ->
+                case child of
+                    DronesWindowEntryDrone _ ->
+                        [ child ]
+
+                    DronesWindowEntryGroup childGroup ->
+                        child :: enumerateDescendantsOfDronesGroup childGroup
+            )
+
+
+parseDronesWindowDroneGroupHeader : UITreeNodeWithDisplayRegion -> Maybe DronesWindowDroneGroupHeader
+parseDronesWindowDroneGroupHeader groupHeaderUiNode =
+    case
+        groupHeaderUiNode
+            |> listDescendantsWithDisplayRegion
+            |> List.filter
+                (.uiNode
+                    >> getNameFromDictEntries
+                    >> (Maybe.map (String.toLower >> String.contains "expander") >> Maybe.withDefault False)
+                )
+    of
+        [ expanderNode ] ->
+            let
+                mainText =
+                    groupHeaderUiNode
+                        |> getAllContainedDisplayTextsWithRegion
+                        |> List.sortBy (Tuple.second >> .totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
+                        |> List.map Tuple.first
+                        |> List.head
+
+                quantityFromTitle =
+                    mainText |> Maybe.andThen (parseQuantityFromDroneGroupTitleText >> Result.withDefault Nothing)
+            in
+            Just
+                { uiNode = groupHeaderUiNode
+                , mainText = mainText
+                , expander = expanderNode |> parseExpander
+                , quantityFromTitle = quantityFromTitle
+                }
+
+        _ ->
+            Nothing
 
 
 parseQuantityFromDroneGroupTitleText : String -> Result String (Maybe Int)
@@ -1492,8 +1621,8 @@ parseQuantityFromDroneGroupTitleText droneGroupTitleText =
             Err "Found unexpected number of parentheses."
 
 
-parseDronesWindowEntry : UITreeNodeWithDisplayRegion -> DronesWindowEntry
-parseDronesWindowEntry droneEntryNode =
+parseDronesWindowDroneEntry : UITreeNodeWithDisplayRegion -> DronesWindowEntryDroneStructure
+parseDronesWindowDroneEntry droneEntryNode =
     let
         mainText =
             droneEntryNode
@@ -2430,6 +2559,29 @@ parseNeocomClockText clockText =
 
         _ ->
             Err "Expecting exactly two substrings separated by a colon (:)."
+
+
+parseKeyActivationWindowFromUITreeRoot : UITreeNodeWithDisplayRegion -> Maybe KeyActivationWindow
+parseKeyActivationWindowFromUITreeRoot uiTreeRoot =
+    uiTreeRoot
+        |> listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "KeyActivationWindow")
+        |> List.head
+        |> Maybe.map parseKeyActivationWindow
+
+
+parseKeyActivationWindow : UITreeNodeWithDisplayRegion -> KeyActivationWindow
+parseKeyActivationWindow windowUiNode =
+    let
+        activateButton =
+            windowUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "ActivateButton")
+                |> List.head
+    in
+    { uiNode = windowUiNode
+    , activateButton = activateButton
+    }
 
 
 parseExpander : UITreeNodeWithDisplayRegion -> Expander

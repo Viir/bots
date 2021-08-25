@@ -1,4 +1,4 @@
-{- EVE Online Intel Bot - Local Watch Script - 2021-01-26
+{- EVE Online Intel Bot - Local Watch Script - 2021-08-25
    This bot watches local and plays an alarm sound when a pilot with bad standing appears.
 -}
 {-
@@ -7,18 +7,17 @@
 -}
 
 
-module BotEngineApp exposing
+module Bot exposing
     ( State
-    , initState
-    , processEvent
+    , botMain
     )
 
-import BotEngine.Interface_To_Host_20201207 as InterfaceToHost
+import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.EffectOnWindow exposing (MouseButton(..))
-import EveOnline.AppFramework
+import EveOnline.BotFramework
     exposing
-        ( AppEffect(..)
+        ( BotEventResponseEffect(..)
         , ReadingFromGameClient
         , UseContextMenuCascadeNode(..)
         , localChatWindowFromUserInterface
@@ -37,49 +36,57 @@ type alias BotState =
 
 
 type alias State =
-    EveOnline.AppFramework.StateIncludingFramework {} BotState
+    EveOnline.BotFramework.StateIncludingFramework {} BotState
+
+
+botMain : InterfaceToHost.BotConfig State
+botMain =
+    { init = initState
+    , processEvent = processEvent
+    }
 
 
 initState : State
 initState =
-    EveOnline.AppFramework.initState {}
+    EveOnline.BotFramework.initState {}
 
 
-processEvent : InterfaceToHost.AppEvent -> State -> ( State, InterfaceToHost.AppResponse )
+processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotEventResponse )
 processEvent =
-    EveOnline.AppFramework.processEvent
-        { parseAppSettings = AppSettings.parseAllowOnlyEmpty {}
-        , selectGameClientInstance = always EveOnline.AppFramework.selectGameClientInstanceWithTopmostWindow
+    EveOnline.BotFramework.processEvent
+        { parseBotSettings = AppSettings.parseAllowOnlyEmpty {}
+        , selectGameClientInstance = always EveOnline.BotFramework.selectGameClientInstanceWithTopmostWindow
         , processEvent = processEveOnlineBotEvent
         }
 
 
 processEveOnlineBotEvent :
-    EveOnline.AppFramework.AppEventContext {}
-    -> EveOnline.AppFramework.AppEvent
+    EveOnline.BotFramework.BotEventContext BotState
+    -> EveOnline.BotFramework.BotEvent
     -> BotState
-    -> ( BotState, EveOnline.AppFramework.AppEventResponse )
+    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
 processEveOnlineBotEvent eventContext event stateBefore =
     case event of
-        EveOnline.AppFramework.ReadingFromGameClientCompleted parsedUserInterface ->
+        EveOnline.BotFramework.ReadingFromGameClientCompleted parsedUserInterface _ ->
             let
                 ( effects, statusMessage ) =
                     botEffectsFromGameClientState parsedUserInterface
             in
             ( stateBefore
-            , EveOnline.AppFramework.ContinueSession
+            , EveOnline.BotFramework.ContinueSession
                 { effects = effects
                 , millisecondsToNextReadingFromGame = 2000
                 , statusDescriptionText = statusMessage
+                , screenshotRegionsToRead = always { rects1x1 = [] }
                 }
             )
 
 
-botEffectsFromGameClientState : ReadingFromGameClient -> ( List AppEffect, String )
+botEffectsFromGameClientState : ReadingFromGameClient -> ( List BotEventResponseEffect, String )
 botEffectsFromGameClientState parsedUserInterface =
     case parsedUserInterface |> localChatWindowFromUserInterface of
         Nothing ->
-            ( [ EveOnline.AppFramework.EffectConsoleBeepSequence
+            ( [ EveOnline.BotFramework.EffectConsoleBeepSequence
                     [ { frequency = 700, durationInMs = 100 }
                     , { frequency = 0, durationInMs = 100 }
                     , { frequency = 700, durationInMs = 100 }
@@ -118,7 +125,7 @@ botEffectsFromGameClientState parsedUserInterface =
 
                 alarmRequests =
                     if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
-                        [ EveOnline.AppFramework.EffectConsoleBeepSequence
+                        [ EveOnline.BotFramework.EffectConsoleBeepSequence
                             [ { frequency = 700, durationInMs = 100 }
                             , { frequency = 0, durationInMs = 100 }
                             , { frequency = 700, durationInMs = 500 }

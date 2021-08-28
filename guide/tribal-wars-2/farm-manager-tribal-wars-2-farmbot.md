@@ -43,7 +43,7 @@ When the browser download is finished, the bot opens a 'chromium' web browser wi
 ![Chromium Window Appears](./image/2020-01-25.tribal-wars-2-farmbot-chromium-taskbar.png)
 
 In the browser window opened by the bot, navigate to the Tribal Wars 2 website and log in to your world so that you see your villages.
-Then the browsers address bar will probably show an URL like https://es.tribalwars2.com/game.php?world=es77&character_id=12345
+Then the browsers address bar will probably show an URL like [https://es.tribalwars2.com/game.php?world=es77&character_id=12345](https://es.tribalwars2.com/game.php?world=es77&character_id=12345)
 
 Now the bot will probably display a message like this:
 
@@ -110,7 +110,7 @@ Following is a list of available settings:
 + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
 + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45-48`. The bot then picks a random value in this range.
 
-To configure settings, open the configuration page at https://catalog.botlab.org/8881e86b0ce82d9da6b4a5f89234a6406cc0c067ca2666f4c31f0982029e25ee in a web browser.
+To configure settings, open the configuration page at [https://catalog.botlab.org/8881e86b0ce82d9da6b4a5f89234a6406cc0c067ca2666f4c31f0982029e25ee](https://catalog.botlab.org/8881e86b0ce82d9da6b4a5f89234a6406cc0c067ca2666f4c31f0982029e25ee) in a web browser.
 
 On this page, scroll down to the button `Configure bot`.
 
@@ -142,7 +142,7 @@ When you have applied settings for multiple farm cycles, the bot displays this m
 
 You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online session as explained at [https://to.botlab.org/guide/online-session](https://to.botlab.org/guide/online-session)
 
-Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at https://reactor.botlab.org/billing/add-credits
+Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botlab.org/billing/add-credits](https://reactor.botlab.org/billing/add-credits)
 
 For more about purchasing and using credits, see the guide at https://forum.botlab.org/t/purchasing-and-using-botlab-credits-frequently-asked-questions-faq/837
 

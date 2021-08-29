@@ -49,7 +49,7 @@ inventory_capacity_gauge_text =
     [ ( "1,211.9/5,000.0 m³", Ok { used = 1211, maximum = Just 5000, selected = Nothing } )
     , ( " 123.4 / 5,000.0 m³ ", Ok { used = 123, maximum = Just 5000, selected = Nothing } )
 
-    -- Example from https://forum.botlab.org/t/standard-mining-bot-problems/2715/14?u=viir
+    -- Example from https://forum.botlab.org/t/standard-mining-bot-problems/2715/14
     , ( "4 999,8/5 000,0 m³", Ok { used = 4999, maximum = Just 5000, selected = Nothing } )
 
     -- 2020-01-31 sample 'process-sample-2FA2DCF580-[In Space with selected Ore Hold].zip' from Leon Bechen.
@@ -58,10 +58,10 @@ inventory_capacity_gauge_text =
     -- 2020-02-16-eve-online-sample
     , ( "(33.3) 53.6/450.0 m³", Ok { used = 53, maximum = Just 450, selected = Just 33 } )
 
-    -- 2020-02-23 process-sample-FFE3312944 contributed by ORly (https://forum.botlab.org/t/mining-bot-i-cannot-see-the-ore-hold-capacity-gauge/3101/5?u=viir)
+    -- 2020-02-23 process-sample-FFE3312944 contributed by ORly (https://forum.botlab.org/t/mining-bot-i-cannot-see-the-ore-hold-capacity-gauge/3101/5)
     , ( "0/5\u{00A0}000,0 m³", Ok { used = 0, maximum = Just 5000, selected = Nothing } )
 
-    -- 2020-07-26 scenario shared by neolexo at https://forum.botlab.org/t/issue-with-mining/3469/3?u=viir
+    -- 2020-07-26 scenario shared by neolexo at https://forum.botlab.org/t/issue-with-mining/3469/3
     , ( "0/5’000.0 m³", Ok { used = 0, maximum = Just 5000, selected = Nothing } )
 
     -- Add case with more than two groups in number

@@ -353,7 +353,7 @@ moduleButtonLooksActive context moduleButton =
         {-
            Adapt to discovery in March 2021 by Victor Santamaría Caballero and Samuel Pagé:
            Some module buttons don't have the ramp:
-           https://forum.botengine.org/t/cloaking-device-in-warp-to-0-bot/3917/3
+           https://forum.botlab.org/t/cloaking-device-in-warp-to-0-bot/3917/3
         -}
         case moduleButtonImageProcessing context moduleButton of
             Nothing ->

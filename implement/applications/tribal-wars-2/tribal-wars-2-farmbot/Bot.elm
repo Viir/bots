@@ -1937,7 +1937,7 @@ decodeVillageByCoordinatesResult =
 {-| 2020-03-22 There are also villages without 'points':
 { "x": 597, "y": 545, "name": "Freund einladen", "id": -2, "affiliation": "other" }
 
-2020-12-21 Drklord discovered a case without 'affiliation' field at <https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/3038/207> :
+2020-12-21 Drklord discovered a case without 'affiliation' field at <https://forum.botlab.org/t/farm-manager-tribal-wars-2-farmbot/3038/207> :
 { "x" : 508, "y" : 456, "name" : "Invite a friend", "id" : -2 }
 
 -}

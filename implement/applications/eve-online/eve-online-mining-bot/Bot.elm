@@ -85,7 +85,7 @@ import Regex
 
 {-| Sources for the defaults:
 
-  - <https://forum.botengine.org/t/mining-bot-wont-approach/3162>
+  - <https://forum.botlab.org/t/mining-bot-wont-approach/3162>
 
 -}
 defaultBotSettings : BotSettings
@@ -186,7 +186,7 @@ miningBotDecisionRoot context =
             context.eventContext.botSettings.botStepDelayMilliseconds
 
 
-{-| A first outline of the decision tree for a mining bot came from <https://forum.botengine.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
+{-| A first outline of the decision tree for a mining bot came from <https://forum.botlab.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
 -}
 miningBotDecisionRootBeforeApplyingSettings : BotDecisionContext -> DecisionPathNode
 miningBotDecisionRootBeforeApplyingSettings context =

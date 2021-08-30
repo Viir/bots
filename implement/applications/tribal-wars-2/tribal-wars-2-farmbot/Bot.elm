@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2021-08-25
+{- Tribal Wars 2 farmbot version 2021-08-30
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
@@ -32,7 +32,7 @@
    + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45 - 48`. The bot then picks a random value in this range for each village.
 
    When using more than one setting, start a new line for each setting in the text input field.
-   Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
+   Here is an example of `bot-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
 
    number-of-farm-cycles = 3
    break-duration = 20 - 40
@@ -855,7 +855,7 @@ integrateWebBrowserBotEvent event stateBefore =
                                 relativeCoordinatesToSearchForFarmsPartitions newSettings
                         }
                     )
-                |> Result.mapError (\parseError -> "Failed to parse these app-settings: " ++ parseError)
+                |> Result.mapError (\parseError -> "Failed to parse these bot-settings: " ++ parseError)
 
         BotFramework.ArrivedAtTime { timeInMilliseconds } ->
             Ok { stateBefore | timeInMilliseconds = timeInMilliseconds }

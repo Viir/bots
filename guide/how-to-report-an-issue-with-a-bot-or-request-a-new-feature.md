@@ -15,18 +15,19 @@ The most common way to describe your scenario or use-case is to share a recordin
 
 The artifact of the session recording allows us to:
 
-+ See which bot program was used in the session and how it was configured (including app-settings).
++ See which bot program was used in the session and how it was configured (including bot-settings).
 + Travel back in time and see what the bot saw in the past.
 + Understand why our bot did what it did.
 + Create simulations to test new program codes. ([Testing a bot using simulations](https://to.botlab.org/guide/testing-a-bot-using-simulations))
++ Extract training data used to adapt bot program codes to new users and their setups.
 
-In summary, by providing a session recording, you answer many questions from people who want to help you.
+In summary, sharing a session recording is a fast and efficient way to answer many questions from people who want to help you.
 
 ### Getting the Session Recording Archive
 
 How do you get a session recording that you can share with others?
 
-By default, the BotLab client for Windows automatically creates that recording for you every time you run a bot. That means saving the session recording is already taken care of unless you chose to disable it for that session.
+By default, the BotLab client automatically creates that recording every time you run a bot. That means saving the session recording is already taken care of unless you chose to disable it for that session.
 
 (If you have set the `--detailed-session-recording` switch to `off` on a session, the recording will not be available for that session)
 
@@ -40,9 +41,9 @@ Running this command opens a web browser window. From here on, you can continue 
 
 ![DevTools - choose a session to inspect](./image/2020-07-18-botengine-devtools-choose-session.png)
 
-On that web page, you find a list of recent app-sessions, the last one at the top.
+You find a list of recent bot sessions on that web page, the last one at the top.
 
-When you run a bot, the BotLab window also displays the session's name, so you can find it again in this list later, even if you started other sessions in the meantime.
+When you run a bot, the BotLab client window also displays the session's name, so you can find it again in this list later, even if you started other sessions in the meantime.
 
 Clicking on one of the names of the sessions brings you into the view of this particular session:
 

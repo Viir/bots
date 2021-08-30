@@ -1,6 +1,6 @@
-{- EVE Online mining bot version 2021-08-25
+{- EVE Online mining bot version 2021-08-30
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
-   If no station name or structure name is given with the app-settings, the bot docks again at the station where it was last docked.
+   If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
 
    Setup instructions for the EVE Online client:
 
@@ -705,13 +705,13 @@ scrollDown scrollControls =
                 Nothing
 
 
-{-| Prepare a station name or structure name coming from app-settings for comparing with menu entries.
+{-| Prepare a station name or structure name coming from bot-settings for comparing with menu entries.
 
   - The user could take the name from the info panel:
     The names sometimes differ between info panel and menu entries: 'Moon 7' can become 'M7'.
 
   - Do not distinguish between the comma and period characters:
-    Besides the similar visual appearance, also because of the limitations of popular app-settings parsing frameworks.
+    Besides the similar visual appearance, also because of the limitations of popular bot-settings parsing frameworks.
     The user can remove a comma or replace it with a full stop/period, whatever looks better.
 
 -}

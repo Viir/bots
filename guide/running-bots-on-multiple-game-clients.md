@@ -24,7 +24,7 @@ When the bot starts, it expects an instance of the game client already present. 
 There are many windows open on the desktop, and there can be multiple instances of the game client. The default way to select the right one allows for using multiple game clients without any configuration. The bot uses a property of the window called 'Z-index' to sort them. The Z-index is tracked by the operating system and establishes an ordering of the windows, based on how far they are from the window with input focus, also called the 'topmost' window.
 When you select a window for [input focus](https://en.wikipedia.org/wiki/Focus_(computing)), it becomes the topmost window and has the highest priority for the bot's selection. Focusing a window can be as simple as clicking on it. There are also keyboard commands to switch between windows, such as `Alt` + `Tab` in Microsoft Windows.
 
-Some bots offer optional settings to limit the selection of the game client window. For example, some bots for the game EVE Online provide an app-setting to pick a pilot name. Such options reduce the dependency on maintaining the window order on startup.
+Some bots offer optional settings to limit the selection of the game client window. For example, some bots for the game EVE Online offer a setting to pick a pilot name. Such options reduce the dependency on maintaining the window order on startup.
 
 ## Process to Start Bots on Multiple Game Clients
 

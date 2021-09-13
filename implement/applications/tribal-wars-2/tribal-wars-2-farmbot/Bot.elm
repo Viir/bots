@@ -1,7 +1,7 @@
-{- Tribal Wars 2 farmbot version 2021-08-30
+{- Tribal Wars 2 farmbot version 2021-09-13
    I search for barbarian villages around your villages and then attack them.
 
-   When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
+   When starting, I first open a new web browser window. This might take longer on the first run because I need to download the web browser software.
    When the web browser has opened, navigate to Tribal Wars 2 and log in to your account, so you see your villages.
    Then the browsers address bar will probably show an URL like https://es.tribalwars2.com/game.php?world=es77&character_id=123456#
 

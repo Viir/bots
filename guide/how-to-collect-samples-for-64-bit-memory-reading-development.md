@@ -10,7 +10,7 @@ Here you can see a typical scenario where we use this tool: https://forum.botlab
 
 **Steps to collect a sample:**
 
-+ Download and unpack the zip-archive from [https://github.com/Arcitectus/Sanderling/releases/download/v2020-04-12/2020-04-12-read-memory-64.zip](https://github.com/Arcitectus/Sanderling/releases/download/v2020-04-12/2020-04-12-read-memory-64.zip)
++ Download and unpack the zip archive from [https://github.com/Arcitectus/Sanderling/releases/download/v2020-04-12/2020-04-12-read-memory-64.zip](https://github.com/Arcitectus/Sanderling/releases/download/v2020-04-12/2020-04-12-read-memory-64.zip)
 + Find the game client in the Windows Task Manager.
 + Make sure the name of the game client displayed in the Windows Task Manager does not contain `(32 bit)`.
 + Read the process ID of the game client process in the `PID` column in the Task Manager.

@@ -95,8 +95,8 @@ elm-format is a tool we use to format the text in the program code files. This t
 
 The easiest way to use elm-format is by integrating it with VSCode, the same way as we did with the Elm command line program above.
 
-You can download a zip-archive containing the executable program from https://github.com/avh4/elm-format/releases/download/0.8.3/elm-format-0.8.3-win-i386.zip
-Extracting that zip-archive gets you the file `elm-format.exe`.
+You can download a zip archive containing the executable program from https://github.com/avh4/elm-format/releases/download/0.8.3/elm-format-0.8.3-win-i386.zip
+Extracting that zip archive gets you the file `elm-format.exe`.
 
 To integrate it with VSCode, navigate again to the `Elm LS` extension settings as we did for the other settings earlier. Here, enter the path to the `elm-format.exe` file in the text box under `Elm Format Path`, as shown in this image:
 

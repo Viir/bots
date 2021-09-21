@@ -313,6 +313,7 @@ Response request(Request request)
             }
         }
 
+        if(false)
         {
             /*
             Maybe taking screenshots needs the window to be not occluded by other windows.

@@ -1,4 +1,4 @@
-{- EVE Online Intel Bot - Local Watch Script - 2021-08-25
+{- EVE Online Intel Bot - Local Watch Script - 2021-09-21
    This bot watches local and plays an alarm sound when a pilot with bad standing appears.
 -}
 {-
@@ -29,8 +29,6 @@ goodStandingPatterns =
     [ "good standing", "excellent standing", "is in your" ]
 
 
-{-| To support the feature that finishes the session some time of inactivity, it needs to remember the time of the last activity.
--}
 type alias BotState =
     {}
 

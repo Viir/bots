@@ -1,4 +1,5 @@
-{- Tribal Wars 2 farmbot version 2021-09-13
+{- Tribal Wars 2 farmbot version 2021-09-22
+
    I search for barbarian villages around your villages and then attack them.
 
    When starting, I first open a new web browser window. This might take longer on the first run because I need to download the web browser software.
@@ -34,9 +35,10 @@
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of `bot-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
 
+   ```
    number-of-farm-cycles = 3
    break-duration = 20 - 40
-
+   ```
 -}
 {-
    catalog-tags:tribal-wars-2,farmbot

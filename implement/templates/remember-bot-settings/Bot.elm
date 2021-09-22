@@ -1,4 +1,5 @@
 {- This program demonstrates how to remember the bot-settings string.
+
    It takes any settings string received from the user and stores it in the bot state.
    This bot also updates the status message to show the last received settings string, so you can check that a method (e.g., via command line) of applying the settings works.
 -}

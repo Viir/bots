@@ -1,4 +1,5 @@
-{- EVE Online mining bot version 2021-09-17
+{- EVE Online mining bot version 2021-09-22
+
    The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
 
@@ -22,9 +23,11 @@
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
 
+   ```
    unload-station-name = Noghere VII - Moon 15
    module-to-activate-always = shield hardener
    module-to-activate-always = afterburner
+   ```
 -}
 {-
    catalog-tags:eve-online,mining

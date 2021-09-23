@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2021-09-22
+{- Tribal Wars 2 farmbot version 2021-09-23
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -39,6 +39,8 @@
    number-of-farm-cycles = 3
    break-duration = 20 - 40
    ```
+
+   To learn about the farmbot, see https://to.botlab.org/guide/app/tribal-wars-2-farmbot
 -}
 {-
    catalog-tags:tribal-wars-2,farmbot

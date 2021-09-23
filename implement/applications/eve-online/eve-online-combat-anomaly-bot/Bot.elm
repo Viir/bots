@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2021-09-22
+{- EVE Online combat anomaly bot version 2021-09-23
 
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
@@ -31,6 +31,8 @@
    rat-to-avoid = Infested Carrier
    module-to-activate-always = shield hardener
    ```
+
+   To learn about the anomaly bot, see https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot
 -}
 {-
    catalog-tags:eve-online,anomaly,ratting

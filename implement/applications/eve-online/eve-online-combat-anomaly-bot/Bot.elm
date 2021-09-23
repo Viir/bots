@@ -33,6 +33,7 @@
    ```
 
    To learn about the anomaly bot, see https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot
+
 -}
 {-
    catalog-tags:eve-online,anomaly,ratting

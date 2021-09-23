@@ -21,7 +21,7 @@ Despite being quite robust, this bot is far from being as smart as a human. For 
 
 ## Starting the Bot
 
-To start the bot, download the script from https://catalog.botlab.org/e025c79ef959d848559d2d7c15e527ea39c720ab6b06763ef1ccf4c08c39f902 and then run it.
+To start the bot, download the script from https://catalog.botlab.org/5ed71273c0cdb139193b17d87b343205fbaea014a046a8638fe53b49b939f7dd and then run it.
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
 

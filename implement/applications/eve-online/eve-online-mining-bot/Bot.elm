@@ -30,6 +30,7 @@
    ```
 
    To learn about the mining bot, see https://to.botlab.org/guide/app/eve-online-mining-bot
+
 -}
 {-
    catalog-tags:eve-online,mining

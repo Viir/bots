@@ -110,7 +110,7 @@ Following is a list of available settings:
 + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
 + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45-48`. The bot then picks a random value in this range.
 
-To configure settings, open the configuration page at [https://catalog.botlab.org/8881e86b0ce82d9da6b4a5f89234a6406cc0c067ca2666f4c31f0982029e25ee](https://catalog.botlab.org/8881e86b0ce82d9da6b4a5f89234a6406cc0c067ca2666f4c31f0982029e25ee) in a web browser.
+To configure settings, open the configuration page at [https://catalog.botlab.org/ef8b6657b4d43689ea2ad236c293b455d034618e4374c9bff741db5a65e931c9](https://catalog.botlab.org/ef8b6657b4d43689ea2ad236c293b455d034618e4374c9bff741db5a65e931c9) in a web browser.
 
 On this page, scroll down to the button `Configure bot`.
 

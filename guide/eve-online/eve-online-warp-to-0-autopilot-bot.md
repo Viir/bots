@@ -6,7 +6,7 @@ Fortunately, this process can be automated using a bot. The bot we are using her
 
 ## Starting the Autopilot Bot
 
-To start the bot, download the script from https://catalog.botlab.org/748901fa2cc8a81530a48a3ace5ce3e9edda7ba5efa3e9732fc99a8795c7b8ab and then run it.
+To start the bot, download the script from https://catalog.botlab.org/efa278590a2d1efc9782b81af7357fa8e67c4a8b2a31078c29cbc1f64fe171ac and then run it.
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
 

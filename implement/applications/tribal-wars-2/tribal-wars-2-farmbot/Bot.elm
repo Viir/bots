@@ -41,6 +41,7 @@
    ```
 
    To learn about the farmbot, see https://to.botlab.org/guide/app/tribal-wars-2-farmbot
+
 -}
 {-
    catalog-tags:tribal-wars-2,farmbot

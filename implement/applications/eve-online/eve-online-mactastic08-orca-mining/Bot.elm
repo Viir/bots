@@ -1,7 +1,9 @@
 {- Mactastic08 & annar_731 orca mining version 2021-09-29
+
    Orca mining described by Mactastic08 and annar_731 at https://forum.botengine.org/t/orca-targeting-mining/3591
 
    2021-09-29 updated for scenario of Gathrin at https://forum.botlab.org/t/eve-mining-bot-failure-with-new-2021-update/4151
+
 -}
 {-
    catalog-tags:eve-online,mining

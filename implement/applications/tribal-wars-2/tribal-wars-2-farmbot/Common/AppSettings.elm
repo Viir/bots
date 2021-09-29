@@ -17,7 +17,7 @@ type alias SettingValueType appSettings =
 
 messageOnlyAcceptEmptyAppSettings : String
 messageOnlyAcceptEmptyAppSettings =
-    "I received an app-settings string that is not empty, but I only accept an empty app-settings string. I am not programmed to support any app settings. Maybe there is another app which better matches your use case?"
+    "I received a settings string that is not empty, but I only accept an empty settings string. I am not programmed to support any app settings. Maybe there is another app which better matches your use case?"
 
 
 valueTypeYesOrNo : (YesOrNo -> appSettings -> appSettings) -> SettingValueType appSettings

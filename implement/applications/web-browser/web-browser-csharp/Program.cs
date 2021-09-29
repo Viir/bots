@@ -19,7 +19,7 @@ namespace web_browser_csharp
             /*
             2020-02-17 Observation before introducing the killing of previous web browser processes:
             LaunchAsync failed if a process from the last run was still present.
-            (See report of this issue at https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/3038/32?u=viir)
+            (See report of this issue at https://forum.botlab.org/t/farm-manager-tribal-wars-2-farmbot/3038/32?u=viir)
 
             Unhandled exception. System.AggregateException: One or more errors occurred. (Failed to launch Chromium! [28592:33396:0217/074915.470:ERROR:cache_util_win.cc(21)] Unable to move the cache: Access is denied. (0x5)
             [28592:33396:0217/074915.471:ERROR:cache_util.cc(141)] Unable to move cache folder C:\Users\John\AppData\Local\bot\web-browser\user-data\ShaderCache\GPUCache to C:\Users\John\AppData\Local\bot\web-browser\user-data\ShaderCache\old_GPUCache_000

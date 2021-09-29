@@ -6,9 +6,9 @@ Fortunately, this process can be automated using a bot. The bot we are using her
 
 ## Starting the Autopilot Bot
 
-To start the bot, download the script from https://catalog.botengine.org/bc341c7911cc4d43004644e18c08bf8ff6d0b096839fd632fc0f2f8ea4679436 and then run it.
+To start the bot, download the script from https://catalog.botlab.org/efa278590a2d1efc9782b81af7357fa8e67c4a8b2a31078c29cbc1f64fe171ac and then run it.
 
-In case the botengine program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botengine.org/failed-run-did-not-find-botengine-program
+In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
 
 After completing the installation, run the script again to start the bot.
 
@@ -29,5 +29,5 @@ As soon as we undock, the bot will start to send mouse clicks to the game client
 
 The bot only works when the UI language is set to English. The bot reads the text in menu entries to decide where to click, and it only knows the English translations.
 
-Alright, I think that is all there is to know about the basic autopilot bot. If you have questions about this bot or are searching for other bots, don't hesitate to ask on the [BotEngine forum](https://forum.botengine.org/).
+Alright, I think that is all there is to know about the basic autopilot bot. If you have questions about this bot or are searching for other bots, don't hesitate to ask on the [BotLab forum](https://forum.botlab.org/).
 

@@ -106,3 +106,19 @@ Original discussion:
 
 > Total running time in hours: 71
 
+## 2021-10-05 - qmail - EVE Online Intel Bot - Local Watch Script
+
+Original discussion:
+
++ https://forum.botlab.org/t/bot-not-working-with-new-engine/4142
+
+> EVE Online Intel Bot - Local Watch Script - 2021-09-21
+> This bot watches local and plays an alarm sound when a pilot with bad standing appears.
+
++ https://github.com/Viir/bots/tree/0bce0d7f3cd6e560d5a625e9f8a8068610950901/implement/applications/eve-online/eve-online-local-watch
++ https://reactor.botlab.org/catalog/b590279a1fbac9b39a76512df2d5dae3ef92ece4863f307ad4faea03a193ce4d
+
+2021-10-05 the catalog entry shows:
+
+> Total running time in hours: 91
+

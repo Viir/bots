@@ -12,7 +12,7 @@ When programming an app, we use functions to reach into the UI tree and extract 
 
 To find things faster and automatically detect program code errors, we also use types adapted to the user interface's shape. We use the type system of the Elm programming language to assign names to parts of the UI tree describe the values that we expect in certain parts of the UI. The types provide us with names more closely related to players' experience, such as the overview window or ship modules.
 
-To help find these functions and types, we collect the most popular ones in the [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/tree/3a19d243ce02b9fdc8ac199c74164d86b4777a5b/implement/applications/eve-online/eve-online-mining-bot/EveOnline/ParseUserInterface.elm) Elm module.
+To help find these functions and types, we collect the most popular ones in the [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/5a80367063af122ea679930952d570ba2b7cd026/implement/applications/eve-online/eve-online-mining-bot/EveOnline/ParseUserInterface.elm) Elm module.
 
 If you are not sure how to read the type definitions in that module, see the ["Reading Types"](https://guide.elm-lang.org/types/reading_types.html) and ["Type Aliases"](https://guide.elm-lang.org/types/type_aliases.html) sections in the Elm programming language guide.
 

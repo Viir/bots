@@ -189,13 +189,13 @@ The `decideNextStep` and `statusTextFromDecisionContext` run in parallel. They d
 
 The diagram below visualizes the data flow for a single bot step:
 
-![Data flow in a bot step in the framework for EVE Online](./../image/2021-04-03-data-flow-in-bot-architecture-separating-memory.png)
+![Data flow in a bot step in the framework for EVE Online](./../image/2021-10-13-data-flow-in-bot-architecture-separating-memory.png)
 
 The arrows in this diagram illustrate how the framework forwards data between the functions we supplied to compose the bot.
 
 ### `parseBotSettings`
 
-The framework invokes the `parseBotSettings` function every time the user changes the bot-settings. The return type is a kind of `Result` which means we can decide that a given bot-settings string is invalid and reject it. The `Err` case uses the `String` type, and we use this to explain to the user what exactly is wrong with the given bot-settings string. You don't need to worry about how to generate these error messages, because there is already a framework for this. In our bot, we only need to define a list of valid settings, and the framework will generate a precise error message if the user misspells the name of a setting or tries to use a setting with an unsupported value.
+The framework invokes the `parseBotSettings` function every time the user changes the bot-settings. The return type is a kind of `Result` which means we can decide that a given bot-settings string is invalid and reject it. The `Err` case uses the `String` type, and we use this to explain to the user what is wrong with the given bot-settings string. In most cases, you don't want to code the parsing and generation of error messages for the user from scratch. There is a framework that parses settings strings based on a list of settings that you specified. Using this framework makes it trivial to add new settings. In our bot, we only need to define a list of valid settings, and the framework will generate a precise error message if the user misspells the name of a setting or tries to use a setting with an unsupported value.
 
 
 ## Programming Language

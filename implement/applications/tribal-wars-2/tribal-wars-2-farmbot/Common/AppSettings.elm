@@ -1,5 +1,12 @@
 module Common.AppSettings exposing (..)
 
+{-| This module helps you build a settings-string parser that serves two purposes:
+
+  - Mapping an unstructured settings string into a structured representation for easy consumption by other program parts.
+  - If the given settings string does not conform with the configured format, generate specific error messages for the user to explain available settings and how to use them.
+
+-}
+
 import Dict
 import JaroWinkler
 import Result.Extra
@@ -17,14 +24,19 @@ type alias SettingValueType appSettings =
 
 messageOnlyAcceptEmptyAppSettings : String
 messageOnlyAcceptEmptyAppSettings =
-    "I received a settings string that is not empty, but I only accept an empty settings string. I am not programmed to support any app settings. Maybe there is another app which better matches your use case?"
+    "I received a settings string that is not empty, but I only accept an empty settings string. I am not programmed to support any settings. Maybe there is another program which better matches your use case?"
 
 
+{-| Build an individual setting that only accepts the strings `Yes` or `No`.
+-}
 valueTypeYesOrNo : (YesOrNo -> appSettings -> appSettings) -> SettingValueType appSettings
 valueTypeYesOrNo =
     listAllSupportedValues { supportedValues = [ ( "yes", Yes ), ( "no", No ) ], ignoreCase = True }
 
 
+{-| Build an individual setting that only accepts strings representing valid integers and maps them to integer values.
+Here are some examples for supported values: `-1` `0`, `1234`.
+-}
 valueTypeInteger : (Int -> appSettings -> appSettings) -> SettingValueType appSettings
 valueTypeInteger integrateSettingValue =
     \settingValueAsString ->
@@ -36,6 +48,8 @@ valueTypeInteger integrateSettingValue =
                 Ok (integrateSettingValue int)
 
 
+{-| Build an individual setting that accepts any string.
+-}
 valueTypeString : (String -> appSettings -> appSettings) -> SettingValueType appSettings
 valueTypeString integrateSettingValue =
     integrateSettingValue >> Ok
@@ -55,6 +69,15 @@ parseSimpleCommaSeparatedListOfAssignments =
     parseSimpleListOfAssignments { assignmentsSeparators = [ "," ] }
 
 
+{-| This function helps you build a settings-string parser that serves two purposes:
+
+  - Mapping an unstructured settings string into a structured representation for easy consumption by other program parts.
+  - If the given settings string does not conform with the configured format, generate specific error messages for the user to explain available settings and how to use them.
+
+Use the dictionary argument to choose the settings that you want to support. If the settings string contains an unsupported setting name, this framework generates an error message pointing out the most similar settings name and listing available settings.
+Forward this error message to your bot's users to help them find good configurations more easily.
+
+-}
 parseSimpleListOfAssignments : { assignmentsSeparators : List String } -> Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
 parseSimpleListOfAssignments { assignmentsSeparators } namedSettings defaultSettings settingsString =
     let

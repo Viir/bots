@@ -1,5 +1,8 @@
 module BotLab.BotInterface_To_Host_20210823 exposing (..)
 
+{-| Types for the interface to the botlab client.
+-}
+
 
 type alias BotConfig state =
     { init : state

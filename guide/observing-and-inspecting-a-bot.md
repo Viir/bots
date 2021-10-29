@@ -44,8 +44,8 @@ Some events inform the bot about the completion of reading from the game client.
 
 ![DevTools - view of an bot session event - EVE Online specific part](./image/2020-07-18-botengine-devtools-session-selected-event-eve-online.png)
 
-This visualization shows the display regions of UI elements and some of the display texts. Using the button "Download reading as JSON file", we can export this memory reading for further examination. The inspection tools found in the alternate UI for EVE Online help us with that. You can find those tools at https://botengine.blob.core.windows.net/blob-library/by-name/2020-08-11-eve-online-alternate-ui.html
-(If you want to enable the Elm inspector ('debugger') tool too, you can use the variant at https://botengine.blob.core.windows.net/blob-library/by-name/2020-08-11-eve-online-alternate-ui-with-inspector.html)
+This visualization shows the display regions of UI elements and some of the display texts. Using the button "Download reading as JSON file", we can export this memory reading for further examination. The inspection tools found in the alternate UI for EVE Online help us with that. You can find those tools at https://botlabs.blob.core.windows.net/blob-library/by-name/2021-10-29-eve-online-alternate-ui.html
+(If you want to enable the Elm inspector ('debugger') tool too, you can use the variant at https://botlabs.blob.core.windows.net/blob-library/by-name/2021-10-29-eve-online-alternate-ui-with-inspector.html)
 
 ## Sharing Observations
 

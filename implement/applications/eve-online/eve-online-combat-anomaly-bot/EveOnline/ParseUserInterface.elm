@@ -643,6 +643,7 @@ parseInfoPanelContainerFromUIRoot uiTreeRoot =
         uiTreeRoot
             |> listDescendantsWithDisplayRegion
             |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "InfoPanelContainer")
+            |> List.sortBy (.uiNode >> EveOnline.MemoryReading.countDescendantsInUITreeNode >> negate)
             |> List.head
     of
         Nothing ->

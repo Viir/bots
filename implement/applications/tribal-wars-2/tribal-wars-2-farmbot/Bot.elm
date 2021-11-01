@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2021-09-23
+{- Tribal Wars 2 farmbot version 2021-11-01
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -31,6 +31,7 @@
    + `farm-player`: Name of a player/character to farm. By default, the bot only farms barbarians, but this setting allows you to also farm players.
    + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
    + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45 - 48`. The bot then picks a random value in this range for each village.
+   + `close-game-client-during-break`: Set this to 'yes' to make the bot close the game client/web browser during breaks.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of `bot-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
@@ -85,6 +86,7 @@ initBotSettings =
     , farmArmyPresetPatterns = []
     , limitOutgoingCommandsPerVillage = { minimum = 50, maximum = 50 }
     , webBrowserUserProfileId = "default"
+    , closeGameClientDuringBreak = AppSettings.No
     }
 
 
@@ -125,6 +127,9 @@ parseBotSettings =
            )
          , ( "web-browser-user-profile-id"
            , AppSettings.valueTypeString (\webBrowserUserProfileId settings -> { settings | webBrowserUserProfileId = webBrowserUserProfileId })
+           )
+         , ( "close-game-client-during-break"
+           , AppSettings.valueTypeYesOrNo (\closeGameClientDuringBreak settings -> { settings | closeGameClientDuringBreak = closeGameClientDuringBreak })
            )
          ]
             |> Dict.fromList
@@ -229,6 +234,7 @@ type alias BotSettings =
     , farmArmyPresetPatterns : List String
     , limitOutgoingCommandsPerVillage : IntervalInt
     , webBrowserUserProfileId : String
+    , closeGameClientDuringBreak : AppSettings.YesOrNo
     }
 
 
@@ -499,8 +505,8 @@ botMain =
         }
 
 
-processWebBrowserBotEvent : BotEvent -> BotState -> { newState : BotState, response : BotResponse, statusMessage : String }
-processWebBrowserBotEvent event stateBeforeIntegrateEvent =
+processWebBrowserBotEvent : BotEvent -> BotFramework.GenericBotState -> BotState -> { newState : BotState, response : BotResponse, statusMessage : String }
+processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
     case stateBeforeIntegrateEvent |> integrateWebBrowserBotEvent event of
         Err integrateEventError ->
             { newState = stateBeforeIntegrateEvent
@@ -580,7 +586,9 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
 
                         Nothing ->
                             decideNextAction
-                                { lastPageLocation = stateBeforeIntegrateEvent.lastPageLocation }
+                                { lastPageLocation = stateBeforeIntegrateEvent.lastPageLocation
+                                , webBrowserRunning = genericBotState.webBrowserRunning
+                                }
                                 { stateBefore | currentActivity = Nothing }
                                 |> Tuple.mapSecond Just
 
@@ -597,8 +605,8 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
             }
 
 
-decideNextAction : { lastPageLocation : Maybe String } -> BotState -> ( DecisionPathNode BotResponse, BotState )
-decideNextAction { lastPageLocation } stateBefore =
+decideNextAction : { lastPageLocation : Maybe String, webBrowserRunning : Bool } -> BotState -> ( DecisionPathNode BotResponse, BotState )
+decideNextAction { lastPageLocation, webBrowserRunning } stateBefore =
     case stateBefore.farmState of
         InBreak farmBreak ->
             let
@@ -615,6 +623,14 @@ decideNextAction { lastPageLocation } stateBefore =
                 )
 
             else
+                let
+                    botRequest =
+                        if stateBefore.settings.closeGameClientDuringBreak == AppSettings.Yes then
+                            Just (BotFramework.CloseWebBrowser { userProfileId = stateBefore.settings.webBrowserUserProfileId })
+
+                        else
+                            Nothing
+                in
                 ( describeBranch
                     ("Next farm cycle starts in "
                         ++ (minutesToNextFarmCycleStart |> String.fromInt)
@@ -622,7 +638,7 @@ decideNextAction { lastPageLocation } stateBefore =
                         ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
                         ++ " minutes ago."
                     )
-                    (endDecisionPath (BotFramework.ContinueSession Nothing))
+                    (endDecisionPath (BotFramework.ContinueSession botRequest))
                 , stateBefore
                 )
 
@@ -645,47 +661,54 @@ decideNextAction { lastPageLocation } stateBefore =
 
                                         Just activity ->
                                             let
+                                                continueWithStartWebBrowser =
+                                                    ( BotFramework.StartWebBrowser
+                                                        { pageGoToUrl = lastPageLocation
+                                                        , userProfileId = stateBefore.settings.webBrowserUserProfileId
+                                                        }
+                                                    , { stateBefore
+                                                        | lastStartWebBrowserTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
+                                                        , startWebBrowserCount = stateBefore.startWebBrowserCount + 1
+                                                        , readFromGameConsecutiveTimeoutsCount = 0
+                                                      }
+                                                    )
+
                                                 ( requestToFramework, updatedStateForActivity ) =
                                                     case activity of
                                                         RequestToPage requestToPage ->
-                                                            let
-                                                                requestComponents =
-                                                                    componentsForRequestToPage requestToPage
+                                                            if not webBrowserRunning then
+                                                                continueWithStartWebBrowser
 
-                                                                requestToPageId =
-                                                                    stateBefore.lastRequestToPageId + 1
+                                                            else
+                                                                let
+                                                                    requestComponents =
+                                                                        componentsForRequestToPage requestToPage
 
-                                                                requestToPageIdString =
-                                                                    requestToPageId |> String.fromInt
-                                                            in
-                                                            ( BotFramework.RunJavascriptInCurrentPageRequest
-                                                                { javascript = requestComponents.javascript
-                                                                , requestId = requestToPageIdString
-                                                                , timeToWaitForCallbackMilliseconds =
-                                                                    case requestComponents.waitForCallbackDuration of
-                                                                        Just waitForCallbackDuration ->
-                                                                            waitForCallbackDuration
+                                                                    requestToPageId =
+                                                                        stateBefore.lastRequestToPageId + 1
 
-                                                                        Nothing ->
-                                                                            0
-                                                                }
-                                                            , { stateBefore
-                                                                | lastRequestToPageId = requestToPageId
-                                                                , pendingRequestToPageRequestId = Just requestToPageIdString
-                                                              }
-                                                            )
+                                                                    requestToPageIdString =
+                                                                        requestToPageId |> String.fromInt
+                                                                in
+                                                                ( BotFramework.RunJavascriptInCurrentPageRequest
+                                                                    { javascript = requestComponents.javascript
+                                                                    , requestId = requestToPageIdString
+                                                                    , timeToWaitForCallbackMilliseconds =
+                                                                        case requestComponents.waitForCallbackDuration of
+                                                                            Just waitForCallbackDuration ->
+                                                                                waitForCallbackDuration
+
+                                                                            Nothing ->
+                                                                                0
+                                                                    }
+                                                                , { stateBefore
+                                                                    | lastRequestToPageId = requestToPageId
+                                                                    , pendingRequestToPageRequestId = Just requestToPageIdString
+                                                                  }
+                                                                )
 
                                                         RestartWebBrowser ->
-                                                            ( BotFramework.StartWebBrowser
-                                                                { pageGoToUrl = lastPageLocation
-                                                                , userProfileId = stateBefore.settings.webBrowserUserProfileId
-                                                                }
-                                                            , { stateBefore
-                                                                | lastStartWebBrowserTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
-                                                                , startWebBrowserCount = stateBefore.startWebBrowserCount + 1
-                                                                , readFromGameConsecutiveTimeoutsCount = 0
-                                                              }
-                                                            )
+                                                            continueWithStartWebBrowser
                                             in
                                             ( Just requestToFramework
                                             , updatedStateForActivity

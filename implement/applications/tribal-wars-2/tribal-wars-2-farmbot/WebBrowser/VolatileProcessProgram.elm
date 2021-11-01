@@ -57,6 +57,8 @@ class Request
 
     public StartWebBrowserRequestStructure StartWebBrowserRequest;
 
+    public CloseWebBrowserRequestStructure CloseWebBrowserRequest;
+
     public class RunJavascriptInCurrentPageRequestStructure
     {
         public string requestId;
@@ -74,6 +76,11 @@ class Request
 
         public int remoteDebuggingPort;
     }
+
+    public class CloseWebBrowserRequestStructure
+    {
+        public string userProfileId;
+    }
 }
 
 class Response
@@ -81,6 +88,8 @@ class Response
     public RunJavascriptInCurrentPageResponseStructure RunJavascriptInCurrentPageResponse;
 
     public object WebBrowserStarted;
+
+    public object WebBrowserClosed;
 
     public class RunJavascriptInCurrentPageResponseStructure
     {
@@ -115,6 +124,16 @@ Response request(Request request)
         return new Response
         {
             WebBrowserStarted = new object(),
+        };
+    }
+
+    if (request.CloseWebBrowserRequest != null)
+    {
+        KillPreviousWebBrowserProcesses(userProfileId: request.CloseWebBrowserRequest.userProfileId);
+
+        return new Response
+        {
+            WebBrowserClosed = new object(),
         };
     }
 

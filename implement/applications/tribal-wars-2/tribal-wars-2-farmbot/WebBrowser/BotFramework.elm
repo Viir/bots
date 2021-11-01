@@ -8,6 +8,7 @@ module WebBrowser.BotFramework exposing
     ( BotEvent(..)
     , BotRequest(..)
     , BotResponse(..)
+    , GenericBotState
     , RunJavascriptInCurrentPageResponseStructure
     , SetupState
     , StateIncludingSetup
@@ -23,7 +24,7 @@ import WebBrowser.VolatileProcessProgram as VolatileProcessProgram
 
 type alias BotConfig botState =
     { init : botState
-    , processEvent : BotEvent -> botState -> BotProcessEventResult botState
+    , processEvent : BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState
     }
 
 
@@ -48,6 +49,7 @@ type BotResponse
 type BotRequest
     = RunJavascriptInCurrentPageRequest RunJavascriptInCurrentPageRequestStructure
     | StartWebBrowser { userProfileId : String, pageGoToUrl : Maybe String }
+    | CloseWebBrowser { userProfileId : String }
 
 
 type alias RunJavascriptInCurrentPageRequestStructure =
@@ -91,8 +93,12 @@ type alias BotState botState =
 type alias SetupState =
     { createVolatileProcessResult : Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
     , lastRunScriptResult : Maybe (Result String (Maybe String))
-    , webBrowserStarted : Bool
+    , webBrowserRunning : Bool
     }
+
+
+type alias GenericBotState =
+    { webBrowserRunning : Bool }
 
 
 type SetupTask
@@ -127,12 +133,12 @@ initSetup : SetupState
 initSetup =
     { createVolatileProcessResult = Nothing
     , lastRunScriptResult = Nothing
-    , webBrowserStarted = False
+    , webBrowserRunning = False
     }
 
 
 processEvent :
-    (BotEvent -> botState -> BotProcessEventResult botState)
+    (BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState)
     -> InterfaceToHost.BotEvent
     -> StateIncludingSetup botState
     -> ( StateIncludingSetup botState, InterfaceToHost.BotEventResponse )
@@ -266,6 +272,28 @@ processEventNotWaitingForTask stateBefore =
                                             , releaseVolatileHostTasks
                                             )
 
+                                        CloseWebBrowser closeWebBrowser ->
+                                            let
+                                                closeWebBrowserTasks =
+                                                    case stateBefore.setup.createVolatileProcessResult of
+                                                        Just (Ok createVolatileProcessSuccess) ->
+                                                            [ InterfaceToHost.RequestToVolatileProcess
+                                                                (InterfaceToHost.RequestNotRequiringInputFocus
+                                                                    { processId = createVolatileProcessSuccess.processId
+                                                                    , request =
+                                                                        VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
+                                                                            (VolatileProcessInterface.CloseWebBrowserRequest { userProfileId = closeWebBrowser.userProfileId })
+                                                                    }
+                                                                )
+                                                            ]
+
+                                                        _ ->
+                                                            []
+                                            in
+                                            ( stateBefore
+                                            , closeWebBrowserTasks
+                                            )
+
                                 botState =
                                     { botStateBefore | remainingBotRequests = remainingBotRequests }
 
@@ -317,7 +345,7 @@ processEventNotWaitingForTask stateBefore =
 
 
 integrateFromHostEvent :
-    (BotEvent -> botState -> BotProcessEventResult botState)
+    (BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState)
     -> InterfaceToHost.BotEvent
     -> StateIncludingSetup botState
     -> StateIncludingSetup botState
@@ -340,7 +368,7 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBeforeUpdateTime =
                                 |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
 
                         webBrowserStartedInThisUpdate =
-                            not stateBefore.setup.webBrowserStarted && setupState.webBrowserStarted
+                            not stateBefore.setup.webBrowserRunning && setupState.webBrowserRunning
 
                         pendingRequestToRestartWebBrowser =
                             if webBrowserStartedInThisUpdate then
@@ -373,7 +401,8 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBeforeUpdateTime =
                         stateBeforeIntegrateBotEvent.botState
 
                     botEventResult =
-                        botStateBefore.botState |> botProcessEvent botEvent
+                        botStateBefore.botState
+                            |> botProcessEvent botEvent { webBrowserRunning = stateBefore.setup.webBrowserRunning }
 
                     newBotRequests =
                         case botEventResult.response of
@@ -427,6 +456,19 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                                         Err ("Exception from volatile process: " ++ exception)
                             )
 
+                webBrowserWasClosed =
+                    case requestToVolatileHostResponse of
+                        Ok fromVolatileProcessResult ->
+                            case fromVolatileProcessResult.exceptionToString of
+                                Nothing ->
+                                    False
+
+                                Just exception ->
+                                    String.contains "Most likely the Page has been closed" exception
+
+                        Err _ ->
+                            False
+
                 maybeResponseFromVolatileProcess =
                     runScriptResult
                         |> Result.toMaybe
@@ -435,7 +477,15 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                         |> Maybe.andThen Result.toMaybe
 
                 setupStateWithScriptRunResult =
-                    { setupStateBefore | lastRunScriptResult = Just runScriptResult }
+                    { setupStateBefore
+                        | lastRunScriptResult = Just runScriptResult
+                        , webBrowserRunning =
+                            if webBrowserWasClosed then
+                                False
+
+                            else
+                                setupStateBefore.webBrowserRunning
+                    }
             in
             case maybeResponseFromVolatileProcess of
                 Nothing ->
@@ -453,7 +503,7 @@ integrateResponseFromVolatileProcess : ( Int, VolatileProcessInterface.ResponseF
 integrateResponseFromVolatileProcess ( _, response ) stateBefore =
     case response of
         VolatileProcessInterface.WebBrowserStarted ->
-            ( { stateBefore | webBrowserStarted = True }, Nothing )
+            ( { stateBefore | webBrowserRunning = True }, Nothing )
 
         VolatileProcessInterface.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
             let
@@ -461,6 +511,9 @@ integrateResponseFromVolatileProcess ( _, response ) stateBefore =
                     RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse
             in
             ( stateBefore, Just botEvent )
+
+        VolatileProcessInterface.WebBrowserClosed ->
+            ( { stateBefore | webBrowserRunning = False }, Nothing )
 
 
 getNextSetupTask : Maybe RequestToRestartWebBrowserStructure -> SetupState -> SetupTask

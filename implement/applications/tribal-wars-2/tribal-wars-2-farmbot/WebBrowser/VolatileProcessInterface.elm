@@ -8,6 +8,12 @@ import Json.Encode
 type RequestToVolatileProcess
     = StartWebBrowserRequest { pageGoToUrl : Maybe String, userProfileId : String, remoteDebuggingPort : Int }
     | RunJavascriptInCurrentPageRequest RunJavascriptInCurrentPageRequestStructure
+      {-
+         We offer to close the web browser because users reported high CPU load by the browser process.
+         Some bots pause for several minutes, and they can save computing resources by closing the web browsers during these times.
+         See discussion at https://forum.botlab.org/t/farm-manager-tribal-wars-2-farmbot/3038/303?u=viir
+      -}
+    | CloseWebBrowserRequest { userProfileId : String }
 
 
 type alias RunJavascriptInCurrentPageRequestStructure =
@@ -20,6 +26,7 @@ type alias RunJavascriptInCurrentPageRequestStructure =
 type ResponseFromVolatileProcess
     = WebBrowserStarted
     | RunJavascriptInCurrentPageResponse RunJavascriptInCurrentPageResponseStructure
+    | WebBrowserClosed
 
 
 type alias RunJavascriptInCurrentPageResponseStructure =
@@ -41,6 +48,7 @@ decodeResponseFromVolatileProcess =
         [ Json.Decode.field "WebBrowserStarted" (Json.Decode.succeed WebBrowserStarted)
         , Json.Decode.field "RunJavascriptInCurrentPageResponse" decodeRunJavascriptInCurrentPageResponse
             |> Json.Decode.map RunJavascriptInCurrentPageResponse
+        , Json.Decode.field "WebBrowserClosed" (Json.Decode.succeed WebBrowserClosed)
         ]
 
 
@@ -59,6 +67,17 @@ encodeRequestToVolatileProcess request =
                           )
                         , ( "remoteDebuggingPort"
                           , startWebBrowserRequest.remoteDebuggingPort |> Json.Encode.int
+                          )
+                        ]
+                  )
+                ]
+
+        CloseWebBrowserRequest closeWebBrowserRequest ->
+            Json.Encode.object
+                [ ( "CloseWebBrowserRequest"
+                  , Json.Encode.object
+                        [ ( "userProfileId"
+                          , closeWebBrowserRequest.userProfileId |> Json.Encode.string
                           )
                         ]
                   )

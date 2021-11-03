@@ -18,8 +18,8 @@ module WebBrowser.BotFramework exposing
     )
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import CompilationInterface.SourceFiles
 import WebBrowser.VolatileProcessInterface as VolatileProcessInterface
-import WebBrowser.VolatileProcessProgram as VolatileProcessProgram
 
 
 type alias BotConfig botState =
@@ -522,7 +522,7 @@ getNextSetupTask startWebBrowserRequest stateBefore =
         Nothing ->
             ContinueSetup
                 stateBefore
-                (InterfaceToHost.CreateVolatileProcess { programCode = VolatileProcessProgram.programCode })
+                (InterfaceToHost.CreateVolatileProcess { programCode = CompilationInterface.SourceFiles.file____VolatileProcess_cx.utf8 })
                 "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
 
         Just (Err error) ->

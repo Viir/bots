@@ -20,11 +20,11 @@ import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Common.Basics
 import Common.EffectOnWindow
 import Common.FNV
+import CompilationInterface.SourceFiles
 import Dict
 import EveOnline.MemoryReading
 import EveOnline.ParseUserInterface exposing (Location2d, centerFromDisplayRegion)
 import EveOnline.VolatileProcessInterface as VolatileProcessInterface
-import EveOnline.VolatileProcessProgram
 import Json.Decode
 import List.Extra
 import Result.Extra
@@ -947,7 +947,9 @@ getNextSetupTask botConfiguration botSettings stateBefore =
         Nothing ->
             ContinueSetup
                 stateBefore
-                (InterfaceToHost.CreateVolatileProcess { programCode = EveOnline.VolatileProcessProgram.programCode })
+                (InterfaceToHost.CreateVolatileProcess
+                    { programCode = CompilationInterface.SourceFiles.file____EveOnline_VolatileProcess_cx.utf8 }
+                )
                 "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
 
         Just (Err error) ->

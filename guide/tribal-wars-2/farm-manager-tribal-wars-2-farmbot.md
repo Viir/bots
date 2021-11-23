@@ -111,7 +111,7 @@ Following is a list of available settings:
 + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45-48`. The bot then picks a random value in this range.
 + `close-game-client-during-break`: Set this to 'yes' to make the bot close the game client/web browser during breaks.
 
-To configure settings, open the configuration page at [https://catalog.botlab.org/45f96646063640c064c96db0eb1f2baf2a5c46a05cede665e976e963ec8c73bc](https://catalog.botlab.org/45f96646063640c064c96db0eb1f2baf2a5c46a05cede665e976e963ec8c73bc) in a web browser.
+To configure settings, open the configuration page at [https://catalog.botlab.org/2979167a62ed916a80365b31bfe7123694488eb3fcd0d4bc84ed0650f3155500](https://catalog.botlab.org/2979167a62ed916a80365b31bfe7123694488eb3fcd0d4bc84ed0650f3155500) in a web browser.
 
 On this page, scroll down to the button `Configure bot`.
 

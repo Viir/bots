@@ -2,7 +2,7 @@
    This framework helps with bot development by taking care of these common tasks:
 
    + Keeping track of the window the bot should work in so that the bot reads from and sends input to the right window.
-   + Set up the volatile host to interface with Windows.
+   + Set up the volatile process to interface with Windows.
    + Map typical tasks like sending inputs or taking screenshots to the Windows API.
 
    To use this framework:
@@ -15,9 +15,10 @@
 module BotLab.SimpleBotFramework exposing (..)
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
-import BotLab.VolatileHostWindowsApi as VolatileHostWindowsApi
+import CompilationInterface.SourceFiles
 import Dict
 import Json.Decode
+import Windows.VolatileProcessInterface as VolatileProcessInterface
 
 
 type alias BotEvent =
@@ -108,8 +109,8 @@ type Task
 
 type alias State simpleBotState =
     { timeInMilliseconds : Int
-    , createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
-    , windowId : Maybe VolatileHostWindowsApi.WindowId
+    , createVolatileProcessResult : Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
+    , windowId : Maybe VolatileProcessInterface.WindowId
     , lastWindowTitleMeasurement : Maybe { timeInMilliseconds : Int, windowTitle : String }
     , waitingForTaskId : Maybe InterfaceToHost.TaskId
     , error : Maybe String
@@ -124,7 +125,7 @@ type alias State simpleBotState =
 type FrameworkSetupStepActivity
     = StopWithResult { resultDescription : String }
     | ContinueSetupWithTask { task : InterfaceToHost.StartTaskStructure, taskDescription : String }
-    | OperateSimpleBot { buildTaskFromTaskOnWindow : VolatileHostWindowsApi.TaskOnWindowStructure -> InterfaceToHost.Task }
+    | OperateSimpleBot { buildTaskFromTaskOnWindow : VolatileProcessInterface.TaskOnWindowStructure -> InterfaceToHost.Task }
 
 
 type LocatePatternInImageApproach
@@ -141,7 +142,7 @@ type ImageSearchRegion
 initState : simpleBotState -> State simpleBotState
 initState simpleBotInitState =
     { timeInMilliseconds = 0
-    , createVolatileHostResult = Nothing
+    , createVolatileProcessResult = Nothing
     , windowId = Nothing
     , lastWindowTitleMeasurement = Nothing
     , waitingForTaskId = Nothing
@@ -260,21 +261,21 @@ processEvent simpleBotProcessEvent event stateBefore =
                                                         InterfaceToHost.CompleteWithoutResult ->
                                                             Err "CompleteWithoutResult"
 
-                                                        InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileHostResponse ->
-                                                            case requestToVolatileHostResponse of
+                                                        InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileProcessResponse ->
+                                                            case requestToVolatileProcessResponse of
                                                                 Err InterfaceToHost.ProcessNotFound ->
                                                                     Err "Error running script in volatile process: ProcessNotFound"
 
                                                                 Err InterfaceToHost.FailedToAcquireInputFocus ->
                                                                     Err "Error running script in volatile process: FailedToAcquireInputFocus"
 
-                                                                Ok volatileHostResponseSuccess ->
-                                                                    case volatileHostResponseSuccess.exceptionToString of
-                                                                        Just exceptionInVolatileHost ->
-                                                                            Err ("Exception in volatile process: " ++ exceptionInVolatileHost)
+                                                                Ok volatileProcessResponseSuccess ->
+                                                                    case volatileProcessResponseSuccess.exceptionToString of
+                                                                        Just exceptionInVolatileProcess ->
+                                                                            Err ("Exception in volatile process: " ++ exceptionInVolatileProcess)
 
                                                                         Nothing ->
-                                                                            case volatileHostResponseSuccess.returnValueToString |> Maybe.withDefault "" |> VolatileHostWindowsApi.deserializeResponseFromVolatileHost of
+                                                                            case volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault "" |> VolatileProcessInterface.deserializeResponseFromVolatileProcess of
                                                                                 Err error ->
                                                                                     Err ("Failed to parse response from volatile process: " ++ (error |> Json.Decode.errorToString))
 
@@ -300,12 +301,12 @@ processEvent simpleBotProcessEvent event stateBefore =
 
                                                                                         TakeScreenshot ->
                                                                                             case parsedResponse of
-                                                                                                VolatileHostWindowsApi.TakeScreenshotResult takeScreenshotResult ->
+                                                                                                VolatileProcessInterface.TakeScreenshotResult takeScreenshotResult ->
                                                                                                     Ok
                                                                                                         (TakeScreenshotResult (deriveImageRepresentation takeScreenshotResult.pixels))
 
                                                                                                 _ ->
-                                                                                                    Err ("Unexpected return value from volatile host: " ++ (volatileHostResponseSuccess.returnValueToString |> Maybe.withDefault ""))
+                                                                                                    Err ("Unexpected return value from volatile process: " ++ (volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault ""))
                                             in
                                             case taskResultResult of
                                                 Err error ->
@@ -566,33 +567,33 @@ taskIdFromSimpleBotTaskId simpleBotTaskId =
             InterfaceToHost.taskIdFromString ("simple-bot-" ++ asString)
 
 
-taskOnWindowFromSimpleBotTask : Task -> VolatileHostWindowsApi.TaskOnWindowStructure
+taskOnWindowFromSimpleBotTask : Task -> VolatileProcessInterface.TaskOnWindowStructure
 taskOnWindowFromSimpleBotTask simpleBotTask =
     case simpleBotTask of
         BringWindowToForeground ->
-            VolatileHostWindowsApi.BringWindowToForeground
+            VolatileProcessInterface.BringWindowToForeground
 
         MoveMouseToLocation location ->
-            VolatileHostWindowsApi.MoveMouseToLocation location
+            VolatileProcessInterface.MoveMouseToLocation location
 
         MouseButtonDown button ->
-            VolatileHostWindowsApi.MouseButtonDown
-                (volatileHostMouseButtonFromMouseButton button)
+            VolatileProcessInterface.MouseButtonDown
+                (volatileProcessMouseButtonFromMouseButton button)
 
         MouseButtonUp button ->
-            VolatileHostWindowsApi.MouseButtonUp
-                (volatileHostMouseButtonFromMouseButton button)
+            VolatileProcessInterface.MouseButtonUp
+                (volatileProcessMouseButtonFromMouseButton button)
 
         KeyboardKeyDown key ->
-            VolatileHostWindowsApi.KeyboardKeyDown
-                (volatileHostKeyboardKeyFromKeyboardKey key)
+            VolatileProcessInterface.KeyboardKeyDown
+                (volatileProcessKeyboardKeyFromKeyboardKey key)
 
         KeyboardKeyUp key ->
-            VolatileHostWindowsApi.KeyboardKeyUp
-                (volatileHostKeyboardKeyFromKeyboardKey key)
+            VolatileProcessInterface.KeyboardKeyUp
+                (volatileProcessKeyboardKeyFromKeyboardKey key)
 
         TakeScreenshot ->
-            VolatileHostWindowsApi.TakeScreenshot
+            VolatileProcessInterface.TakeScreenshot
 
 
 integrateEvent : InterfaceToHost.BotEvent -> State simpleBotState -> State simpleBotState
@@ -610,48 +611,48 @@ integrateEvent event stateBeforeUpdateTime =
 
         InterfaceToHost.TaskCompletedEvent { taskId, taskResult } ->
             case taskResult of
-                InterfaceToHost.CreateVolatileProcessResponse createVolatileHostResult ->
-                    { stateBefore | createVolatileHostResult = Just createVolatileHostResult }
+                InterfaceToHost.CreateVolatileProcessResponse createVolatileProcessResult ->
+                    { stateBefore | createVolatileProcessResult = Just createVolatileProcessResult }
 
-                InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileHostResponse ->
-                    case requestToVolatileHostResponse of
+                InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileProcessResponse ->
+                    case requestToVolatileProcessResponse of
                         Err InterfaceToHost.ProcessNotFound ->
                             { stateBefore | error = Just "Error running script in volatile process: ProcessNotFound" }
 
                         Err InterfaceToHost.FailedToAcquireInputFocus ->
                             { stateBefore | error = Just "Error running script in volatile process: FailedToAcquireInputFocus" }
 
-                        Ok runInVolatileHostComplete ->
-                            case runInVolatileHostComplete.returnValueToString of
+                        Ok runInVolatileProcessComplete ->
+                            case runInVolatileProcessComplete.returnValueToString of
                                 Nothing ->
-                                    { stateBefore | error = Just ("Error in volatile process: " ++ (runInVolatileHostComplete.exceptionToString |> Maybe.withDefault "")) }
+                                    { stateBefore | error = Just ("Error in volatile process: " ++ (runInVolatileProcessComplete.exceptionToString |> Maybe.withDefault "")) }
 
                                 Just returnValueToString ->
-                                    case stateBefore.createVolatileHostResult of
+                                    case stateBefore.createVolatileProcessResult of
                                         Nothing ->
                                             { stateBefore | error = Just ("Unexpected response from volatile process: " ++ returnValueToString) }
 
-                                        Just (Err createVolatileHostError) ->
-                                            { stateBefore | error = Just ("Failed to create volatile process: " ++ createVolatileHostError.exceptionToString) }
+                                        Just (Err createVolatileProcessError) ->
+                                            { stateBefore | error = Just ("Failed to create volatile process: " ++ createVolatileProcessError.exceptionToString) }
 
-                                        Just (Ok createVolatileHostCompleted) ->
-                                            case returnValueToString |> VolatileHostWindowsApi.deserializeResponseFromVolatileHost of
+                                        Just (Ok createVolatileProcessCompleted) ->
+                                            case returnValueToString |> VolatileProcessInterface.deserializeResponseFromVolatileProcess of
                                                 Err error ->
                                                     { stateBefore | error = Just ("Failed to parse response from volatile process: " ++ (error |> Json.Decode.errorToString)) }
 
-                                                Ok responseFromVolatileHost ->
+                                                Ok responseFromVolatileProcess ->
                                                     case stateBefore.windowId of
                                                         Nothing ->
-                                                            case responseFromVolatileHost of
-                                                                VolatileHostWindowsApi.GetForegroundWindowResult windowId ->
+                                                            case responseFromVolatileProcess of
+                                                                VolatileProcessInterface.GetForegroundWindowResult windowId ->
                                                                     { stateBefore | windowId = Just windowId }
 
                                                                 _ ->
                                                                     { stateBefore | error = Just ("Unexpected response from volatile process: " ++ returnValueToString) }
 
                                                         Just windowId ->
-                                                            case responseFromVolatileHost of
-                                                                VolatileHostWindowsApi.GetWindowTextResult windowText ->
+                                                            case responseFromVolatileProcess of
+                                                                VolatileProcessInterface.GetWindowTextResult windowText ->
                                                                     { stateBefore
                                                                         | lastWindowTitleMeasurement = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, windowTitle = windowText }
                                                                     }
@@ -682,30 +683,30 @@ statusDescriptionFromState state =
 
 getNextSetupStepWithDescriptionFromState : State simpleBotState -> FrameworkSetupStepActivity
 getNextSetupStepWithDescriptionFromState state =
-    case state.createVolatileHostResult of
+    case state.createVolatileProcessResult of
         Nothing ->
             { task =
                 { taskId = InterfaceToHost.taskIdFromString "create_volatile_process"
-                , task = InterfaceToHost.CreateVolatileProcess { programCode = VolatileHostWindowsApi.setupScript }
+                , task = InterfaceToHost.CreateVolatileProcess { programCode = CompilationInterface.SourceFiles.file____Windows_VolatileProcess_cx.utf8 }
                 }
-            , taskDescription = "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
+            , taskDescription = "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
             }
                 |> ContinueSetupWithTask
 
-        Just (Err createVolatileHostError) ->
-            StopWithResult { resultDescription = "Failed to create volatile host: " ++ createVolatileHostError.exceptionToString }
+        Just (Err createVolatileProcessError) ->
+            StopWithResult { resultDescription = "Failed to create volatile process: " ++ createVolatileProcessError.exceptionToString }
 
-        Just (Ok createVolatileHostCompleted) ->
+        Just (Ok createVolatileProcessCompleted) ->
             case state.windowId of
                 Nothing ->
                     let
                         task =
                             InterfaceToHost.RequestToVolatileProcess
                                 (InterfaceToHost.RequestNotRequiringInputFocus
-                                    { processId = createVolatileHostCompleted.processId
+                                    { processId = createVolatileProcessCompleted.processId
                                     , request =
-                                        VolatileHostWindowsApi.GetForegroundWindow
-                                            |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
+                                        VolatileProcessInterface.GetForegroundWindow
+                                            |> VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
                                     }
                                 )
                     in
@@ -721,11 +722,11 @@ getNextSetupStepWithDescriptionFromState state =
                                 task =
                                     InterfaceToHost.RequestToVolatileProcess
                                         (InterfaceToHost.RequestNotRequiringInputFocus
-                                            { processId = createVolatileHostCompleted.processId
+                                            { processId = createVolatileProcessCompleted.processId
                                             , request =
                                                 windowId
-                                                    |> VolatileHostWindowsApi.GetWindowText
-                                                    |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
+                                                    |> VolatileProcessInterface.GetWindowText
+                                                    |> VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
                                             }
                                         )
                             in
@@ -740,11 +741,11 @@ getNextSetupStepWithDescriptionFromState state =
                                     \taskOnWindow ->
                                         InterfaceToHost.RequestToVolatileProcess
                                             (InterfaceToHost.RequestNotRequiringInputFocus
-                                                { processId = createVolatileHostCompleted.processId
+                                                { processId = createVolatileProcessCompleted.processId
                                                 , request =
                                                     { windowId = windowId, task = taskOnWindow }
-                                                        |> VolatileHostWindowsApi.TaskOnWindow
-                                                        |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
+                                                        |> VolatileProcessInterface.TaskOnWindow
+                                                        |> VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
                                                 }
                                             )
                                 }
@@ -755,21 +756,21 @@ taskIdFromString =
     TaskIdFromString
 
 
-volatileHostMouseButtonFromMouseButton : MouseButton -> VolatileHostWindowsApi.MouseButton
-volatileHostMouseButtonFromMouseButton mouseButton =
+volatileProcessMouseButtonFromMouseButton : MouseButton -> VolatileProcessInterface.MouseButton
+volatileProcessMouseButtonFromMouseButton mouseButton =
     case mouseButton of
         MouseButtonLeft ->
-            VolatileHostWindowsApi.MouseButtonLeft
+            VolatileProcessInterface.MouseButtonLeft
 
         MouseButtonRight ->
-            VolatileHostWindowsApi.MouseButtonRight
+            VolatileProcessInterface.MouseButtonRight
 
 
-volatileHostKeyboardKeyFromKeyboardKey : KeyboardKey -> VolatileHostWindowsApi.KeyboardKey
-volatileHostKeyboardKeyFromKeyboardKey keyboardKey =
+volatileProcessKeyboardKeyFromKeyboardKey : KeyboardKey -> VolatileProcessInterface.KeyboardKey
+volatileProcessKeyboardKeyFromKeyboardKey keyboardKey =
     case keyboardKey of
         KeyboardKeyFromVirtualKeyCode keyCode ->
-            VolatileHostWindowsApi.KeyboardKeyFromVirtualKeyCode keyCode
+            VolatileProcessInterface.KeyboardKeyFromVirtualKeyCode keyCode
 
 
 dictWithTupleKeyFromIndicesInNestedList : List (List element) -> Dict.Dict ( Int, Int ) element

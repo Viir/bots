@@ -21,7 +21,7 @@ Despite being quite robust, this bot is far from being as smart as a human. For 
 
 ## Starting the Bot
 
-To start the bot, download the script from https://catalog.botlab.org/6768ac24433ab268f62a0177dba2639b70aee4b32c6b4cf98f0d9381f7188a49 and then run it.
+To start the bot, download the script from https://catalog.botlab.org/6768ac24433ab268 and then run it.
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
 
@@ -29,7 +29,7 @@ After completing the installation, run the script again to start the bot.
 
 The bot needs a few seconds to start and find the EVE Online client process. It also shows status messages to inform what it is doing at the moment and when the startup is complete.
 
-![EVE Online App Starting](./image/2019-10-08.eve-online-autopilot-bot-startup.png)
+![EVE Online Bot Starting](./image/2021-11-28-eve-online-autopilot-bot-startup.png)
 
 From here on, the bot works automatically. It detects the topmost game client window and starts working in that game client.
 

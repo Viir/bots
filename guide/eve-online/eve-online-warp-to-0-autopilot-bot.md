@@ -6,7 +6,7 @@ Fortunately, this process can be automated using a bot. The bot we are using her
 
 ## Starting the Autopilot Bot
 
-To start the bot, download the script from https://catalog.botlab.org/57cf0202e69b6fe2b71b0cf31c02015632318001ab0f6c8f34b8bdb7ba8febae and then run it.
+To start the bot, download the script from https://catalog.botlab.org/57cf0202e69b6fe2 and then run it.
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
 
@@ -14,7 +14,7 @@ After completing the installation, run the script again to start the bot.
 
 The bot needs a few seconds to start and find the EVE Online client process. It also shows status messages to inform what it is doing at the moment and when the startup is complete.
 
-![EVE Online Warp-To-0 Autopilot Starting](./image/2019-10-08.eve-online-autopilot-bot-startup.png)
+![EVE Online Warp-To-0 Autopilot Starting](./image/2021-11-28-eve-online-autopilot-bot-startup.png)
 
 When the startup sequence has completed, the bot might display this message:
 

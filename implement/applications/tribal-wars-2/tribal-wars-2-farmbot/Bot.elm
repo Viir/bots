@@ -215,6 +215,7 @@ type alias BotState =
             , parseResult : Result Json.Decode.Error RootInformationStructure
             }
     , lastPageLocation : Maybe String
+    , gameLastPageLocation : Maybe String
     , gameRootInformationResult : Maybe { timeInMilliseconds : Int, gameRootInformation : TribalWars2RootInformation }
     , ownVillagesDetails : Dict.Dict Int { timeInMilliseconds : Int, villageDetails : VillageDetails }
     , lastJumpToCoordinates : Maybe { timeInMilliseconds : Int, coordinates : VillageCoordinates }
@@ -455,6 +456,7 @@ initState =
     , pendingRequestToPageRequestId = Nothing
     , lastRunJavascriptResult = Nothing
     , lastPageLocation = Nothing
+    , gameLastPageLocation = Nothing
     , gameRootInformationResult = Nothing
     , ownVillagesDetails = Dict.empty
     , lastJumpToCoordinates = Nothing
@@ -598,12 +600,27 @@ processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
                             )
 
                         Nothing ->
-                            decideNextAction
-                                { lastPageLocation = stateBeforeIntegrateEvent.lastPageLocation
-                                , webBrowserRunning = genericBotState.webBrowserRunning
-                                }
-                                { stateBefore | currentActivity = Nothing }
-                                |> Tuple.mapSecond Just
+                            let
+                                ( botResponse, botState ) =
+                                    decideNextAction
+                                        { lastPageLocation = stateBeforeIntegrateEvent.lastPageLocation
+                                        , gameLastPageLocation = stateBeforeIntegrateEvent.gameLastPageLocation
+                                        , webBrowserRunning = genericBotState.webBrowserRunning
+                                        }
+                                        { stateBefore | currentActivity = Nothing }
+
+                                lastPageLocation =
+                                    case botResponse |> Common.DecisionTree.unpackToDecisionStagesDescriptionsAndLeaf |> Tuple.second of
+                                        BotFramework.ContinueSession (Just (BotFramework.StartWebBrowser startWebBrowser)) ->
+                                            startWebBrowser.pageGoToUrl
+
+                                        BotFramework.ContinueSession (Just (BotFramework.CloseWebBrowser _)) ->
+                                            Nothing
+
+                                        _ ->
+                                            botState.lastPageLocation
+                            in
+                            ( botResponse, Just { botState | lastPageLocation = lastPageLocation } )
 
                 ( activityDecisionStages, responseToFramework ) =
                     activityDecision
@@ -618,8 +635,11 @@ processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
             }
 
 
-decideNextAction : { lastPageLocation : Maybe String, webBrowserRunning : Bool } -> BotState -> ( DecisionPathNode BotResponse, BotState )
-decideNextAction { lastPageLocation, webBrowserRunning } stateBefore =
+decideNextAction :
+    { lastPageLocation : Maybe String, gameLastPageLocation : Maybe String, webBrowserRunning : Bool }
+    -> BotState
+    -> ( DecisionPathNode BotResponse, BotState )
+decideNextAction { lastPageLocation, gameLastPageLocation, webBrowserRunning } stateBefore =
     case stateBefore.farmState of
         InBreak farmBreak ->
             let
@@ -638,8 +658,16 @@ decideNextAction { lastPageLocation, webBrowserRunning } stateBefore =
             else
                 let
                     botRequest =
-                        if stateBefore.settings.closeGameClientDuringBreak == AppSettings.Yes then
-                            Just (BotFramework.CloseWebBrowser { userProfileId = stateBefore.settings.webBrowserUserProfileId })
+                        if
+                            (stateBefore.settings.closeGameClientDuringBreak == AppSettings.Yes)
+                                && (stateBefore.gameLastPageLocation == stateBefore.lastPageLocation)
+                        then
+                            Just
+                                (BotFramework.StartWebBrowser
+                                    { userProfileId = stateBefore.settings.webBrowserUserProfileId
+                                    , pageGoToUrl = Just "about:blank"
+                                    }
+                                )
 
                         else
                             Nothing
@@ -676,7 +704,7 @@ decideNextAction { lastPageLocation, webBrowserRunning } stateBefore =
                                             let
                                                 continueWithStartWebBrowser =
                                                     ( BotFramework.StartWebBrowser
-                                                        { pageGoToUrl = lastPageLocation
+                                                        { pageGoToUrl = gameLastPageLocation
                                                         , userProfileId = stateBefore.settings.webBrowserUserProfileId
                                                         }
                                                     , { stateBefore
@@ -689,7 +717,10 @@ decideNextAction { lastPageLocation, webBrowserRunning } stateBefore =
                                                 ( requestToFramework, updatedStateForActivity ) =
                                                     case activity of
                                                         RequestToPage requestToPage ->
-                                                            if not webBrowserRunning then
+                                                            if
+                                                                not webBrowserRunning
+                                                                    || (stateBefore.lastPageLocation /= stateBefore.gameLastPageLocation)
+                                                            then
                                                                 continueWithStartWebBrowser
 
                                                             else
@@ -928,6 +959,16 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                 _ ->
                     stateBefore.lastPageLocation
 
+        gameLastPageLocation =
+            if
+                Maybe.withDefault False (Maybe.map (String.contains "tribalwars2.com/game.php") lastPageLocation)
+                    && (Maybe.andThen .tribalWars2 (Result.toMaybe parseAsRootInfoResult) /= Nothing)
+            then
+                lastPageLocation
+
+            else
+                stateBefore.gameLastPageLocation
+
         stateAfterIntegrateResponse =
             { stateBefore
                 | pendingRequestToPageRequestId = pendingRequestToPageRequestId
@@ -938,6 +979,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                         , parseResult = parseAsRootInfoResult
                         }
                 , lastPageLocation = lastPageLocation
+                , gameLastPageLocation = gameLastPageLocation
             }
 
         parseResult =

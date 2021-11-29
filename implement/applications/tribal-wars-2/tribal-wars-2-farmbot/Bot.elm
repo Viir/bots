@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2021-11-23
+{- Tribal Wars 2 farmbot version 2021-11-29
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -94,42 +94,55 @@ parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
     AppSettings.parseSimpleListOfAssignments { assignmentsSeparators = [ ",", "\n" ] }
         ([ ( "number-of-farm-cycles"
-           , AppSettings.valueTypeInteger (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles })
+           , AppSettings.valueTypeInteger
+                (\numberOfFarmCycles settings ->
+                    { settings | numberOfFarmCycles = numberOfFarmCycles }
+                )
            )
          , ( "break-duration"
            , parseBotSettingBreakDurationMinutes
            )
          , ( "farm-barb-min-points"
-           , AppSettings.valueTypeInteger (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints })
+           , AppSettings.valueTypeInteger
+                (\minimumPoints settings ->
+                    { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }
+                )
            )
          , ( "farm-barb-max-distance"
-           , AppSettings.valueTypeInteger (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance })
+           , AppSettings.valueTypeInteger
+                (\maxDistance settings ->
+                    { settings | farmBarbarianVillageMaximumDistance = maxDistance }
+                )
            )
          , ( "farm-avoid-coordinates"
            , parseSettingFarmAvoidCoordinates
            )
          , ( "farm-player"
            , AppSettings.valueTypeString
-                (\playerName ->
-                    \settings ->
-                        { settings | playersToFarm = playerName :: settings.playersToFarm }
+                (\playerName settings ->
+                    { settings | playersToFarm = playerName :: settings.playersToFarm }
                 )
            )
          , ( "farm-army-preset-pattern"
            , AppSettings.valueTypeString
-                (\presetPattern ->
-                    \settings ->
-                        { settings | farmArmyPresetPatterns = presetPattern :: settings.farmArmyPresetPatterns }
+                (\presetPattern settings ->
+                    { settings | farmArmyPresetPatterns = presetPattern :: settings.farmArmyPresetPatterns }
                 )
            )
          , ( "limit-outgoing-commands-per-village"
            , parseBotSettingLimitOutgoingCommandsPerVillage
            )
          , ( "web-browser-user-profile-id"
-           , AppSettings.valueTypeString (\webBrowserUserProfileId settings -> { settings | webBrowserUserProfileId = webBrowserUserProfileId })
+           , AppSettings.valueTypeString
+                (\webBrowserUserProfileId settings ->
+                    { settings | webBrowserUserProfileId = webBrowserUserProfileId }
+                )
            )
          , ( "close-game-client-during-break"
-           , AppSettings.valueTypeYesOrNo (\closeGameClientDuringBreak settings -> { settings | closeGameClientDuringBreak = closeGameClientDuringBreak })
+           , AppSettings.valueTypeYesOrNo
+                (\closeGameClientDuringBreak settings ->
+                    { settings | closeGameClientDuringBreak = closeGameClientDuringBreak }
+                )
            )
          ]
             |> Dict.fromList

@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2021-11-29
+{- Tribal Wars 2 farmbot version 2021-11-30
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -719,7 +719,9 @@ decideNextAction { lastPageLocation, gameLastPageLocation, webBrowserRunning } s
                                                         RequestToPage requestToPage ->
                                                             if
                                                                 not webBrowserRunning
-                                                                    || (stateBefore.lastPageLocation /= stateBefore.gameLastPageLocation)
+                                                                    || ((stateBefore.lastPageLocation /= stateBefore.gameLastPageLocation)
+                                                                            && (stateBefore.gameLastPageLocation /= Nothing)
+                                                                       )
                                                             then
                                                                 continueWithStartWebBrowser
 

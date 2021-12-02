@@ -196,4 +196,7 @@ Note that browser state like bookmarks and cookies belong to that web browser pr
 
 If you have any questions, the [BotLab forum](https://forum.botlab.org) is a good place to learn more. You can also contact me at [support@botlab.org](mailto:support@botlab.org?subject=Tribal%20Wars%202%20Farmbot%20-%20your%20issue%20here)
 
-When asking for help with the bot, include the complete text from the console window or a screenshot. Make sure screenshots are well readable. Don't try to insert a screenshot directly into the forum, as it will be compressed and unreadable. When posting on the forum, you can link screenshots hosted at other sites like Github or imgur.
+When asking for help with the bot, include one of these two artifacts to help us see what happened on your setup:
+
++ The summary from the `Report Problem or Share Session` dialog in the play session interface. Either upload the saved JSON file or copy the text in that file.
++ The play session recording archive from the session view in Devtools.

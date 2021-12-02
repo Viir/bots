@@ -32,11 +32,15 @@ This video shows the process of starting the farmbot and setting up your Tribal 
 
 https://youtu.be/yzkernqechE
 
-To start the farmbot, download the executable file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2021-11-23.exe and then run it.
+Following are the first steps shown in the video, using a dedicated Windows program to run the farmbot:
+
++ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2021-11-30.zip
++ Extract the downloaded zip archive. The extraction will give you a file named `tribal-wars-2-farmbot.exe`.
++ Run the `tribal-wars-2-farmbot.exe` program.
 
 The first time you start the bot, it will download a web browser component. This can take some time, depending on your internet connection.
 
-![Tribal Wars 2 Farmbot Starting](./image/2021-07-05-tribal-wars-2-farmbot-before-login.png)
+![Tribal Wars 2 Farmbot Starting](./image/2021-12-02-tribal-wars-2-farmbot-before-login.png)
 
 When the browser download is finished, the bot opens a 'chromium' web browser window, which is a variant of googles chrome web browser. In the Windows taskbar, it appears with an icon that is a blueish version of the google chrome logo:
 
@@ -111,17 +115,17 @@ Following is a list of available settings:
 + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45-48`. The bot then picks a random value in this range.
 + `close-game-client-during-break`: Set this to 'yes' to make the bot close the game client/web browser during breaks.
 
-To configure settings, open the configuration page at [https://catalog.botlab.org/2979167a62ed916a80365b31bfe7123694488eb3fcd0d4bc84ed0650f3155500](https://catalog.botlab.org/2979167a62ed916a80365b31bfe7123694488eb3fcd0d4bc84ed0650f3155500) in a web browser.
+To configure settings, open the configuration page at [https://catalog.botlab.org/9ddb087cd1b6da29](https://catalog.botlab.org/9ddb087cd1b6da29) in a web browser.
 
 On this page, scroll down to the button `Configure bot`.
 
-![Button to enter configuration](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-button.png)
+![Button to enter configuration](./image/2021-12-02-catalog-tribal-wars-2-farmbot-configure-bot-button.png)
 
-Click this button to navigate into the configuration interface:
+Click this button to enter the configuration interface:
 
-![Input fields for configuration](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-form.png)
+![Input fields for configuration](./image/2021-12-02-catalog-tribal-wars-2-farmbot-configure-bot-form.png)
 
-Here we have multiple input fields, but to use any of the bot settings mentioned above, we only need the input field right of the `--bot-settings` label.
+Here we have multiple input fields, but to use any of the bot settings mentioned above, we only need the text box right of the `--bot-settings` label.
 
 When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of `bot-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
@@ -131,7 +135,7 @@ number-of-farm-cycles = 3
 break-duration = 20 - 40
 ```
 
-![Input fields for configuration with bot-settings](./image/2020-04-20-catalog-tribal-wars-2-farmbot-configure-app-form-with-settings.png)
+![Input fields for configuration with bot-settings](./image/2021-12-02-catalog-tribal-wars-2-farmbot-configure-bot-form-filled-crop.png)
 
 Use the button `Download script with this command line to run the bot` to download a script to run the bot with the entered settings.
 
@@ -184,7 +188,7 @@ web-browser-user-profile-id = profile-beta
 ```
 
 While running, the bot displays the profile ID, so you can check that each running instance has a unique value:
-![bot displays the web-browser-user-profile-id setting](./image/2021-01-09-tribal-wars-2-web-browser-user-profile-id.png)
+![bot displays the web-browser-user-profile-id setting](./image/2021-12-02-tribal-wars-2-farmbot-browser-profile-id.png)
 
 Note that browser state like bookmarks and cookies belong to that web browser profile. That means you need to log in to the game for each new profile that you create.
 

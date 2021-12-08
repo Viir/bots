@@ -167,7 +167,7 @@ inventoryWindowWithOreHoldSelectedFromGameClient =
 
 inventoryWindowSelectedContainerIsOreHold : EveOnline.ParseUserInterface.InventoryWindow -> Bool
 inventoryWindowSelectedContainerIsOreHold =
-    .subCaptionLabelText >> Maybe.map (String.toLower >> String.contains "ore hold") >> Maybe.withDefault False
+    .subCaptionLabelText >> Maybe.map (String.toLower >> String.contains "mining hold") >> Maybe.withDefault False
 
 
 itemHangarFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe UIElement

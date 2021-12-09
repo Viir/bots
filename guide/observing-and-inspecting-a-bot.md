@@ -19,43 +19,48 @@ But we don't have to make it so difficult for ourselves. These problems with obs
 The first step to enable observability is to decouple the observation time from the bot running time. Our development tools allow us to go back to any point in time and see everything as it was back then.
 
 Let's see how this works in practice.
-Before we can travel back in time, we need to run a bot (or get a session archive from somewhere else, as we will see later). You can use any of the example bot programs in the bots repository, miner, autopilot, or anomaly bot. When we run a bot, the BotLab client saves a recording to disk by default.
-After running a bot, we can use the `botlab  devtools` command to open the development tools:
+To travel back in time, we need a play session recording. The BotLab client automatically saves a recording to disk by default when we run a bot.
 
-![Opening DevTools from the command-line](./image/2020-07-18-open-botengine-devtools.png)
+To inspect completed play sessions, we use the `Devtools` in the BotLab client:
 
-Running this command opens a web browser window. We continue in the web browser, no need to look at the console window anymore.
+![Opening DevTools from the main menu](./image/2021-12-09-botlab-client-main-menu-enter-devtools.png)
 
-![DevTools - choose a session to inspect](./image/2020-07-18-botengine-devtools-choose-session.png)
+A button in the main menu brings us into the `Devtools` view:
 
-On that web page, we find a list of recent sessions, the last one at the top.
+![DevTools view in the botlab client](./image/2021-12-09-botlab-client-devtools-default.png)
+
+Here we see a link to a web page on the `localhost` domain. Clicking that link brings opens a web browser. The actual graphical user interface for the Devtools is on this web page.
+
+On that web page, we find a list of recent sessions, the last one at the top:
+
+![DevTools - choose a session to inspect](./image/2021-12-09-botlab-devtools-select-session.png)
 
 Clicking on one of the sessions' names brings us into the view of this particular session:
 
-![DevTools - initial view of a session](./image/2020-07-18-botengine-devtools-session-init.png)
+![DevTools - initial view of a session](./image/2021-12-09-botlab-devtools-session-summary.png)
 
 In the session view, we have a timeline of events in that session. Clicking on an event in the timeline opens the details for this event. The event details also contain the bot's response to this event.
 
-![DevTools - view of a bot session event](./image/2020-07-18-botengine-devtools-session-selected-event.png)
+![DevTools - view of play session event details](./image/2021-12-09-botlab-devtools-session-event-details.png)
 
 Besides the complete response, we also see the status text, which is part of the response but repeated in a dedicated section for better readability.
 
-Some events inform the bot about the completion of reading from the game client. For these events, the event details also show a visualization of the reading. For EVE Online, the common way to read from the game client is using memory reading. That is why we don't see a screenshot here, but a (limited) visualization.
+Some events inform the bot about the completion of reading from the game client. For these events, the event details also show a visualization of the reading. For EVE Online, a common way to read from the game client is using memory reading. That is why we don't see a screenshot here, but a (limited) visualization.
 
-![DevTools - view of an bot session event - EVE Online specific part](./image/2020-07-18-botengine-devtools-session-selected-event-eve-online.png)
+![DevTools - view of play session event details - EVE Online specific part](./image/2021-12-09-botlab-devtools-session-event-details-eve-online-reading.png)
 
 This visualization shows the display regions of UI elements and some of the display texts. Using the button "Download reading as JSON file", we can export this memory reading for further examination. The inspection tools found in the alternate UI for EVE Online help us with that. You can find those tools at https://botlabs.blob.core.windows.net/blob-library/by-name/2021-10-29-eve-online-alternate-ui.html
 (If you want to enable the Elm inspector ('debugger') tool too, you can use the variant at https://botlabs.blob.core.windows.net/blob-library/by-name/2021-10-29-eve-online-alternate-ui-with-inspector.html)
 
 ## Sharing Observations
 
-To collaborate on the development of a bot, we often need to communicate scenarios, situations in which we want the bot to work. One way to describe such a scenario is to use the recording of an actual session as it happened. To export any session displayed in the DevTools, use the "Download session archive" button. This gets you a zip archive that you can then share with other people. Now you can get help from other developers for your exact situation, no matter if the solution requires a change in program code or just different bot-settings.
+To collaborate on the development of a bot, we often need to communicate scenarios, situations in which we want the bot to work. One way to describe such a scenario is to use the recording of an actual session as it happened. To export any session displayed in the DevTools, use the `Download session recording archive` button. This gets you a zip archive that you can then share with other people. Now you can get help from other developers for your exact situation, no matter if the solution requires a change in program code or just different bot-settings.
 
-To import such a session archive in DevTools, use the `botlab  devtools` command with the path to the zip archive as an additional argument:
+To import such a session archive in DevTools, use the `import artifact` button in the Devtools view in the botlab client:
 
-![Opening DevTools from the command-line](./image/2020-07-18-open-botengine-devtools-additional-source.png)
+![Import artifact in DevTools](./image/2021-12-09-botlab-client-devtools-import-artifact.png)
 
 When you start DevTools this way, the session from the specified path will show up at the top of the list of sessions in the DevTools UI:
 
-![DevTools - choose a session to inspect](./image/2020-07-18-botengine-devtools-choose-session-additional-source.png)
+![DevTools - choose a session to inspect](./image/2021-12-09-botlab-devtools-select-session-with-imported.png)
 

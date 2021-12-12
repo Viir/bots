@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2021-11-30
+{- Tribal Wars 2 farmbot version 2021-12-12
 
    I search for barbarian villages around your villages and then attack them.
 

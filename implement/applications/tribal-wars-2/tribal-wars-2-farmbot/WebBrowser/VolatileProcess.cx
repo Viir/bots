@@ -149,6 +149,10 @@ static string UserDataDirPath(string userProfileId) =>
     System.IO.Path.Combine(
         Environment.GetEnvironmentVariable("LOCALAPPDATA"), "bot", "web-browser", "user-profile", userProfileId, "user-data");
 
+static string BrowserDownloadDirPath() =>
+    System.IO.Path.Combine(
+        Environment.GetEnvironmentVariable("LOCALAPPDATA"), "bot", "web-browser", "download");
+
 PuppeteerSharp.Browser browser;
 PuppeteerSharp.Page browserPage;
 
@@ -159,7 +163,14 @@ async System.Threading.Tasks.Task KillOtherInstancesAndStartBrowser(
     string userProfileId,
     int remoteDebuggingPort)
 {
-    await new PuppeteerSharp.BrowserFetcher().DownloadAsync(PuppeteerSharp.BrowserFetcher.DefaultRevision);
+    var browserRevision = PuppeteerSharp.BrowserFetcher.DefaultChromiumRevision;
+
+    var browserFetcher = new PuppeteerSharp.BrowserFetcher(new PuppeteerSharp.BrowserFetcherOptions
+    {
+        Path = BrowserDownloadDirPath()
+    });
+
+    await browserFetcher.DownloadAsync(browserRevision);
 
     KillPreviousWebBrowserProcesses(userProfileId);
 
@@ -169,6 +180,7 @@ async System.Threading.Tasks.Task KillOtherInstancesAndStartBrowser(
         Headless = false,
         UserDataDir = UserDataDirPath(userProfileId),
         DefaultViewport = null,
+        ExecutablePath = browserFetcher.RevisionInfo(browserRevision).ExecutablePath,
     });
 
     browserPage = (await browser.PagesAsync()).FirstOrDefault() ?? await browser.NewPageAsync();
@@ -262,13 +274,18 @@ bool ProcessIsWebBrowser(System.Diagnostics.Process process)
 {
     try
     {
-        return process.MainModule.FileName.Contains(".local-chromium");
+        return
+            MapFilePathForEqualityComparison(process.MainModule.FileName)
+            .Contains(MapFilePathForEqualityComparison(BrowserDownloadDirPath()));
     }
     catch
     {
         return false;
     }
 }
+
+static string MapFilePathForEqualityComparison(string filePath) =>
+    filePath.Replace("\\", "/").ToLowerInvariant();
 
 static string GetUserDataDirFromChromeCommandLine(string commandLine)
 {

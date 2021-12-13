@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2021-12-12
+{- Tribal Wars 2 farmbot version 2021-12-13
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -32,6 +32,7 @@
    + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
    + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45 - 48`. The bot then picks a random value in this range for each village.
    + `close-game-client-during-break`: Set this to 'yes' to make the bot close the game client/web browser during breaks.
+   + `open-website-on-start`: Website to open when starting the web browser.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of `bot-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
@@ -87,6 +88,7 @@ initBotSettings =
     , limitOutgoingCommandsPerVillage = { minimum = 50, maximum = 50 }
     , webBrowserUserProfileId = "default"
     , closeGameClientDuringBreak = AppSettings.No
+    , openWebsiteOnStart = Nothing
     }
 
 
@@ -142,6 +144,12 @@ parseBotSettings =
            , AppSettings.valueTypeYesOrNo
                 (\closeGameClientDuringBreak settings ->
                     { settings | closeGameClientDuringBreak = closeGameClientDuringBreak }
+                )
+           )
+         , ( "open-website-on-start"
+           , AppSettings.valueTypeString
+                (\openWebsiteOnStart settings ->
+                    { settings | openWebsiteOnStart = Just openWebsiteOnStart }
                 )
            )
          ]
@@ -249,6 +257,7 @@ type alias BotSettings =
     , limitOutgoingCommandsPerVillage : IntervalInt
     , webBrowserUserProfileId : String
     , closeGameClientDuringBreak : AppSettings.YesOrNo
+    , openWebsiteOnStart : Maybe String
     }
 
 
@@ -704,7 +713,10 @@ decideNextAction { lastPageLocation, gameLastPageLocation, webBrowserRunning } s
                                             let
                                                 continueWithStartWebBrowser =
                                                     ( BotFramework.StartWebBrowser
-                                                        { pageGoToUrl = gameLastPageLocation
+                                                        { pageGoToUrl =
+                                                            [ gameLastPageLocation, stateBefore.settings.openWebsiteOnStart ]
+                                                                |> List.filterMap identity
+                                                                |> List.head
                                                         , userProfileId = stateBefore.settings.webBrowserUserProfileId
                                                         }
                                                     , { stateBefore

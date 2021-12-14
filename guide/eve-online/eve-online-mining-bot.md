@@ -6,10 +6,10 @@ Maybe you have seen some bots or 'macros' which follow a fixed sequence of actio
 
 Before going into the setup, a quick overview of this bot and what it does:
 
-+ When the ore hold is not full, warps to an asteroid belt.
++ When the mining hold is not full, warps to an asteroid belt.
 + Uses drones to defend against rats if available.
 + Mines from asteroids.
-+ When the ore hold is full, warps and docks to a station or structure to unload the ore into the item hangar. (It remembers the station in which it was last docked, and docks again at the same station.)
++ When the mining hold is full, warps and docks to a station or structure to unload the ore into the item hangar. (It remembers the station in which it was last docked, and docks again at the same station.)
 + Runs away if shield hitpoints drop too low (The default threshold is 70%).
 + Displays statistics such as the total volume of unloaded ore, so that you can easily track performance.
 + Closes message boxes that could pop up sometimes during gameplay.
@@ -51,8 +51,8 @@ To give an overview of the performance of the bot, it displays statistics like t
 
 All settings are optional; you only need them in case the defaults don't fit your use-case.
 
-+ `unload-station-name` : Name of a station to dock to when the ore hold is full.
-+ `unload-structure-name` : Name of a structure to dock to when the ore hold is full.
++ `unload-station-name` : Name of a station to dock to when the mining hold is full.
++ `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
 + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
 + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
 

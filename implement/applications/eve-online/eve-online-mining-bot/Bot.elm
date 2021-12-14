@@ -1,6 +1,6 @@
 {- EVE Online mining bot version 2021-11-03
 
-   The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
+   The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
 
    Setup instructions for the EVE Online client:
@@ -15,8 +15,8 @@
 
    All settings are optional; you only need them in case the defaults don't fit your use-case.
 
-   + `unload-station-name` : Name of a station to dock to when the ore hold is full.
-   + `unload-structure-name` : Name of a structure to dock to when the ore hold is full.
+   + `unload-station-name` : Name of a station to dock to when the mining hold is full.
+   + `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
    + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
    + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
 
@@ -355,7 +355,7 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
         Just itemHangar ->
             case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
-                    describeBranch "I see no item in the ore hold. Check if we should undock."
+                    describeBranch "I see no item in the mining hold. Check if we should undock."
                         (continueIfShouldHide
                             { ifShouldHide =
                                 describeBranch "Stay docked." waitForProgressInGame
@@ -365,7 +365,7 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
                         )
 
                 Just itemInInventory ->
-                    describeBranch "I see at least one item in the ore hold. Move this to the item hangar."
+                    describeBranch "I see at least one item in the mining hold. Move this to the item hangar."
                         (describeBranch "Drag and drop."
                             (decideActionForCurrentStep
                                 (EffectOnWindow.effectsForDragAndDrop
@@ -422,7 +422,7 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
             Nothing ->
                 case inventoryWindowWithMiningHoldSelected |> capacityGaugeUsedPercent of
                     Nothing ->
-                        describeBranch "I do not see the ore hold capacity gauge." askForHelpToGetUnstuck
+                        describeBranch "I do not see the mining hold capacity gauge." askForHelpToGetUnstuck
 
                     Just fillPercent ->
                         let
@@ -430,13 +430,13 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                                 (context.eventContext.botSettings.miningHoldMaxPercent |> String.fromInt) ++ "%"
                         in
                         if context.eventContext.botSettings.miningHoldMaxPercent <= fillPercent then
-                            describeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
+                            describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
                                 (returnDronesToBay context
                                     |> Maybe.withDefault (dockToUnloadOre context)
                                 )
 
                         else
-                            describeBranch ("The ore hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
+                            describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
                                 (case context.readingFromGameClient.targets |> List.head of
                                     Nothing ->
                                         describeBranch "I see no locked target."
@@ -554,22 +554,22 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
 
                 Just inventoryWindow ->
                     describeBranch
-                        "Ore hold is not selected. Select the ore hold."
+                        "mining hold is not selected. Select the mining hold."
                         (case inventoryWindow |> activeShipTreeEntryFromInventoryWindow of
                             Nothing ->
                                 describeBranch "I do not see the active ship in the inventory." askForHelpToGetUnstuck
 
                             Just activeShipTreeEntry ->
                                 let
-                                    maybeMiningHoldTreeEntry =
+                                    maybeminingHoldTreeEntry =
                                         activeShipTreeEntry.children
                                             |> List.map EveOnline.ParseUserInterface.unwrapInventoryWindowLeftTreeEntryChild
-                                            |> List.filter (.text >> String.toLower >> String.contains "ore hold")
+                                            |> List.filter (.text >> String.toLower >> String.contains "mining hold")
                                             |> List.head
                                 in
-                                case maybeMiningHoldTreeEntry of
+                                case maybeminingHoldTreeEntry of
                                     Nothing ->
-                                        describeBranch "I do not see the ore hold under the active ship in the inventory."
+                                        describeBranch "I do not see the mining hold under the active ship in the inventory."
                                             (case activeShipTreeEntry.toggleBtn of
                                                 Nothing ->
                                                     describeBranch "I do not see the toggle button to expand the active ship tree entry."
@@ -582,10 +582,10 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
                                                         )
                                             )
 
-                                    Just MiningHoldTreeEntry ->
-                                        describeBranch "Click the tree entry representing the ore hold."
+                                    Just miningHoldTreeEntry ->
+                                        describeBranch "Click the tree entry representing the mining hold."
                                             (decideActionForCurrentStep
-                                                (clickOnUIElement MouseButtonLeft MiningHoldTreeEntry.uiNode)
+                                                (clickOnUIElement MouseButtonLeft miningHoldTreeEntry.uiNode)
                                             )
                         )
 
@@ -984,7 +984,7 @@ statusTextFromDecisionContext context =
                         ++ "."
 
         describeMiningHold =
-            "Ore hold filled "
+            "mining hold filled "
                 ++ (readingFromGameClient
                         |> inventoryWindowWithMiningHoldSelectedFromGameClient
                         |> Maybe.andThen capacityGaugeUsedPercent
@@ -1135,7 +1135,7 @@ inventoryWindowWithMiningHoldSelectedFromGameClient =
 
 inventoryWindowSelectedContainerIsMiningHold : EveOnline.ParseUserInterface.InventoryWindow -> Bool
 inventoryWindowSelectedContainerIsMiningHold =
-    .subCaptionLabelText >> Maybe.map (String.toLower >> String.contains "ore hold") >> Maybe.withDefault False
+    .subCaptionLabelText >> Maybe.map (String.toLower >> String.contains "mining hold") >> Maybe.withDefault False
 
 
 selectedContainerFirstItemFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe UIElement

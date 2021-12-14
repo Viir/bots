@@ -53,7 +53,7 @@ inventory_capacity_gauge_text =
     -- Example from https://forum.botlab.org/t/standard-mining-bot-problems/2715/14
     , ( "4 999,8/5 000,0 m³", Ok { used = 4999, maximum = Just 5000, selected = Nothing } )
 
-    -- 2020-01-31 sample 'process-sample-2FA2DCF580-[In Space with selected Ore Hold].zip' from Leon Bechen.
+    -- 2020-01-31 sample 'process-sample-2FA2DCF580-[In Space with selected mining hold].zip' from Leon Bechen.
     , ( "0/5.000,0 m³", Ok { used = 0, maximum = Just 5000, selected = Nothing } )
 
     -- 2020-02-16-eve-online-sample

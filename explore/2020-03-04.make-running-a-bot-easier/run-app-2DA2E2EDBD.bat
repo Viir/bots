@@ -4,7 +4,7 @@
 @echo Below is the beginning of the app description found on the catalog:
 @echo.
 @echo {- Michaels EVE Online mining bot version 2020-02-13
-@echo The bot warps to an asteroid belt, mines there until the ore hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
+@echo The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station to unload the ore. It then repeats this cycle until you stop it.
 @echo [...]
 @echo.
 

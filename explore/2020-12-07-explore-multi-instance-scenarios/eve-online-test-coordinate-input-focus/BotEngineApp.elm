@@ -121,30 +121,30 @@ botDecisionRoot context =
 
 docked : BotDecisionContext -> DecisionPathNode
 docked context =
-    case inventoryWindowWithOreHoldSelectedFromGameClient context.readingFromGameClient of
+    case inventoryWindowWithMiningHoldSelectedFromGameClient context.readingFromGameClient of
         Nothing ->
-            describeBranch "I do not see an inventory with ore hold selected." askForHelpToGetUnstuck
+            describeBranch "I do not see an inventory with Mining hold selected." askForHelpToGetUnstuck
 
-        Just inventoryWindowWithOreHoldSelected ->
-            dockedWithOreHoldSelected context inventoryWindowWithOreHoldSelected
+        Just inventoryWindowWithMiningHoldSelected ->
+            dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected
 
 
-dockedWithOreHoldSelected : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
-dockedWithOreHoldSelected context inventoryWindowWithOreHoldSelected =
-    case inventoryWindowWithOreHoldSelected |> itemHangarFromInventoryWindow of
+dockedWithMiningHoldSelected : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
+dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
+    case inventoryWindowWithMiningHoldSelected |> itemHangarFromInventoryWindow of
         Nothing ->
             describeBranch "I do not see the item hangar in the inventory." askForHelpToGetUnstuck
 
         Just itemHangar ->
             case
-                inventoryWindowWithOreHoldSelected
+                inventoryWindowWithMiningHoldSelected
                     |> selectedContainerFirstMatchingItemFromInventoryWindow context.eventContext.appSettings.itemNamePattern
             of
                 Nothing ->
-                    describeBranch "I see no matching item in the ore hold." waitForProgressInGame
+                    describeBranch "I see no matching item in the Mining hold." waitForProgressInGame
 
                 Just itemInInventory ->
-                    describeBranch "I see at least one item in the ore hold. Move this to the item hangar."
+                    describeBranch "I see at least one item in the Mining hold. Move this to the item hangar."
                         (endDecisionPath
                             (actWithoutFurtherReadings
                                 ( "Drag and drop."
@@ -158,16 +158,16 @@ dockedWithOreHoldSelected context inventoryWindowWithOreHoldSelected =
                         )
 
 
-inventoryWindowWithOreHoldSelectedFromGameClient : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.InventoryWindow
-inventoryWindowWithOreHoldSelectedFromGameClient =
+inventoryWindowWithMiningHoldSelectedFromGameClient : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.InventoryWindow
+inventoryWindowWithMiningHoldSelectedFromGameClient =
     .inventoryWindows
-        >> List.filter inventoryWindowSelectedContainerIsOreHold
+        >> List.filter inventoryWindowSelectedContainerIsMiningHold
         >> List.head
 
 
-inventoryWindowSelectedContainerIsOreHold : EveOnline.ParseUserInterface.InventoryWindow -> Bool
-inventoryWindowSelectedContainerIsOreHold =
-    .subCaptionLabelText >> Maybe.map (String.toLower >> String.contains "ore hold") >> Maybe.withDefault False
+inventoryWindowSelectedContainerIsMiningHold : EveOnline.ParseUserInterface.InventoryWindow -> Bool
+inventoryWindowSelectedContainerIsMiningHold =
+    .subCaptionLabelText >> Maybe.map (String.toLower >> String.contains "Mining hold") >> Maybe.withDefault False
 
 
 itemHangarFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe UIElement

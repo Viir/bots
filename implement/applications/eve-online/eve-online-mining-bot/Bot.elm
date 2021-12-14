@@ -104,7 +104,7 @@ defaultBotSettings =
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 1300
-    , oreHoldMaxPercent = 99
+    , miningHoldMaxPercent = 99
     , selectInstancePilotName = Nothing
     }
 
@@ -135,7 +135,7 @@ parseBotSettings =
            , AppSettings.valueTypeInteger (\range settings -> { settings | miningModuleRange = range })
            )
          , ( "ore-hold-max-percent"
-           , AppSettings.valueTypeInteger (\percent settings -> { settings | oreHoldMaxPercent = percent })
+           , AppSettings.valueTypeInteger (\percent settings -> { settings | miningHoldMaxPercent = percent })
            )
          , ( "select-instance-pilot-name"
            , AppSettings.valueTypeString (\pilotName -> \settings -> { settings | selectInstancePilotName = Just pilotName })
@@ -163,7 +163,7 @@ type alias BotSettings =
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
-    , oreHoldMaxPercent : Int
+    , miningHoldMaxPercent : Int
     , selectInstancePilotName : Maybe String
     }
 
@@ -172,7 +172,7 @@ type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
     , timesUnloaded : Int
     , volumeUnloadedCubicMeters : Int
-    , lastUsedCapacityInOreHold : Maybe Int
+    , lastUsedCapacityInMiningHold : Maybe Int
     , shipModules : ShipModulesMemory
     }
 
@@ -201,9 +201,9 @@ miningBotDecisionRootBeforeApplyingSettings context =
         |> Maybe.withDefault
             (branchDependingOnDockedOrInSpace
                 { ifDocked =
-                    ensureOreHoldIsSelectedInInventoryWindow
+                    ensureMiningHoldIsSelectedInInventoryWindow
                         context.readingFromGameClient
-                        (dockedWithOreHoldSelected context)
+                        (dockedWithMiningHoldSelected context)
                 , ifSeeShipUI =
                     returnDronesAndRunAwayIfHitpointsAreTooLow context
                 , ifUndockingComplete =
@@ -217,9 +217,9 @@ miningBotDecisionRootBeforeApplyingSettings context =
                             |> Maybe.withDefault
                                 (ensureUserEnabledNameColumnInOverview
                                     { ifEnabled =
-                                        ensureOreHoldIsSelectedInInventoryWindow
+                                        ensureMiningHoldIsSelectedInInventoryWindow
                                             context.readingFromGameClient
-                                            (inSpaceWithOreHoldSelected context seeUndockingComplete)
+                                            (inSpaceWithMiningHoldSelected context seeUndockingComplete)
                                     , ifDisabled =
                                         describeBranch "Please configure the overview to show objects names." askForHelpToGetUnstuck
                                     }
@@ -346,14 +346,14 @@ closeMessageBox readingFromGameClient =
             )
 
 
-dockedWithOreHoldSelected : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
-dockedWithOreHoldSelected context inventoryWindowWithOreHoldSelected =
-    case inventoryWindowWithOreHoldSelected |> itemHangarFromInventoryWindow of
+dockedWithMiningHoldSelected : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
+dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
+    case inventoryWindowWithMiningHoldSelected |> itemHangarFromInventoryWindow of
         Nothing ->
             describeBranch "I do not see the item hangar in the inventory." askForHelpToGetUnstuck
 
         Just itemHangar ->
-            case inventoryWindowWithOreHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
+            case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
                     describeBranch "I see no item in the ore hold. Check if we should undock."
                         (continueIfShouldHide
@@ -401,8 +401,8 @@ undockUsingStationWindow context =
                         )
 
 
-inSpaceWithOreHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
-inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHoldSelected =
+inSpaceWithMiningHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
+inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMiningHoldSelected =
     if seeUndockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
         describeBranch "I see we are warping."
             ([ returnDronesToBay context
@@ -420,16 +420,16 @@ inSpaceWithOreHoldSelected context seeUndockingComplete inventoryWindowWithOreHo
                     (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
 
             Nothing ->
-                case inventoryWindowWithOreHoldSelected |> capacityGaugeUsedPercent of
+                case inventoryWindowWithMiningHoldSelected |> capacityGaugeUsedPercent of
                     Nothing ->
                         describeBranch "I do not see the ore hold capacity gauge." askForHelpToGetUnstuck
 
                     Just fillPercent ->
                         let
                             describeThresholdToUnload =
-                                (context.eventContext.botSettings.oreHoldMaxPercent |> String.fromInt) ++ "%"
+                                (context.eventContext.botSettings.miningHoldMaxPercent |> String.fromInt) ++ "%"
                         in
-                        if context.eventContext.botSettings.oreHoldMaxPercent <= fillPercent then
+                        if context.eventContext.botSettings.miningHoldMaxPercent <= fillPercent then
                             describeBranch ("The ore hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
                                 (returnDronesToBay context
                                     |> Maybe.withDefault (dockToUnloadOre context)
@@ -541,9 +541,9 @@ warpToOverviewEntryIfFarEnough context destinationOverviewEntry =
             Just (describeBranch ("Failed to read the distance: " ++ error) askForHelpToGetUnstuck)
 
 
-ensureOreHoldIsSelectedInInventoryWindow : ReadingFromGameClient -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode
-ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInventoryWindow =
-    case readingFromGameClient |> inventoryWindowWithOreHoldSelectedFromGameClient of
+ensureMiningHoldIsSelectedInInventoryWindow : ReadingFromGameClient -> (EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode) -> DecisionPathNode
+ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInventoryWindow =
+    case readingFromGameClient |> inventoryWindowWithMiningHoldSelectedFromGameClient of
         Just inventoryWindow ->
             continueWithInventoryWindow inventoryWindow
 
@@ -561,13 +561,13 @@ ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInven
 
                             Just activeShipTreeEntry ->
                                 let
-                                    maybeOreHoldTreeEntry =
+                                    maybeMiningHoldTreeEntry =
                                         activeShipTreeEntry.children
                                             |> List.map EveOnline.ParseUserInterface.unwrapInventoryWindowLeftTreeEntryChild
                                             |> List.filter (.text >> String.toLower >> String.contains "ore hold")
                                             |> List.head
                                 in
-                                case maybeOreHoldTreeEntry of
+                                case maybeMiningHoldTreeEntry of
                                     Nothing ->
                                         describeBranch "I do not see the ore hold under the active ship in the inventory."
                                             (case activeShipTreeEntry.toggleBtn of
@@ -582,10 +582,10 @@ ensureOreHoldIsSelectedInInventoryWindow readingFromGameClient continueWithInven
                                                         )
                                             )
 
-                                    Just oreHoldTreeEntry ->
+                                    Just MiningHoldTreeEntry ->
                                         describeBranch "Click the tree entry representing the ore hold."
                                             (decideActionForCurrentStep
-                                                (clickOnUIElement MouseButtonLeft oreHoldTreeEntry.uiNode)
+                                                (clickOnUIElement MouseButtonLeft MiningHoldTreeEntry.uiNode)
                                             )
                         )
 
@@ -932,7 +932,7 @@ initBotMemory =
     { lastDockedStationNameFromInfoPanel = Nothing
     , timesUnloaded = 0
     , volumeUnloadedCubicMeters = 0
-    , lastUsedCapacityInOreHold = Nothing
+    , lastUsedCapacityInMiningHold = Nothing
     , shipModules = EveOnline.BotFramework.initShipModulesMemory
     }
 
@@ -983,10 +983,10 @@ statusTextFromDecisionContext context =
                         ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
                         ++ "."
 
-        describeOreHold =
+        describeMiningHold =
             "Ore hold filled "
                 ++ (readingFromGameClient
-                        |> inventoryWindowWithOreHoldSelectedFromGameClient
+                        |> inventoryWindowWithMiningHoldSelectedFromGameClient
                         |> Maybe.andThen capacityGaugeUsedPercent
                         |> Maybe.map String.fromInt
                         |> Maybe.withDefault "Unknown"
@@ -994,7 +994,7 @@ statusTextFromDecisionContext context =
                 ++ "%."
 
         describeCurrentReading =
-            [ describeOreHold, describeShip, describeDrones ] |> String.join " "
+            [ describeMiningHold, describeShip, describeDrones ] |> String.join " "
     in
     [ "Session performance: " ++ describeSessionPerformance
     , "---"
@@ -1012,34 +1012,34 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
                 |> Maybe.andThen .expandedContent
                 |> Maybe.andThen .currentStationName
 
-        lastUsedCapacityInOreHold =
+        lastUsedCapacityInMiningHold =
             context.readingFromGameClient
-                |> inventoryWindowWithOreHoldSelectedFromGameClient
+                |> inventoryWindowWithMiningHoldSelectedFromGameClient
                 |> Maybe.andThen .selectedContainerCapacityGauge
                 |> Maybe.andThen Result.toMaybe
                 |> Maybe.map .used
 
         completedUnloadSincePreviousReading =
-            case botMemoryBefore.lastUsedCapacityInOreHold of
+            case botMemoryBefore.lastUsedCapacityInMiningHold of
                 Nothing ->
                     False
 
-                Just previousUsedCapacityInOreHold ->
-                    lastUsedCapacityInOreHold == Just 0 && 0 < previousUsedCapacityInOreHold
+                Just previousUsedCapacityInMiningHold ->
+                    lastUsedCapacityInMiningHold == Just 0 && 0 < previousUsedCapacityInMiningHold
 
         volumeUnloadedSincePreviousReading =
-            case botMemoryBefore.lastUsedCapacityInOreHold of
+            case botMemoryBefore.lastUsedCapacityInMiningHold of
                 Nothing ->
                     0
 
-                Just previousUsedCapacityInOreHold ->
-                    case lastUsedCapacityInOreHold of
+                Just previousUsedCapacityInMiningHold ->
+                    case lastUsedCapacityInMiningHold of
                         Nothing ->
                             0
 
-                        Just currentUsedCapacityInOreHold ->
+                        Just currentUsedCapacityInMiningHold ->
                             -- During mining, when new ore appears in the inventory, this difference is negative.
-                            max 0 (previousUsedCapacityInOreHold - currentUsedCapacityInOreHold)
+                            max 0 (previousUsedCapacityInMiningHold - currentUsedCapacityInMiningHold)
 
         timesUnloaded =
             botMemoryBefore.timesUnloaded
@@ -1059,7 +1059,7 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
             |> List.head
     , timesUnloaded = timesUnloaded
     , volumeUnloadedCubicMeters = volumeUnloadedCubicMeters
-    , lastUsedCapacityInOreHold = lastUsedCapacityInOreHold
+    , lastUsedCapacityInMiningHold = lastUsedCapacityInMiningHold
     , shipModules =
         botMemoryBefore.shipModules
             |> EveOnline.BotFramework.integrateCurrentReadingsIntoShipModulesMemory context.readingFromGameClient
@@ -1126,15 +1126,15 @@ capacityGaugeUsedPercent =
             (\capacity -> capacity.maximum |> Maybe.map (\maximum -> capacity.used * 100 // maximum))
 
 
-inventoryWindowWithOreHoldSelectedFromGameClient : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.InventoryWindow
-inventoryWindowWithOreHoldSelectedFromGameClient =
+inventoryWindowWithMiningHoldSelectedFromGameClient : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.InventoryWindow
+inventoryWindowWithMiningHoldSelectedFromGameClient =
     .inventoryWindows
-        >> List.filter inventoryWindowSelectedContainerIsOreHold
+        >> List.filter inventoryWindowSelectedContainerIsMiningHold
         >> List.head
 
 
-inventoryWindowSelectedContainerIsOreHold : EveOnline.ParseUserInterface.InventoryWindow -> Bool
-inventoryWindowSelectedContainerIsOreHold =
+inventoryWindowSelectedContainerIsMiningHold : EveOnline.ParseUserInterface.InventoryWindow -> Bool
+inventoryWindowSelectedContainerIsMiningHold =
     .subCaptionLabelText >> Maybe.map (String.toLower >> String.contains "ore hold") >> Maybe.withDefault False
 
 

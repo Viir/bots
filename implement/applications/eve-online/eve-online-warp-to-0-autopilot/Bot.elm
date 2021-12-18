@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2021-11-03
+{- EVE Online Warp-to-0 auto-pilot version 2021-12-18
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
@@ -66,7 +66,7 @@ defaultBotSettings =
 
 parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
-    AppSettings.parseSimpleListOfAssignments { assignmentsSeparators = [ ",", "\n" ] }
+    AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "module-to-activate-always"
            , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
            )

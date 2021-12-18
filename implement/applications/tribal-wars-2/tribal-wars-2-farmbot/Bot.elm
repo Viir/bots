@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2021-12-13
+{- Tribal Wars 2 farmbot version 2021-12-18
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -94,7 +94,7 @@ initBotSettings =
 
 parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
-    AppSettings.parseSimpleListOfAssignments { assignmentsSeparators = [ ",", "\n" ] }
+    AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "number-of-farm-cycles"
            , AppSettings.valueTypeInteger
                 (\numberOfFarmCycles settings ->

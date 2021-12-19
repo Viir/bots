@@ -34,7 +34,7 @@ https://youtu.be/yzkernqechE
 
 Following are the first steps shown in the video, using a dedicated Windows program to run the farmbot:
 
-+ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2021-11-30.zip
++ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2021-12-19.zip
 + Extract the downloaded zip archive. The extraction will give you a file named `tribal-wars-2-farmbot.exe`.
 + Run the `tribal-wars-2-farmbot.exe` program.
 
@@ -81,7 +81,6 @@ The bot searches for barbarian villages and then attacks them using the matching
 In the console window, you can read about the number of sent attacks and what the bot is currently doing:
 
 ```text
-[...]
 Session performance: attacks sent: 129, coordinates read: 1478, completed farm cycles: 1
 ---
 Sent 129 attacks in the current cycle.

@@ -153,7 +153,7 @@ To work with items in the inventory, use the field `selectedContainerInventory` 
 
 Are looking for an item with a specific name? You could use the filtering function in the game client, but there is an easier way: Using the function `getAllContainedDisplayTexts` on the inventory item, you can filter the list of items immediately.
 
-As you can also see in the screenshot of the live inspector, we get the used, selected, and maximum capacity of the selected container with the field `selectedContainerCapacityGauge`. You can compare the `used` and `maximum` values to see if the container is (almost) full. [Mining bots do this](https://github.com/Viir/bots/blob/3a19d243ce02b9fdc8ac199c74164d86b4777a5b/implement/applications/eve-online/eve-online-mining-bot/Bot.elm#L1115-L1120) on the ore hold to know when to travel to the unload location.
+As you can also see in the screenshot of the live inspector, we get the used, selected, and maximum capacity of the selected container with the field `selectedContainerCapacityGauge`. You can compare the `used` and `maximum` values to see if the container is (almost) full. [Mining bots do this](https://github.com/Viir/bots/blob/3a19d243ce02b9fdc8ac199c74164d86b4777a5b/implement/applications/eve-online/eve-online-mining-bot/Bot.elm#L1115-L1120) on the mining hold to know when to travel to the unload location.
 
 ## Drones Window
 

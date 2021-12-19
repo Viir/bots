@@ -38,9 +38,9 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + Syntax highlighting of code blocks - How to format code on the forum: https://forum.botlab.org/t/syntax-highlighting-of-code-blocks-how-to-format-code-on-the-forum/738
 
-## Example Projects
+## Example Bots
 
-Wondering what outcome you can expect from following the guides? Below is a list of example projects. You can test these bots for free:
+Wondering what outcome you can expect from following the guides? Below is a list of example bots. You can test them for free:
 
 + EVE Online warp-to-0 autopilot
   + User guide: [./guide/eve-online/eve-online-warp-to-0-autopilot-bot.md](./guide/eve-online/eve-online-warp-to-0-autopilot-bot.md)
@@ -76,6 +76,6 @@ In the ['explore'](./explore) subdirectory, I report on explorations in the worl
 
 + Explore Elm syntax and core library with the Elm Explorer: https://botlabs.blob.core.windows.net/blob-library/by-name/ElmExplorer.html
 
-+ Inspection tool to explore the structure of EVE Online memory readings: https://botlabs.blob.core.windows.net/blob-library/by-name/2020-12-11-eve-online-alternate-ui.html
++ Inspection tool to explore the structure of EVE Online memory readings: https://botlabs.blob.core.windows.net/blob-library/by-name/2021-10-29-eve-online-alternate-ui.html
 
 + How to Allow Multiple RDP Sessions in Windows 10: http://woshub.com/how-to-allow-multiple-rdp-sessions-in-windows-10/

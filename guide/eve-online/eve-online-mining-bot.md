@@ -19,6 +19,7 @@ Before going into the setup, a quick overview of this bot and what it does:
 Despite being quite robust, this mining bot is far from being as smart as a human. For example, its perception is more limited than ours, so we need to set up the game to make sure that the bot can see everything it needs to. Following is the list of setup instructions for the EVE Online client:
 
 + Set the UI language to English.
++ In the ship UI in the 'Options' menu, tick the checkbox for 'Display Module Tooltips'.
 + In Overview window, make asteroids visible.
 + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
 + Open one inventory window.
@@ -26,7 +27,7 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from https://catalog.botlab.org/444347b38500dca789ec8b0869147337235b25e6a44b0112fe01e34d73628d7f and then run it.
+To start the mining bot, download the script from https://catalog.botlab.org/98a04f4d910ef1ac and then run it.
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
 

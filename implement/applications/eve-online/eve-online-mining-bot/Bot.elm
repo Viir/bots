@@ -6,6 +6,7 @@
    Setup instructions for the EVE Online client:
 
    + Set the UI language to English.
+   + In the ship UI in the 'Options' menu, tick the checkbox for 'Display Module Tooltips'.
    + In Overview window, make asteroids visible.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + Open one inventory window.

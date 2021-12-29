@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2021-12-19
+{- EVE Online mining bot version 2021-12-29
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -428,6 +428,9 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                         let
                             describeThresholdToUnload =
                                 (context.eventContext.botSettings.miningHoldMaxPercent |> String.fromInt) ++ "%"
+
+                            knownMiningModules =
+                                knownMiningModulesFromContext context
                         in
                         if context.eventContext.botSettings.miningHoldMaxPercent <= fillPercent then
                             describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
@@ -449,9 +452,15 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                                         unlockTargetsNotForMining context
                                             |> Maybe.withDefault
                                                 (describeBranch "I see a locked target."
-                                                    (case context |> knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                    (case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
                                                         Nothing ->
-                                                            describeBranch "All known mining modules are active."
+                                                            describeBranch
+                                                                (if knownMiningModules == [] then
+                                                                    "Found no mining modules so far."
+
+                                                                 else
+                                                                    "All known mining modules found so far are active."
+                                                                )
                                                                 (readShipUIModuleButtonTooltips context
                                                                     |> Maybe.withDefault waitForProgressInGame
                                                                 )
@@ -854,8 +863,8 @@ readShipUIModuleButtonTooltips =
     EveOnline.BotFrameworkSeparatingMemory.readShipUIModuleButtonTooltipWhereNotYetInMemory
 
 
-knownMiningModules : BotDecisionContext -> List EveOnline.ParseUserInterface.ShipUIModuleButton
-knownMiningModules context =
+knownMiningModulesFromContext : BotDecisionContext -> List EveOnline.ParseUserInterface.ShipUIModuleButton
+knownMiningModulesFromContext context =
     context.readingFromGameClient.shipUI
         |> Maybe.map .moduleButtons
         |> Maybe.withDefault []
@@ -954,7 +963,7 @@ statusTextFromDecisionContext context =
             case readingFromGameClient.shipUI of
                 Just shipUI ->
                     [ "Shield HP at " ++ (shipUI.hitpointsPercent.shield |> String.fromInt) ++ "%."
-                    , "Found " ++ (context |> knownMiningModules |> List.length |> String.fromInt) ++ " mining modules."
+                    , "Found " ++ (context |> knownMiningModulesFromContext |> List.length |> String.fromInt) ++ " mining modules."
                     ]
                         |> String.join " "
 

@@ -17,6 +17,8 @@
 
 + Running bots on multiple game clients: https://to.botlab.org/guide/running-bots-on-multiple-game-clients
 
++ [Walkthrough, Programming, Video] Combining behaviors of multiple bot programs: https://youtu.be/ALXsLznDOfM
+
 + Learn how to develop EVE Online bots and intel tools. Discover the engineering methods and tools behind the most advanced bots: https://to.botlab.org/guide/developing-for-eve-online
 
 + Syntax of the Elm programming language: https://elm-lang.org/docs/syntax

@@ -47,6 +47,18 @@ type BotEventResponse
     | FinishSession { statusDescriptionText : String }
 
 
+type InternalBotEventResponse
+    = InternalContinueSession InternalContinueSessionStructure
+    | InternalFinishSession { statusDescriptionText : String }
+
+
+type alias InternalContinueSessionStructure =
+    { statusDescriptionText : String
+    , startTask : Maybe { areaId : String, taskDescription : String, task : InterfaceToHost.Task }
+    , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
+    }
+
+
 type alias ContinueSessionStructure =
     { effects : List Common.EffectOnWindow.EffectOnWindowStructure
     , millisecondsToNextReadingFromGame : Int
@@ -269,7 +281,61 @@ processEvent :
     -> InterfaceToHost.BotEvent
     -> StateIncludingFramework botSettings botState
     -> ( StateIncludingFramework botSettings botState, InterfaceToHost.BotEventResponse )
-processEvent botConfiguration fromHostEvent stateBeforeUpdateTime =
+processEvent botConfiguration fromHostEvent stateBefore =
+    let
+        ( state, response ) =
+            processEventLessMappingTasks botConfiguration fromHostEvent stateBefore
+    in
+    case response of
+        InternalFinishSession finishSession ->
+            ( state, InterfaceToHost.FinishSession finishSession )
+
+        InternalContinueSession continueSession ->
+            case continueSession.startTask of
+                Nothing ->
+                    ( state
+                    , InterfaceToHost.ContinueSession
+                        { statusDescriptionText = continueSession.statusDescriptionText
+                        , startTasks = []
+                        , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
+                        }
+                    )
+
+                Just startTask ->
+                    let
+                        taskIdString =
+                            startTask.areaId ++ "-" ++ String.fromInt stateBefore.lastTaskIndex
+
+                        startTasks =
+                            [ { taskId = InterfaceToHost.TaskIdFromString taskIdString
+                              , task = startTask.task
+                              }
+                            ]
+
+                        taskInProgress =
+                            { startTimeInMilliseconds = state.timeInMilliseconds
+                            , taskIdString = taskIdString
+                            , taskDescription = startTask.taskDescription
+                            }
+                    in
+                    ( { state
+                        | lastTaskIndex = state.lastTaskIndex + List.length startTasks
+                        , taskInProgress = Just taskInProgress
+                      }
+                    , InterfaceToHost.ContinueSession
+                        { statusDescriptionText = continueSession.statusDescriptionText
+                        , startTasks = startTasks
+                        , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
+                        }
+                    )
+
+
+processEventLessMappingTasks :
+    BotConfiguration botSettings botState
+    -> InterfaceToHost.BotEvent
+    -> StateIncludingFramework botSettings botState
+    -> ( StateIncludingFramework botSettings botState, InternalBotEventResponse )
+processEventLessMappingTasks botConfiguration fromHostEvent stateBeforeUpdateTime =
     let
         stateBefore =
             { stateBeforeUpdateTime | timeInMilliseconds = fromHostEvent.timeInMilliseconds }
@@ -295,15 +361,15 @@ processEvent botConfiguration fromHostEvent stateBeforeUpdateTime =
             case botConfiguration.parseBotSettings botSettings of
                 Err parseSettingsError ->
                     ( stateBefore
-                    , InterfaceToHost.FinishSession
+                    , InternalFinishSession
                         { statusDescriptionText = "Failed to parse these bot-settings: " ++ parseSettingsError }
                     )
 
                 Ok parsedBotSettings ->
                     ( { stateBefore | botSettings = Just parsedBotSettings }
-                    , InterfaceToHost.ContinueSession
+                    , InternalContinueSession
                         { statusDescriptionText = "Succeeded parsing these bot-settings."
-                        , startTasks = []
+                        , startTask = Nothing
                         , notifyWhenArrivedAtTime = Just { timeInMilliseconds = 0 }
                         }
                     )
@@ -318,7 +384,7 @@ processEventAfterIntegrateEvent :
     BotConfiguration botSettings botState
     -> Maybe ReadingFromGameClientStructure
     -> StateIncludingFramework botSettings botState
-    -> ( StateIncludingFramework botSettings botState, InterfaceToHost.BotEventResponse )
+    -> ( StateIncludingFramework botSettings botState, InternalBotEventResponse )
 processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stateBefore =
     let
         ( stateBeforeCountingRequests, responseBeforeAddingStatusMessage ) =
@@ -327,7 +393,7 @@ processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stat
                     case stateBefore.botSettings of
                         Nothing ->
                             ( stateBefore
-                            , InterfaceToHost.FinishSession
+                            , InternalFinishSession
                                 { statusDescriptionText =
                                     "Unexpected order of events: I did not receive any bot-settings changed event."
                                 }
@@ -345,30 +411,30 @@ processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stat
 
                 Just taskInProgress ->
                     ( stateBefore
-                    , { statusDescriptionText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
-                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
-                      , startTasks = []
-                      }
-                        |> InterfaceToHost.ContinueSession
+                    , InternalContinueSession
+                        { statusDescriptionText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
+                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
+                        , startTask = Nothing
+                        }
                     )
 
         newRequestsToVolatileProcessCount =
             case responseBeforeAddingStatusMessage of
-                InterfaceToHost.FinishSession _ ->
+                InternalFinishSession _ ->
                     0
 
-                InterfaceToHost.ContinueSession continueSession ->
-                    continueSession.startTasks
-                        |> List.filter
-                            (\task ->
-                                case task.task of
-                                    InterfaceToHost.RequestToVolatileProcess _ ->
-                                        True
+                InternalContinueSession continueSession ->
+                    case continueSession.startTask of
+                        Nothing ->
+                            0
 
-                                    _ ->
-                                        False
-                            )
-                        |> List.length
+                        Just startTask ->
+                            case startTask.task of
+                                InterfaceToHost.RequestToVolatileProcess _ ->
+                                    1
+
+                                _ ->
+                                    0
 
         setupBeforeCountingRequests =
             stateBeforeCountingRequests.setup
@@ -390,25 +456,24 @@ processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stat
 
         response =
             case responseBeforeAddingStatusMessage of
-                InterfaceToHost.ContinueSession continueSession ->
-                    { continueSession
-                        | statusDescriptionText = statusMessagePrefix ++ continueSession.statusDescriptionText
-                        , notifyWhenArrivedAtTime =
-                            Just
-                                { timeInMilliseconds =
-                                    continueSession.notifyWhenArrivedAtTime
-                                        |> Maybe.map .timeInMilliseconds
-                                        |> Maybe.withDefault notifyWhenArrivedAtTimeUpperBound
-                                        |> min notifyWhenArrivedAtTimeUpperBound
-                                }
-                    }
-                        |> InterfaceToHost.ContinueSession
+                InternalContinueSession continueSession ->
+                    InternalContinueSession
+                        { continueSession
+                            | statusDescriptionText = statusMessagePrefix ++ continueSession.statusDescriptionText
+                            , notifyWhenArrivedAtTime =
+                                Just
+                                    { timeInMilliseconds =
+                                        continueSession.notifyWhenArrivedAtTime
+                                            |> Maybe.map .timeInMilliseconds
+                                            |> Maybe.withDefault notifyWhenArrivedAtTimeUpperBound
+                                            |> min notifyWhenArrivedAtTimeUpperBound
+                                    }
+                        }
 
-                InterfaceToHost.FinishSession finishSession ->
-                    { finishSession
-                        | statusDescriptionText = statusMessagePrefix ++ finishSession.statusDescriptionText
-                    }
-                        |> InterfaceToHost.FinishSession
+                InternalFinishSession finishSession ->
+                    InternalFinishSession
+                        { statusDescriptionText = statusMessagePrefix ++ finishSession.statusDescriptionText
+                        }
     in
     ( state, response )
 
@@ -418,42 +483,28 @@ processEventNotWaitingForTaskCompletion :
     -> BotEventContext botSettings
     -> Maybe ReadingFromGameClientStructure
     -> StateIncludingFramework botSettings botState
-    -> ( StateIncludingFramework botSettings botState, InterfaceToHost.BotEventResponse )
+    -> ( StateIncludingFramework botSettings botState, InternalBotEventResponse )
 processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeReadingFromGameClient stateBefore =
     case stateBefore.setup |> getNextSetupTask botConfiguration stateBefore.botSettings of
         ContinueSetup setupState setupTask setupTaskDescription ->
-            let
-                taskIndex =
-                    stateBefore.lastTaskIndex + 1
-
-                taskIdString =
-                    "setup-" ++ (taskIndex |> String.fromInt)
-            in
-            ( { stateBefore
-                | setup = setupState
-                , lastTaskIndex = taskIndex
-                , taskInProgress =
+            ( { stateBefore | setup = setupState }
+            , { startTask =
                     Just
-                        { startTimeInMilliseconds = stateBefore.timeInMilliseconds
-                        , taskIdString = taskIdString
-                        , taskDescription = setupTaskDescription
+                        { areaId = "setup"
+                        , task = setupTask
+                        , taskDescription = "Setup: " ++ setupTaskDescription
                         }
-              }
-            , { startTasks = [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = setupTask } ]
               , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
               , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
               }
-                |> InterfaceToHost.ContinueSession
+                |> InternalContinueSession
             )
 
         OperateBot operateBot ->
             if volatileProcessRecycleInterval < stateBefore.setup.requestsToVolatileProcessCount then
                 let
-                    taskIndex =
-                        stateBefore.lastTaskIndex + 1
-
-                    taskIdString =
-                        "maintain-" ++ (taskIndex |> String.fromInt)
+                    taskAreaIdString =
+                        "maintain"
 
                     setupStateBefore =
                         stateBefore.setup
@@ -464,25 +515,17 @@ processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeRe
                     setupTaskDescription =
                         "Recycle the volatile process after " ++ (setupStateBefore.requestsToVolatileProcessCount |> String.fromInt) ++ " requests."
                 in
-                ( { stateBefore
-                    | setup = setupState
-                    , lastTaskIndex = taskIndex
-                    , taskInProgress =
+                ( { stateBefore | setup = setupState }
+                , { startTask =
                         Just
-                            { startTimeInMilliseconds = stateBefore.timeInMilliseconds
-                            , taskIdString = taskIdString
+                            { areaId = taskAreaIdString
+                            , task = operateBot.releaseVolatileProcessTask
                             , taskDescription = setupTaskDescription
                             }
-                  }
-                , { startTasks =
-                        [ { taskId = InterfaceToHost.taskIdFromString taskIdString
-                          , task = operateBot.releaseVolatileProcessTask
-                          }
-                        ]
                   , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
                   , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
                   }
-                    |> InterfaceToHost.ContinueSession
+                    |> InternalContinueSession
                 )
 
             else
@@ -495,7 +538,7 @@ processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeRe
 
         FrameworkStopSession reason ->
             ( stateBefore
-            , InterfaceToHost.FinishSession { statusDescriptionText = "Stop session (" ++ reason ++ ")" }
+            , InternalFinishSession { statusDescriptionText = "Stop session (" ++ reason ++ ")" }
             )
 
 
@@ -505,7 +548,7 @@ operateBotExceptRenewingVolatileProcess :
     -> Maybe ReadingFromGameClientStructure
     -> StateIncludingFramework botSettings botState
     -> OperateBotConfiguration
-    -> ( StateIncludingFramework botSettings botState, InterfaceToHost.BotEventResponse )
+    -> ( StateIncludingFramework botSettings botState, InternalBotEventResponse )
 operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeReadingFromGameClient stateBefore operateBot =
     let
         readingForScreenshotRequiredRegions =
@@ -555,38 +598,31 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeRe
         getImageData =
             { screenshot1x1Rects = screenshot1x1RectsWithMargins }
 
-        continueWithNamedTaskToWaitOn { taskDescription, taskIdString } task =
-            let
-                ( taskInProgress, startTasks ) =
-                    ( { startTimeInMilliseconds = stateBefore.timeInMilliseconds
-                      , taskIdString = taskIdString
-                      , taskDescription = taskDescription
-                      }
-                    , [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task } ]
-                    )
-
-                state =
-                    { stateBefore | taskInProgress = Just taskInProgress }
-            in
-            ( state
-            , { startTasks = startTasks
+        continueWithNamedTaskToWaitOn { taskDescription, taskAreaId } task =
+            ( stateBefore
+            , { startTask =
+                    Just
+                        { areaId = taskAreaId
+                        , taskDescription = taskDescription
+                        , task = task
+                        }
               , statusDescriptionText = "Operate bot - " ++ taskDescription
               , notifyWhenArrivedAtTime = Nothing
               }
-                |> InterfaceToHost.ContinueSession
+                |> InternalContinueSession
             )
 
         continueWithReadingFromGameClient =
             continueWithNamedTaskToWaitOn
                 { taskDescription = "Reading from game"
-                , taskIdString = "operate-bot-read-from-game"
+                , taskAreaId = "read-from-game"
                 }
                 (operateBot.readFromWindowTask getImageData)
 
         continueWithGetImageDataFromReading =
             continueWithNamedTaskToWaitOn
                 { taskDescription = "Get image data from reading"
-                , taskIdString = "operate-bot-get-image-data-from-reading"
+                , taskAreaId = "get-image-data-from-reading"
                 }
                 (operateBot.getImageDataFromReadingTask getImageData)
     in
@@ -671,7 +707,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeRe
                     response =
                         case botEventResponse of
                             FinishSession _ ->
-                                InterfaceToHost.FinishSession
+                                InternalFinishSession
                                     { statusDescriptionText = "The bot finished the session." }
 
                             ContinueSession continueSession ->
@@ -680,10 +716,10 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeRe
                                         stateBefore.timeInMilliseconds
                                             + continueSession.millisecondsToNextReadingFromGame
 
-                                    ( taskInProgress, startTasks ) =
+                                    startTask =
                                         case continueSession.effects of
                                             [] ->
-                                                ( stateBefore.taskInProgress, [] )
+                                                Nothing
 
                                             effects ->
                                                 let
@@ -691,29 +727,24 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeRe
                                                         operateBot.buildTaskFromEffectSequence effects
 
                                                     taskIdString =
-                                                        "operate-bot-send-effects"
+                                                        "send-effects"
                                                 in
-                                                ( Just
-                                                    { startTimeInMilliseconds = stateBefore.timeInMilliseconds
-                                                    , taskIdString = taskIdString
+                                                Just
+                                                    { areaId = "send-effects"
                                                     , taskDescription = "Send effects to game client"
-                                                    }
-                                                , [ { taskId = InterfaceToHost.taskIdFromString taskIdString
                                                     , task = task
                                                     }
-                                                  ]
-                                                )
                                 in
-                                { startTasks = startTasks
+                                { startTask = startTask
                                 , statusDescriptionText = "Operate bot"
                                 , notifyWhenArrivedAtTime =
-                                    if taskInProgress == Nothing then
+                                    if startTask == Nothing then
                                         Just { timeInMilliseconds = timeForNextReadingFromGame }
 
                                     else
                                         Nothing
                                 }
-                                    |> InterfaceToHost.ContinueSession
+                                    |> InternalContinueSession
 
                     state =
                         { stateBefore
@@ -762,11 +793,11 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeRe
 
             else
                 ( stateBefore
-                , { startTasks = []
+                , { startTask = Nothing
                   , statusDescriptionText = "Operate bot."
                   , notifyWhenArrivedAtTime = Just { timeInMilliseconds = timeForNextReadingFromGame }
                   }
-                    |> InterfaceToHost.ContinueSession
+                    |> InternalContinueSession
                 )
 
 

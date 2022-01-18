@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2021-12-18
+{- EVE Online Warp-to-0 auto-pilot version 2022-01-18
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 

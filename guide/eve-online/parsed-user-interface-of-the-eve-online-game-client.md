@@ -2,6 +2,11 @@
 
 The parsed user interface is a library of building blocks to build apps that read from the EVE Online game client.
 
+Developers use the parsing library to make ratting, mining, and mission running bots and intel tools. Following are some links to bots and tools using the parsing library:
+
++ https://forum.botlab.org/t/list-of-eve-online-bots-for-beginners/629
++ https://catalog.botlab.org/?q=eve%2Bonline
+
 ### Functions
 
 The EVE Online client's UI tree can contain thousands of nodes and tens of thousands of individual properties. Because of this large amount of data, navigating in there can be time-consuming.

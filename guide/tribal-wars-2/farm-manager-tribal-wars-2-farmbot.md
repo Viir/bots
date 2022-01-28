@@ -198,5 +198,5 @@ If you have any questions, the [BotLab forum](https://forum.botlab.org) is a goo
 
 When asking for help with the bot, include one of these two artifacts to help us see what happened on your setup:
 
-+ The summary from the `Report Problem or Share Session` dialog in the play session interface. Either upload the saved JSON file or copy the text in that file.
++ The summary from the `Report Problem or Share Session` dialog in the play session interface. Either upload the saved JSON file or copy the text in that file. To reach this dialog, use the buttons labeled `Get Help With This Bot Session` and then `Report Problem or Share Session`.
 + The play session recording archive from the session view in Devtools.

@@ -115,7 +115,7 @@ Following is a list of available settings:
 + `close-game-client-during-break`: Set this to 'yes' to make the bot close the game client/web browser during breaks.
 + `open-website-on-start`: Website to open when starting the web browser.
 
-To configure settings, open the configuration page at [https://catalog.botlab.org/8e4889805127fc25](https://catalog.botlab.org/8e4889805127fc25) in a web browser.
+To configure settings, open the configuration page at [https://catalog.botlab.org/6960e9879bb0992a](https://catalog.botlab.org/6960e9879bb0992a) in a web browser.
 
 On this page, scroll down to the button `Configure bot`.
 

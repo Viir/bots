@@ -34,7 +34,7 @@ https://youtu.be/yzkernqechE
 
 Following are the first steps shown in the video, using a dedicated Windows program to run the farmbot:
 
-+ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2021-12-19.zip
++ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2022-01-28.zip
 + Extract the downloaded zip archive. The extraction will give you a file named `tribal-wars-2-farmbot.exe`.
 + Run the `tribal-wars-2-farmbot.exe` program.
 

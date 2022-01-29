@@ -1,6 +1,11 @@
 module BotLab.BotInterface_To_Host_20210823 exposing (..)
 
-{-| Types for the interface to the botlab client.
+{-| This module contains types for the interface between a bot and the botlab client.
+The structures in these types reflect the standard interface for player agents to observe their environment and act in their environment.
+The interface allows both bots and humans to take the role of the player agent.
+
+To learn more about the common bot interface, see <https://to.botlab.org/guide/common-bot-interface>
+
 -}
 
 

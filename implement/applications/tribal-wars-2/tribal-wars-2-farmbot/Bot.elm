@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-01-29
+{- Tribal Wars 2 farmbot version 2022-01-30
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -601,10 +601,6 @@ processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
                             ( currentActivityToWaitFor.decisionTree
                                 |> continueDecisionTree
                                     (always (endDecisionPath (BotFramework.ContinueSession Nothing)))
-                                |> Common.DecisionTree.mapLastDescriptionBeforeLeaf
-                                    (\originalLeafDescription ->
-                                        originalLeafDescription ++ " waiting for completion (" ++ currentActivityToWaitFor.activityType ++ ")"
-                                    )
                             , Nothing
                             )
 

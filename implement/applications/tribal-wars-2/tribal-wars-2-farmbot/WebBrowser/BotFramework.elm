@@ -613,14 +613,14 @@ getSetupTaskWhenVolatileHostSetupCompleted maybeStartWebBrowserRequest stateBefo
                 }
 
 
-runScriptResultDisplayString : Result String (Maybe String) -> { string : String, isErr : Bool }
+runScriptResultDisplayString : Result String (Maybe String) -> String
 runScriptResultDisplayString result =
     case result of
-        Err error ->
-            { string = "Error: " ++ error, isErr = True }
+        Err _ ->
+            "Error"
 
-        Ok successResult ->
-            { string = "Success: " ++ (successResult |> Maybe.withDefault "null"), isErr = False }
+        Ok _ ->
+            "Success"
 
 
 statusReportFromState : StateIncludingSetup s -> String
@@ -630,18 +630,6 @@ statusReportFromState state =
             "Last script run result is: "
                 ++ (state.setup.lastRunScriptResult
                         |> Maybe.map runScriptResultDisplayString
-                        |> Maybe.map
-                            (\resultDisplayInfo ->
-                                resultDisplayInfo.string
-                                    |> stringEllipsis
-                                        (if resultDisplayInfo.isErr then
-                                            640
-
-                                         else
-                                            140
-                                        )
-                                        "...."
-                            )
                         |> Maybe.withDefault "Nothing"
                    )
     in
@@ -651,12 +639,3 @@ statusReportFromState state =
     , lastScriptRunResult
     ]
         |> String.join "\n"
-
-
-stringEllipsis : Int -> String -> String -> String
-stringEllipsis howLong append string =
-    if String.length string <= howLong then
-        string
-
-    else
-        String.left (howLong - String.length append) string ++ append

@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2022-01-29
+{- EVE Online Warp-to-0 auto-pilot version 2022-02-19
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
@@ -31,6 +31,7 @@ module Bot exposing
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Color
 import Common.AppSettings as AppSettings
+import Common.Basics exposing (stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow exposing (Location2d, MouseButton(..))
 import Dict
@@ -231,7 +232,7 @@ tooltipLooksLikeModuleToActivateAlways context =
                 context.eventContext.botSettings.modulesToActivateAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
-                            if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
+                            if tooltipText |> stringContainsIgnoringCase moduleToActivateAlways then
                                 Just tooltipText
 
                             else

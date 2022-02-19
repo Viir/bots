@@ -18,6 +18,7 @@ module WebBrowser.BotFramework exposing
     )
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import Common.Basics exposing (stringContainsIgnoringCase)
 import CompilationInterface.SourceFiles
 import WebBrowser.VolatileProcessInterface as VolatileProcessInterface
 
@@ -504,7 +505,7 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                                     False
 
                                 Just exception ->
-                                    String.contains "Most likely the Page has been closed" exception
+                                    stringContainsIgnoringCase "Most likely the Page has been closed" exception
 
                         Err _ ->
                             False

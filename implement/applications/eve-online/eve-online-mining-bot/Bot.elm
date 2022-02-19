@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2022-01-29
+{- EVE Online mining bot version 2022-02-19
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -46,7 +46,7 @@ module Bot exposing
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Common.AppSettings as AppSettings
-import Common.Basics exposing (listElementAtWrappedIndex)
+import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
@@ -248,7 +248,7 @@ continueIfShouldHide config context =
                             |> List.any
                                 (\goodStandingPattern ->
                                     chatUser.standingIconHint
-                                        |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
+                                        |> Maybe.map (stringContainsIgnoringCase goodStandingPattern)
                                         |> Maybe.withDefault False
                                 )
 
@@ -479,7 +479,7 @@ unlockTargetsNotForMining context =
     let
         targetsToUnlock =
             context.readingFromGameClient.targets
-                |> List.filter (.textsTopToBottom >> List.any (String.toLower >> String.contains "asteroid") >> not)
+                |> List.filter (.textsTopToBottom >> List.any (stringContainsIgnoringCase "asteroid") >> not)
     in
     targetsToUnlock
         |> List.head
@@ -574,7 +574,7 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
                                     maybeminingHoldTreeEntry =
                                         activeShipTreeEntry.children
                                             |> List.map EveOnline.ParseUserInterface.unwrapInventoryWindowLeftTreeEntryChild
-                                            |> List.filter (.text >> String.toLower >> String.contains "mining hold")
+                                            |> List.filter (.text >> stringContainsIgnoringCase "mining hold")
                                             |> List.head
                                 in
                                 case maybeminingHoldTreeEntry of
@@ -909,7 +909,7 @@ tooltipLooksLikeModuleToActivateAlways context =
                 context.eventContext.botSettings.modulesToActivateAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
-                            if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
+                            if tooltipText |> stringContainsIgnoringCase moduleToActivateAlways then
                                 Just tooltipText
 
                             else
@@ -1124,8 +1124,8 @@ overviewWindowEntriesRepresentingAsteroids =
 
 overviewWindowEntryRepresentsAnAsteroid : OverviewWindowEntry -> Bool
 overviewWindowEntryRepresentsAnAsteroid entry =
-    (entry.textsLeftToRight |> List.any (String.toLower >> String.contains "asteroid"))
-        && (entry.textsLeftToRight |> List.any (String.toLower >> String.contains "belt") |> not)
+    (entry.textsLeftToRight |> List.any (stringContainsIgnoringCase "asteroid"))
+        && (entry.textsLeftToRight |> List.any (stringContainsIgnoringCase "belt") |> not)
 
 
 capacityGaugeUsedPercent : EveOnline.ParseUserInterface.InventoryWindow -> Maybe Int
@@ -1145,7 +1145,7 @@ inventoryWindowWithMiningHoldSelectedFromGameClient =
 
 inventoryWindowSelectedContainerIsMiningHold : EveOnline.ParseUserInterface.InventoryWindow -> Bool
 inventoryWindowSelectedContainerIsMiningHold =
-    .subCaptionLabelText >> Maybe.map (String.toLower >> String.contains "mining hold") >> Maybe.withDefault False
+    .subCaptionLabelText >> Maybe.map (stringContainsIgnoringCase "mining hold") >> Maybe.withDefault False
 
 
 selectedContainerFirstItemFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe UIElement
@@ -1167,7 +1167,7 @@ selectedContainerFirstItemFromInventoryWindow =
 itemHangarFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe UIElement
 itemHangarFromInventoryWindow =
     .leftTreeEntries
-        >> List.filter (.text >> String.toLower >> String.contains "item hangar")
+        >> List.filter (.text >> stringContainsIgnoringCase "item hangar")
         >> List.head
         >> Maybe.map .uiNode
 

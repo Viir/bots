@@ -722,17 +722,10 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeRe
                                                 Nothing
 
                                             effects ->
-                                                let
-                                                    task =
-                                                        operateBot.buildTaskFromEffectSequence effects
-
-                                                    taskIdString =
-                                                        "send-effects"
-                                                in
                                                 Just
                                                     { areaId = "send-effects"
                                                     , taskDescription = "Send effects to game client"
-                                                    , task = task
+                                                    , task = operateBot.buildTaskFromEffectSequence effects
                                                     }
                                 in
                                 { startTask = startTask
@@ -1192,7 +1185,7 @@ selectGameClientInstanceWithPilotName pilotName gameClientProcesses =
     else
         case
             gameClientProcesses
-                |> List.filter (.mainWindowTitle >> String.toLower >> String.contains (pilotName |> String.toLower))
+                |> List.filter (.mainWindowTitle >> Common.Basics.stringContainsIgnoringCase pilotName)
                 |> List.head
         of
             Nothing ->
@@ -1441,7 +1434,7 @@ useMenuEntryWithTextContaining textToSearch =
     useMenuEntryInLastContextMenuInCascade
         { describeChoice = "with text containing '" ++ textToSearch ++ "'"
         , chooseEntry =
-            List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
+            List.filter (.text >> Common.Basics.stringContainsIgnoringCase textToSearch)
                 >> List.sortBy (.text >> String.trim >> String.length)
                 >> List.head
         }
@@ -1457,7 +1450,7 @@ useMenuEntryWithTextContainingFirstOf priorities =
                     |> List.concatMap
                         (\textToSearch ->
                             menuEntries
-                                |> List.filter (.text >> String.toLower >> String.contains (textToSearch |> String.toLower))
+                                |> List.filter (.text >> Common.Basics.stringContainsIgnoringCase textToSearch)
                                 |> List.sortBy (.text >> String.trim >> String.length)
                         )
                     |> List.head

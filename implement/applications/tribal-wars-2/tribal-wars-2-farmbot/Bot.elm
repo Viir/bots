@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-02-14
+{- Tribal Wars 2 farmbot version 2022-02-19
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -58,6 +58,7 @@ module Bot exposing
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Common.AppSettings as AppSettings
+import Common.Basics exposing (stringContainsIgnoringCase)
 import Common.DecisionTree
     exposing
         ( DecisionPathNode
@@ -971,7 +972,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
 
         gameLastPageLocation =
             if
-                Maybe.withDefault False (Maybe.map (String.contains "tribalwars2.com/game.php") lastPageLocation)
+                Maybe.withDefault False (Maybe.map (stringContainsIgnoringCase "tribalwars2.com/game.php") lastPageLocation)
                     && (Maybe.andThen .tribalWars2 (Result.toMaybe parseAsRootInfoResult) /= Nothing)
             then
                 lastPageLocation
@@ -1680,9 +1681,7 @@ pickBestMatchingArmyPresetForVillage settings presets ( villageId, villageDetail
                             farmPresetFilter
                                 |> List.any
                                     (\presetFilter ->
-                                        String.contains
-                                            (String.toLower presetFilter)
-                                            (String.toLower preset.name)
+                                        stringContainsIgnoringCase presetFilter preset.name
                                     )
                         )
                     |> List.sortBy (.name >> String.toLower)

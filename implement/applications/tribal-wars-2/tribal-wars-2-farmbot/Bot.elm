@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-02-19
+{- Tribal Wars 2 farmbot version 2022-03-05
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -288,7 +288,7 @@ type alias State =
 type ResponseFromBrowser
     = RootInformation RootInformationStructure
     | ReadSelectedCharacterVillageDetailsResponse ReadSelectedCharacterVillageDetailsResponseStructure
-    | VillageByCoordinatesResponse VillageByCoordinatesResponseStructure
+    | VillagesByCoordinatesResponse VillagesByCoordinatesResponseStructure
     | GetPresetsResponse (List ArmyPreset)
     | ActivatedVillageResponse
     | SendPresetAttackToCoordinatesResponse SendPresetAttackToCoordinatesResponseStructure
@@ -311,6 +311,12 @@ type alias TribalWars2RootInformation =
 type alias ReadSelectedCharacterVillageDetailsResponseStructure =
     { villageId : Int
     , villageDetails : VillageDetails
+    }
+
+
+type alias VillagesByCoordinatesResponseStructure =
+    { argument : List VillageByCoordinatesResponseStructure
+    , villagesData : List { villageCoordinates : VillageCoordinates, villageData : VillageByCoordinatesResult }
     }
 
 
@@ -429,7 +435,7 @@ type RequestToPageStructure
     = ReadRootInformationRequest
     | ReadSelectedCharacterVillageDetailsRequest { villageId : Int }
     | ReadArmyPresets
-    | VillageByCoordinatesRequest { coordinates : VillageCoordinates, jumpToVillage : Bool }
+    | VillagesByCoordinatesRequest (List { coordinates : VillageCoordinates, jumpToVillage : Bool })
     | SendPresetAttackToCoordinatesRequest { coordinates : VillageCoordinates, presetId : Int }
     | VillageMenuActivateVillageRequest
     | ReadBattleReportListRequest
@@ -1029,48 +1035,44 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                                     { timeInMilliseconds = stateBefore.timeInMilliseconds, villageDetails = readVillageDetailsResponse.villageDetails }
                     }
 
-                VillageByCoordinatesResponse readVillageByCoordinatesResponse ->
+                VillagesByCoordinatesResponse villagesByCoordinatesResponse ->
                     let
+                        maybeCoordinatesJumpedTo =
+                            villagesByCoordinatesResponse.argument
+                                |> List.filter .jumpToVillage
+                                |> List.head
+                                |> Maybe.map .villageCoordinates
+
                         stateAfterRememberJump =
-                            if readVillageByCoordinatesResponse.jumpToVillage then
-                                { stateAfterParseSuccess
-                                    | lastJumpToCoordinates =
-                                        Just
-                                            { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                            , coordinates = readVillageByCoordinatesResponse.villageCoordinates
-                                            }
-                                }
+                            case maybeCoordinatesJumpedTo of
+                                Just coordinatesJumpedTo ->
+                                    { stateAfterParseSuccess
+                                        | lastJumpToCoordinates =
+                                            Just
+                                                { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                                , coordinates = coordinatesJumpedTo
+                                                }
+                                    }
 
-                            else
-                                stateAfterParseSuccess
+                                Nothing ->
+                                    stateAfterParseSuccess
                     in
-                    case runJavascriptInCurrentPageResponse.callbackReturnValueAsString of
-                        Nothing ->
-                            -- This case indicates the timeout while waiting for the result from the callback.
-                            { stateAfterRememberJump
-                                | readFromGameConsecutiveTimeoutsCount = stateAfterRememberJump.readFromGameConsecutiveTimeoutsCount + 1
-                            }
-
-                        Just callbackReturnValueAsString ->
-                            case callbackReturnValueAsString |> Json.Decode.decodeString decodeVillageByCoordinatesResult of
-                                Err error ->
-                                    { stateAfterRememberJump
-                                        | parseResponseError = Just error
-                                        , readFromGameConsecutiveTimeoutsCount = 0
-                                    }
-
-                                Ok villageByCoordinates ->
-                                    { stateAfterRememberJump
-                                        | coordinatesLastCheck =
-                                            stateAfterRememberJump.coordinatesLastCheck
-                                                |> Dict.insert
-                                                    ( readVillageByCoordinatesResponse.villageCoordinates.x, readVillageByCoordinatesResponse.villageCoordinates.y )
-                                                    { timeInMilliseconds = stateAfterRememberJump.timeInMilliseconds
-                                                    , result = villageByCoordinates
-                                                    }
-                                        , numberOfReadsFromCoordinates = stateAfterRememberJump.numberOfReadsFromCoordinates + 1
-                                        , readFromGameConsecutiveTimeoutsCount = 0
-                                    }
+                    villagesByCoordinatesResponse.villagesData
+                        |> List.foldl
+                            (\villageByCoordinates intermediateState ->
+                                { intermediateState
+                                    | coordinatesLastCheck =
+                                        intermediateState.coordinatesLastCheck
+                                            |> Dict.insert
+                                                ( villageByCoordinates.villageCoordinates.x, villageByCoordinates.villageCoordinates.y )
+                                                { timeInMilliseconds = intermediateState.timeInMilliseconds
+                                                , result = villageByCoordinates.villageData
+                                                }
+                                    , numberOfReadsFromCoordinates = intermediateState.numberOfReadsFromCoordinates + 1
+                                    , readFromGameConsecutiveTimeoutsCount = 0
+                                }
+                            )
+                            stateAfterRememberJump
 
                 SendPresetAttackToCoordinatesResponse sendPresetAttackToCoordinatesResponse ->
                     let
@@ -1277,7 +1279,11 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                         ("Search for village at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
                         (endDecisionPath
                             (ContinueFarmCycle
-                                (Just (RequestToPage (VillageByCoordinatesRequest { coordinates = coordinates, jumpToVillage = False })))
+                                (Just
+                                    (RequestToPage
+                                        (requestToPageStructureToReadMapChunkContainingCoordinates coordinates)
+                                    )
+                                )
                             )
                         )
 
@@ -1443,6 +1449,31 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                 )
 
 
+requestToPageStructureToReadMapChunkContainingCoordinates : VillageCoordinates -> RequestToPageStructure
+requestToPageStructureToReadMapChunkContainingCoordinates villageCoordinates =
+    let
+        mapChunkSideLength =
+            10
+
+        mapChunkX =
+            (villageCoordinates.x // mapChunkSideLength) * mapChunkSideLength
+
+        mapChunkY =
+            (villageCoordinates.y // mapChunkSideLength) * mapChunkSideLength
+
+        coordinatesToRead =
+            List.range mapChunkX (mapChunkX + mapChunkSideLength - 1)
+                |> List.concatMap
+                    (\x ->
+                        List.range mapChunkY (mapChunkY + mapChunkSideLength - 1)
+                            |> List.map (\y -> { x = x, y = y })
+                    )
+    in
+    coordinatesToRead
+        |> List.map (\coordinates -> { coordinates = coordinates, jumpToVillage = False })
+        |> VillagesByCoordinatesRequest
+
+
 describeVillageCompletion : VillageCompletedStructure -> { decisionBranch : String, cycleStatsGroup : String }
 describeVillageCompletion villageCompletion =
     case villageCompletion of
@@ -1494,7 +1525,7 @@ requestToJumpToVillageIfNotYetDone state coordinates =
                         - 7000
     in
     if needToJumpThere then
-        Just (VillageByCoordinatesRequest { coordinates = coordinates, jumpToVillage = True })
+        Just (VillagesByCoordinatesRequest [ { coordinates = coordinates, jumpToVillage = True } ])
 
     else
         Nothing
@@ -1786,8 +1817,10 @@ componentsForRequestToPage requestToPage =
         ReadArmyPresets ->
             { javascript = getPresetsScript, waitForCallbackDuration = Nothing }
 
-        VillageByCoordinatesRequest { coordinates, jumpToVillage } ->
-            { javascript = startVillageByCoordinatesScript coordinates { jumpToVillage = jumpToVillage }, waitForCallbackDuration = Just 800 }
+        VillagesByCoordinatesRequest villagesArguments ->
+            { javascript = startVillagesByCoordinatesScript villagesArguments
+            , waitForCallbackDuration = Nothing
+            }
 
         SendPresetAttackToCoordinatesRequest { coordinates, presetId } ->
             { javascript = startSendPresetAttackToCoordinatesScript coordinates { presetId = presetId }, waitForCallbackDuration = Nothing }
@@ -1831,7 +1864,7 @@ decodeResponseFromBrowser =
     Json.Decode.oneOf
         [ decodeRootInformation |> Json.Decode.map RootInformation
         , decodeReadSelectedCharacterVillageDetailsResponse |> Json.Decode.map ReadSelectedCharacterVillageDetailsResponse
-        , decodeVillageByCoordinatesResponse |> Json.Decode.map VillageByCoordinatesResponse
+        , decodeVillagesByCoordinatesResponse |> Json.Decode.map VillagesByCoordinatesResponse
         , decodeRequestReportListResponse |> Json.Decode.map RequestReportListResponse
         , decodeGetPresetsResponse |> Json.Decode.map GetPresetsResponse
         , decodeActivatedVillageResponse |> Json.Decode.map (always ActivatedVillageResponse)
@@ -1940,49 +1973,62 @@ decodeVillageDetailsUnitCount =
         (Json.Decode.field "available" Json.Decode.int)
 
 
-{-| Example result:
-{"coordinates":{"x":498,"y":502},"villageByCoordinates":{"id":24,"name":"Pueblo de e.é45","x":498,"y":502,"character\_id":null,"province\_name":"Daufahlsur","character\_name":null,"character\_points":null,"points":96,"fortress":0,"tribe\_id":null,"tribe\_name":null,"tribe\_tag":null,"tribe\_points":null,"attack\_protection":0,"barbarian\_boost":null,"flags":{},"affiliation":"barbarian"}}
-
-When there is no village:
-{"coordinates":{"x":499,"y":502},"villageByCoordinates":{"villages":[]}}
-
--}
-startVillageByCoordinatesScript : VillageCoordinates -> { jumpToVillage : Bool } -> String
-startVillageByCoordinatesScript coordinates { jumpToVillage } =
+startVillagesByCoordinatesScript : List { coordinates : VillageCoordinates, jumpToVillage : Bool } -> String
+startVillagesByCoordinatesScript villages =
     let
         argumentJson =
-            [ ( "coordinates", coordinates |> jsonEncodeCoordinates )
-            , ( "jumpToVillage", jumpToVillage |> Json.Encode.bool )
-            ]
-                |> Json.Encode.object
+            villages
+                |> Json.Encode.list
+                    (\village ->
+                        [ ( "coordinates", village.coordinates |> jsonEncodeCoordinates )
+                        , ( "jumpToVillage", village.jumpToVillage |> Json.Encode.bool )
+                        ]
+                            |> Json.Encode.object
+                    )
                 |> Json.Encode.encode 0
     in
     """
-(function readVillageByCoordinates(argument) {
-        coordinates = argument.coordinates;
-        jumpToVillage = argument.jumpToVillage;
+(async function readVillagesByCoordinates(argument) {
 
         autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
         mapService = angular.element(document.body).injector().get('mapService');
 
-        autoCompleteService.villageByCoordinates(coordinates, function(villageData) {
-            //  console.log(JSON.stringify({ coordinates : coordinates, villageByCoordinates: villageData}));
-            ____callback____(JSON.stringify(villageData));
+        function villageByCoordinatesPromise(coordinates) {
+            return new Promise(resolve => {
+
+                autoCompleteService.villageByCoordinates(coordinates, function(villageData) {
+                    resolve(villageData);
+                });
+            });
+            }
+
+        const villagesData = [];
+
+        for (const villageArgument of argument) {
+
+            villageCoordinates = villageArgument.coordinates;
+            jumpToVillage = villageArgument.jumpToVillage;
+
+            villageData = await villageByCoordinatesPromise(villageCoordinates);
+
+            villagesData.push({ villageCoordinates : villageCoordinates, villageData : villageData });
 
             if(jumpToVillage)
             {
                 if(villageData.id == null)
                 {
-                    //  console.log("Did not find village at " + JSON.stringify(coordinates));
+                    //  console.log("Did not find village at " + JSON.stringify(villageCoordinates));
                 }
                 else
                 {
-                    mapService.jumpToVillage(coordinates.x, coordinates.y, villageData.id);
+                    mapService.jumpToVillage(villageCoordinates.x, villageCoordinates.y, villageData.id);
                 }
             }
-        });
+        }
 
-        return JSON.stringify({ startedVillageByCoordinates : argument });
+        // TODO: Add timeout for villagesData (wrapped in promise) to increment readFromGameConsecutiveTimeoutsCount?
+
+        return JSON.stringify({ villagesByCoordinates : { argument : argument, villagesData : villagesData }});
 })(""" ++ argumentJson ++ ")"
 
 
@@ -1991,17 +2037,41 @@ jsonEncodeCoordinates { x, y } =
     [ ( "x", x ), ( "y", y ) ] |> List.map (Tuple.mapSecond Json.Encode.int) |> Json.Encode.object
 
 
-decodeVillageByCoordinatesResponse : Json.Decode.Decoder VillageByCoordinatesResponseStructure
-decodeVillageByCoordinatesResponse =
-    Json.Decode.field "startedVillageByCoordinates"
-        (Json.Decode.map2 VillageByCoordinatesResponseStructure
-            (Json.Decode.field "coordinates"
+decodeVillagesByCoordinatesResponse : Json.Decode.Decoder VillagesByCoordinatesResponseStructure
+decodeVillagesByCoordinatesResponse =
+    Json.Decode.field "villagesByCoordinates"
+        (Json.Decode.map2 VillagesByCoordinatesResponseStructure
+            (Json.Decode.field "argument"
+                (Json.Decode.list
+                    (Json.Decode.map2 VillageByCoordinatesResponseStructure
+                        (Json.Decode.field "coordinates"
+                            (Json.Decode.map2 VillageCoordinates
+                                (Json.Decode.field "x" Json.Decode.int)
+                                (Json.Decode.field "y" Json.Decode.int)
+                            )
+                        )
+                        (Json.Decode.field "jumpToVillage" Json.Decode.bool)
+                    )
+                )
+            )
+            (Json.Decode.field "villagesData" decodeVillagesByCoordinatesResult)
+        )
+
+
+decodeVillagesByCoordinatesResult : Json.Decode.Decoder (List { villageCoordinates : VillageCoordinates, villageData : VillageByCoordinatesResult })
+decodeVillagesByCoordinatesResult =
+    Json.Decode.list
+        (Json.Decode.map2
+            (\villageCoordinates villageData ->
+                { villageCoordinates = villageCoordinates, villageData = villageData }
+            )
+            (Json.Decode.field "villageCoordinates"
                 (Json.Decode.map2 VillageCoordinates
                     (Json.Decode.field "x" Json.Decode.int)
                     (Json.Decode.field "y" Json.Decode.int)
                 )
             )
-            (Json.Decode.field "jumpToVillage" Json.Decode.bool)
+            (Json.Decode.field "villageData" decodeVillageByCoordinatesResult)
         )
 
 

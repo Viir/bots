@@ -1,7 +1,7 @@
 {
     "type": "application",
     "source-directories": [
-        "."
+        "./../read-from-image"
     ],
     "elm-version": "0.19.1",
     "dependencies": {
@@ -17,7 +17,16 @@
         }
     },
     "test-dependencies": {
-        "direct": {},
-        "indirect": {}
+        "direct": {
+            "elm-explorations/test": "1.2.1"
+        },
+        "indirect": {
+            "elm/html": "1.0.0",
+            "elm/parser": "1.1.0",
+            "elm/random": "1.0.0",
+            "elm/time": "1.0.0",
+            "elm/virtual-dom": "1.0.2",
+            "rtfeldman/elm-iso8601-date-strings": "1.1.3"
+        }
     }
 }

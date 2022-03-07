@@ -1,11 +1,9 @@
 module DecodeBMPImageTest exposing (suite)
 
 import Base64.Decode
-import Bytes.Decode
 import DecodeBMPImage
-import Expect exposing (Expectation)
-import Fuzz exposing (Fuzzer, int, list, string)
-import Test exposing (..)
+import Expect
+import Test
 
 
 {-| Base64 encoding of a file created using the following process:
@@ -48,10 +46,10 @@ example_2019_07_03_3x4_ImageFileBase64 =
     "Qk1mAAAAAAAAADYAAAAoAAAAAwAAAAQAAAABABgAAAAAAAAAAADDDgAAww4AAAAAAAAAAAAA/wAAAAAAAAAAAAD/AP8AAAAAAAAAAAD/AAD/AAAAAAAAAAD/AAAAAAAAAAAAAAD/"
 
 
-suite : Test
+suite : Test.Test
 suite =
-    describe "Decode Image Files"
-        [ test
+    Test.describe "Decode Image Files"
+        [ Test.test
             "Example 4x4 image file is decoded as expected"
           <|
             \_ ->
@@ -69,7 +67,7 @@ suite =
                                 { red = 4, green = 5, blue = 6 } |> List.repeat 4 |> List.repeat 4
                             }
                         )
-        , test
+        , Test.test
             "Example 3x4 image file is decoded as expected"
           <|
             \_ ->

@@ -156,7 +156,11 @@ static string BrowserDownloadDirPath() =>
 PuppeteerSharp.Browser browser;
 PuppeteerSharp.Page browserPage;
 
+/*
+2022-03-11
+
 Action<string> callbackFromBrowserDelegate;
+*/
 
 async System.Threading.Tasks.Task KillOtherInstancesAndStartBrowser(
     string pageGoToUrl,
@@ -185,6 +189,9 @@ async System.Threading.Tasks.Task KillOtherInstancesAndStartBrowser(
 
     browserPage = (await browser.PagesAsync()).FirstOrDefault() ?? await browser.NewPageAsync();
 
+    /*
+    2022-03-11
+
     //  TODO: Better name for ____callback____?
 
     await browserPage.ExposeFunctionAsync("____callback____", (string returnValue) =>
@@ -192,6 +199,7 @@ async System.Threading.Tasks.Task KillOtherInstancesAndStartBrowser(
         callbackFromBrowserDelegate?.Invoke(returnValue);
         return 0;
     });
+    */
 
     if(0 < pageGoToUrl?.Length)
     {
@@ -214,11 +222,15 @@ async System.Threading.Tasks.Task<Response.RunJavascriptInCurrentPageResponseStr
         };
     }
 
+    /*
+    2022-03-11
+
     callbackFromBrowserDelegate = new Action<string>(returnValue =>
     {
         callbackReturnValue = returnValue;
         callbackCalled = true;
     });
+    */
 
     var directReturnValueAsString = (await browserPage.EvaluateExpressionAsync(request.javascript))?.ToString();
 

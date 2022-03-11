@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-03-05
+{- Tribal Wars 2 farmbot version 2022-03-11
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -237,11 +237,7 @@ type alias BotState =
     , lastStartWebBrowserTimeInSeconds : Maybe Int
     , startWebBrowserCount : Int
     , completedFarmCycles : List FarmCycleConclusion
-    , lastRequestReportListResult :
-        Maybe
-            { request : RequestReportListResponseStructure
-            , decodeResponseResult : Result Json.Decode.Error RequestReportListCallbackDataStructure
-            }
+    , lastRequestReportListResult : Maybe RequestReportListResponseStructure
     , parseResponseError : Maybe Json.Decode.Error
     , cache_relativeCoordinatesToSearchForFarmsPartitions : List (List VillageCoordinates)
     }
@@ -327,8 +323,11 @@ type alias VillageByCoordinatesResponseStructure =
 
 
 type alias RequestReportListResponseStructure =
-    { offset : Int
-    , count : Int
+    { argument :
+        { offset : Int
+        , count : Int
+        }
+    , reportListData : RequestReportListCallbackDataStructure
     }
 
 
@@ -1118,17 +1117,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                     { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
 
                 RequestReportListResponse requestReportList ->
-                    let
-                        decodeReportListResult =
-                            runJavascriptInCurrentPageResponse.callbackReturnValueAsString
-                                |> Maybe.withDefault "Looks like the callback was not invoked in time."
-                                |> Json.Decode.decodeString decodeRequestReportListCallbackData
-
-                        -- TODO: Remember specific case of timeout: This information is useful to decide when and how to retry.
-                    in
-                    { stateBefore
-                        | lastRequestReportListResult = Just { request = requestReportList, decodeResponseResult = decodeReportListResult }
-                    }
+                    { stateBefore | lastRequestReportListResult = Just requestReportList }
 
 
 maintainGameClient : BotState -> Maybe (DecisionPathNode InFarmCycleResponse)
@@ -2270,30 +2259,20 @@ startRequestReportListScript request =
                 |> Json.Encode.encode 0
     in
     """
-(function requestReportList(argument) {
+(async function requestReportList(argument) {
 
         reportService = angular.element(document.body).injector().get('reportService');
 
-        reportService.requestReportList('battle', argument.offset, argument.count, null, { "BATTLE_RESULTS": { "1": false, "2": false, "3": false }, "BATTLE_TYPES": { "attack": true, "defense": true, "support": true, "scouting": true }, "OTHERS_TYPES": { "trade": true, "system": true, "misc": true }, "MISC": { "favourite": false, "full_haul": false, "forwarded": false, "character": false } }, function (reportsData) {
+        function requestReportListAsync(argument) {
+            return new Promise(resolve => {
 
+                reportService.requestReportList('battle', argument.offset, argument.count, null, { "BATTLE_RESULTS": { "1": false, "2": false, "3": false }, "BATTLE_TYPES": { "attack": true, "defense": true, "support": true, "scouting": true }, "OTHERS_TYPES": { "trade": true, "system": true, "misc": true }, "MISC": { "favourite": false, "full_haul": false, "forwarded": false, "character": false } }, resolve);
+            });
+            }
 
-            /*
-            TODO: Remove.
-            Inspect if the callback given to requestReportList is invoked with a proper value.
-            */
-            console.log(JSON.stringify(reportsData));
+        reportListData = await requestReportListAsync(argument);
 
-
-            ____callback____(JSON.stringify(reportsData));
-
-
-            /*
-            TODO: Remove.
-            */
-            console.log("Returned from callback");
-        });
-
-        return JSON.stringify({ startedRequestReportList : argument });
+        return JSON.stringify({ startedRequestReportList : { argument : argument, reportListData : reportListData } });
 })(""" ++ argumentJson ++ ")"
 
 
@@ -2301,13 +2280,18 @@ decodeRequestReportListResponse : Json.Decode.Decoder RequestReportListResponseS
 decodeRequestReportListResponse =
     Json.Decode.field "startedRequestReportList"
         (Json.Decode.map2 RequestReportListResponseStructure
-            (Json.Decode.field "offset" Json.Decode.int)
-            (Json.Decode.field "count" Json.Decode.int)
+            (Json.Decode.field "argument"
+                (Json.Decode.map2 (\offset count -> { offset = offset, count = count })
+                    (Json.Decode.field "offset" Json.Decode.int)
+                    (Json.Decode.field "count" Json.Decode.int)
+                )
+            )
+            (Json.Decode.field "reportListData" decodeRequestReportListData)
         )
 
 
-decodeRequestReportListCallbackData : Json.Decode.Decoder RequestReportListCallbackDataStructure
-decodeRequestReportListCallbackData =
+decodeRequestReportListData : Json.Decode.Decoder RequestReportListCallbackDataStructure
+decodeRequestReportListData =
     Json.Decode.map3 RequestReportListCallbackDataStructure
         (Json.Decode.field "offset" Json.Decode.int)
         (Json.Decode.field "total" Json.Decode.int)
@@ -2488,12 +2472,7 @@ statusMessageFromState state { activityDecisionStages } =
                 Just requestReportListResult ->
                     let
                         responseReport =
-                            case requestReportListResult.decodeResponseResult of
-                                Ok requestReportListResponse ->
-                                    "Received IDs of " ++ (requestReportListResponse.reports |> List.length |> String.fromInt) ++ " reports"
-
-                                Err decodeError ->
-                                    "Failed to decode the response: " ++ Json.Decode.errorToString decodeError
+                            "Received IDs of " ++ (requestReportListResult.reportListData.reports |> List.length |> String.fromInt) ++ " reports"
                     in
                     "Read the list of battle reports: " ++ responseReport
 

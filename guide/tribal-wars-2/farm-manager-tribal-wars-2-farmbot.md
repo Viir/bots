@@ -34,7 +34,7 @@ https://youtu.be/yzkernqechE
 
 Following are the first steps shown in the video, using a dedicated Windows program to run the farmbot:
 
-+ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2022-01-28.zip
++ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2022-03-11.zip
 + Extract the downloaded zip archive. The extraction will give you a file named `tribal-wars-2-farmbot.exe`.
 + Run the `tribal-wars-2-farmbot.exe` program.
 
@@ -115,7 +115,7 @@ Following is a list of available settings:
 + `close-game-client-during-break`: Set this to 'yes' to make the bot close the game client/web browser during breaks.
 + `open-website-on-start`: Website to open when starting the web browser.
 
-To configure settings, open the configuration page at [https://catalog.botlab.org/6960e9879bb0992a](https://catalog.botlab.org/6960e9879bb0992a) in a web browser.
+To configure settings, open the configuration page at [https://catalog.botlab.org/600654cba5345f30](https://catalog.botlab.org/600654cba5345f30) in a web browser.
 
 On this page, scroll down to the button `Configure bot`.
 

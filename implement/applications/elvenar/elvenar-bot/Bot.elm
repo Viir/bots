@@ -1,4 +1,9 @@
-{- This bot locates coins in the Elvenar game client window.
+{- Elvenar Bot v2022-03-13
+
+   This bot locates coins in the Elvenar game client window.
+
+   The bot picks the topmost window in the display order, the one in the front. This selection happens once when starting the bot. The bot then remembers the window address and continues working on the same window.
+   To use this bot, bring the target window to the foreground after pressing the button to run the bot. When the bot displays the window title in the status text, you know it has completed the selection.
 
    You can test this bot by placing a screenshot in a paint app like MS Paint or Paint.NET, where you can change its location within the window easily.
 -}

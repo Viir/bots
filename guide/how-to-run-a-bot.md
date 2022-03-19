@@ -113,6 +113,6 @@ catalog-tags: template, bot-settings, demo-interface-to-host
 authors forum usernames: viir
 ```
 
-## Running a Bot in a Simulation
+## Running a Bot in a Simulated Environment
 
-To learn about testing a bot using simulations, see the dedicated guide at https://to.botlab.org/guide/testing-a-bot-using-simulations
+To learn about testing a bot using simulated environments, see the dedicated guide at https://to.botlab.org/guide/testing-a-bot-using-simulated-environments

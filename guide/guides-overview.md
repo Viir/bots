@@ -11,7 +11,7 @@
 
 + Observing and inspecting (aka 'debugging') a bot: https://to.botlab.org/guide/observing-and-inspecting-a-bot
 
-+ Testing a bot using simulations: https://to.botlab.org/guide/testing-a-bot-using-simulations
++ Testing a bot using simulated environments: https://to.botlab.org/guide/testing-a-bot-using-simulated-environments
 
 + Input focus scheduling for multiple bot instances: https://to.botlab.org/guide/input-focus-scheduling-for-multiple-bot-instances
 

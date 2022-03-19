@@ -18,7 +18,7 @@ The artifact of the session recording allows us to:
 + See which bot program was used in the session and how it was configured (including bot-settings).
 + Travel back in time and see what the bot saw in the past.
 + Understand why our bot did what it did.
-+ Create simulations to test new program codes. ([Testing a bot using simulations](https://to.botlab.org/guide/testing-a-bot-using-simulations))
++ Create simulation environments to test new bot programs: https://to.botlab.org/guide/testing-a-bot-using-simulated-environments
 + Extract training data used to adapt bot program codes to new users and their setups.
 
 In summary, sharing a session recording is a fast and efficient way to answer many questions from people who want to help you.

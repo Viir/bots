@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-03-11
+{- Tribal Wars 2 farmbot version 2022-03-19
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -1828,8 +1828,9 @@ readRootInformationScript =
 tribalWars2 = (function(){
     if (typeof angular == 'undefined' || !(angular.element(document.body).injector().has('modelDataService'))) return { NotInTribalWars: true};
 
-    modelDataService = angular.element(document.body).injector().get('modelDataService');
-    selectedCharacter = modelDataService.getSelectedCharacter()
+    let modelDataService = angular.element(document.body).injector().get('modelDataService');
+    let selectedCharacter = modelDataService.getSelectedCharacter();
+
     if (selectedCharacter == null)
         return { NotInTribalWars: true};
 
@@ -1886,7 +1887,7 @@ readSelectedCharacterVillageDetailsScript : Int -> String
 readSelectedCharacterVillageDetailsScript villageId =
     """
 (function () {
-    modelDataService = angular.element(document.body).injector().get('modelDataService');
+    let modelDataService = angular.element(document.body).injector().get('modelDataService');
 
     return JSON.stringify({ selectedCharacterVillage : modelDataService.getSelectedCharacter().data.villages[""" ++ "\"" ++ (villageId |> String.fromInt) ++ "\"" ++ """] });
 })()
@@ -1979,8 +1980,8 @@ startVillagesByCoordinatesScript villages =
     """
 (async function readVillagesByCoordinates(argument) {
 
-        autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
-        mapService = angular.element(document.body).injector().get('mapService');
+        let autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
+        let mapService = angular.element(document.body).injector().get('mapService');
 
         function villageByCoordinatesPromise(coordinates) {
             return new Promise(resolve => {
@@ -1995,10 +1996,10 @@ startVillagesByCoordinatesScript villages =
 
         for (const villageArgument of argument) {
 
-            villageCoordinates = villageArgument.coordinates;
-            jumpToVillage = villageArgument.jumpToVillage;
+            let villageCoordinates = villageArgument.coordinates;
+            let jumpToVillage = villageArgument.jumpToVillage;
 
-            villageData = await villageByCoordinatesPromise(villageCoordinates);
+            let villageData = await villageByCoordinatesPromise(villageCoordinates);
 
             villagesData.push({ villageCoordinates : villageCoordinates, villageData : villageData });
 
@@ -2117,7 +2118,7 @@ getPresetsScript : String
 getPresetsScript =
     """
 (function getPresets() {
-        presetListService = angular.element(document.body).injector().get('presetListService');
+        let presetListService = angular.element(document.body).injector().get('presetListService');
 
         return JSON.stringify({ getPresets: presetListService.getPresets() });
 })()"""
@@ -2152,18 +2153,18 @@ startSendPresetAttackToCoordinatesScript coordinates { presetId } =
     in
     """
 (function sendPresetAttackToCoordinates(argument) {
-    coordinates = argument.coordinates;
-    presetId = argument.presetId;
+    let coordinates = argument.coordinates;
+    let presetId = argument.presetId;
 
-    autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
-    socketService = angular.element(document.body).injector().get('socketService');
-    routeProvider = angular.element(document.body).injector().get('routeProvider');
-    mapService = angular.element(document.body).injector().get('mapService');
-    presetService = angular.element(document.body).injector().get('presetService');
+    let autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
+    let socketService = angular.element(document.body).injector().get('socketService');
+    let routeProvider = angular.element(document.body).injector().get('routeProvider');
+    let mapService = angular.element(document.body).injector().get('mapService');
+    let presetService = angular.element(document.body).injector().get('presetService');
 
     sendPresetAttack = function sendPresetAttack(presetId, targetVillageId) {
         //  TODO: Get 'type' from 'conf/commandTypes'.TYPES.ATTACK
-        type = 'attack';
+        let type = 'attack';
 
         socketService.emit(routeProvider.GET_ATTACKING_FACTOR, {
             'target_id' : targetVillageId
@@ -2218,7 +2219,7 @@ villageMenuActivateVillageScript =
         return document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
     };
 
-    var contextMenuEntry = getXPathResultFirstNode("//*[contains(@class, 'context-menu-item') and contains(@class, 'activate')]//*[contains(@ng-click, 'openSubMenu')]");
+    let contextMenuEntry = getXPathResultFirstNode("//*[contains(@class, 'context-menu-item') and contains(@class, 'activate')]//*[contains(@ng-click, 'openSubMenu')]");
     
     contextMenuEntry.click();
 
@@ -2261,7 +2262,7 @@ startRequestReportListScript request =
     """
 (async function requestReportList(argument) {
 
-        reportService = angular.element(document.body).injector().get('reportService');
+        let reportService = angular.element(document.body).injector().get('reportService');
 
         function requestReportListAsync(argument) {
             return new Promise(resolve => {
@@ -2270,7 +2271,7 @@ startRequestReportListScript request =
             });
             }
 
-        reportListData = await requestReportListAsync(argument);
+        let reportListData = await requestReportListAsync(argument);
 
         return JSON.stringify({ startedRequestReportList : { argument : argument, reportListData : reportListData } });
 })(""" ++ argumentJson ++ ")"

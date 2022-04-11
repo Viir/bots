@@ -8,7 +8,7 @@ But this mode of observing is limiting in two ways.
 
 It is limiting because it requires us to process everything in real-time. But in most cases, information flows too fast for us to keep up. Things happen so quickly that we cannot even read all the status messages. We could pause the bot to have more time to read, but that leads to other problems since every break distorts the bot's perception of the environment.
 
-The second limitation is the merely superficial representation we find in this mode. To understand how a bot works, we need to make visible more than just the status texts. When investigating an bot's behavior, we want to follow the data-flow backward. Seeing the status text and the effects emitted by the bot in response to an event is only the first step in this process.
+The second limitation is the merely superficial representation we find in this mode. To understand how a bot works, we need to make visible more than just the status texts. When investigating a bot's behavior, we want to follow the data-flow backward. Seeing the status text and the effects emitted by the bot in response to an event is only the first step in this process.
 
 While this simple way of observing is severely limiting, it can work. We can offset the incomplete observations with more experiments. Ten hours of tests could save us one hour of careful inspection.
 

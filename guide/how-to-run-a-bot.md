@@ -80,7 +80,7 @@ You can display this description using the `botlab  describe` command:
 botlab  describe  https://github.com/Viir/bots/tree/e1eac00ab6a818e722fd64d552a2615d78f9628b/implement/templates/remember-bot-settings
 ```
 
-The `describe` command works with any program source that is supported by the `run` command.
+The `describe` command works with any program source that is supported by the `play` command.
 
 The information you get this way includes the description given by the author of the bot. This description often contains a guide on how to use the bot.
 

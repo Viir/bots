@@ -27,12 +27,12 @@ In this section, we take the fastest way to a custom bot.
 First, let's look at one of the EVE Online bots in the example projects. Run this autopilot bot:
 
 ```cmd
-botlab  run  "https://github.com/Viir/bots/tree/3a19d243ce02b9fdc8ac199c74164d86b4777a5b/implement/applications/eve-online/eve-online-warp-to-0-autopilot"
+botlab  play  https://github.com/Viir/bots/tree/a534c1caca09c06fef23c0b2da1f41e9acbda66c/implement/applications/eve-online/eve-online-warp-to-0-autopilot
 ```
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
 
-The `botlab run` command loads the program code code from the given address to run it on your system. Before running this bot, you need to start an EVE Online client, no need to go beyond character selection.
+The `botlab  play` command loads the program code code from the given address to run it on your system. Before running this bot, you need to start an EVE Online client, no need to go beyond character selection.
 
 When the bot has started, it will display this message:
 
@@ -50,13 +50,13 @@ You can use the 'Load Project from Git Repository' dialog in Elm Editor to load 
 
 After loading the program files into Elm Editor, select the `Bot.elm` file to open in the code editor.
 
-Here is a link that brings you directly into the `Bot.elm` file in Elm Editor, automating the import steps described above: https://elm-editor.com/?project-state=https%3A%2F%2Fgithub.com%2FViir%2Fbots%2Ftree%2F3a19d243ce02b9fdc8ac199c74164d86b4777a5b%2Fimplement%2Fapplications%2Feve-online%2Feve-online-warp-to-0-autopilot&file-path-to-open=Bot.elm
+Here is a link that brings you directly into the `Bot.elm` file in Elm Editor, automating the import steps described above: https://elm-editor.com/?project-state=https%3A%2F%2Fgithub.com%2FViir%2Fbots%2Ftree%2Fa534c1caca09c06fef23c0b2da1f41e9acbda66c%2Fimplement%2Fapplications%2Feve-online%2Feve-online-warp-to-0-autopilot&file-path-to-open=Bot.elm
 
 You can use the 'Export Project to Zip Archive' dialog in Elm Editor to download the current state of the program files.
 Then you can run that bot by pointing the botlab client to this downloaded zip archive, with a command like this:
 
 ```cmd
-botlab  run  "C:\Users\John\Downloads\elm-app-20948c30a689c55a5540bbd2e33436da27e7273c299bdcae051612a4256ea2df.zip"
+botlab  play  "C:\Users\John\Downloads\elm-app-20948c30a689c55a5540bbd2e33436da27e7273c299bdcae051612a4256ea2df.zip"
 ```
 
 Now that we know how to run a program code from the editor let's change it to make it our own.

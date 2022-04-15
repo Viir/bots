@@ -7,8 +7,8 @@
 
    To use this framework:
 
-   + Wrap you bots `processEvent` function with `BotEngine.SimpleBotFramework.processEvent`.
-   + Wrap you bots `initState` function with `BotEngine.SimpleBotFramework.initState`.
+   + Wrap you bots `processEvent` function with `BotLab.SimpleBotFramework.processEvent`.
+   + Wrap you bots `initState` function with `BotLab.SimpleBotFramework.initState`.
 -}
 
 

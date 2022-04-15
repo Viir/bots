@@ -76,6 +76,10 @@ Original discussion: https://forum.botlab.org/t/orca-targeting-mining/3591
 
 > Total running time in hours: 33
 
+2022-04-15 the catalog entry for [Bot 81395744f5...](https://catalog.botlab.org/81395744f5857f15f5cf22cf091a71b440b42a81dddd0e992a0d9db1fce92da2) shows:
+
+> Total running time in hours: 175
+
 ## 2020-10-31 - Stephan Fuchs - EVE Online - Merged Mining Scripts
 
 https://github.com/Viir/bots/commit/f6246764ac106894e74669815c0e675c48ab9262
@@ -93,6 +97,10 @@ Thanks for your help and your great tools
 
 > Total running time in hours: 116
 
+2022-04-15 the catalog entry for [Bot dbbec0a31d...](https://catalog.botlab.org/dbbec0a31dfe05b39cf37bb4f329c1fe5e4eb5ed85ceadac37f04ccff4a14c0b) shows:
+
+> Total running time in hours: 292
+
 ## 2021-09-22 - Drklord and opticcanadian - Tribal Wars 2 - avoid targets based on outgoing commands
 
 https://github.com/Viir/bots/commit/828e5b23a892b050f34680e006543af4df823221
@@ -105,6 +113,10 @@ Original discussion:
 2021-09-22 the catalog entry for [d5a06db64f](https://botcatalog.org/d5a06db64fd579fbcf695ef99162cd1cd069b7c9eddc19e6e5abee5d7be21c43) shows:
 
 > Total running time in hours: 71
+
+2022-04-15 the catalog entry for [d5a06db64fd579fb](https://botcatalog.org/d5a06db64fd579fbcf695ef99162cd1cd069b7c9eddc19e6e5abee5d7be21c43) shows:
+
+> Total running time in hours: 1343
 
 ## 2021-10-05 - qmail - EVE Online Intel Bot - Local Watch Script
 
@@ -121,4 +133,8 @@ Original discussion:
 2021-10-05 the catalog entry shows:
 
 > Total running time in hours: 91
+
+2022-04-15 the catalog entry shows:
+
+> Total running time in hours: 1442
 

@@ -78,6 +78,6 @@ In the ['explore'](./explore) subdirectory, I report on explorations in the worl
 
 + Explore Elm syntax and core library with the Elm Explorer: https://botlabs.blob.core.windows.net/blob-library/by-name/ElmExplorer.html
 
-+ Inspection tool to explore the structure of EVE Online memory readings: https://botlabs.blob.core.windows.net/blob-library/by-name/2021-10-29-eve-online-alternate-ui.html
++ Inspection tool to explore the structure of EVE Online memory readings: https://botlabs.blob.core.windows.net/blob-library/by-name/2022-05-01-eve-online-alternate-ui.html
 
 + How to Allow Multiple RDP Sessions in Windows 10: http://woshub.com/how-to-allow-multiple-rdp-sessions-in-windows-10/

@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2022-05-24
+{- EVE Online Warp-to-0 auto-pilot version 2022-05-26
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
@@ -159,6 +159,9 @@ decideStepWhenInSpace context undockingComplete =
                     ( "route element icon", infoPanelRouteFirstMarker.uiNode )
                     (useMenuEntryWithTextContainingFirstOf
                         [ "dock"
+
+                        -- https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370/14
+                        , "도킹"
                         , "jump"
 
                         -- https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370

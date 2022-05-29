@@ -1,4 +1,4 @@
-{- Elvenar Bot v2022-03-13
+{- Elvenar Bot v2022-05-29
 
    This bot locates coins in the Elvenar game client window.
 
@@ -28,6 +28,11 @@ import DecodeBMPImage
 import Dict
 
 
+screenshotIntervalMilliseconds : Int
+screenshotIntervalMilliseconds =
+    1000
+
+
 type alias ImagePattern =
     Dict.Dict ( Int, Int ) DecodeBMPImage.PixelValue -> ( Int, Int ) -> Bool
 
@@ -40,8 +45,6 @@ type alias SimpleState =
             , screenshot : SimpleBotFramework.ImageStructure
             , objectFoundLocations : List { x : Int, y : Int }
             }
-    , waitingForTaskToComplete : Maybe SimpleBotFramework.TaskId
-    , nextTaskIndex : Int
     }
 
 
@@ -59,9 +62,7 @@ botMain =
 initState : SimpleState
 initState =
     { timeInMilliseconds = 0
-    , waitingForTaskToComplete = Nothing
     , lastTakeScreenshotResult = Nothing
-    , nextTaskIndex = 0
     }
 
 
@@ -71,30 +72,33 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
         stateBefore =
             stateBeforeIntegratingEvent |> integrateEvent event
     in
-    -- Do not start a new task before the engine has completed the last task.
-    if stateBefore.waitingForTaskToComplete /= Nothing then
-        ( stateBefore
-        , SimpleBotFramework.ContinueSession
-            { statusDescriptionText = lastScreenshotDescription stateBefore ++ "\nWaiting for task to complete."
-            , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 100 }
-            , startTasks = []
-            }
-        )
+    let
+        timeToTakeScreenshot =
+            case stateBefore.lastTakeScreenshotResult of
+                Nothing ->
+                    True
 
-    else
-        let
-            taskToStart =
-                { taskId = SimpleBotFramework.taskIdFromString ("take-screenshot-" ++ (stateBefore.nextTaskIndex |> String.fromInt))
-                , task = SimpleBotFramework.takeScreenshot
-                }
-        in
-        ( { stateBefore | nextTaskIndex = stateBefore.nextTaskIndex + 1, waitingForTaskToComplete = Just taskToStart.taskId }
-        , SimpleBotFramework.ContinueSession
-            { startTasks = [ taskToStart ]
-            , statusDescriptionText = lastScreenshotDescription stateBefore
-            , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
-            }
-        )
+                Just lastTakeScreenshotResult ->
+                    screenshotIntervalMilliseconds
+                        < (stateBefore.timeInMilliseconds - lastTakeScreenshotResult.timeInMilliseconds)
+
+        startTasks =
+            if timeToTakeScreenshot then
+                [ { taskId = SimpleBotFramework.taskIdFromString "take-screenshot"
+                  , task = SimpleBotFramework.takeScreenshot
+                  }
+                ]
+
+            else
+                []
+    in
+    ( stateBefore
+    , SimpleBotFramework.ContinueSession
+        { startTasks = startTasks
+        , statusDescriptionText = lastScreenshotDescription stateBefore
+        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
+        }
+    )
 
 
 integrateEvent : SimpleBotFramework.BotEvent -> SimpleState -> SimpleState
@@ -114,35 +118,30 @@ integrateEvent event stateBeforeUpdateTime =
             stateBefore
 
         SimpleBotFramework.TaskCompletedEvent completedTask ->
-            if stateBefore.waitingForTaskToComplete == Just completedTask.taskId then
-                let
-                    lastTakeScreenshotResult =
-                        case completedTask.taskResult of
-                            SimpleBotFramework.NoResultValue ->
-                                stateBefore.lastTakeScreenshotResult
+            let
+                lastTakeScreenshotResult =
+                    case completedTask.taskResult of
+                        SimpleBotFramework.NoResultValue ->
+                            stateBefore.lastTakeScreenshotResult
 
-                            SimpleBotFramework.TakeScreenshotResult screenshot ->
-                                let
-                                    objectFoundLocations =
-                                        SimpleBotFramework.locatePatternInImage
-                                            coinPattern
-                                            SimpleBotFramework.SearchEverywhere
-                                            screenshot
-                                            |> filterRemoveCloseLocations 3
-                                in
-                                Just
-                                    { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                    , screenshot = screenshot
-                                    , objectFoundLocations = objectFoundLocations
-                                    }
-                in
-                { stateBefore
-                    | waitingForTaskToComplete = Nothing
-                    , lastTakeScreenshotResult = lastTakeScreenshotResult
-                }
-
-            else
-                stateBefore
+                        SimpleBotFramework.TakeScreenshotResult screenshot ->
+                            let
+                                objectFoundLocations =
+                                    SimpleBotFramework.locatePatternInImage
+                                        coinPattern
+                                        SimpleBotFramework.SearchEverywhere
+                                        screenshot
+                                        |> filterRemoveCloseLocations 3
+                            in
+                            Just
+                                { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                , screenshot = screenshot
+                                , objectFoundLocations = objectFoundLocations
+                                }
+            in
+            { stateBefore
+                | lastTakeScreenshotResult = lastTakeScreenshotResult
+            }
 
 
 lastScreenshotDescription : SimpleState -> String

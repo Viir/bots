@@ -106,7 +106,10 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
                         , startTask =
                             { taskId = taskId, task = nextInputTask }
                                 |> Just
-                        , statusDescription = "Sending next input."
+                        , statusDescription =
+                            "Sending next input. ("
+                                ++ String.fromInt (List.length nextRemainingInputTasks)
+                                ++ " others remaining)"
                         , notifyWhenArrivedAtTime = stateBefore.timeInMilliseconds + 100
                         }
                 in

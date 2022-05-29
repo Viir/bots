@@ -113,16 +113,17 @@ type alias State simpleBotState =
         Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
     , windowId : Maybe VolatileProcessInterface.WindowId
     , lastWindowTitleMeasurement : Maybe { timeInMilliseconds : Int, windowTitle : String }
-    , tasksInProgress :
-        Dict.Dict
-            String
-            { startTimeInMilliseconds : Int
-            , origin : TaskToHostOrigin
-            }
+    , tasksInProgress : Dict.Dict String TaskInProgress
     , lastTaskIndex : Int
     , error : Maybe String
     , simpleBot : simpleBotState
     , simpleBotAggregateQueueResponse : Maybe BotResponse
+    }
+
+
+type alias TaskInProgress =
+    { startTimeInMilliseconds : Int
+    , origin : TaskToHostOrigin
     }
 
 
@@ -247,27 +248,43 @@ processEventTrackingTasksInProgress :
     -> ( State simpleBotState, InterfaceToHost.BotEventResponse )
 processEventTrackingTasksInProgress simpleBotProcessEvent event stateBefore =
     let
-        ( stateBeforeRemoveTasks, response ) =
-            processEventLessTrackingTasks simpleBotProcessEvent event stateBefore
-
-        tasksInProgressAfterTaskCompleted =
+        ( tasksInProgressAfterTaskCompleted, maybeCompletedBotTask ) =
             case event.eventAtTime of
                 InterfaceToHost.TaskCompletedEvent taskCompletedEvent ->
                     case taskCompletedEvent.taskId of
                         InterfaceToHost.TaskIdFromString taskIdString ->
-                            stateBeforeRemoveTasks.tasksInProgress
-                                |> Dict.remove taskIdString
+                            let
+                                maybeTaskFromBot =
+                                    case stateBefore.tasksInProgress |> Dict.get taskIdString of
+                                        Nothing ->
+                                            Nothing
+
+                                        Just taskInProgress ->
+                                            case taskInProgress.origin of
+                                                BotOrigin taskIdFromBot taskFromBot ->
+                                                    Just ( taskIdFromBot, taskFromBot )
+
+                                                FrameworkOrigin ->
+                                                    Nothing
+                            in
+                            ( stateBefore.tasksInProgress |> Dict.remove taskIdString
+                            , maybeTaskFromBot
+                            )
 
                 _ ->
-                    stateBeforeRemoveTasks.tasksInProgress
+                    ( stateBefore.tasksInProgress, Nothing )
 
         tasksInProgress =
             tasksInProgressAfterTaskCompleted
 
-        state =
-            { stateBeforeRemoveTasks
-                | tasksInProgress = tasksInProgressAfterTaskCompleted
-            }
+        ( state, response ) =
+            processEventLessTrackingTasks
+                simpleBotProcessEvent
+                event
+                maybeCompletedBotTask
+                { stateBefore
+                    | tasksInProgress = tasksInProgressAfterTaskCompleted
+                }
     in
     case response of
         InternalFinishSession finishSession ->
@@ -336,9 +353,10 @@ processEventTrackingTasksInProgress simpleBotProcessEvent event stateBefore =
 processEventLessTrackingTasks :
     (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
     -> InterfaceToHost.BotEvent
+    -> Maybe ( TaskId, Task )
     -> State simpleBotState
     -> ( State simpleBotState, InternalBotEventResponse )
-processEventLessTrackingTasks simpleBotProcessEvent event stateBefore =
+processEventLessTrackingTasks simpleBotProcessEvent event maybeCompletedBotTask stateBefore =
     case stateBefore.error of
         Just error ->
             ( stateBefore
@@ -346,7 +364,7 @@ processEventLessTrackingTasks simpleBotProcessEvent event stateBefore =
             )
 
         Nothing ->
-            processEventIgnoringLastError simpleBotProcessEvent event stateBefore
+            processEventIgnoringLastError simpleBotProcessEvent event maybeCompletedBotTask stateBefore
 
 
 {-| On the relation between tasks from the bot and tasks from the framework:
@@ -361,21 +379,23 @@ Therefore we queue tasks from the bot to forward them when we have completed the
 processEventIgnoringLastError :
     (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
     -> InterfaceToHost.BotEvent
+    -> Maybe ( TaskId, Task )
     -> State simpleBotState
     -> ( State simpleBotState, InternalBotEventResponse )
-processEventIgnoringLastError simpleBotProcessEvent event stateBefore =
+processEventIgnoringLastError simpleBotProcessEvent event maybeCompletedBotTask stateBefore =
     stateBefore
-        |> processEventIntegrateBotEvents simpleBotProcessEvent event
-        |> processEventAfterIntegrateBotEvents simpleBotProcessEvent event
+        |> processEventIntegrateBotEvents simpleBotProcessEvent event maybeCompletedBotTask
+        |> deriveTasksAfterIntegrateBotEvents
 
 
 processEventIntegrateBotEvents :
     (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
     -> InterfaceToHost.BotEvent
+    -> Maybe ( TaskId, Task )
     -> State simpleBotState
     -> State simpleBotState
-processEventIntegrateBotEvents simpleBotProcessEvent event stateBefore =
-    case simpleBotEventsFromHostEvent event stateBefore of
+processEventIntegrateBotEvents simpleBotProcessEvent event maybeCompletedBotTask stateBefore =
+    case simpleBotEventsFromHostEvent event maybeCompletedBotTask of
         Err _ ->
             stateBefore
 
@@ -398,12 +418,10 @@ processEventIntegrateBotEvents simpleBotProcessEvent event stateBefore =
             }
 
 
-processEventAfterIntegrateBotEvents :
-    (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
-    -> InterfaceToHost.BotEvent
-    -> State simpleBotState
+deriveTasksAfterIntegrateBotEvents :
+    State simpleBotState
     -> ( State simpleBotState, InternalBotEventResponse )
-processEventAfterIntegrateBotEvents simpleBotProcessEvent event stateBefore =
+deriveTasksAfterIntegrateBotEvents stateBefore =
     if not (Dict.isEmpty stateBefore.tasksInProgress) then
         ( stateBefore
         , InternalContinueSession
@@ -517,19 +535,19 @@ consolidateBotTasks =
 
 simpleBotEventsFromHostEvent :
     InterfaceToHost.BotEvent
-    -> State simpleBotState
+    -> Maybe ( TaskId, Task )
     -> Result String (List BotEvent)
-simpleBotEventsFromHostEvent event stateBefore =
-    simpleBotEventsFromHostEventAtTime event.eventAtTime stateBefore
+simpleBotEventsFromHostEvent event maybeCompletedBotTask =
+    simpleBotEventsFromHostEventAtTime event.eventAtTime maybeCompletedBotTask
         |> Result.map
             (List.map (\eventAtTime -> { timeInMilliseconds = event.timeInMilliseconds, eventAtTime = eventAtTime }))
 
 
 simpleBotEventsFromHostEventAtTime :
     InterfaceToHost.BotEventAtTime
-    -> State simpleBotState
+    -> Maybe ( TaskId, Task )
     -> Result String (List BotEventAtTime)
-simpleBotEventsFromHostEventAtTime event stateBefore =
+simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask =
     case event of
         InterfaceToHost.TimeArrivedEvent ->
             Ok [ TimeArrivedEvent ]
@@ -547,79 +565,74 @@ simpleBotEventsFromHostEventAtTime event stateBefore =
                         InterfaceToHost.TaskIdFromString taskIdStringHost ->
                             taskIdStringHost
             in
-            case stateBefore.tasksInProgress |> Dict.get taskIdString of
+            case maybeCompletedBotTask of
                 Nothing ->
-                    Err ("Failed to remember task with ID " ++ taskIdString)
+                    Err ("Did not find a bot task for task with ID " ++ taskIdString)
 
-                Just taskInProgress ->
-                    case taskInProgress.origin of
-                        FrameworkOrigin ->
-                            Err ("Task ID mismatch: Found framework task for ID " ++ taskIdString)
+                Just ( simpleBotTaskId, simpleBotTask ) ->
+                    let
+                        taskResultResult =
+                            case completedTask.taskResult of
+                                InterfaceToHost.CreateVolatileProcessResponse _ ->
+                                    Err "CreateVolatileProcessResponse"
 
-                        BotOrigin simpleBotTaskId simpleBotTask ->
-                            let
-                                taskResultResult =
-                                    case completedTask.taskResult of
-                                        InterfaceToHost.CreateVolatileProcessResponse _ ->
-                                            Err "CreateVolatileProcessResponse"
+                                InterfaceToHost.CompleteWithoutResult ->
+                                    Err "CompleteWithoutResult"
 
-                                        InterfaceToHost.CompleteWithoutResult ->
-                                            Err "CompleteWithoutResult"
+                                InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileProcessResponse ->
+                                    case requestToVolatileProcessResponse of
+                                        Err InterfaceToHost.ProcessNotFound ->
+                                            Err "Error running script in volatile process: ProcessNotFound"
 
-                                        InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileProcessResponse ->
-                                            case requestToVolatileProcessResponse of
-                                                Err InterfaceToHost.ProcessNotFound ->
-                                                    Err "Error running script in volatile process: ProcessNotFound"
+                                        Err InterfaceToHost.FailedToAcquireInputFocus ->
+                                            Err "Error running script in volatile process: FailedToAcquireInputFocus"
 
-                                                Err InterfaceToHost.FailedToAcquireInputFocus ->
-                                                    Err "Error running script in volatile process: FailedToAcquireInputFocus"
+                                        Ok volatileProcessResponseSuccess ->
+                                            case volatileProcessResponseSuccess.exceptionToString of
+                                                Just exceptionInVolatileProcess ->
+                                                    Err ("Exception in volatile process: " ++ exceptionInVolatileProcess)
 
-                                                Ok volatileProcessResponseSuccess ->
-                                                    case volatileProcessResponseSuccess.exceptionToString of
-                                                        Just exceptionInVolatileProcess ->
-                                                            Err ("Exception in volatile process: " ++ exceptionInVolatileProcess)
+                                                Nothing ->
+                                                    case volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault "" |> VolatileProcessInterface.deserializeResponseFromVolatileProcess of
+                                                        Err error ->
+                                                            Err ("Failed to parse response from volatile process: " ++ (error |> Json.Decode.errorToString))
 
-                                                        Nothing ->
-                                                            case volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault "" |> VolatileProcessInterface.deserializeResponseFromVolatileProcess of
-                                                                Err error ->
-                                                                    Err ("Failed to parse response from volatile process: " ++ (error |> Json.Decode.errorToString))
+                                                        Ok parsedResponse ->
+                                                            case simpleBotTask of
+                                                                BringWindowToForeground ->
+                                                                    Ok NoResultValue
 
-                                                                Ok parsedResponse ->
-                                                                    case simpleBotTask of
-                                                                        BringWindowToForeground ->
-                                                                            Ok NoResultValue
+                                                                MoveMouseToLocation _ ->
+                                                                    Ok NoResultValue
 
-                                                                        MoveMouseToLocation _ ->
-                                                                            Ok NoResultValue
+                                                                MouseButtonDown _ ->
+                                                                    Ok NoResultValue
 
-                                                                        MouseButtonDown _ ->
-                                                                            Ok NoResultValue
+                                                                MouseButtonUp _ ->
+                                                                    Ok NoResultValue
 
-                                                                        MouseButtonUp _ ->
-                                                                            Ok NoResultValue
+                                                                KeyboardKeyDown _ ->
+                                                                    Ok NoResultValue
 
-                                                                        KeyboardKeyDown _ ->
-                                                                            Ok NoResultValue
+                                                                KeyboardKeyUp _ ->
+                                                                    Ok NoResultValue
 
-                                                                        KeyboardKeyUp _ ->
-                                                                            Ok NoResultValue
+                                                                TakeScreenshot ->
+                                                                    case parsedResponse of
+                                                                        VolatileProcessInterface.TakeScreenshotResult takeScreenshotResult ->
+                                                                            Ok
+                                                                                (TakeScreenshotResult (deriveImageRepresentation takeScreenshotResult.pixels))
 
-                                                                        TakeScreenshot ->
-                                                                            case parsedResponse of
-                                                                                VolatileProcessInterface.TakeScreenshotResult takeScreenshotResult ->
-                                                                                    Ok
-                                                                                        (TakeScreenshotResult (deriveImageRepresentation takeScreenshotResult.pixels))
+                                                                        _ ->
+                                                                            Err ("Unexpected return value from volatile process: " ++ (volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault ""))
+                    in
+                    case taskResultResult of
+                        Err error ->
+                            Err ("Unexpected task result: " ++ error)
 
-                                                                                _ ->
-                                                                                    Err ("Unexpected return value from volatile process: " ++ (volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault ""))
-                            in
-                            case taskResultResult of
-                                Err error ->
-                                    Err ("Unexpected task result: " ++ error)
-
-                                Ok taskResultOk ->
-                                    Ok
-                                        [ TaskCompletedEvent { taskId = simpleBotTaskId, taskResult = taskResultOk } ]
+                        Ok taskResultOk ->
+                            Ok
+                                [ TaskCompletedEvent { taskId = simpleBotTaskId, taskResult = taskResultOk } ]
 
 
 deriveImageRepresentation : List (List PixelValue) -> ImageStructure
@@ -932,7 +945,7 @@ statusDescriptionFromState state =
 
                 Just (ContinueSession continueSession) ->
                     (continueSession.startTasks |> List.length |> String.fromInt)
-                        ++ " tasks from bot in queue"
+                        ++ " task(s) from bot in queue"
     in
     [ portionWindow
     , tasksReport

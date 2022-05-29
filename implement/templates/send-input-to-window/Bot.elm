@@ -53,21 +53,21 @@ initState =
     , waitingForTaskToComplete = Nothing
     , remainingInputTasks =
         [ bringWindowToForeground
-        , moveMouseToLocation { x = 100, y = 250 }
+        , moveMouseToLocation { x = 100, y = 350 }
         , mouseButtonDown mouseButtonLeft
-        , moveMouseToLocation { x = 200, y = 300 }
+        , moveMouseToLocation { x = 200, y = 400 }
         , mouseButtonUp mouseButtonLeft
         , mouseButtonDown mouseButtonRight
-        , moveMouseToLocation { x = 300, y = 230 }
+        , moveMouseToLocation { x = 300, y = 330 }
         , mouseButtonUp mouseButtonRight
-        , moveMouseToLocation { x = 160, y = 235 }
+        , moveMouseToLocation { x = 160, y = 335 }
         , mouseButtonDown mouseButtonLeft
         , mouseButtonUp mouseButtonLeft
 
         -- 2019-06-09 MS Paint did also draw when space key was pressed. Next, we draw a line without a mouse button, by holding the space key down.
-        , moveMouseToLocation { x = 180, y = 230 }
+        , moveMouseToLocation { x = 180, y = 330 }
         , keyboardKeyDown keyboardKey_space
-        , moveMouseToLocation { x = 210, y = 240 }
+        , moveMouseToLocation { x = 210, y = 340 }
         , keyboardKeyUp keyboardKey_space
         ]
     }

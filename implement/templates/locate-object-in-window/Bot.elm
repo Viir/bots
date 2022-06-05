@@ -15,7 +15,12 @@ module Bot exposing
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework exposing (PixelValue)
+import Dict
 import Maybe.Extra
+
+
+type alias Location2d =
+    SimpleBotFramework.Location2d
 
 
 screenshotIntervalMilliseconds : Int
@@ -23,11 +28,51 @@ screenshotIntervalMilliseconds =
     1000
 
 
+screenshotOriginalLocationsToInspectOffset : Location2d
+screenshotOriginalLocationsToInspectOffset =
+    { x = 100, y = 200 }
+
+
+screenshot2x2LocationsToInspectOffset : Location2d
+screenshot2x2LocationsToInspectOffset =
+    { x = screenshotOriginalLocationsToInspectOffset.x // 2
+    , y = screenshotOriginalLocationsToInspectOffset.y // 2
+    }
+
+
+screenshotOriginalLocationsToInspect : List Location2d
+screenshotOriginalLocationsToInspect =
+    [ { x = 0, y = 0 }
+    , { x = 1, y = 0 }
+    , { x = 0, y = 1 }
+    , { x = 1, y = 1 }
+    , { x = 10, y = 0 }
+    , { x = 11, y = 0 }
+    , { x = 10, y = 1 }
+    , { x = 11, y = 1 }
+    , { x = 0, y = 10 }
+    , { x = 1, y = 10 }
+    , { x = 0, y = 11 }
+    , { x = 1, y = 11 }
+    ]
+        |> List.map (addOffset screenshotOriginalLocationsToInspectOffset)
+
+
+screenshot2x2LocationsToInspect : List Location2d
+screenshot2x2LocationsToInspect =
+    [ { x = 0, y = 0 }
+    , { x = 5, y = 0 }
+    , { x = 0, y = 5 }
+    ]
+        |> List.map (addOffset screenshot2x2LocationsToInspectOffset)
+
+
 type alias SimpleState =
     { timeInMilliseconds : Int
     , lastTakeScreenshotResult :
         Maybe
             { timeInMilliseconds : Int
+            , readResult : SimpleBotFramework.ReadFromWindowResultStruct
             , screenshot : SimpleBotFramework.ImageStructure
             , objectFoundLocations : List { x : Int, y : Int }
             }
@@ -70,7 +115,9 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
         startTasks =
             if timeToTakeScreenshot then
                 [ { taskId = SimpleBotFramework.taskIdFromString "take-screenshot"
-                  , task = SimpleBotFramework.takeScreenshot
+                  , task =
+                        SimpleBotFramework.readFromWindow
+                            { crops_1x1_r8g8b8 = [ { x = 0, y = 0, width = 9999, height = 9999 } ] }
                   }
                 ]
 
@@ -109,17 +156,18 @@ integrateEvent event stateBeforeUpdateTime =
                         SimpleBotFramework.NoResultValue ->
                             stateBefore.lastTakeScreenshotResult
 
-                        SimpleBotFramework.TakeScreenshotResult screenshot ->
+                        SimpleBotFramework.ReadFromWindowResult readFromWindowResult image ->
                             let
                                 objectFoundLocations =
                                     SimpleBotFramework.locatePatternInImage
                                         locate_EVE_Online_Undock_Button
                                         SimpleBotFramework.SearchEverywhere
-                                        screenshot
+                                        image
                             in
                             Just
                                 { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                , screenshot = screenshot
+                                , readResult = readFromWindowResult
+                                , screenshot = image
                                 , objectFoundLocations = objectFoundLocations
                                 }
             in
@@ -146,13 +194,56 @@ lastScreenshotDescription stateBefore =
                         ++ " locations:\n[ "
                         ++ (objectFoundLocationsToDescribe |> List.map describeLocation |> String.join ", ")
                         ++ " ]"
+
+                pixelValues =
+                    [ { reprName = "binned-2x2"
+                      , locations = screenshot2x2LocationsToInspect
+                      , getter = .imageBinned2x2AsDict
+                      }
+                    , { reprName = "original"
+                      , locations = screenshotOriginalLocationsToInspect
+                      , getter = .imageAsDict
+                      }
+                    ]
+                        |> List.map
+                            (\reprConfig ->
+                                "Inspecting on representation '"
+                                    ++ reprConfig.reprName
+                                    ++ "':\n"
+                                    ++ (reprConfig.locations
+                                            |> List.map
+                                                (\location ->
+                                                    String.fromInt location.x
+                                                        ++ ","
+                                                        ++ String.fromInt location.y
+                                                        ++ ": "
+                                                        ++ (lastTakeScreenshotResult.screenshot
+                                                                |> reprConfig.getter
+                                                                |> Dict.get ( location.x, location.y )
+                                                                |> Maybe.map describePixelValue
+                                                                |> Maybe.withDefault "NA"
+                                                           )
+                                                )
+                                            |> String.join "\n"
+                                       )
+                            )
+                        |> String.join "\n"
+
+                windowProperties =
+                    [ ( "window.width", lastTakeScreenshotResult.readResult.windowSize.x )
+                    , ( "window.height", lastTakeScreenshotResult.readResult.windowSize.y )
+                    , ( "windowClientArea.width", lastTakeScreenshotResult.readResult.windowClientAreaSize.x )
+                    , ( "windowClientArea.height", lastTakeScreenshotResult.readResult.windowClientAreaSize.y )
+                    ]
+                        |> List.map (\( property, value ) -> property ++ " = " ++ String.fromInt value)
+                        |> String.join ", "
             in
-            "The last screenshot had a width of "
-                ++ (lastTakeScreenshotResult.screenshot.imageWidth |> String.fromInt)
-                ++ " and a height of "
-                ++ (lastTakeScreenshotResult.screenshot.imageHeight |> String.fromInt)
-                ++ " pixels.\n"
-                ++ objectFoundLocationsDescription
+            [ "Last reading from window: " ++ windowProperties
+            , objectFoundLocationsDescription
+            , "Inspecting individual pixel values:"
+            , pixelValues
+            ]
+                |> String.join "\n"
 
 
 {-| This is from the game EVE Online, the undock button in the station window.
@@ -195,7 +286,9 @@ locate_EVE_Online_Undock_Button =
             getPixelValueAtLocation { x = -30, y = -5 }
                 |> Maybe.map
                     (\pixelValue ->
-                        (pixelValue.red - 106 |> abs) < 40 && (pixelValue.green - 78 |> abs) < 30 && pixelValue.blue < 20
+                        ((pixelValue.red - 106 |> abs) < 40)
+                            && ((pixelValue.green - 78 |> abs) < 30)
+                            && (pixelValue.blue < 20)
                     )
                 |> Maybe.withDefault False
     in
@@ -208,3 +301,25 @@ locate_EVE_Online_Undock_Button =
 describeLocation : { x : Int, y : Int } -> String
 describeLocation { x, y } =
     "{ x = " ++ (x |> String.fromInt) ++ ", y = " ++ (y |> String.fromInt) ++ " }"
+
+
+describePixelValue : PixelValue -> String
+describePixelValue pixelValue =
+    [ "{ "
+    , [ ( "red", .red )
+      , ( "green", .green )
+      , ( "blue", .blue )
+      ]
+        |> List.map
+            (\( name, getter ) ->
+                name ++ " = " ++ (pixelValue |> getter |> String.fromInt)
+            )
+        |> String.join ", "
+    , " }"
+    ]
+        |> String.join ""
+
+
+addOffset : Location2d -> Location2d -> Location2d
+addOffset a b =
+    { x = a.x + b.x, y = a.y + b.y }

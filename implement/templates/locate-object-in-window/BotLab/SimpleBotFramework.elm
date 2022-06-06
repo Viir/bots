@@ -541,10 +541,17 @@ consolidateBotTasks =
                     Just
                         { taskId = taskB.taskId
                         , task =
+                            {-
+                               TODO: Also remove crops which are completely covered by other crop.
+                            -}
                             ReadFromWindow
                                 { crops_1x1_r8g8b8 =
                                     readFromWindowTaskA.crops_1x1_r8g8b8
                                         ++ readFromWindowTaskB.crops_1x1_r8g8b8
+                                        |> List.Extra.unique
+                                , crops_2x2_r8g8b8 =
+                                    readFromWindowTaskA.crops_2x2_r8g8b8
+                                        ++ readFromWindowTaskB.crops_2x2_r8g8b8
                                         |> List.Extra.unique
                                 }
                         }
@@ -675,7 +682,7 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                                                     let
                                                                                         aggregateImage =
                                                                                             deriveImageRepresentation
-                                                                                                readFromWindowComplete.imageData.crops_1x1_r8g8b8
+                                                                                                readFromWindowComplete.imageData
 
                                                                                         lastReadFromWindowResult =
                                                                                             { readFromWindowComplete = readFromWindowComplete
@@ -707,7 +714,7 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                                                                 let
                                                                                                     newImage =
                                                                                                         deriveImageRepresentation
-                                                                                                            getImageDataFromReadingComplete.imageData.crops_1x1_r8g8b8
+                                                                                                            getImageDataFromReadingComplete.imageData
 
                                                                                                     aggregateImage =
                                                                                                         mergeImageRepresentation
@@ -752,65 +759,38 @@ mergeImageRepresentation imageA imageB =
     }
 
 
-deriveImageRepresentation : List VolatileProcessInterface.ImageCropRGB -> ImageStructure
-deriveImageRepresentation crops =
+deriveImageRepresentation : VolatileProcessInterface.GetImageDataFromReadingResultStructure -> ImageStructure
+deriveImageRepresentation imageData =
     let
-        cropsDerivations =
-            crops |> List.map deriveImageCropRepresentation
+        crops_1x1_r8g8b8_Derivations =
+            imageData.crops_1x1_r8g8b8 |> List.map deriveImageCropRepresentation
+
+        crops_2x2_r8g8b8_Derivations =
+            imageData.crops_2x2_r8g8b8
+                |> List.map (\crop -> { crop | offset = { x = crop.offset.x // 2, y = crop.offset.y // 2 } })
+                |> List.map deriveImageCropRepresentation
 
         imageWidth =
-            cropsDerivations
+            crops_1x1_r8g8b8_Derivations
                 |> List.map .imageWidth
                 |> List.maximum
                 |> Maybe.withDefault 0
 
         imageHeight =
-            cropsDerivations
+            crops_1x1_r8g8b8_Derivations
                 |> List.map .imageHeight
                 |> List.maximum
                 |> Maybe.withDefault 0
 
         imageAsDict =
-            cropsDerivations
+            crops_1x1_r8g8b8_Derivations
                 |> List.map .imageAsDict
                 |> List.foldl Dict.union Dict.empty
 
         imageBinned2x2AsDict =
-            List.range 0 ((imageHeight - 1) // 2)
-                |> List.map
-                    (\binnedRowIndex ->
-                        let
-                            rowBinnedWidth =
-                                (imageWidth - 1) // 2 + 1
-                        in
-                        List.range 0 (rowBinnedWidth - 1)
-                            |> List.map
-                                (\binnedColumnIndex ->
-                                    let
-                                        sourcePixelsValues =
-                                            [ ( 0, 0 ), ( 1, 0 ), ( 0, 1 ), ( 1, 1 ) ]
-                                                |> List.filterMap
-                                                    (\( relX, relY ) ->
-                                                        imageAsDict |> Dict.get ( binnedColumnIndex * 2 + relX, binnedRowIndex * 2 + relY )
-                                                    )
-
-                                        pixelValueSum =
-                                            sourcePixelsValues
-                                                |> List.foldl (\pixel sum -> { red = sum.red + pixel.red, green = sum.green + pixel.green, blue = sum.blue + pixel.blue }) { red = 0, green = 0, blue = 0 }
-
-                                        sourcePixelsValuesCount =
-                                            sourcePixelsValues |> List.length
-
-                                        pixelValue =
-                                            { red = pixelValueSum.red // sourcePixelsValuesCount
-                                            , green = pixelValueSum.green // sourcePixelsValuesCount
-                                            , blue = pixelValueSum.blue // sourcePixelsValuesCount
-                                            }
-                                    in
-                                    pixelValue
-                                )
-                    )
-                |> dictWithTupleKeyFromIndicesInNestedList
+            crops_2x2_r8g8b8_Derivations
+                |> List.map .imageAsDict
+                |> List.foldl Dict.union Dict.empty
     in
     { imageAsDict = imageAsDict
     , imageBinned2x2AsDict = imageBinned2x2AsDict

@@ -106,11 +106,13 @@ type alias GetImageDataFromReadingRequestStruct =
 
 type alias GetImageDataFromReadingStructure =
     { crops_1x1_r8g8b8 : List Rect2dStructure
+    , crops_2x2_r8g8b8 : List Rect2dStructure
     }
 
 
 type alias GetImageDataFromReadingResultStructure =
     { crops_1x1_r8g8b8 : List ImageCropRGB
+    , crops_2x2_r8g8b8 : List ImageCropRGB
     }
 
 
@@ -247,8 +249,11 @@ jsonDecodeGetImageDataFromReadingCompleteStruct =
 
 jsonDecodeGetImageDataFromReadingResult : Json.Decode.Decoder GetImageDataFromReadingResultStructure
 jsonDecodeGetImageDataFromReadingResult =
-    Json.Decode.map GetImageDataFromReadingResultStructure
+    Json.Decode.map2 GetImageDataFromReadingResultStructure
         (Json.Decode.field "crops_1x1_r8g8b8" (Json.Decode.nullable (Json.Decode.list jsonDecodeImageCrop))
+            |> Json.Decode.map (Maybe.withDefault [])
+        )
+        (Json.Decode.field "crops_2x2_r8g8b8" (Json.Decode.nullable (Json.Decode.list jsonDecodeImageCrop))
             |> Json.Decode.map (Maybe.withDefault [])
         )
 
@@ -354,14 +359,20 @@ decodeReadFromWindow =
 encodeGetImageDataFromReading : GetImageDataFromReadingStructure -> Json.Encode.Value
 encodeGetImageDataFromReading getImageData =
     Json.Encode.object
-        [ ( "crops_1x1_r8g8b8", getImageData.crops_1x1_r8g8b8 |> Json.Encode.list jsonEncodeRect2d )
+        [ ( "crops_1x1_r8g8b8"
+          , getImageData.crops_1x1_r8g8b8 |> Json.Encode.list jsonEncodeRect2d
+          )
+        , ( "crops_2x2_r8g8b8"
+          , getImageData.crops_2x2_r8g8b8 |> Json.Encode.list jsonEncodeRect2d
+          )
         ]
 
 
 decodeGetImageDataFromReading : Json.Decode.Decoder GetImageDataFromReadingStructure
 decodeGetImageDataFromReading =
-    Json.Decode.map GetImageDataFromReadingStructure
+    Json.Decode.map2 GetImageDataFromReadingStructure
         (Json.Decode.field "crops_1x1_r8g8b8" (Json.Decode.list jsonDecodeRect2d))
+        (Json.Decode.field "crops_2x2_r8g8b8" (Json.Decode.list jsonDecodeRect2d))
 
 
 jsonEncodeRect2d : Rect2dStructure -> Json.Encode.Value

@@ -117,7 +117,9 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
                 [ { taskId = SimpleBotFramework.taskIdFromString "take-screenshot"
                   , task =
                         SimpleBotFramework.readFromWindow
-                            { crops_1x1_r8g8b8 = [ { x = 0, y = 0, width = 9999, height = 9999 } ] }
+                            { crops_1x1_r8g8b8 = [ { x = 0, y = 0, width = 9999, height = 9999 } ]
+                            , crops_2x2_r8g8b8 = [ { x = 0, y = 0, width = 9999, height = 9999 } ]
+                            }
                   }
                 ]
 

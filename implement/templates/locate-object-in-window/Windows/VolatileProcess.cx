@@ -90,6 +90,8 @@ public class Request
     public struct GetImageDataFromReadingStructure
     {
         public Rect2d[] crops_1x1_r8g8b8;
+
+        public Rect2d[] crops_2x2_r8g8b8;
     }
 
     public class MouseButton
@@ -166,7 +168,9 @@ public class Response
     public struct GetImageDataFromReadingResultStructure
     {
         public ImageCropRGB[] crops_1x1_r8g8b8;
-    }
+
+        public IReadOnlyList<ImageCropRGB> crops_2x2_r8g8b8;
+   }
 }
 
 
@@ -178,7 +182,75 @@ struct ReadingFromGameClient
 
     public ReadOnlyMemory<int>[] pixels_1x1_R8G8B8;
 
-    public IDictionary<Location2d, ReadOnlyMemory<int>[]> pixels_2x2_R8G8B8_by_offset = new Dictionary<Location2d, ReadOnlyMemory<int>[]>();
+    private readonly IDictionary<Location2d, ReadOnlyMemory<int>[]> pixels_2x2_R8G8B8_by_offset = new Dictionary<Location2d, ReadOnlyMemory<int>[]>();
+
+    public ReadOnlyMemory<int>[] Pixels_2x2_R8G8B8_by_offset(Location2d offset)
+    {
+        if(pixels_2x2_R8G8B8_by_offset.TryGetValue(offset, out var pixels))
+        {
+            return pixels;
+        }
+
+        pixels = Build_pixels_2x2_R8G8B8_by_offset(offset);
+
+        pixels_2x2_R8G8B8_by_offset[offset] = pixels;
+
+        return pixels;
+    }
+
+    public ReadOnlyMemory<int>[] Build_pixels_2x2_R8G8B8_by_offset(Location2d offset)
+    {
+        var offsetRows = pixels_1x1_R8G8B8.Skip(offset.y).ToList();
+
+        var pixels_2x2_R8G8B8 =
+            Enumerable.Range(0, offsetRows.Count / 2)
+            .Select(rowIndex =>
+            {
+                var row0Pixels = offsetRows[rowIndex * 2];
+                var row1Pixels = offsetRows[rowIndex * 2 + 1];
+
+                var offsetRow0Pixels = row0Pixels.Slice(offset.x);
+                var offsetRow1Pixels = row1Pixels.Slice(offset.x);
+
+                var binnedRowLength = Math.Min(offsetRow0Pixels.Length, offsetRow1Pixels.Length) / 2;
+
+                var binnedRow = new int[binnedRowLength];
+
+                for(int x = 0; x < binnedRowLength; ++x)
+                {
+                    var p0 = offsetRow0Pixels.Span[x * 2];
+                    var p1 = offsetRow0Pixels.Span[x * 2 + 1];
+                    var p2 = offsetRow1Pixels.Span[x * 2];
+                    var p3 = offsetRow1Pixels.Span[x * 2 + 1];
+
+                    var r0 = (p0 >> 16) & 0xff;
+                    var g0 = (p0 >> 8) & 0xff;
+                    var b0 = p0 & 0xff;
+
+                    var r1 = (p1 >> 16) & 0xff;
+                    var g1 = (p1 >> 8) & 0xff;
+                    var b1 = p1 & 0xff;
+
+                    var r2 = (p2 >> 16) & 0xff;
+                    var g2 = (p2 >> 8) & 0xff;
+                    var b2 = p2 & 0xff;
+
+                    var r3 = (p3 >> 16) & 0xff;
+                    var g3 = (p3 >> 8) & 0xff;
+                    var b3 = p3 & 0xff;
+
+                    binnedRow[x] =
+                        (((r0 + r1 + r2 + r3) / 4) << 16) |
+                        (((g0 + g1 + g2 + g3) / 4) << 8) |
+                        (((b0 + b1 + b2 + b3) / 4));
+                }
+
+                return (ReadOnlyMemory<int>)binnedRow;
+            })
+            .ToArray();
+
+        return pixels_2x2_R8G8B8;
+    }    
 }
 
 public struct ImageCropRGB
@@ -480,6 +552,7 @@ Response.GetImageDataFromReadingResultStructure CompileImageDataFromReadingResul
     ReadingFromGameClient historyEntry)
 {
     ImageCropRGB[] crops_1x1_r8g8b8 = null;
+    IReadOnlyList<ImageCropRGB> crops_2x2_r8g8b8 = null;
 
     if (historyEntry.pixels_1x1_R8G8B8 != null)
     {
@@ -495,11 +568,35 @@ Response.GetImageDataFromReadingResultStructure CompileImageDataFromReadingResul
                     offset = new Location2d { x = rect.x, y = rect.y },
                 };
             }).ToArray();
+
+        crops_2x2_r8g8b8 =
+            request.crops_2x2_r8g8b8
+            .Select(rect =>
+            {
+                var wrappedOffsetX = rect.x % 2;
+                var wrappedOffsetY = rect.y % 2;
+
+                var binnedPixels =
+                    historyEntry.Pixels_2x2_R8G8B8_by_offset(
+                        new Location2d { x = wrappedOffsetX, y = wrappedOffsetY });
+
+                var cropPixels =
+                    CopyRectangularCrop(
+                        binnedPixels,
+                        new Rect2d { x = rect.x / 2, y = rect.y / 2, width = rect.width, height = rect.height });
+
+                return new ImageCropRGB
+                {
+                    pixels = cropPixels.Select(memory => memory.ToArray()).ToArray(),
+                    offset = new Location2d { x = rect.x, y = rect.y },
+                };
+            }).ToArray();
     }
 
     return new Response.GetImageDataFromReadingResultStructure
     {
         crops_1x1_r8g8b8 = crops_1x1_r8g8b8,
+        crops_2x2_r8g8b8 = crops_2x2_r8g8b8 ?? ImmutableList<ImageCropRGB>.Empty
     };
 }
 

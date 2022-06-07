@@ -1,4 +1,4 @@
-{- Elvenar Bot v2022-05-29
+{- Elvenar Bot v2022-06-07
 
    This bot locates coins in the Elvenar game client window.
 
@@ -28,28 +28,34 @@ import DecodeBMPImage
 import Dict
 
 
-screenshotIntervalMilliseconds : Int
-screenshotIntervalMilliseconds =
+readFromWindowIntervalMilliseconds : Int
+readFromWindowIntervalMilliseconds =
     1000
-
-
-type alias ImagePattern =
-    Dict.Dict ( Int, Int ) DecodeBMPImage.PixelValue -> ( Int, Int ) -> Bool
 
 
 type alias SimpleState =
     { timeInMilliseconds : Int
-    , lastTakeScreenshotResult :
+    , lastReadFromWindowResult :
         Maybe
             { timeInMilliseconds : Int
-            , screenshot : SimpleBotFramework.ImageStructure
-            , objectFoundLocations : List { x : Int, y : Int }
+            , readResult : SimpleBotFramework.ReadFromWindowResultStruct
+            , image : SimpleBotFramework.ImageStructure
+            , coinFoundLocations : List Location2d
+            , missingOriginalPixelsCrops : List Rect
             }
     }
 
 
 type alias State =
     SimpleBotFramework.State SimpleState
+
+
+type alias PixelValue =
+    SimpleBotFramework.PixelValue
+
+
+type alias ImagePattern =
+    Dict.Dict ( Int, Int ) DecodeBMPImage.PixelValue -> ( Int, Int ) -> Bool
 
 
 botMain : InterfaceToHost.BotConfig State
@@ -62,7 +68,7 @@ botMain =
 initState : SimpleState
 initState =
     { timeInMilliseconds = 0
-    , lastTakeScreenshotResult = Nothing
+    , lastReadFromWindowResult = Nothing
     }
 
 
@@ -73,29 +79,55 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
             stateBeforeIntegratingEvent |> integrateEvent event
     in
     let
-        timeToTakeScreenshot =
-            case stateBefore.lastTakeScreenshotResult of
+        timeToTakeNewReadingFromGameWindow =
+            case stateBefore.lastReadFromWindowResult of
                 Nothing ->
                     True
 
-                Just lastTakeScreenshotResult ->
-                    screenshotIntervalMilliseconds
-                        < (stateBefore.timeInMilliseconds - lastTakeScreenshotResult.timeInMilliseconds)
+                Just lastReadFromWindowResult ->
+                    readFromWindowIntervalMilliseconds
+                        < (stateBefore.timeInMilliseconds - lastReadFromWindowResult.timeInMilliseconds)
 
-        startTasks =
-            if timeToTakeScreenshot then
-                [ { taskId = SimpleBotFramework.taskIdFromString "take-screenshot"
-                  , task = SimpleBotFramework.takeScreenshot
+        startTasksIfDoneWithLastReading =
+            if timeToTakeNewReadingFromGameWindow then
+                [ { taskId = SimpleBotFramework.taskIdFromString "read-from-window"
+                  , task =
+                        SimpleBotFramework.readFromWindow
+                            { crops_1x1_r8g8b8 = []
+                            , crops_2x2_r8g8b8 = [ { x = 0, y = 0, width = 9999, height = 9999 } ]
+                            }
                   }
                 ]
 
             else
                 []
+
+        startTasks =
+            case stateBefore.lastReadFromWindowResult of
+                Just lastReadFromWindowResult ->
+                    if
+                        (lastReadFromWindowResult.missingOriginalPixelsCrops /= [])
+                            && Dict.isEmpty lastReadFromWindowResult.image.imageAsDict
+                    then
+                        [ { taskId = SimpleBotFramework.taskIdFromString "get-image-data-from-reading"
+                          , task =
+                                SimpleBotFramework.getImageDataFromReading
+                                    { crops_1x1_r8g8b8 = lastReadFromWindowResult.missingOriginalPixelsCrops
+                                    , crops_2x2_r8g8b8 = []
+                                    }
+                          }
+                        ]
+
+                    else
+                        startTasksIfDoneWithLastReading
+
+                Nothing ->
+                    startTasksIfDoneWithLastReading
     in
     ( stateBefore
     , SimpleBotFramework.ContinueSession
         { startTasks = startTasks
-        , statusDescriptionText = lastScreenshotDescription stateBefore
+        , statusDescriptionText = lastReadingDescription stateBefore
         , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
         }
     )
@@ -119,71 +151,104 @@ integrateEvent event stateBeforeUpdateTime =
 
         SimpleBotFramework.TaskCompletedEvent completedTask ->
             let
-                lastTakeScreenshotResult =
+                lastReadFromWindowResult =
                     case completedTask.taskResult of
                         SimpleBotFramework.NoResultValue ->
-                            stateBefore.lastTakeScreenshotResult
+                            stateBefore.lastReadFromWindowResult
 
-                        SimpleBotFramework.TakeScreenshotResult screenshot ->
+                        SimpleBotFramework.ReadFromWindowResult readFromWindowResult image ->
                             let
-                                objectFoundLocations =
+                                coinFoundLocations =
                                     SimpleBotFramework.locatePatternInImage
                                         coinPattern
                                         SimpleBotFramework.SearchEverywhere
-                                        screenshot
+                                        image
                                         |> filterRemoveCloseLocations 3
+
+                                binnedSearchLocations =
+                                    image.imageBinned2x2AsDict
+                                        |> Dict.keys
+                                        |> List.map (\( x, y ) -> { x = x, y = y })
+
+                                matchLocationsOnBinned2x2 =
+                                    image.imageBinned2x2AsDict
+                                        |> SimpleBotFramework.getMatchesLocationsFromImage
+                                            coinPatternTestOnBinned2x2
+                                            binnedSearchLocations
+
+                                missingOriginalPixelsCrops =
+                                    matchLocationsOnBinned2x2
+                                        |> List.map (\binnedLocation -> ( binnedLocation.x * 2, binnedLocation.y * 2 ))
+                                        |> List.filter (\location -> not (Dict.member location image.imageAsDict))
+                                        |> List.map
+                                            (\( x, y ) ->
+                                                { x = x - 10
+                                                , y = y - 10
+                                                , width = 20
+                                                , height = 20
+                                                }
+                                            )
+                                        |> List.filter (\rect -> 0 < rect.width && 0 < rect.height)
                             in
                             Just
                                 { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                , screenshot = screenshot
-                                , objectFoundLocations = objectFoundLocations
+                                , readResult = readFromWindowResult
+                                , image = image
+                                , coinFoundLocations = coinFoundLocations
+                                , missingOriginalPixelsCrops = missingOriginalPixelsCrops
                                 }
             in
             { stateBefore
-                | lastTakeScreenshotResult = lastTakeScreenshotResult
+                | lastReadFromWindowResult = lastReadFromWindowResult
             }
 
 
-lastScreenshotDescription : SimpleState -> String
-lastScreenshotDescription stateBefore =
-    case stateBefore.lastTakeScreenshotResult of
+lastReadingDescription : SimpleState -> String
+lastReadingDescription stateBefore =
+    case stateBefore.lastReadFromWindowResult of
         Nothing ->
-            "Taking the first screenshot..."
+            "Taking the first reading from the window..."
 
-        Just lastTakeScreenshotResult ->
+        Just lastReadFromWindowResult ->
             let
-                objectFoundLocationsToDescribe =
-                    lastTakeScreenshotResult.objectFoundLocations
+                coinFoundLocationsToDescribe =
+                    lastReadFromWindowResult.coinFoundLocations
                         |> List.take 10
 
-                objectFoundLocationsDescription =
-                    "I found the object in "
-                        ++ (lastTakeScreenshotResult.objectFoundLocations |> List.length |> String.fromInt)
+                coinFoundLocationsDescription =
+                    "I found the coin in "
+                        ++ (lastReadFromWindowResult.coinFoundLocations |> List.length |> String.fromInt)
                         ++ " locations:\n[ "
-                        ++ (objectFoundLocationsToDescribe |> List.map describeLocation |> String.join ", ")
+                        ++ (coinFoundLocationsToDescribe |> List.map describeLocation |> String.join ", ")
                         ++ " ]"
+
+                windowProperties =
+                    [ ( "window.width", lastReadFromWindowResult.readResult.windowSize.x )
+                    , ( "window.height", lastReadFromWindowResult.readResult.windowSize.y )
+                    , ( "windowClientArea.width", lastReadFromWindowResult.readResult.windowClientAreaSize.x )
+                    , ( "windowClientArea.height", lastReadFromWindowResult.readResult.windowClientAreaSize.y )
+                    ]
+                        |> List.map (\( property, value ) -> property ++ " = " ++ String.fromInt value)
+                        |> String.join ", "
             in
-            "The last screenshot had a width of "
-                ++ (lastTakeScreenshotResult.screenshot.imageWidth |> String.fromInt)
-                ++ " and a height of "
-                ++ (lastTakeScreenshotResult.screenshot.imageHeight |> String.fromInt)
-                ++ " pixels.\n"
-                ++ objectFoundLocationsDescription
+            [ "Last reading from window: " ++ windowProperties
+            , "Pixels: "
+                ++ ([ ( "binned 2x2", lastReadFromWindowResult.image.imageBinned2x2AsDict |> Dict.size )
+                    , ( "original", lastReadFromWindowResult.image.imageAsDict |> Dict.size )
+                    ]
+                        |> List.map (\( name, value ) -> String.fromInt value ++ " " ++ name)
+                        |> String.join ", "
+                   )
+                ++ "."
+            , coinFoundLocationsDescription
+            ]
+                |> String.join "\n"
 
 
 coinPattern : SimpleBotFramework.LocatePatternInImageApproach
 coinPattern =
     SimpleBotFramework.TestPerPixelWithBroadPhase2x2
-        { testOnBinned2x2 =
-            \getPixelColor ->
-                case getPixelColor { x = 0, y = 0 } of
-                    Nothing ->
-                        False
-
-                    Just centerColor ->
-                        (centerColor.red > 240)
-                            && (centerColor.green < 230 && centerColor.green > 190)
-                            && (centerColor.blue < 150 && centerColor.blue > 80)
+        { testOnBinned2x2 = coinPatternTestOnBinned2x2
         , testOnOriginalResolution =
             \getPixelColor ->
                 case getPixelColor { x = 0, y = 0 } of
@@ -215,6 +280,18 @@ coinPattern =
         }
 
 
+coinPatternTestOnBinned2x2 : ({ x : Int, y : Int } -> Maybe PixelValue) -> Bool
+coinPatternTestOnBinned2x2 getPixelColor =
+    case getPixelColor { x = 0, y = 0 } of
+        Nothing ->
+            False
+
+        Just centerColor ->
+            (centerColor.red > 240)
+                && (centerColor.green < 230 && centerColor.green > 190)
+                && (centerColor.blue < 150 && centerColor.blue > 80)
+
+
 filterRemoveCloseLocations : Int -> List { x : Int, y : Int } -> List { x : Int, y : Int }
 filterRemoveCloseLocations distanceMin locations =
     let
@@ -233,6 +310,18 @@ filterRemoveCloseLocations distanceMin locations =
             []
 
 
-describeLocation : { x : Int, y : Int } -> String
+describeLocation : Location2d -> String
 describeLocation { x, y } =
     "{ x = " ++ (x |> String.fromInt) ++ ", y = " ++ (y |> String.fromInt) ++ " }"
+
+
+type alias Location2d =
+    SimpleBotFramework.Location2d
+
+
+type alias Rect =
+    { x : Int
+    , y : Int
+    , width : Int
+    , height : Int
+    }

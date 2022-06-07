@@ -118,6 +118,7 @@ type Task
     | KeyboardKeyDown KeyboardKey
     | KeyboardKeyUp KeyboardKey
     | ReadFromWindow GetImageDataFromReadingStructure
+    | GetImageDataFromReading GetImageDataFromReadingStructure
 
 
 type alias State simpleBotState =
@@ -502,7 +503,7 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
                                             ( { taskId = simpleBotTaskWithId.taskId |> taskIdFromSimpleBotTaskId
                                               , task =
                                                     simpleBotTaskWithId.task
-                                                        |> taskOnWindowFromSimpleBotTask
+                                                        |> taskOnWindowFromSimpleBotTask stateBefore
                                                         |> operateSimpleBot.buildTaskFromTaskOnWindow
                                               , taskOrigin = BotOrigin simpleBotTaskWithId.taskId simpleBotTaskWithId.task
                                               }
@@ -649,26 +650,8 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                             Err ("Failed to parse response from volatile process: " ++ (error |> Json.Decode.errorToString))
 
                                                         Ok parsedResponse ->
-                                                            case simpleBotTask of
-                                                                BringWindowToForeground ->
-                                                                    Ok ( stateBefore, NoResultValue )
-
-                                                                MoveMouseToLocation _ ->
-                                                                    Ok ( stateBefore, NoResultValue )
-
-                                                                MouseButtonDown _ ->
-                                                                    Ok ( stateBefore, NoResultValue )
-
-                                                                MouseButtonUp _ ->
-                                                                    Ok ( stateBefore, NoResultValue )
-
-                                                                KeyboardKeyDown _ ->
-                                                                    Ok ( stateBefore, NoResultValue )
-
-                                                                KeyboardKeyUp _ ->
-                                                                    Ok ( stateBefore, NoResultValue )
-
-                                                                ReadFromWindow readFromWindowTask ->
+                                                            let
+                                                                continueForReadFromWindowOrGetImageData =
                                                                     case parsedResponse of
                                                                         VolatileProcessInterface.TaskOnWindowResponse taskOnWindowResponse ->
                                                                             case taskOnWindowResponse.result of
@@ -740,6 +723,31 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
 
                                                                         _ ->
                                                                             Err ("Unexpected return value from volatile process: " ++ (volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault ""))
+                                                            in
+                                                            case simpleBotTask of
+                                                                BringWindowToForeground ->
+                                                                    Ok ( stateBefore, NoResultValue )
+
+                                                                MoveMouseToLocation _ ->
+                                                                    Ok ( stateBefore, NoResultValue )
+
+                                                                MouseButtonDown _ ->
+                                                                    Ok ( stateBefore, NoResultValue )
+
+                                                                MouseButtonUp _ ->
+                                                                    Ok ( stateBefore, NoResultValue )
+
+                                                                KeyboardKeyDown _ ->
+                                                                    Ok ( stateBefore, NoResultValue )
+
+                                                                KeyboardKeyUp _ ->
+                                                                    Ok ( stateBefore, NoResultValue )
+
+                                                                ReadFromWindow _ ->
+                                                                    continueForReadFromWindowOrGetImageData
+
+                                                                GetImageDataFromReading _ ->
+                                                                    continueForReadFromWindowOrGetImageData
                     in
                     case taskResultResult of
                         Err error ->
@@ -769,18 +777,6 @@ deriveImageRepresentation imageData =
             imageData.crops_2x2_r8g8b8
                 |> List.map (\crop -> { crop | offset = { x = crop.offset.x // 2, y = crop.offset.y // 2 } })
                 |> List.map deriveImageCropRepresentation
-
-        imageWidth =
-            crops_1x1_r8g8b8_Derivations
-                |> List.map .imageWidth
-                |> List.maximum
-                |> Maybe.withDefault 0
-
-        imageHeight =
-            crops_1x1_r8g8b8_Derivations
-                |> List.map .imageHeight
-                |> List.maximum
-                |> Maybe.withDefault 0
 
         imageAsDict =
             crops_1x1_r8g8b8_Derivations
@@ -936,8 +932,8 @@ taskIdFromSimpleBotTaskId simpleBotTaskId =
             InterfaceToHost.taskIdFromString ("bot-" ++ asString)
 
 
-taskOnWindowFromSimpleBotTask : Task -> VolatileProcessInterface.TaskOnWindowRequestStruct
-taskOnWindowFromSimpleBotTask simpleBotTask =
+taskOnWindowFromSimpleBotTask : State simpleBotState -> Task -> VolatileProcessInterface.TaskOnWindowRequestStruct
+taskOnWindowFromSimpleBotTask state simpleBotTask =
     case simpleBotTask of
         BringWindowToForeground ->
             VolatileProcessInterface.BringWindowToForeground
@@ -964,6 +960,18 @@ taskOnWindowFromSimpleBotTask simpleBotTask =
         ReadFromWindow readFromWindowTask ->
             VolatileProcessInterface.ReadFromWindowRequest
                 { getImageData = readFromWindowTask }
+
+        GetImageDataFromReading getImageDataFromReadingTask ->
+            case state.lastReadFromWindowResult of
+                Nothing ->
+                    VolatileProcessInterface.ReadFromWindowRequest
+                        { getImageData = getImageDataFromReadingTask }
+
+                Just lastReadFromWindowResult ->
+                    VolatileProcessInterface.GetImageDataFromReadingRequest
+                        { readingId = lastReadFromWindowResult.readFromWindowComplete.readingId
+                        , getImageData = getImageDataFromReadingTask
+                        }
 
 
 integrateEvent : InterfaceToHost.BotEvent -> State simpleBotState -> State simpleBotState
@@ -1202,7 +1210,73 @@ keyboardKeyUp =
 
 readFromWindow : GetImageDataFromReadingStructure -> Task
 readFromWindow getImageData =
-    ReadFromWindow getImageData
+    getImageData
+        |> sanitizeGetImageDataFromReading
+        |> ReadFromWindow
+
+
+getImageDataFromReading : GetImageDataFromReadingStructure -> Task
+getImageDataFromReading getImageData =
+    getImageData
+        |> sanitizeGetImageDataFromReading
+        |> GetImageDataFromReading
+
+
+sanitizeGetImageDataFromReading : GetImageDataFromReadingStructure -> GetImageDataFromReadingStructure
+sanitizeGetImageDataFromReading getImageData =
+    let
+        sanitizeAndOptimizeCrops =
+            sanitizeGetImageDataFromReadingCrops
+                >> optimizeGetImageDataFromReadingCrops
+    in
+    { crops_1x1_r8g8b8 = sanitizeAndOptimizeCrops getImageData.crops_1x1_r8g8b8
+    , crops_2x2_r8g8b8 = sanitizeAndOptimizeCrops getImageData.crops_2x2_r8g8b8
+    }
+
+
+sanitizeGetImageDataFromReadingCrops :
+    List VolatileProcessInterface.Rect2dStructure
+    -> List VolatileProcessInterface.Rect2dStructure
+sanitizeGetImageDataFromReadingCrops =
+    List.map (rectIntersection { x = 0, y = 0, width = 9999, height = 9999 })
+        >> List.filter (\rect -> 0 < rect.width && 0 < rect.height)
+
+
+optimizeGetImageDataFromReadingCrops :
+    List VolatileProcessInterface.Rect2dStructure
+    -> List VolatileProcessInterface.Rect2dStructure
+optimizeGetImageDataFromReadingCrops =
+    optimizeGetImageDataFromReadingCropsRecursive
+
+
+optimizeGetImageDataFromReadingCropsRecursive :
+    List VolatileProcessInterface.Rect2dStructure
+    -> List VolatileProcessInterface.Rect2dStructure
+optimizeGetImageDataFromReadingCropsRecursive crops =
+    let
+        rectIntersectEnoughToConsolidate a b =
+            let
+                intersection =
+                    rectIntersection a b
+            in
+            (max 0 intersection.width * max 0 intersection.height * 4)
+                > min (a.width * a.height) (b.width * b.height)
+
+        groupedCrops =
+            List.Extra.gatherWith rectIntersectEnoughToConsolidate crops
+
+        boundingBoxes =
+            groupedCrops
+                |> List.map
+                    (\( firstCrop, otherCrops ) ->
+                        otherCrops |> List.foldl rectBoundingBox firstCrop
+                    )
+    in
+    if crops == boundingBoxes then
+        boundingBoxes
+
+    else
+        optimizeGetImageDataFromReadingCropsRecursive boundingBoxes
 
 
 mouseButtonLeft : MouseButton
@@ -1225,3 +1299,71 @@ keyboardKeyFromVirtualKeyCode =
 keyboardKey_space : KeyboardKey
 keyboardKey_space =
     keyboardKeyFromVirtualKeyCode 0x20
+
+
+rectIntersection : VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure
+rectIntersection a b =
+    let
+        a_right =
+            a.x + a.width
+
+        b_right =
+            b.x + b.width
+
+        a_bottom =
+            a.y + a.height
+
+        b_bottom =
+            b.y + b.height
+
+        x =
+            max a.x b.x
+
+        y =
+            max a.y b.y
+
+        right =
+            min a_right b_right
+
+        bottom =
+            min a_bottom b_bottom
+    in
+    { x = x
+    , y = y
+    , width = right - x
+    , height = bottom - y
+    }
+
+
+rectBoundingBox : VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure
+rectBoundingBox a b =
+    let
+        a_right =
+            a.x + a.width
+
+        b_right =
+            b.x + b.width
+
+        a_bottom =
+            a.y + a.height
+
+        b_bottom =
+            b.y + b.height
+
+        x =
+            min a.x b.x
+
+        y =
+            min a.y b.y
+
+        right =
+            max a_right b_right
+
+        bottom =
+            max a_bottom b_bottom
+    in
+    { x = x
+    , y = y
+    , width = right - x
+    , height = bottom - y
+    }

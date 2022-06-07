@@ -72,7 +72,7 @@ public class Request
 
         public ReadFromWindowStructure ReadFromWindowRequest;
 
-        public GetImageDataFromReadingRequestStruct? GetImageDataFromReading;
+        public GetImageDataFromReadingRequestStruct? GetImageDataFromReadingRequest;
     }
 
     public class ReadFromWindowStructure
@@ -477,12 +477,12 @@ Response performTaskOnWindow(
             });
     }
 
-    if (task.GetImageDataFromReading?.readingId != null)
+    if (task.GetImageDataFromReadingRequest?.readingId != null)
     {
         var historyEntry =
             readingFromGameHistory
             .Cast<ReadingFromGameClient?>()
-            .FirstOrDefault(c => c?.readingId == task.GetImageDataFromReading?.readingId);
+            .FirstOrDefault(c => c?.readingId == task.GetImageDataFromReadingRequest?.readingId);
 
         if (historyEntry == null)
         {
@@ -498,14 +498,14 @@ Response performTaskOnWindow(
             {
                 GetImageDataFromReadingComplete = new Response.GetImageDataFromReadingCompleteStruct
                 {
-                    readingId = task.GetImageDataFromReading?.readingId,
+                    readingId = task.GetImageDataFromReadingRequest?.readingId,
                     imageData = CompileImageDataFromReadingResult(
-                        task.GetImageDataFromReading.Value.getImageData, historyEntry.Value),
+                        task.GetImageDataFromReadingRequest.Value.getImageData, historyEntry.Value),
                 }
             });
     }
 
-    throw new Exception("Unexpected task in request: " + task);
+    throw new Exception("Unexpected task in request:\n" + Newtonsoft.Json.JsonConvert.SerializeObject(task));
 }
 
 

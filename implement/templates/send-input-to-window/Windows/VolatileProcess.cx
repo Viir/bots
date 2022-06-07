@@ -31,27 +31,36 @@ using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 
 
+int readingFromGameCount = 0;
+var generalStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+var readingFromGameHistory = new Queue<ReadingFromGameClient>();
+
 
 public class Request
 {
-    public TaskOnIdentifiedWindowStructure TaskOnWindow;
+    public object ListWindowsRequest;
+
+    public TaskOnIdentifiedWindowRequestStruct TaskOnWindowRequest;
 
     public object GetForegroundWindow;
 
-    public WindowId GetWindowText;
+    public string GetWindowText;
 
-    public class TaskOnIdentifiedWindowStructure
+    public GetImageDataFromReadingRequestStruct? GetImageDataFromReading;
+
+    public class TaskOnIdentifiedWindowRequestStruct
     {
-        public WindowId windowId;
+        public string windowId;
 
-        public TaskOnWindowStructure task;
+        public TaskOnWindowRequestStruct task;
     }
 
-    public class TaskOnWindowStructure
+    public class TaskOnWindowRequestStruct
     {
         public object BringWindowToForeground;
 
-        public Location2d MoveMouseToLocation;
+        public Location2d? MoveMouseToLocation;
 
         public MouseButton MouseButtonDown;
 
@@ -61,12 +70,28 @@ public class Request
 
         public KeyboardKey KeyboardKeyUp;
 
-        public object TakeScreenshot;
+        public ReadFromWindowStructure ReadFromWindowRequest;
+
+        public GetImageDataFromReadingRequestStruct? GetImageDataFromReadingRequest;
     }
 
-    public class Location2d
+    public class ReadFromWindowStructure
     {
-        public int x, y;
+        public GetImageDataFromReadingStructure getImageData;
+    }
+
+    public struct GetImageDataFromReadingRequestStruct
+    {
+        public string readingId;
+
+        public GetImageDataFromReadingStructure getImageData;
+    }
+
+    public struct GetImageDataFromReadingStructure
+    {
+        public Rect2d[] crops_1x1_r8g8b8;
+
+        public Rect2d[] crops_2x2_r8g8b8;
     }
 
     public class MouseButton
@@ -83,26 +108,164 @@ public class Request
 
 public class Response
 {
-    public WindowId GetForegroundWindowResult;
+    public WindowSummaryStruct[] ListWindowsResponse;
+
+    public TaskOnIdentifiedWindowResponseStruct TaskOnWindowResponse;
 
     public object NoReturnValue;
 
     public string GetWindowTextResult;
 
-    public TakeScreenshotResultStructure TakeScreenshotResult;
+    public string GetForegroundWindowResult;
 
-    public class TakeScreenshotResultStructure
+    public struct WindowSummaryStruct
     {
-        public int[][] pixels;
+        public string windowId;
+
+        public string windowTitle;
+
+        public int windowZIndex;
     }
+
+    public class TaskOnIdentifiedWindowResponseStruct
+    {
+        public string windowId;
+
+        public TaskOnWindowResponseStruct result;
+    }
+
+    public class TaskOnWindowResponseStruct
+    {
+        public object WindowNotFound;
+
+        public object ReadingNotFound;
+
+        public ReadFromWindowCompleteStruct ReadFromWindowComplete;
+
+        public GetImageDataFromReadingCompleteStruct? GetImageDataFromReadingComplete;
+    }
+
+    public class ReadFromWindowCompleteStruct
+    {
+        public string readingId;
+
+        public Location2d windowSize;
+
+        public Location2d windowClientRectOffset;
+
+        public Location2d windowClientAreaSize;
+
+        public GetImageDataFromReadingResultStructure imageData;
+    }
+
+    public struct GetImageDataFromReadingCompleteStruct
+    {
+        public string readingId;
+
+        public GetImageDataFromReadingResultStructure imageData;
+    }
+
+    public struct GetImageDataFromReadingResultStructure
+    {
+        public ImageCropRGB[] crops_1x1_r8g8b8;
+
+        public IReadOnlyList<ImageCropRGB> crops_2x2_r8g8b8;
+   }
 }
 
 
-public class WindowId
+struct ReadingFromGameClient
 {
-    public long WindowHandleFromInt;
+    public IntPtr windowHandle;
+
+    public string readingId;
+
+    public ReadOnlyMemory<int>[] pixels_1x1_R8G8B8;
+
+    private readonly IDictionary<Location2d, ReadOnlyMemory<int>[]> pixels_2x2_R8G8B8_by_offset = new Dictionary<Location2d, ReadOnlyMemory<int>[]>();
+
+    public ReadOnlyMemory<int>[] Pixels_2x2_R8G8B8_by_offset(Location2d offset)
+    {
+        if(pixels_2x2_R8G8B8_by_offset.TryGetValue(offset, out var pixels))
+        {
+            return pixels;
+        }
+
+        pixels = Build_pixels_2x2_R8G8B8_by_offset(offset);
+
+        pixels_2x2_R8G8B8_by_offset[offset] = pixels;
+
+        return pixels;
+    }
+
+    public ReadOnlyMemory<int>[] Build_pixels_2x2_R8G8B8_by_offset(Location2d offset)
+    {
+        var offsetRows = pixels_1x1_R8G8B8.Skip(offset.y).ToList();
+
+        var pixels_2x2_R8G8B8 =
+            Enumerable.Range(0, offsetRows.Count / 2)
+            .Select(rowIndex =>
+            {
+                var row0Pixels = offsetRows[rowIndex * 2];
+                var row1Pixels = offsetRows[rowIndex * 2 + 1];
+
+                var offsetRow0Pixels = row0Pixels.Slice(offset.x);
+                var offsetRow1Pixels = row1Pixels.Slice(offset.x);
+
+                var binnedRowLength = Math.Min(offsetRow0Pixels.Length, offsetRow1Pixels.Length) / 2;
+
+                var binnedRow = new int[binnedRowLength];
+
+                for(int x = 0; x < binnedRowLength; ++x)
+                {
+                    var p0 = offsetRow0Pixels.Span[x * 2];
+                    var p1 = offsetRow0Pixels.Span[x * 2 + 1];
+                    var p2 = offsetRow1Pixels.Span[x * 2];
+                    var p3 = offsetRow1Pixels.Span[x * 2 + 1];
+
+                    var r0 = (p0 >> 16) & 0xff;
+                    var g0 = (p0 >> 8) & 0xff;
+                    var b0 = p0 & 0xff;
+
+                    var r1 = (p1 >> 16) & 0xff;
+                    var g1 = (p1 >> 8) & 0xff;
+                    var b1 = p1 & 0xff;
+
+                    var r2 = (p2 >> 16) & 0xff;
+                    var g2 = (p2 >> 8) & 0xff;
+                    var b2 = p2 & 0xff;
+
+                    var r3 = (p3 >> 16) & 0xff;
+                    var g3 = (p3 >> 8) & 0xff;
+                    var b3 = p3 & 0xff;
+
+                    binnedRow[x] =
+                        (((r0 + r1 + r2 + r3) / 4) << 16) |
+                        (((g0 + g1 + g2 + g3) / 4) << 8) |
+                        (((b0 + b1 + b2 + b3) / 4));
+                }
+
+                return (ReadOnlyMemory<int>)binnedRow;
+            })
+            .ToArray();
+
+        return pixels_2x2_R8G8B8;
+    }    
 }
 
+public struct ImageCropRGB
+{
+    public Location2d offset;
+
+    public int[][] pixels;
+}
+
+public struct Rect2d
+{
+    public int x, y, width, height;
+}
+
+public record struct Location2d(int x, int y);
 
 byte[] SHA256FromByteArray(byte[] array)
 {
@@ -126,15 +289,19 @@ public Response request(Request request)
 {
     SetProcessDPIAware();
 
-    string GetWindowText(WindowId windowId)
+    string GetWindowText(string windowId)
     {
-        var windowHandle = new IntPtr(windowId.WindowHandleFromInt);
+        var windowHandle = new IntPtr(Int64.Parse(windowId));
 
-        var windowTitle = new System.Text.StringBuilder(capacity: 256);
+        return GetWindowTextFromHandle(windowHandle);
+    }
 
-        WinApi.GetWindowText(windowHandle, windowTitle, windowTitle.Capacity);
-
-        return windowTitle.ToString();
+    if (request.ListWindowsRequest != null)
+    {
+        return new Response
+        {
+            ListWindowsResponse = ListWindowsSummaries(windowCountLimit: 4).ToArray(),
+        };
     }
 
     if (request.GetForegroundWindow != null)
@@ -153,20 +320,43 @@ public Response request(Request request)
         };
     }
 
-    if (request.TaskOnWindow != null)
+    if (request.TaskOnWindowRequest != null)
     {
-        return performTaskOnWindow(request.TaskOnWindow);
+        return performTaskOnWindow(request.TaskOnWindowRequest);
     }
 
     throw new Exception("Unexpected request value.");
 }
 
-public WindowId GetForegroundWindow() =>
-    new WindowId { WindowHandleFromInt = WinApi.GetForegroundWindow().ToInt64() };
+public string GetForegroundWindow() =>
+    WinApi.GetForegroundWindow().ToInt64().ToString();
 
-Response performTaskOnWindow(Request.TaskOnIdentifiedWindowStructure taskOnIdentifiedWindow)
+Response performTaskOnWindow(
+    Request.TaskOnIdentifiedWindowRequestStruct taskOnIdentifiedWindow)
 {
-    var windowHandle = new IntPtr(taskOnIdentifiedWindow.windowId.WindowHandleFromInt);
+    var windowHandle = new IntPtr(Int64.Parse(taskOnIdentifiedWindow.windowId));
+
+    Response ResponseFromResultOnWindow(Response.TaskOnWindowResponseStruct resultOnWindow)
+    {
+        return new Response
+        {
+            TaskOnWindowResponse = new Response.TaskOnIdentifiedWindowResponseStruct
+            {
+                windowId = taskOnIdentifiedWindow.windowId,
+                result = resultOnWindow
+            }
+        };
+    }
+
+    var windowRect = new WinApi.Rect();
+    if(!WinApi.GetWindowRect(windowHandle, ref windowRect))
+    {
+        return ResponseFromResultOnWindow(
+            new Response.TaskOnWindowResponseStruct
+            {
+                WindowNotFound = new object()
+            });
+    }
 
     var inputSimulator = new WindowsInput.InputSimulator();
 
@@ -181,13 +371,9 @@ Response performTaskOnWindow(Request.TaskOnIdentifiedWindowStructure taskOnIdent
 
     if (task.MoveMouseToLocation != null)
     {
-        var windowRect = new WinApi.Rect();
-        if (WinApi.GetWindowRect(windowHandle, ref windowRect) == IntPtr.Zero)
-            throw new Exception("GetWindowRect failed");
-
         WinApi.SetCursorPos(
-            task.MoveMouseToLocation.x + windowRect.left,
-            task.MoveMouseToLocation.y + windowRect.top);
+            task.MoveMouseToLocation.Value.x + windowRect.left,
+            task.MoveMouseToLocation.Value.y + windowRect.top);
 
         return new Response { NoReturnValue = new object() };
     }
@@ -226,18 +412,210 @@ Response performTaskOnWindow(Request.TaskOnIdentifiedWindowStructure taskOnIdent
         return new Response { NoReturnValue = new object() };
     }
 
-    if (task.TakeScreenshot != null)
+    if (task.ReadFromWindowRequest != null)
     {
-        return new Response
-        {
-            TakeScreenshotResult = new Response.TakeScreenshotResultStructure
+        var readingFromGameIndex = System.Threading.Interlocked.Increment(ref readingFromGameCount);
+
+        var readingId = readingFromGameIndex.ToString("D6") + "-" + generalStopwatch.ElapsedMilliseconds;
+
+        var pixels_1x1_R8G8B8 = GetScreenshotOfWindowAsPixelsValues_R8G8B8(windowHandle);
+
+        var windowClientRect = new WinApi.Rect();
+        WinApi.GetClientRect(windowHandle, ref windowClientRect);
+
+        var clientRectOffsetFromScreen = new WinApi.Point(0, 0);
+        WinApi.ClientToScreen(windowHandle, ref clientRectOffsetFromScreen);
+
+        var windowSize =
+            new Location2d
             {
-                pixels = GetScreenshotOfWindowAsPixelsValues(windowHandle)
-            }
+                x = windowRect.right - windowRect.left,
+                y = windowRect.bottom - windowRect.top
+            };
+
+        var windowClientRectOffset =
+            new Location2d
+            {
+                x = clientRectOffsetFromScreen.x - windowRect.left,
+                y = clientRectOffsetFromScreen.y - windowRect.top
+            };
+
+        var windowClientAreaSize =
+            new Location2d
+            {
+                x = windowClientRect.right - windowClientRect.left,
+                y = windowClientRect.bottom - windowClientRect.top
+            };
+
+        var historyEntry = new ReadingFromGameClient
+        {
+            windowHandle = windowHandle,
+            readingId = readingId,
+            pixels_1x1_R8G8B8 = pixels_1x1_R8G8B8,
         };
+
+        readingFromGameHistory.Enqueue(historyEntry);
+
+        while(4 < readingFromGameHistory.Count)
+        {
+            readingFromGameHistory.Dequeue();
+        }
+
+        var imageData = CompileImageDataFromReadingResult(task.ReadFromWindowRequest.getImageData, historyEntry);
+
+        return ResponseFromResultOnWindow(
+            new Response.TaskOnWindowResponseStruct
+            {
+                ReadFromWindowComplete = new Response.ReadFromWindowCompleteStruct
+                {
+                    readingId = readingId,
+                    windowSize = windowSize,
+                    windowClientRectOffset = windowClientRectOffset,
+                    windowClientAreaSize = windowClientAreaSize,
+                    imageData = imageData
+                }
+            });
     }
 
-    throw new Exception("Unexpected task in request: " + task);
+    if (task.GetImageDataFromReadingRequest?.readingId != null)
+    {
+        var historyEntry =
+            readingFromGameHistory
+            .Cast<ReadingFromGameClient?>()
+            .FirstOrDefault(c => c?.readingId == task.GetImageDataFromReadingRequest?.readingId);
+
+        if (historyEntry == null)
+        {
+            return ResponseFromResultOnWindow(
+                new Response.TaskOnWindowResponseStruct
+                {
+                    ReadingNotFound = new object()
+                });
+        }
+
+        return ResponseFromResultOnWindow(
+            new Response.TaskOnWindowResponseStruct
+            {
+                GetImageDataFromReadingComplete = new Response.GetImageDataFromReadingCompleteStruct
+                {
+                    readingId = task.GetImageDataFromReadingRequest?.readingId,
+                    imageData = CompileImageDataFromReadingResult(
+                        task.GetImageDataFromReadingRequest.Value.getImageData, historyEntry.Value),
+                }
+            });
+    }
+
+    throw new Exception("Unexpected task in request:\n" + Newtonsoft.Json.JsonConvert.SerializeObject(task));
+}
+
+
+System.Collections.Generic.IReadOnlyList<Response.WindowSummaryStruct> ListWindowsSummaries(int windowCountLimit)
+{
+    var windowHandlesInZOrder =
+        WinApi.EnumerateWindowHandlesInZOrderStartingFromForegroundWindow()
+        .Take(windowCountLimit)
+        .ToList();
+
+    int? zIndexFromWindowHandle(IntPtr windowHandleToSearch) =>
+        windowHandlesInZOrder
+        .Select((windowHandle, index) => (windowHandle, index: (int?)index))
+        .FirstOrDefault(handleAndIndex => handleAndIndex.windowHandle == windowHandleToSearch)
+        .index;
+
+    var windows =
+        windowHandlesInZOrder
+        .Select(windowHandle =>
+        {
+            return new Response.WindowSummaryStruct
+            {
+                windowId = windowHandle.ToInt64().ToString(),
+                windowTitle = GetWindowTextFromHandle(windowHandle),
+                windowZIndex = zIndexFromWindowHandle(windowHandle) ?? 9999,
+            };
+        })
+        .ToList();
+
+    return windows;
+}
+
+string GetWindowTextFromHandle(IntPtr windowHandle)
+{
+    var windowTitle = new System.Text.StringBuilder(capacity: 256);
+
+    WinApi.GetWindowText(windowHandle, windowTitle, windowTitle.Capacity);
+
+    return windowTitle.ToString();
+}
+
+Response.GetImageDataFromReadingResultStructure CompileImageDataFromReadingResult(
+    Request.GetImageDataFromReadingStructure request,
+    ReadingFromGameClient historyEntry)
+{
+    ImageCropRGB[] crops_1x1_r8g8b8 = null;
+    IReadOnlyList<ImageCropRGB> crops_2x2_r8g8b8 = null;
+
+    if (historyEntry.pixels_1x1_R8G8B8 != null)
+    {
+        crops_1x1_r8g8b8 =
+            request.crops_1x1_r8g8b8
+            .Select(rect =>
+            {
+                var cropPixels = CopyRectangularCrop(historyEntry.pixels_1x1_R8G8B8, rect);
+
+                return new ImageCropRGB
+                {
+                    pixels = cropPixels.Select(memory => memory.ToArray()).ToArray(),
+                    offset = new Location2d { x = rect.x, y = rect.y },
+                };
+            }).ToArray();
+
+        crops_2x2_r8g8b8 =
+            request.crops_2x2_r8g8b8
+            .Select(rect =>
+            {
+                var wrappedOffsetX = rect.x % 2;
+                var wrappedOffsetY = rect.y % 2;
+
+                var binnedPixels =
+                    historyEntry.Pixels_2x2_R8G8B8_by_offset(
+                        new Location2d { x = wrappedOffsetX, y = wrappedOffsetY });
+
+                var cropPixels =
+                    CopyRectangularCrop(
+                        binnedPixels,
+                        new Rect2d { x = rect.x / 2, y = rect.y / 2, width = rect.width, height = rect.height });
+
+                return new ImageCropRGB
+                {
+                    pixels = cropPixels.Select(memory => memory.ToArray()).ToArray(),
+                    offset = new Location2d { x = rect.x, y = rect.y },
+                };
+            }).ToArray();
+    }
+
+    return new Response.GetImageDataFromReadingResultStructure
+    {
+        crops_1x1_r8g8b8 = crops_1x1_r8g8b8,
+        crops_2x2_r8g8b8 = crops_2x2_r8g8b8 ?? ImmutableList<ImageCropRGB>.Empty
+    };
+}
+
+ReadOnlyMemory<int>[] CopyRectangularCrop(ReadOnlyMemory<int>[] original, Rect2d rect)
+{
+    return
+        original
+        .Skip(rect.y)
+        .Take(rect.height)
+        .Select(rowPixels =>
+        {
+            if (rect.x == 0 && rect.width == rowPixels.Length)
+                return rowPixels;
+
+            var sliceLength = Math.Min(rect.width, rowPixels.Length - rect.x);
+
+            return rowPixels.Slice(rect.x, sliceLength);
+        })
+        .ToArray();
 }
 
 void SetProcessDPIAware()
@@ -262,7 +640,7 @@ public byte[] GetScreenshotOfWindowAsImageFileBMP(IntPtr windowHandle)
     }
 }
 
-public int[][] GetScreenshotOfWindowAsPixelsValues(IntPtr windowHandle)
+public ReadOnlyMemory<int>[] GetScreenshotOfWindowAsPixelsValues_R8G8B8(IntPtr windowHandle)
 {
     var screenshotAsBitmap = GetScreenshotOfWindowAsBitmap(windowHandle);
 
@@ -281,7 +659,7 @@ public int[][] GetScreenshotOfWindowAsPixelsValues(IntPtr windowHandle)
 
     screenshotAsBitmap.UnlockBits(bitmapData);
 
-    var pixels = new int[screenshotAsBitmap.Height][];
+    var pixels = new ReadOnlyMemory<int>[screenshotAsBitmap.Height];
 
     for (var rowIndex = 0; rowIndex < screenshotAsBitmap.Height; ++rowIndex)
     {
@@ -309,7 +687,7 @@ public System.Drawing.Bitmap GetScreenshotOfWindowAsBitmap(IntPtr windowHandle)
     SetProcessDPIAware();
 
     var windowRect = new WinApi.Rect();
-    if (WinApi.GetWindowRect(windowHandle, ref windowRect) == IntPtr.Zero)
+    if (!WinApi.GetWindowRect(windowHandle, ref windowRect))
         return null;
 
     int width = windowRect.right - windowRect.left;
@@ -340,6 +718,19 @@ static public class WinApi
         public int bottom;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Point
+    {
+        public int x;
+        public int y;
+
+        public Point(int x, int y)
+        {
+            this.x = x;
+            this.y = y;
+        }
+    }
+
     public enum MouseButton
     {
         Left = 0,
@@ -347,10 +738,10 @@ static public class WinApi
         Right = 2,
     }
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     static public extern IntPtr GetForegroundWindow();
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     static public extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -365,14 +756,49 @@ static public class WinApi
     static public extern IntPtr ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
-    static public extern IntPtr GetWindowRect(IntPtr hWnd, ref Rect rect);
+    static public extern bool GetWindowRect(IntPtr hWnd, ref Rect rect);
+
+    [DllImport("user32.dll")]
+    static public extern IntPtr GetClientRect(IntPtr hWnd, ref Rect rect);
 
     [DllImport("user32.dll", SetLastError = false)]
     static public extern IntPtr GetDesktopWindow();
 
+    [DllImport("user32.dll", SetLastError = false)]
+    static public extern IntPtr GetTopWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = false)]
+    static public extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     static public extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll")]
+    static public extern bool ClientToScreen(IntPtr hWnd, ref Point lpPoint);
+
+    [DllImport("user32.dll")]
+    static public extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    /*
+    https://stackoverflow.com/questions/19867402/how-can-i-use-enumwindows-to-find-windows-with-a-specific-caption-title/20276701#20276701
+    https://stackoverflow.com/questions/295996/is-the-order-in-which-handles-are-returned-by-enumwindows-meaningful/296014#296014
+    */
+    public static IEnumerable<IntPtr> EnumerateWindowHandlesInZOrderStartingFromForegroundWindow()
+    {
+        var windowHandle = GetForegroundWindow();
+
+        while(windowHandle != IntPtr.Zero)
+        {
+            yield return windowHandle;
+
+            // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getnextwindow
+            // https://stackoverflow.com/questions/798295/how-can-i-use-getnextwindow-in-c/798303#798303
+            windowHandle = GetWindow(windowHandle, 2);
+        }
+    }
 }
 
 string SerializeToJsonForBot<T>(T value) =>

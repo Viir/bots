@@ -43,7 +43,7 @@ buildExpectationFromScenario pattern scenario =
         Ok image ->
             let
                 imageRepresentation =
-                    BotLab.SimpleBotFramework.deriveImageRepresentation image.pixels
+                    BotLab.SimpleBotFramework.deriveImageRepresentationFromNestedListOfPixels image.pixels
 
                 foundLocations =
                     imageRepresentation

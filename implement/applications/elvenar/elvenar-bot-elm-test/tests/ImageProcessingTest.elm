@@ -15,8 +15,9 @@ locate_coin_in_image =
     Sample_2022_03_07.sample_2022_03_07_coins
         |> List.indexedMap
             (\scenarioIndex scenario ->
-                Test.test ("Scenario " ++ String.fromInt scenarioIndex) <|
-                    always (buildExpectationFromScenario Bot.coinPattern scenario)
+                scenario
+                    |> buildTestsFromScenario Bot.coinPattern
+                    |> Test.describe ("Scenario " ++ String.fromInt scenarioIndex)
             )
         |> Test.describe "Locate instances of coin in image"
 
@@ -26,11 +27,11 @@ expectationLocationTolerance =
     3
 
 
-buildExpectationFromScenario :
+buildTestsFromScenario :
     BotLab.SimpleBotFramework.LocatePatternInImageApproach
     -> Sample_2022_03_07.ScenarioSinglePatternOnSampleImage
-    -> Expect.Expectation
-buildExpectationFromScenario pattern scenario =
+    -> List Test.Test
+buildTestsFromScenario pattern scenario =
     case
         scenario.imageFileBase64
             |> Base64.toBytes
@@ -38,20 +39,46 @@ buildExpectationFromScenario pattern scenario =
             |> Result.andThen DecodeBMPImage.decodeBMPImageFile
     of
         Err error ->
-            Expect.fail ("Failed decoding image file: " ++ error)
+            [ Test.test "Decode image" <|
+                always (Expect.fail ("Failed decoding image file: " ++ error))
+            ]
 
         Ok image ->
-            let
-                imageRepresentation =
-                    BotLab.SimpleBotFramework.deriveImageRepresentationFromNestedListOfPixels image.pixels
+            [ { x = 0, y = 0 }
+            , { x = 1, y = 0 }
+            , { x = 0, y = 1 }
+            , { x = 1, y = 1 }
+            ]
+                |> List.map
+                    (\offset ->
+                        let
+                            imageRepresentation =
+                                deriveImageRepresentationFromNestedListOfPixelsAndOffset
+                                    offset
+                                    image.pixels
 
-                foundLocations =
-                    imageRepresentation
-                        |> BotLab.SimpleBotFramework.locatePatternInImage pattern BotLab.SimpleBotFramework.SearchEverywhere
-                        |> Bot.filterRemoveCloseLocations expectationLocationTolerance
-                        |> List.sortBy .y
-            in
-            buildExpectationFromLocations { expected = scenario.instanceLocations, found = foundLocations }
+                            foundLocations =
+                                imageRepresentation
+                                    |> BotLab.SimpleBotFramework.locatePatternInImage pattern BotLab.SimpleBotFramework.SearchEverywhere
+                                    |> Bot.filterRemoveCloseLocations expectationLocationTolerance
+                                    |> List.sortBy .y
+                        in
+                        Test.test ("offset " ++ String.fromInt offset.x ++ ", " ++ String.fromInt offset.y) <|
+                            always
+                                (buildExpectationFromLocations
+                                    { expected = scenario.instanceLocations, found = foundLocations }
+                                )
+                    )
+
+
+deriveImageRepresentationFromNestedListOfPixelsAndOffset :
+    Location2d
+    -> List (List BotLab.SimpleBotFramework.PixelValue)
+    -> BotLab.SimpleBotFramework.ImageStructure
+deriveImageRepresentationFromNestedListOfPixelsAndOffset offset =
+    List.map ((++) (List.repeat offset.x { red = 0, green = 0, blue = 0 }))
+        >> (++) (List.repeat offset.y [])
+        >> BotLab.SimpleBotFramework.deriveImageRepresentationFromNestedListOfPixels
 
 
 buildExpectationFromLocations :

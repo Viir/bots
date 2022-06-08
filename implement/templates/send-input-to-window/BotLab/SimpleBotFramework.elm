@@ -15,6 +15,7 @@
 module BotLab.SimpleBotFramework exposing (..)
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import Common.EffectOnWindow
 import CompilationInterface.SourceFiles
 import Dict
 import Json.Decode
@@ -106,17 +107,13 @@ type MouseButton
     | MouseButtonRight
 
 
-type KeyboardKey
-    = KeyboardKeyFromVirtualKeyCode Int
-
-
 type Task
     = BringWindowToForeground
     | MoveMouseToLocation Location2d
     | MouseButtonDown MouseButton
     | MouseButtonUp MouseButton
-    | KeyboardKeyDown KeyboardKey
-    | KeyboardKeyUp KeyboardKey
+    | KeyboardKeyDown Common.EffectOnWindow.VirtualKeyCode
+    | KeyboardKeyUp Common.EffectOnWindow.VirtualKeyCode
     | ReadFromWindow GetImageDataFromReadingStructure
     | GetImageDataFromReading GetImageDataFromReadingStructure
 
@@ -942,20 +939,18 @@ taskOnWindowFromSimpleBotTask state simpleBotTask =
             VolatileProcessInterface.MoveMouseToLocation location
 
         MouseButtonDown button ->
-            VolatileProcessInterface.MouseButtonDown
+            VolatileProcessInterface.KeyDown
                 (volatileProcessMouseButtonFromMouseButton button)
 
         MouseButtonUp button ->
-            VolatileProcessInterface.MouseButtonUp
+            VolatileProcessInterface.KeyUp
                 (volatileProcessMouseButtonFromMouseButton button)
 
         KeyboardKeyDown key ->
-            VolatileProcessInterface.KeyboardKeyDown
-                (volatileProcessKeyboardKeyFromKeyboardKey key)
+            VolatileProcessInterface.KeyDown key
 
         KeyboardKeyUp key ->
-            VolatileProcessInterface.KeyboardKeyUp
-                (volatileProcessKeyboardKeyFromKeyboardKey key)
+            VolatileProcessInterface.KeyUp key
 
         ReadFromWindow readFromWindowTask ->
             VolatileProcessInterface.ReadFromWindowRequest
@@ -1141,21 +1136,14 @@ taskIdFromString =
     TaskIdFromString
 
 
-volatileProcessMouseButtonFromMouseButton : MouseButton -> VolatileProcessInterface.MouseButton
+volatileProcessMouseButtonFromMouseButton : MouseButton -> Common.EffectOnWindow.VirtualKeyCode
 volatileProcessMouseButtonFromMouseButton mouseButton =
     case mouseButton of
         MouseButtonLeft ->
-            VolatileProcessInterface.MouseButtonLeft
+            Common.EffectOnWindow.vkey_LBUTTON
 
         MouseButtonRight ->
-            VolatileProcessInterface.MouseButtonRight
-
-
-volatileProcessKeyboardKeyFromKeyboardKey : KeyboardKey -> VolatileProcessInterface.KeyboardKey
-volatileProcessKeyboardKeyFromKeyboardKey keyboardKey =
-    case keyboardKey of
-        KeyboardKeyFromVirtualKeyCode keyCode ->
-            VolatileProcessInterface.KeyboardKeyFromVirtualKeyCode keyCode
+            Common.EffectOnWindow.vkey_RBUTTON
 
 
 dictWithTupleKeyFromIndicesInNestedList : List (List element) -> Dict.Dict ( Int, Int ) element
@@ -1198,12 +1186,12 @@ mouseButtonUp =
     MouseButtonUp
 
 
-keyboardKeyDown : KeyboardKey -> Task
+keyboardKeyDown : Common.EffectOnWindow.VirtualKeyCode -> Task
 keyboardKeyDown =
     KeyboardKeyDown
 
 
-keyboardKeyUp : KeyboardKey -> Task
+keyboardKeyUp : Common.EffectOnWindow.VirtualKeyCode -> Task
 keyboardKeyUp =
     KeyboardKeyUp
 
@@ -1287,18 +1275,6 @@ mouseButtonLeft =
 mouseButtonRight : MouseButton
 mouseButtonRight =
     MouseButtonRight
-
-
-{-| For documentation of virtual key codes, see <https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes>
--}
-keyboardKeyFromVirtualKeyCode : Int -> KeyboardKey
-keyboardKeyFromVirtualKeyCode =
-    KeyboardKeyFromVirtualKeyCode
-
-
-keyboardKey_space : KeyboardKey
-keyboardKey_space =
-    keyboardKeyFromVirtualKeyCode 0x20
 
 
 rectIntersection : VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure

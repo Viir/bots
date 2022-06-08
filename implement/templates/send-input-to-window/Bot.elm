@@ -20,13 +20,13 @@ import BotLab.SimpleBotFramework as SimpleBotFramework
         ( bringWindowToForeground
         , keyboardKeyDown
         , keyboardKeyUp
-        , keyboardKey_space
         , mouseButtonDown
         , mouseButtonLeft
         , mouseButtonRight
         , mouseButtonUp
         , moveMouseToLocation
         )
+import Common.EffectOnWindow
 
 
 type alias SimpleState =
@@ -66,9 +66,9 @@ initState =
 
         -- 2019-06-09 MS Paint did also draw when space key was pressed. Next, we draw a line without a mouse button, by holding the space key down.
         , moveMouseToLocation { x = 180, y = 330 }
-        , keyboardKeyDown keyboardKey_space
+        , keyboardKeyDown Common.EffectOnWindow.vkey_SPACE
         , moveMouseToLocation { x = 210, y = 340 }
-        , keyboardKeyUp keyboardKey_space
+        , keyboardKeyUp Common.EffectOnWindow.vkey_SPACE
         ]
     }
 

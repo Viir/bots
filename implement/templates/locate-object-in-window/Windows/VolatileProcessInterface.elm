@@ -1,5 +1,6 @@
 module Windows.VolatileProcessInterface exposing (..)
 
+import Common.EffectOnWindow exposing (MouseButton(..), VirtualKeyCode(..), virtualKeyCodeAsInteger)
 import Json.Decode
 import Json.Encode
 
@@ -63,10 +64,8 @@ type alias WindowId =
 type TaskOnWindowRequestStruct
     = BringWindowToForeground
     | MoveMouseToLocation Location2d
-    | MouseButtonDown MouseButton
-    | MouseButtonUp MouseButton
-    | KeyboardKeyDown KeyboardKey
-    | KeyboardKeyUp KeyboardKey
+    | KeyDown VirtualKeyCode
+    | KeyUp VirtualKeyCode
     | ReadFromWindowRequest ReadFromWindowStructure
     | GetImageDataFromReadingRequest GetImageDataFromReadingRequestStruct
 
@@ -145,15 +144,6 @@ type alias Location2d =
     { x : Int
     , y : Int
     }
-
-
-type KeyboardKey
-    = KeyboardKeyFromVirtualKeyCode Int
-
-
-type MouseButton
-    = MouseButtonLeft
-    | MouseButtonRight
 
 
 buildRequestStringToGetResponseFromVolatileProcess : RequestToVolatileProcess -> String
@@ -304,17 +294,11 @@ encodeTaskOnWindowRequestStruct taskOnWindow =
         MoveMouseToLocation moveMouseToLocation ->
             ( "MoveMouseToLocation", moveMouseToLocation |> jsonEncodeLocation2d )
 
-        MouseButtonDown mouseButtonDown ->
-            ( "MouseButtonDown", mouseButtonDown |> jsonEncodeMouseButton )
+        KeyDown keyDown ->
+            ( "KeyDown", keyDown |> jsonEncodeKey )
 
-        MouseButtonUp mouseButtonUp ->
-            ( "MouseButtonUp", mouseButtonUp |> jsonEncodeMouseButton )
-
-        KeyboardKeyDown keyboardKeyDown ->
-            ( "KeyboardKeyDown", keyboardKeyDown |> jsonEncodeKeyboardKey )
-
-        KeyboardKeyUp keyboardKeyUp ->
-            ( "KeyboardKeyUp", keyboardKeyUp |> jsonEncodeKeyboardKey )
+        KeyUp keyUp ->
+            ( "KeyUp", keyUp |> jsonEncodeKey )
 
         ReadFromWindowRequest readFromWindowRequest ->
             ( "ReadFromWindowRequest", readFromWindowRequest |> encodeReadFromWindow )
@@ -375,6 +359,16 @@ decodeGetImageDataFromReading =
         (Json.Decode.field "crops_2x2_r8g8b8" (Json.Decode.list jsonDecodeRect2d))
 
 
+jsonEncodeKey : VirtualKeyCode -> Json.Encode.Value
+jsonEncodeKey virtualKeyCode =
+    Json.Encode.object [ ( "virtualKeyCode", virtualKeyCode |> virtualKeyCodeAsInteger |> Json.Encode.int ) ]
+
+
+jsonDecodeKey : Json.Decode.Decoder VirtualKeyCode
+jsonDecodeKey =
+    Json.Decode.field "virtualKeyCode" Json.Decode.int |> Json.Decode.map VirtualKeyCodeFromInt
+
+
 jsonEncodeRect2d : Rect2dStructure -> Json.Encode.Value
 jsonEncodeRect2d rect2d =
     Json.Encode.object
@@ -417,13 +411,6 @@ jsonEncodeMouseButton mouseButton =
 
         MouseButtonRight ->
             [ ( "MouseButtonRight", [] |> Json.Encode.object ) ] |> Json.Encode.object
-
-
-jsonEncodeKeyboardKey : KeyboardKey -> Json.Encode.Value
-jsonEncodeKeyboardKey keyboardKey =
-    case keyboardKey of
-        KeyboardKeyFromVirtualKeyCode keyCode ->
-            [ ( "KeyboardKeyFromVirtualKeyCode", keyCode |> Json.Encode.int ) ] |> Json.Encode.object
 
 
 jsonDecodeSucceedWhenNotNull : a -> Json.Decode.Decoder a

@@ -1,11 +1,14 @@
-{- Elvenar Bot v2022-06-07
+{- Elvenar Bot v2022-06-08
 
-   This bot locates coins in the Elvenar game client window.
+   This bot collects coins in the Elvenar game client window.
 
    The bot picks the topmost window in the display order, the one in the front. This selection happens once when starting the bot. The bot then remembers the window address and continues working on the same window.
-   To use this bot, bring the target window to the foreground after pressing the button to run the bot. When the bot displays the window title in the status text, you know it has completed the selection.
+   To use this bot, bring the Elvenar game client window to the foreground after pressing the button to run the bot. When the bot displays the window title in the status text, it has completed the selection of the game window.
 
    You can test this bot by placing a screenshot in a paint app like MS Paint or Paint.NET, where you can change its location within the window easily.
+
+   You can see the training data samples used to develop this bot at https://github.com/Viir/bots/tree/8b955f4035a9a202ba8450f12f4c38be8a2b8d7e/implement/applications/elvenar/training-data
+   If the bot does not recognize all coins with your setup, post it on GitHub issues at https://github.com/Viir/bots/issues or on the forum at https://forum.botlab.org
 -}
 {-
    catalog-tags:elvenar
@@ -26,23 +29,32 @@ import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework
 import DecodeBMPImage
 import Dict
+import Random
+import Random.List
+
+
+mouseClickLocationOffsetFromCoin : Location2d
+mouseClickLocationOffsetFromCoin =
+    { x = 0, y = 50 }
 
 
 readFromWindowIntervalMilliseconds : Int
 readFromWindowIntervalMilliseconds =
-    1000
+    4000
 
 
 type alias SimpleState =
     { timeInMilliseconds : Int
-    , lastReadFromWindowResult :
-        Maybe
-            { timeInMilliseconds : Int
-            , readResult : SimpleBotFramework.ReadFromWindowResultStruct
-            , image : SimpleBotFramework.ImageStructure
-            , coinFoundLocations : List Location2d
-            , missingOriginalPixelsCrops : List Rect
-            }
+    , lastReadFromWindowResult : Maybe ReadFromWindowResult
+    }
+
+
+type alias ReadFromWindowResult =
+    { timeInMilliseconds : Int
+    , readResult : SimpleBotFramework.ReadFromWindowResultStruct
+    , image : SimpleBotFramework.ImageStructure
+    , coinFoundLocations : List Location2d
+    , missingOriginalPixelsCrops : List Rect
     }
 
 
@@ -73,134 +85,201 @@ initState =
 
 
 simpleProcessEvent : SimpleBotFramework.BotEvent -> SimpleState -> ( SimpleState, SimpleBotFramework.BotResponse )
-simpleProcessEvent event stateBeforeIntegratingEvent =
+simpleProcessEvent event stateBeforeUpdateTime =
     let
         stateBefore =
-            stateBeforeIntegratingEvent |> integrateEvent event
-    in
-    let
-        timeToTakeNewReadingFromGameWindow =
-            case stateBefore.lastReadFromWindowResult of
-                Nothing ->
-                    True
+            { stateBeforeUpdateTime | timeInMilliseconds = event.timeInMilliseconds }
 
-                Just lastReadFromWindowResult ->
-                    readFromWindowIntervalMilliseconds
-                        < (stateBefore.timeInMilliseconds - lastReadFromWindowResult.timeInMilliseconds)
+        activityContinueWaiting =
+            ( [], "Wait before starting next reading..." )
 
-        startTasksIfDoneWithLastReading =
-            if timeToTakeNewReadingFromGameWindow then
-                [ { taskId = SimpleBotFramework.taskIdFromString "read-from-window"
-                  , task =
-                        SimpleBotFramework.readFromWindow
-                            { crops_1x1_r8g8b8 = []
-                            , crops_2x2_r8g8b8 = [ { x = 0, y = 0, width = 9999, height = 9999 } ]
-                            }
-                  }
-                ]
+        continueWaitingOrRead stateToContinueWaitingOrRead =
+            let
+                timeToTakeNewReadingFromGameWindow =
+                    case stateToContinueWaitingOrRead.lastReadFromWindowResult of
+                        Nothing ->
+                            True
 
-            else
-                []
+                        Just lastReadFromWindowResult ->
+                            readFromWindowIntervalMilliseconds
+                                < (stateToContinueWaitingOrRead.timeInMilliseconds - lastReadFromWindowResult.timeInMilliseconds)
 
-        startTasks =
-            case stateBefore.lastReadFromWindowResult of
-                Just lastReadFromWindowResult ->
-                    if
-                        (lastReadFromWindowResult.missingOriginalPixelsCrops /= [])
-                            && Dict.isEmpty lastReadFromWindowResult.image.imageAsDict
-                    then
-                        [ { taskId = SimpleBotFramework.taskIdFromString "get-image-data-from-reading"
-                          , task =
-                                SimpleBotFramework.getImageDataFromReading
-                                    { crops_1x1_r8g8b8 = lastReadFromWindowResult.missingOriginalPixelsCrops
-                                    , crops_2x2_r8g8b8 = []
+                activityContinueWaitingOrRead =
+                    if timeToTakeNewReadingFromGameWindow then
+                        ( [ { taskId = SimpleBotFramework.taskIdFromString "read-from-window"
+                            , task =
+                                SimpleBotFramework.readFromWindow
+                                    { crops_1x1_r8g8b8 = []
+                                    , crops_2x2_r8g8b8 = [ { x = 0, y = 0, width = 9999, height = 9999 } ]
                                     }
-                          }
-                        ]
+                            }
+                          ]
+                        , "Get the next reading from the game"
+                        )
 
                     else
-                        startTasksIfDoneWithLastReading
+                        activityContinueWaiting
+            in
+            ( stateToContinueWaitingOrRead, activityContinueWaitingOrRead )
 
-                Nothing ->
-                    startTasksIfDoneWithLastReading
+        ( state, ( startTasks, activityDescription ) ) =
+            case event.eventAtTime of
+                SimpleBotFramework.TimeArrivedEvent ->
+                    continueWaitingOrRead stateBefore
+
+                SimpleBotFramework.BotSettingsChangedEvent _ ->
+                    continueWaitingOrRead stateBefore
+
+                SimpleBotFramework.SessionDurationPlannedEvent _ ->
+                    continueWaitingOrRead stateBefore
+
+                SimpleBotFramework.TaskCompletedEvent completedTask ->
+                    case completedTask.taskResult of
+                        SimpleBotFramework.NoResultValue ->
+                            continueWaitingOrRead stateBefore
+
+                        SimpleBotFramework.ReadFromWindowResult readFromWindowResult image ->
+                            let
+                                lastReadFromWindowResult =
+                                    computeReadFromWindowResult readFromWindowResult image stateBefore
+
+                                reachableCoinLocations =
+                                    lastReadFromWindowResult.coinFoundLocations
+                                        |> List.filter
+                                            (\location ->
+                                                location.y
+                                                    < readFromWindowResult.windowClientRectOffset.y
+                                                    + readFromWindowResult.windowClientAreaSize.y
+                                                    - mouseClickLocationOffsetFromCoin.y
+                                                    - 20
+                                            )
+
+                                activityFromReadResult =
+                                    if
+                                        (lastReadFromWindowResult.missingOriginalPixelsCrops /= [])
+                                            && Dict.isEmpty lastReadFromWindowResult.image.imageAsDict
+                                    then
+                                        ( [ { taskId = SimpleBotFramework.taskIdFromString "get-image-data-from-reading"
+                                            , task =
+                                                SimpleBotFramework.getImageDataFromReading
+                                                    { crops_1x1_r8g8b8 = lastReadFromWindowResult.missingOriginalPixelsCrops
+                                                    , crops_2x2_r8g8b8 = []
+                                                    }
+                                            }
+                                          ]
+                                        , "Get details from last reading"
+                                        )
+
+                                    else
+                                        case
+                                            Random.initialSeed stateBefore.timeInMilliseconds
+                                                |> Random.step (Random.List.shuffle reachableCoinLocations)
+                                                |> Tuple.first
+                                        of
+                                            [] ->
+                                                activityContinueWaiting
+                                                    |> Tuple.mapSecond ((++) "Did not find any coin with reachable interactive area to click on")
+
+                                            coinFoundLocation :: _ ->
+                                                let
+                                                    mouseDownLocation =
+                                                        coinFoundLocation
+                                                            |> addOffset mouseClickLocationOffsetFromCoin
+                                                in
+                                                ( [ { taskId = SimpleBotFramework.taskIdFromString "move-mouse-to-coin"
+                                                    , task = SimpleBotFramework.MoveMouseToLocation mouseDownLocation
+                                                    }
+                                                  , { taskId = SimpleBotFramework.taskIdFromString "mouse-button-down"
+                                                    , task = SimpleBotFramework.MouseButtonDown SimpleBotFramework.MouseButtonLeft
+                                                    }
+                                                  , { taskId = SimpleBotFramework.taskIdFromString "drag-coin"
+                                                    , task =
+                                                        mouseDownLocation
+                                                            |> addOffset { x = 15, y = 30 }
+                                                            |> SimpleBotFramework.MoveMouseToLocation
+                                                    }
+                                                  , { taskId = SimpleBotFramework.taskIdFromString "avoid-drift-move-mouse-back"
+                                                    , task = SimpleBotFramework.MoveMouseToLocation mouseDownLocation
+                                                    }
+                                                  , { taskId = SimpleBotFramework.taskIdFromString "mouse-button-up"
+                                                    , task = SimpleBotFramework.MouseButtonUp SimpleBotFramework.MouseButtonLeft
+                                                    }
+                                                  , { taskId = SimpleBotFramework.taskIdFromString "mouse-button-up"
+                                                    , task = SimpleBotFramework.MouseButtonUp SimpleBotFramework.MouseButtonLeft
+                                                    }
+                                                  ]
+                                                , "Collect coin at " ++ describeLocation coinFoundLocation
+                                                )
+                            in
+                            ( { stateBefore
+                                | lastReadFromWindowResult = Just lastReadFromWindowResult
+                              }
+                            , activityFromReadResult
+                            )
+
+        notifyWhenArrivedAtTime =
+            { timeInMilliseconds = state.timeInMilliseconds + 1000 }
+
+        statusDescriptionText =
+            [ activityDescription
+            , lastReadingDescription state
+            ]
+                |> String.join "\n"
     in
-    ( stateBefore
+    ( state
     , SimpleBotFramework.ContinueSession
         { startTasks = startTasks
-        , statusDescriptionText = lastReadingDescription stateBefore
-        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
+        , statusDescriptionText = statusDescriptionText
+        , notifyWhenArrivedAtTime = Just notifyWhenArrivedAtTime
         }
     )
 
 
-integrateEvent : SimpleBotFramework.BotEvent -> SimpleState -> SimpleState
-integrateEvent event stateBeforeUpdateTime =
+computeReadFromWindowResult :
+    SimpleBotFramework.ReadFromWindowResultStruct
+    -> SimpleBotFramework.ImageStructure
+    -> SimpleState
+    -> ReadFromWindowResult
+computeReadFromWindowResult readFromWindowResult image stateBefore =
     let
-        stateBefore =
-            { stateBeforeUpdateTime | timeInMilliseconds = event.timeInMilliseconds }
+        coinFoundLocations =
+            SimpleBotFramework.locatePatternInImage
+                coinPattern
+                SimpleBotFramework.SearchEverywhere
+                image
+                |> filterRemoveCloseLocations 3
+
+        binnedSearchLocations =
+            image.imageBinned2x2AsDict
+                |> Dict.keys
+                |> List.map (\( x, y ) -> { x = x, y = y })
+
+        matchLocationsOnBinned2x2 =
+            image.imageBinned2x2AsDict
+                |> SimpleBotFramework.getMatchesLocationsFromImage
+                    coinPatternTestOnBinned2x2
+                    binnedSearchLocations
+
+        missingOriginalPixelsCrops =
+            matchLocationsOnBinned2x2
+                |> List.map (\binnedLocation -> ( binnedLocation.x * 2, binnedLocation.y * 2 ))
+                |> List.filter (\location -> not (Dict.member location image.imageAsDict))
+                |> List.map
+                    (\( x, y ) ->
+                        { x = x - 20
+                        , y = y - 15
+                        , width = 40
+                        , height = 30
+                        }
+                    )
+                |> List.filter (\rect -> 0 < rect.width && 0 < rect.height)
     in
-    case event.eventAtTime of
-        SimpleBotFramework.TimeArrivedEvent ->
-            stateBefore
-
-        SimpleBotFramework.BotSettingsChangedEvent _ ->
-            stateBefore
-
-        SimpleBotFramework.SessionDurationPlannedEvent _ ->
-            stateBefore
-
-        SimpleBotFramework.TaskCompletedEvent completedTask ->
-            let
-                lastReadFromWindowResult =
-                    case completedTask.taskResult of
-                        SimpleBotFramework.NoResultValue ->
-                            stateBefore.lastReadFromWindowResult
-
-                        SimpleBotFramework.ReadFromWindowResult readFromWindowResult image ->
-                            let
-                                coinFoundLocations =
-                                    SimpleBotFramework.locatePatternInImage
-                                        coinPattern
-                                        SimpleBotFramework.SearchEverywhere
-                                        image
-                                        |> filterRemoveCloseLocations 3
-
-                                binnedSearchLocations =
-                                    image.imageBinned2x2AsDict
-                                        |> Dict.keys
-                                        |> List.map (\( x, y ) -> { x = x, y = y })
-
-                                matchLocationsOnBinned2x2 =
-                                    image.imageBinned2x2AsDict
-                                        |> SimpleBotFramework.getMatchesLocationsFromImage
-                                            coinPatternTestOnBinned2x2
-                                            binnedSearchLocations
-
-                                missingOriginalPixelsCrops =
-                                    matchLocationsOnBinned2x2
-                                        |> List.map (\binnedLocation -> ( binnedLocation.x * 2, binnedLocation.y * 2 ))
-                                        |> List.filter (\location -> not (Dict.member location image.imageAsDict))
-                                        |> List.map
-                                            (\( x, y ) ->
-                                                { x = x - 10
-                                                , y = y - 10
-                                                , width = 20
-                                                , height = 20
-                                                }
-                                            )
-                                        |> List.filter (\rect -> 0 < rect.width && 0 < rect.height)
-                            in
-                            Just
-                                { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                , readResult = readFromWindowResult
-                                , image = image
-                                , coinFoundLocations = coinFoundLocations
-                                , missingOriginalPixelsCrops = missingOriginalPixelsCrops
-                                }
-            in
-            { stateBefore
-                | lastReadFromWindowResult = lastReadFromWindowResult
-            }
+    { timeInMilliseconds = stateBefore.timeInMilliseconds
+    , readResult = readFromWindowResult
+    , image = image
+    , coinFoundLocations = coinFoundLocations
+    , missingOriginalPixelsCrops = missingOriginalPixelsCrops
+    }
 
 
 lastReadingDescription : SimpleState -> String
@@ -222,13 +301,34 @@ lastReadingDescription stateBefore =
                         ++ (coinFoundLocationsToDescribe |> List.map describeLocation |> String.join ", ")
                         ++ " ]"
 
+                imageBinned2x2AsDictLocations =
+                    lastReadFromWindowResult.image.imageBinned2x2AsDict
+                        |> Dict.keys
+
+                observedRectLeft =
+                    imageBinned2x2AsDictLocations |> List.map Tuple.first |> List.minimum
+
+                observedRectRight =
+                    imageBinned2x2AsDictLocations |> List.map Tuple.first |> List.maximum
+
+                observedRectTop =
+                    imageBinned2x2AsDictLocations |> List.map Tuple.second |> List.minimum
+
+                observedRectBottom =
+                    imageBinned2x2AsDictLocations |> List.map Tuple.second |> List.maximum
+
                 windowProperties =
-                    [ ( "window.width", lastReadFromWindowResult.readResult.windowSize.x )
-                    , ( "window.height", lastReadFromWindowResult.readResult.windowSize.y )
-                    , ( "windowClientArea.width", lastReadFromWindowResult.readResult.windowClientAreaSize.x )
-                    , ( "windowClientArea.height", lastReadFromWindowResult.readResult.windowClientAreaSize.y )
+                    [ ( "window.width", String.fromInt lastReadFromWindowResult.readResult.windowSize.x )
+                    , ( "window.height", String.fromInt lastReadFromWindowResult.readResult.windowSize.y )
+                    , ( "windowClientArea.width", String.fromInt lastReadFromWindowResult.readResult.windowClientAreaSize.x )
+                    , ( "windowClientArea.height", String.fromInt lastReadFromWindowResult.readResult.windowClientAreaSize.y )
+                    , ( "observed"
+                      , [ observedRectLeft, observedRectTop, observedRectRight, observedRectBottom ]
+                            |> List.map (Maybe.map ((*) 2 >> String.fromInt) >> Maybe.withDefault "NA")
+                            |> String.join ", "
+                      )
                     ]
-                        |> List.map (\( property, value ) -> property ++ " = " ++ String.fromInt value)
+                        |> List.map (\( property, value ) -> property ++ " = " ++ value)
                         |> String.join ", "
             in
             [ "Last reading from window: " ++ windowProperties
@@ -325,3 +425,8 @@ type alias Rect =
     , width : Int
     , height : Int
     }
+
+
+addOffset : Location2d -> Location2d -> Location2d
+addOffset a b =
+    { x = a.x + b.x, y = a.y + b.y }

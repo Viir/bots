@@ -15,7 +15,7 @@
 module BotLab.SimpleBotFramework exposing (..)
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
-import Common.EffectOnWindow
+import Common.EffectOnWindow exposing (MouseButton(..))
 import CompilationInterface.SourceFiles
 import Dict
 import Json.Decode
@@ -102,16 +102,11 @@ type alias Location2d =
     { x : Int, y : Int }
 
 
-type MouseButton
-    = MouseButtonLeft
-    | MouseButtonRight
-
-
 type Task
     = BringWindowToForeground
     | ReadFromWindow GetImageDataFromReadingStructure
     | GetImageDataFromReading GetImageDataFromReadingStructure
-    | EffectOnWindowTask Common.EffectOnWindow.EffectOnWindowStructure
+    | EffectSequenceOnWindowTask (List VolatileProcessInterface.EffectSequenceOnWindowElement)
 
 
 type alias State simpleBotState =
@@ -721,7 +716,7 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                                 BringWindowToForeground ->
                                                                     Ok ( stateBefore, NoResultValue )
 
-                                                                EffectOnWindowTask _ ->
+                                                                EffectSequenceOnWindowTask _ ->
                                                                     Ok ( stateBefore, NoResultValue )
 
                                                                 ReadFromWindow _ ->
@@ -935,9 +930,9 @@ taskOnWindowFromSimpleBotTask state simpleBotTask =
                         , getImageData = getImageDataFromReadingTask
                         }
 
-        EffectOnWindowTask effectOnWindowTask ->
-            effectOnWindowTask
-                |> VolatileProcessInterface.EffectOnWindowRequest
+        EffectSequenceOnWindowTask effectSequence ->
+            effectSequence
+                |> VolatileProcessInterface.EffectSequenceOnWindowRequest
 
 
 integrateEvent : InterfaceToHost.BotEvent -> State simpleBotState -> State simpleBotState
@@ -1107,16 +1102,6 @@ taskIdFromString =
     TaskIdFromString
 
 
-volatileProcessKeyFromMouseButton : MouseButton -> Common.EffectOnWindow.VirtualKeyCode
-volatileProcessKeyFromMouseButton mouseButton =
-    case mouseButton of
-        MouseButtonLeft ->
-            Common.EffectOnWindow.vkey_LBUTTON
-
-        MouseButtonRight ->
-            Common.EffectOnWindow.vkey_RBUTTON
-
-
 dictWithTupleKeyFromIndicesInNestedList : List (List element) -> Dict.Dict ( Int, Int ) element
 dictWithTupleKeyFromIndicesInNestedList =
     dictWithTupleKeyFromIndicesInNestedListWithOffset { x = 0, y = 0 }
@@ -1142,36 +1127,46 @@ bringWindowToForeground =
     BringWindowToForeground
 
 
-setMouseCursorPositionTask : Location2d -> Task
-setMouseCursorPositionTask =
+setMouseCursorPositionEffect : Location2d -> Common.EffectOnWindow.EffectOnWindowStructure
+setMouseCursorPositionEffect =
     Common.EffectOnWindow.SetMouseCursorPositionEffect
-        >> EffectOnWindowTask
 
 
-mouseButtonDownTask : MouseButton -> Task
-mouseButtonDownTask =
-    volatileProcessKeyFromMouseButton
+mouseButtonDownEffect : MouseButton -> Common.EffectOnWindow.EffectOnWindowStructure
+mouseButtonDownEffect =
+    Common.EffectOnWindow.virtualKeyCodeFromMouseButton
         >> Common.EffectOnWindow.KeyDownEffect
-        >> EffectOnWindowTask
 
 
-mouseButtonUpTask : MouseButton -> Task
-mouseButtonUpTask =
-    volatileProcessKeyFromMouseButton
+mouseButtonUpEffect : MouseButton -> Common.EffectOnWindow.EffectOnWindowStructure
+mouseButtonUpEffect =
+    Common.EffectOnWindow.virtualKeyCodeFromMouseButton
         >> Common.EffectOnWindow.KeyUpEffect
-        >> EffectOnWindowTask
 
 
-keyboardKeyDownTask : Common.EffectOnWindow.VirtualKeyCode -> Task
-keyboardKeyDownTask =
+keyboardKeyDownEffect : Common.EffectOnWindow.VirtualKeyCode -> Common.EffectOnWindow.EffectOnWindowStructure
+keyboardKeyDownEffect =
     Common.EffectOnWindow.KeyDownEffect
-        >> EffectOnWindowTask
 
 
-keyboardKeyUpTask : Common.EffectOnWindow.VirtualKeyCode -> Task
-keyboardKeyUpTask =
+keyboardKeyUpEffect : Common.EffectOnWindow.VirtualKeyCode -> Common.EffectOnWindow.EffectOnWindowStructure
+keyboardKeyUpEffect =
     Common.EffectOnWindow.KeyUpEffect
-        >> EffectOnWindowTask
+
+
+effectSequenceTask :
+    { delayBetweenEffectsMilliseconds : Int }
+    -> List Common.EffectOnWindow.EffectOnWindowStructure
+    -> Task
+effectSequenceTask config effects =
+    effects
+        |> List.concatMap
+            (\effect ->
+                [ VolatileProcessInterface.EffectElement effect
+                , VolatileProcessInterface.DelayInMillisecondsElement config.delayBetweenEffectsMilliseconds
+                ]
+            )
+        |> EffectSequenceOnWindowTask
 
 
 readFromWindow : GetImageDataFromReadingStructure -> Task
@@ -1243,16 +1238,6 @@ optimizeGetImageDataFromReadingCropsRecursive crops =
 
     else
         optimizeGetImageDataFromReadingCropsRecursive boundingBoxes
-
-
-mouseButtonLeft : MouseButton
-mouseButtonLeft =
-    MouseButtonLeft
-
-
-mouseButtonRight : MouseButton
-mouseButtonRight =
-    MouseButtonRight
 
 
 rectIntersection : VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure

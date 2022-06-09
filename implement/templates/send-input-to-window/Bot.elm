@@ -18,20 +18,18 @@ import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework
     exposing
         ( bringWindowToForeground
-        , keyboardKeyDownTask
-        , keyboardKeyUpTask
-        , mouseButtonDownTask
-        , mouseButtonLeft
-        , mouseButtonRight
-        , mouseButtonUpTask
-        , setMouseCursorPositionTask
+        , keyboardKeyDownEffect
+        , keyboardKeyUpEffect
+        , mouseButtonDownEffect
+        , mouseButtonUpEffect
+        , setMouseCursorPositionEffect
         )
-import Common.EffectOnWindow
+import Common.EffectOnWindow exposing (MouseButton(..))
 
 
 type alias SimpleState =
     { timeInMilliseconds : Int
-    , remainingInputTasks : List SimpleBotFramework.Task
+    , remainingInputEffects : List Common.EffectOnWindow.EffectOnWindowStructure
     , waitingForTaskToComplete : Maybe SimpleBotFramework.TaskId
     }
 
@@ -51,24 +49,23 @@ initState : SimpleState
 initState =
     { timeInMilliseconds = 0
     , waitingForTaskToComplete = Nothing
-    , remainingInputTasks =
-        [ bringWindowToForeground
-        , setMouseCursorPositionTask { x = 100, y = 350 }
-        , mouseButtonDownTask mouseButtonLeft
-        , setMouseCursorPositionTask { x = 200, y = 400 }
-        , mouseButtonUpTask mouseButtonLeft
-        , mouseButtonDownTask mouseButtonRight
-        , setMouseCursorPositionTask { x = 300, y = 330 }
-        , mouseButtonUpTask mouseButtonRight
-        , setMouseCursorPositionTask { x = 160, y = 335 }
-        , mouseButtonDownTask mouseButtonLeft
-        , mouseButtonUpTask mouseButtonLeft
+    , remainingInputEffects =
+        [ setMouseCursorPositionEffect { x = 100, y = 350 }
+        , mouseButtonDownEffect LeftMouseButton
+        , setMouseCursorPositionEffect { x = 200, y = 400 }
+        , mouseButtonUpEffect LeftMouseButton
+        , mouseButtonDownEffect RightMouseButton
+        , setMouseCursorPositionEffect { x = 300, y = 330 }
+        , mouseButtonUpEffect RightMouseButton
+        , setMouseCursorPositionEffect { x = 160, y = 335 }
+        , mouseButtonDownEffect LeftMouseButton
+        , mouseButtonUpEffect LeftMouseButton
 
         -- 2019-06-09 MS Paint did also draw when space key was pressed. Next, we draw a line without a mouse button, by holding the space key down.
-        , setMouseCursorPositionTask { x = 180, y = 330 }
-        , keyboardKeyDownTask Common.EffectOnWindow.vkey_SPACE
-        , setMouseCursorPositionTask { x = 210, y = 340 }
-        , keyboardKeyUpTask Common.EffectOnWindow.vkey_SPACE
+        , setMouseCursorPositionEffect { x = 180, y = 330 }
+        , keyboardKeyDownEffect Common.EffectOnWindow.vkey_SPACE
+        , setMouseCursorPositionEffect { x = 210, y = 340 }
+        , keyboardKeyUpEffect Common.EffectOnWindow.vkey_SPACE
         ]
     }
 
@@ -90,25 +87,33 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
         )
 
     else
-        case stateBefore.remainingInputTasks of
-            nextInputTask :: nextRemainingInputTasks ->
+        case stateBefore.remainingInputEffects of
+            nextInputEffect :: nextRemainingInputEffects ->
                 let
-                    { state, startTask, statusDescription, notifyWhenArrivedAtTime } =
+                    { state, startTasks, statusDescription, notifyWhenArrivedAtTime } =
                         let
                             taskId =
                                 SimpleBotFramework.taskIdFromString "send-input"
                         in
                         { state =
                             { stateBefore
-                                | remainingInputTasks = nextRemainingInputTasks
+                                | remainingInputEffects = nextRemainingInputEffects
                                 , waitingForTaskToComplete = Just taskId
                             }
-                        , startTask =
-                            { taskId = taskId, task = nextInputTask }
-                                |> Just
+                        , startTasks =
+                            [ { taskId = SimpleBotFramework.taskIdFromString "bring-window-to-front"
+                              , task = bringWindowToForeground
+                              }
+                            , { taskId = SimpleBotFramework.taskIdFromString "send-input"
+                              , task =
+                                    [ nextInputEffect ]
+                                        |> SimpleBotFramework.effectSequenceTask
+                                            { delayBetweenEffectsMilliseconds = 100 }
+                              }
+                            ]
                         , statusDescription =
                             "Sending next input. ("
-                                ++ String.fromInt (List.length nextRemainingInputTasks)
+                                ++ String.fromInt (List.length nextRemainingInputEffects)
                                 ++ " others remaining)"
                         , notifyWhenArrivedAtTime = stateBefore.timeInMilliseconds + 100
                         }
@@ -117,7 +122,7 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
                 , SimpleBotFramework.ContinueSession
                     { statusDescriptionText = statusDescription
                     , notifyWhenArrivedAtTime = Just { timeInMilliseconds = notifyWhenArrivedAtTime }
-                    , startTasks = startTask |> Maybe.map List.singleton |> Maybe.withDefault []
+                    , startTasks = startTasks
                     }
                 )
 

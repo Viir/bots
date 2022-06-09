@@ -179,7 +179,7 @@ simpleProcessEvent event stateBeforeUpdateTime =
                                         of
                                             [] ->
                                                 activityContinueWaiting
-                                                    |> Tuple.mapSecond ((++) "Did not find any coin with reachable interactive area to click on")
+                                                    |> Tuple.mapSecond ((++) "Did not find any coin with reachable interactive area to click on. ")
 
                                             coinFoundLocation :: _ ->
                                                 let
@@ -187,25 +187,20 @@ simpleProcessEvent event stateBeforeUpdateTime =
                                                         coinFoundLocation
                                                             |> addOffset mouseClickLocationOffsetFromCoin
                                                 in
-                                                ( Common.EffectOnWindow.effectsForMouseDragAndDrop
-                                                    { startPosition = mouseDownLocation
-                                                    , mouseButton = Common.EffectOnWindow.LeftMouseButton
-                                                    , waypointsPositionsInBetween =
-                                                        [ mouseDownLocation
-                                                            |> addOffset { x = 15, y = 30 }
-                                                        ]
-                                                    , endPosition = mouseDownLocation
-                                                    }
-                                                    |> List.indexedMap
-                                                        (\i effect ->
-                                                            { taskId =
-                                                                ("collect-coin-step-" ++ String.fromInt i)
-                                                                    |> SimpleBotFramework.taskIdFromString
-                                                            , task =
-                                                                effect
-                                                                    |> SimpleBotFramework.EffectOnWindowTask
+                                                ( [ { taskId =
+                                                        SimpleBotFramework.taskIdFromString "collect-coin-input-sequence"
+                                                    , task =
+                                                        Common.EffectOnWindow.effectsForMouseDragAndDrop
+                                                            { startPosition = mouseDownLocation
+                                                            , mouseButton = Common.EffectOnWindow.LeftMouseButton
+                                                            , waypointsPositionsInBetween =
+                                                                [ mouseDownLocation |> addOffset { x = 15, y = 30 } ]
+                                                            , endPosition = mouseDownLocation
                                                             }
-                                                        )
+                                                            |> SimpleBotFramework.effectSequenceTask
+                                                                { delayBetweenEffectsMilliseconds = 100 }
+                                                    }
+                                                  ]
                                                 , "Collect coin at " ++ describeLocation coinFoundLocation
                                                 )
                             in

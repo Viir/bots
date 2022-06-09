@@ -71,7 +71,12 @@ type TaskOnWindowRequestStruct
     = BringWindowToForeground
     | ReadFromWindowRequest ReadFromWindowStructure
     | GetImageDataFromReadingRequest GetImageDataFromReadingRequestStruct
-    | EffectOnWindowRequest Common.EffectOnWindow.EffectOnWindowStructure
+    | EffectSequenceOnWindowRequest (List EffectSequenceOnWindowElement)
+
+
+type EffectSequenceOnWindowElement
+    = EffectElement EffectOnWindowStructure
+    | DelayInMillisecondsElement Int
 
 
 type TaskOnWindowResponseStruct
@@ -303,8 +308,10 @@ encodeTaskOnWindowRequestStruct taskOnWindow =
             , getImageDataFromReading |> encodeGetImageDataFromReadingRequestStruct
             )
 
-        EffectOnWindowRequest effectRequest ->
-            ( "EffectOnWindowRequest", effectRequest |> jsonEncodeEffectOnWindowStructure )
+        EffectSequenceOnWindowRequest effectSequenceOnWindowRequest ->
+            ( "EffectSequenceOnWindowRequest"
+            , effectSequenceOnWindowRequest |> Json.Encode.list jsonEncodeEffectSequenceOnWindowElement
+            )
     )
         |> List.singleton
         |> Json.Encode.object
@@ -355,6 +362,29 @@ decodeGetImageDataFromReading =
     Json.Decode.map2 GetImageDataFromReadingStructure
         (Json.Decode.field "crops_1x1_r8g8b8" (Json.Decode.list jsonDecodeRect2d))
         (Json.Decode.field "crops_2x2_r8g8b8" (Json.Decode.list jsonDecodeRect2d))
+
+
+jsonEncodeEffectSequenceOnWindowElement : EffectSequenceOnWindowElement -> Json.Encode.Value
+jsonEncodeEffectSequenceOnWindowElement sequenceElement =
+    (case sequenceElement of
+        EffectElement effect ->
+            ( "EffectElement", jsonEncodeEffectOnWindowStructure effect )
+
+        DelayInMillisecondsElement milliseconds ->
+            ( "DelayInMillisecondsElement", Json.Encode.int milliseconds )
+    )
+        |> List.singleton
+        |> Json.Encode.object
+
+
+jsonDecodeEffectSequenceOnWindowElement : Json.Decode.Decoder EffectSequenceOnWindowElement
+jsonDecodeEffectSequenceOnWindowElement =
+    Json.Decode.oneOf
+        [ Json.Decode.field "EffectElement"
+            (jsonDecodeEffectOnWindowStructure |> Json.Decode.map EffectElement)
+        , Json.Decode.field "DelayInMillisecondsElement" Json.Decode.int
+            |> Json.Decode.map DelayInMillisecondsElement
+        ]
 
 
 jsonEncodeEffectOnWindowStructure : EffectOnWindowStructure -> Json.Encode.Value

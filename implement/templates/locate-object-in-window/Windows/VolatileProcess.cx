@@ -64,7 +64,14 @@ public class Request
 
         public GetImageDataFromReadingRequestStruct? GetImageDataFromReadingRequest;
 
-        public EffectOnWindowStructure EffectOnWindowRequest;
+        public EffectSequenceOnWindowElement[] EffectSequenceOnWindowRequest;
+    }
+
+    public class EffectSequenceOnWindowElement
+    {
+        public EffectOnWindowStructure EffectElement;
+
+        public int? DelayInMillisecondsElement;
     }
 
     public class VirtualKeyCode
@@ -457,13 +464,20 @@ Response performTaskOnWindow(
             });
     }
 
-    if(task.EffectOnWindowRequest != null)
+    if(task.EffectSequenceOnWindowRequest != null)
     {
-        ExecuteEffectOnWindow(
-            effectOnWindow: task.EffectOnWindowRequest,
-            windowHandle: windowHandle,
-            windowRect: windowRect,
-            bringWindowToForeground: true);
+        foreach(var sequenceElement in task.EffectSequenceOnWindowRequest)
+        {
+            if(sequenceElement?.EffectElement != null)
+                ExecuteEffectOnWindow(
+                    sequenceElement.EffectElement,
+                    windowHandle: windowHandle,
+                    windowRect: windowRect,
+                    bringWindowToForeground: false);
+
+            if(sequenceElement?.DelayInMillisecondsElement != null)
+                System.Threading.Tasks.Task.Delay(TimeSpan.FromMilliseconds(sequenceElement.DelayInMillisecondsElement.Value)).Wait();
+        }
 
         return new Response { NoReturnValue = new object() };
     }

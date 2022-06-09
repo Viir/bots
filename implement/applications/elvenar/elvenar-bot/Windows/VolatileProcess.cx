@@ -43,6 +43,8 @@ public class Request
 
     public TaskOnIdentifiedWindowRequestStruct TaskOnWindowRequest;
 
+    public GetImageDataFromReadingRequestStruct? GetImageDataFromReadingRequest;
+
     public object GetForegroundWindow;
 
     public string GetWindowText;
@@ -61,8 +63,6 @@ public class Request
         public object BringWindowToForeground;
 
         public ReadFromWindowStructure ReadFromWindowRequest;
-
-        public GetImageDataFromReadingRequestStruct? GetImageDataFromReadingRequest;
 
         public EffectSequenceOnWindowElement[] EffectSequenceOnWindowRequest;
     }
@@ -114,6 +114,10 @@ public class Response
 
     public TaskOnIdentifiedWindowResponseStruct TaskOnWindowResponse;
 
+    public object ReadingNotFound;
+
+    public GetImageDataFromReadingCompleteStruct? GetImageDataFromReadingComplete;
+
     public object NoReturnValue;
 
     public string GetWindowTextResult;
@@ -140,11 +144,7 @@ public class Response
     {
         public object WindowNotFound;
 
-        public object ReadingNotFound;
-
         public ReadFromWindowCompleteStruct ReadFromWindowComplete;
-
-        public GetImageDataFromReadingCompleteStruct? GetImageDataFromReadingComplete;
     }
 
     public class ReadFromWindowCompleteStruct
@@ -162,6 +162,8 @@ public class Response
 
     public struct GetImageDataFromReadingCompleteStruct
     {
+        public string windowId;
+
         public string readingId;
 
         public GetImageDataFromReadingResultStructure imageData;
@@ -178,7 +180,7 @@ public class Response
 
 struct ReadingFromGameClient
 {
-    public IntPtr windowHandle;
+    public string windowId;
 
     public string readingId;
 
@@ -327,6 +329,33 @@ public Response request(Request request)
         return performTaskOnWindow(request.TaskOnWindowRequest);
     }
 
+    if (request.GetImageDataFromReadingRequest?.readingId != null)
+    {
+        var historyEntry =
+            readingFromGameHistory
+            .Cast<ReadingFromGameClient?>()
+            .FirstOrDefault(c => c?.readingId == request.GetImageDataFromReadingRequest?.readingId);
+
+        if (historyEntry == null)
+        {
+            return new Response
+            {
+                ReadingNotFound = new object()
+            };
+        }
+
+        return new Response
+        {
+            GetImageDataFromReadingComplete = new Response.GetImageDataFromReadingCompleteStruct
+            {
+                windowId = historyEntry.Value.windowId,
+                readingId = request.GetImageDataFromReadingRequest?.readingId,
+                imageData = CompileImageDataFromReadingResult(
+                    request.GetImageDataFromReadingRequest.Value.getImageData, historyEntry.Value),
+            }
+        };
+    }
+
     throw new Exception("Unexpected request value.");
 }
 
@@ -408,7 +437,7 @@ Response performTaskOnWindow(
 
         var historyEntry = new ReadingFromGameClient
         {
-            windowHandle = windowHandle,
+            windowId = taskOnIdentifiedWindow.windowId,
             readingId = readingId,
             pixels_1x1_R8G8B8 = pixels_1x1_R8G8B8,
         };
@@ -432,34 +461,6 @@ Response performTaskOnWindow(
                     windowClientRectOffset = windowClientRectOffset,
                     windowClientAreaSize = windowClientAreaSize,
                     imageData = imageData
-                }
-            });
-    }
-
-    if (task.GetImageDataFromReadingRequest?.readingId != null)
-    {
-        var historyEntry =
-            readingFromGameHistory
-            .Cast<ReadingFromGameClient?>()
-            .FirstOrDefault(c => c?.readingId == task.GetImageDataFromReadingRequest?.readingId);
-
-        if (historyEntry == null)
-        {
-            return ResponseFromResultOnWindow(
-                new Response.TaskOnWindowResponseStruct
-                {
-                    ReadingNotFound = new object()
-                });
-        }
-
-        return ResponseFromResultOnWindow(
-            new Response.TaskOnWindowResponseStruct
-            {
-                GetImageDataFromReadingComplete = new Response.GetImageDataFromReadingCompleteStruct
-                {
-                    readingId = task.GetImageDataFromReadingRequest?.readingId,
-                    imageData = CompileImageDataFromReadingResult(
-                        task.GetImageDataFromReadingRequest.Value.getImageData, historyEntry.Value),
                 }
             });
     }

@@ -136,7 +136,10 @@ type alias TaskInProgress =
 type FrameworkSetupStepActivity
     = StopWithResult { resultDescription : String }
     | ContinueSetupWithTask { task : InterfaceToHost.StartTaskStructure, taskDescription : String }
-    | OperateSimpleBot { buildTaskFromTaskOnWindow : VolatileProcessInterface.TaskOnWindowRequestStruct -> InterfaceToHost.Task }
+    | OperateSimpleBot
+        { windowId : String
+        , buildHostTaskFromRequest : VolatileProcessInterface.RequestToVolatileProcess -> InterfaceToHost.Task
+        }
 
 
 type LocatePatternInImageApproach
@@ -491,8 +494,8 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
                                             ( { taskId = simpleBotTaskWithId.taskId |> taskIdFromSimpleBotTaskId
                                               , task =
                                                     simpleBotTaskWithId.task
-                                                        |> taskOnWindowFromSimpleBotTask stateBefore
-                                                        |> operateSimpleBot.buildTaskFromTaskOnWindow
+                                                        |> taskOnWindowFromSimpleBotTask { windowId = operateSimpleBot.windowId } stateBefore
+                                                        |> operateSimpleBot.buildHostTaskFromRequest
                                               , taskOrigin = BotOrigin simpleBotTaskWithId.taskId simpleBotTaskWithId.task
                                               }
                                             , simpleBotTaskWithId
@@ -641,13 +644,13 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                             let
                                                                 continueForReadFromWindowOrGetImageData =
                                                                     case parsedResponse of
+                                                                        VolatileProcessInterface.ReadingNotFound ->
+                                                                            Err "ReadingNotFound"
+
                                                                         VolatileProcessInterface.TaskOnWindowResponse taskOnWindowResponse ->
                                                                             case taskOnWindowResponse.result of
                                                                                 VolatileProcessInterface.WindowNotFound ->
                                                                                     Err "WindowNotFound"
-
-                                                                                VolatileProcessInterface.ReadingNotFound ->
-                                                                                    Err "ReadingNotFound"
 
                                                                                 VolatileProcessInterface.ReadFromWindowComplete readFromWindowComplete ->
                                                                                     let
@@ -672,42 +675,42 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                                                             aggregateImage
                                                                                         )
 
-                                                                                VolatileProcessInterface.GetImageDataFromReadingComplete getImageDataFromReadingComplete ->
-                                                                                    case stateBefore.lastReadFromWindowResult of
-                                                                                        Nothing ->
-                                                                                            Err "No lastReadFromWindowResult"
+                                                                        VolatileProcessInterface.GetImageDataFromReadingComplete getImageDataFromReadingComplete ->
+                                                                            case stateBefore.lastReadFromWindowResult of
+                                                                                Nothing ->
+                                                                                    Err "No lastReadFromWindowResult"
 
-                                                                                        Just lastReadFromWindowResultBefore ->
-                                                                                            if lastReadFromWindowResultBefore.readFromWindowComplete.readingId /= getImageDataFromReadingComplete.readingId then
-                                                                                                Err "readingId mismatch"
+                                                                                Just lastReadFromWindowResultBefore ->
+                                                                                    if lastReadFromWindowResultBefore.readFromWindowComplete.readingId /= getImageDataFromReadingComplete.readingId then
+                                                                                        Err "readingId mismatch"
 
-                                                                                            else
-                                                                                                let
-                                                                                                    newImage =
-                                                                                                        deriveImageRepresentation
-                                                                                                            getImageDataFromReadingComplete.imageData
+                                                                                    else
+                                                                                        let
+                                                                                            newImage =
+                                                                                                deriveImageRepresentation
+                                                                                                    getImageDataFromReadingComplete.imageData
 
-                                                                                                    aggregateImage =
-                                                                                                        mergeImageRepresentation
-                                                                                                            lastReadFromWindowResultBefore.aggregateImage
-                                                                                                            newImage
+                                                                                            aggregateImage =
+                                                                                                mergeImageRepresentation
+                                                                                                    lastReadFromWindowResultBefore.aggregateImage
+                                                                                                    newImage
 
-                                                                                                    lastReadFromWindowResult =
-                                                                                                        { lastReadFromWindowResultBefore
-                                                                                                            | aggregateImage = aggregateImage
-                                                                                                        }
-                                                                                                in
-                                                                                                Ok
-                                                                                                    ( { stateBefore
-                                                                                                        | lastReadFromWindowResult = Just lastReadFromWindowResult
-                                                                                                      }
-                                                                                                    , ReadFromWindowResult
-                                                                                                        { windowSize = lastReadFromWindowResult.readFromWindowComplete.windowSize
-                                                                                                        , windowClientRectOffset = lastReadFromWindowResult.readFromWindowComplete.windowClientRectOffset
-                                                                                                        , windowClientAreaSize = lastReadFromWindowResult.readFromWindowComplete.windowClientAreaSize
-                                                                                                        }
-                                                                                                        aggregateImage
-                                                                                                    )
+                                                                                            lastReadFromWindowResult =
+                                                                                                { lastReadFromWindowResultBefore
+                                                                                                    | aggregateImage = aggregateImage
+                                                                                                }
+                                                                                        in
+                                                                                        Ok
+                                                                                            ( { stateBefore
+                                                                                                | lastReadFromWindowResult = Just lastReadFromWindowResult
+                                                                                              }
+                                                                                            , ReadFromWindowResult
+                                                                                                { windowSize = lastReadFromWindowResult.readFromWindowComplete.windowSize
+                                                                                                , windowClientRectOffset = lastReadFromWindowResult.readFromWindowComplete.windowClientRectOffset
+                                                                                                , windowClientAreaSize = lastReadFromWindowResult.readFromWindowComplete.windowClientAreaSize
+                                                                                                }
+                                                                                                aggregateImage
+                                                                                            )
 
                                                                         _ ->
                                                                             Err ("Unexpected return value from volatile process: " ++ (volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault ""))
@@ -763,6 +766,59 @@ deriveImageRepresentation imageData =
             crops_2x2_r8g8b8_Derivations
                 |> List.map .imageAsDict
                 |> List.foldl Dict.union Dict.empty
+    in
+    { imageAsDict = imageAsDict
+    , imageBinned2x2AsDict = imageBinned2x2AsDict
+    }
+
+
+deriveImageRepresentationFromNestedListOfPixels : List (List PixelValue) -> ImageStructure
+deriveImageRepresentationFromNestedListOfPixels imageAsNestedList =
+    let
+        imageAsDict =
+            imageAsNestedList |> dictWithTupleKeyFromIndicesInNestedList
+
+        imageBinned2x2AsDict =
+            List.range 0 (((imageAsNestedList |> List.length) - 1) // 2)
+                |> List.map
+                    (\binnedRowIndex ->
+                        let
+                            rowWidth =
+                                imageAsNestedList
+                                    |> List.drop (binnedRowIndex * 2)
+                                    |> List.take 2
+                                    |> List.map List.length
+                                    |> List.maximum
+                                    |> Maybe.withDefault 0
+
+                            rowBinnedWidth =
+                                (rowWidth - 1) // 2 + 1
+                        in
+                        List.range 0 (rowBinnedWidth - 1)
+                            |> List.map
+                                (\binnedColumnIndex ->
+                                    let
+                                        sourcePixelsValues =
+                                            [ ( 0, 0 ), ( 1, 0 ), ( 0, 1 ), ( 1, 1 ) ]
+                                                |> List.filterMap (\( relX, relY ) -> imageAsDict |> Dict.get ( binnedColumnIndex * 2 + relX, binnedRowIndex * 2 + relY ))
+
+                                        pixelValueSum =
+                                            sourcePixelsValues
+                                                |> List.foldl (\pixel sum -> { red = sum.red + pixel.red, green = sum.green + pixel.green, blue = sum.blue + pixel.blue }) { red = 0, green = 0, blue = 0 }
+
+                                        sourcePixelsValuesCount =
+                                            sourcePixelsValues |> List.length
+
+                                        pixelValue =
+                                            { red = pixelValueSum.red // sourcePixelsValuesCount
+                                            , green = pixelValueSum.green // sourcePixelsValuesCount
+                                            , blue = pixelValueSum.blue // sourcePixelsValuesCount
+                                            }
+                                    in
+                                    pixelValue
+                                )
+                    )
+                |> dictWithTupleKeyFromIndicesInNestedList
     in
     { imageAsDict = imageAsDict
     , imageBinned2x2AsDict = imageBinned2x2AsDict
@@ -908,31 +964,44 @@ taskIdFromSimpleBotTaskId simpleBotTaskId =
             InterfaceToHost.taskIdFromString ("bot-" ++ asString)
 
 
-taskOnWindowFromSimpleBotTask : State simpleBotState -> Task -> VolatileProcessInterface.TaskOnWindowRequestStruct
-taskOnWindowFromSimpleBotTask state simpleBotTask =
+taskOnWindowFromSimpleBotTask :
+    { windowId : String }
+    -> State simpleBotState
+    -> Task
+    -> VolatileProcessInterface.RequestToVolatileProcess
+taskOnWindowFromSimpleBotTask config state simpleBotTask =
+    let
+        continueWithTaskOnWindow taskOnWindow =
+            { windowId = config.windowId, task = taskOnWindow }
+                |> VolatileProcessInterface.TaskOnWindowRequest
+    in
     case simpleBotTask of
         BringWindowToForeground ->
             VolatileProcessInterface.BringWindowToForeground
+                |> continueWithTaskOnWindow
 
         ReadFromWindow readFromWindowTask ->
-            VolatileProcessInterface.ReadFromWindowRequest
-                { getImageData = readFromWindowTask }
+            { getImageData = readFromWindowTask }
+                |> VolatileProcessInterface.ReadFromWindowRequest
+                |> continueWithTaskOnWindow
 
         GetImageDataFromReading getImageDataFromReadingTask ->
             case state.lastReadFromWindowResult of
                 Nothing ->
-                    VolatileProcessInterface.ReadFromWindowRequest
-                        { getImageData = getImageDataFromReadingTask }
+                    { getImageData = getImageDataFromReadingTask }
+                        |> VolatileProcessInterface.ReadFromWindowRequest
+                        |> continueWithTaskOnWindow
 
                 Just lastReadFromWindowResult ->
-                    VolatileProcessInterface.GetImageDataFromReadingRequest
-                        { readingId = lastReadFromWindowResult.readFromWindowComplete.readingId
-                        , getImageData = getImageDataFromReadingTask
-                        }
+                    { readingId = lastReadFromWindowResult.readFromWindowComplete.readingId
+                    , getImageData = getImageDataFromReadingTask
+                    }
+                        |> VolatileProcessInterface.GetImageDataFromReadingRequest
 
         EffectSequenceOnWindowTask effectSequence ->
             effectSequence
                 |> VolatileProcessInterface.EffectSequenceOnWindowRequest
+                |> continueWithTaskOnWindow
 
 
 integrateEvent : InterfaceToHost.BotEvent -> State simpleBotState -> State simpleBotState
@@ -1083,14 +1152,14 @@ getNextSetupStepWithDescriptionFromState state =
 
                 Just targetWindow ->
                     OperateSimpleBot
-                        { buildTaskFromTaskOnWindow =
-                            \taskOnWindow ->
+                        { windowId = targetWindow.windowId
+                        , buildHostTaskFromRequest =
+                            \request ->
                                 InterfaceToHost.RequestToVolatileProcess
                                     (InterfaceToHost.RequestNotRequiringInputFocus
                                         { processId = createVolatileProcessCompleted.processId
                                         , request =
-                                            { windowId = targetWindow.windowId, task = taskOnWindow }
-                                                |> VolatileProcessInterface.TaskOnWindowRequest
+                                            request
                                                 |> VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
                                         }
                                     )

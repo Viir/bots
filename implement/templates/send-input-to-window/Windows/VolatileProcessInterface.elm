@@ -25,6 +25,7 @@ type RequestToVolatileProcess
       -- TODO: Phase out GetWindowText
     | GetWindowText WindowId
     | TaskOnWindowRequest TaskOnIdentifiedWindowRequestStruct
+    | GetImageDataFromReadingRequest GetImageDataFromReadingRequestStruct
 
 
 type ResponseFromVolatileProcess
@@ -35,6 +36,8 @@ type ResponseFromVolatileProcess
     | GetWindowTextResult String
       -- | TakeScreenshotResult ReadFromWindowResponseStructure
     | TaskOnWindowResponse TaskOnIdentifiedWindowResponseStruct
+    | ReadingNotFound
+    | GetImageDataFromReadingComplete GetImageDataFromReadingCompleteStruct
     | NoReturnValue
 
 
@@ -67,10 +70,17 @@ type alias WindowId =
     String
 
 
+
+{- TODO:
+   Review API structure: Consider adding flag 'bringWindowToForeground' to both ReadFromWindowRequest and EffectSequenceOnWindowRequest.
+   Then add a 'wasForegroundWindow' flag to the response. The measurement using `GetForegroundWindow` would happen at the end of an effect sequence or reading. This expansion helps the agent detect when the game window lost focus (Maybe also use `GetFocus` from the WinAPI) during the execution of the associated task.
+
+-}
+
+
 type TaskOnWindowRequestStruct
     = BringWindowToForeground
     | ReadFromWindowRequest ReadFromWindowStructure
-    | GetImageDataFromReadingRequest GetImageDataFromReadingRequestStruct
     | EffectSequenceOnWindowRequest (List EffectSequenceOnWindowElement)
 
 
@@ -81,9 +91,7 @@ type EffectSequenceOnWindowElement
 
 type TaskOnWindowResponseStruct
     = WindowNotFound
-    | ReadingNotFound
     | ReadFromWindowComplete ReadFromWindowCompleteStruct
-    | GetImageDataFromReadingComplete GetImageDataFromReadingCompleteStruct
 
 
 type alias ReadFromWindowCompleteStruct =
@@ -175,6 +183,11 @@ encodeRequestToVolatileProcess request =
 
         TaskOnWindowRequest taskOnWindowRequest ->
             ( "TaskOnWindowRequest", taskOnWindowRequest |> encodeTaskOnIdentifiedWindowRequestStruct )
+
+        GetImageDataFromReadingRequest getImageDataFromReading ->
+            ( "GetImageDataFromReadingRequest"
+            , getImageDataFromReading |> encodeGetImageDataFromReadingRequestStruct
+            )
     )
         |> List.singleton
         |> Json.Encode.object
@@ -196,6 +209,10 @@ decodeResponseFromVolatileProcess =
             |> Json.Decode.map GetWindowTextResult
         , Json.Decode.field "TaskOnWindowResponse" decodeTaskOnIdentifiedWindowResponseStruct
             |> Json.Decode.map TaskOnWindowResponse
+        , Json.Decode.field "ReadingNotFound" (jsonDecodeSucceedWhenNotNull ReadingNotFound)
+        , Json.Decode.field "GetImageDataFromReadingComplete"
+            jsonDecodeGetImageDataFromReadingCompleteStruct
+            |> Json.Decode.map GetImageDataFromReadingComplete
         , Json.Decode.field "NoReturnValue" (jsonDecodeSucceedWhenNotNull NoReturnValue)
         ]
 
@@ -219,13 +236,9 @@ decodeTaskOnWindowResponseStruct : Json.Decode.Decoder TaskOnWindowResponseStruc
 decodeTaskOnWindowResponseStruct =
     Json.Decode.oneOf
         [ Json.Decode.field "WindowNotFound" (jsonDecodeSucceedWhenNotNull WindowNotFound)
-        , Json.Decode.field "ReadingNotFound" (jsonDecodeSucceedWhenNotNull ReadingNotFound)
         , Json.Decode.field "ReadFromWindowComplete"
             jsonDecodeReadFromWindowCompleteStruct
             |> Json.Decode.map ReadFromWindowComplete
-        , Json.Decode.field "GetImageDataFromReadingComplete"
-            jsonDecodeGetImageDataFromReadingCompleteStruct
-            |> Json.Decode.map GetImageDataFromReadingComplete
         ]
 
 
@@ -302,11 +315,6 @@ encodeTaskOnWindowRequestStruct taskOnWindow =
 
         ReadFromWindowRequest readFromWindowRequest ->
             ( "ReadFromWindowRequest", readFromWindowRequest |> encodeReadFromWindow )
-
-        GetImageDataFromReadingRequest getImageDataFromReading ->
-            ( "GetImageDataFromReadingRequest"
-            , getImageDataFromReading |> encodeGetImageDataFromReadingRequestStruct
-            )
 
         EffectSequenceOnWindowRequest effectSequenceOnWindowRequest ->
             ( "EffectSequenceOnWindowRequest"

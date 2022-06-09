@@ -1,6 +1,12 @@
 module Windows.VolatileProcessInterface exposing (..)
 
-import Common.EffectOnWindow exposing (MouseButton(..), VirtualKeyCode(..), virtualKeyCodeAsInteger)
+import Common.EffectOnWindow
+    exposing
+        ( EffectOnWindowStructure(..)
+        , MouseButton(..)
+        , VirtualKeyCode(..)
+        , virtualKeyCodeAsInteger
+        )
 import Json.Decode
 import Json.Encode
 
@@ -63,11 +69,9 @@ type alias WindowId =
 
 type TaskOnWindowRequestStruct
     = BringWindowToForeground
-    | MoveMouseToLocation Location2d
-    | KeyDown VirtualKeyCode
-    | KeyUp VirtualKeyCode
     | ReadFromWindowRequest ReadFromWindowStructure
     | GetImageDataFromReadingRequest GetImageDataFromReadingRequestStruct
+    | EffectOnWindowRequest Common.EffectOnWindow.EffectOnWindowStructure
 
 
 type TaskOnWindowResponseStruct
@@ -291,15 +295,6 @@ encodeTaskOnWindowRequestStruct taskOnWindow =
         BringWindowToForeground ->
             ( "BringWindowToForeground", [] |> Json.Encode.object )
 
-        MoveMouseToLocation moveMouseToLocation ->
-            ( "MoveMouseToLocation", moveMouseToLocation |> jsonEncodeLocation2d )
-
-        KeyDown keyDown ->
-            ( "KeyDown", keyDown |> jsonEncodeKey )
-
-        KeyUp keyUp ->
-            ( "KeyUp", keyUp |> jsonEncodeKey )
-
         ReadFromWindowRequest readFromWindowRequest ->
             ( "ReadFromWindowRequest", readFromWindowRequest |> encodeReadFromWindow )
 
@@ -307,6 +302,9 @@ encodeTaskOnWindowRequestStruct taskOnWindow =
             ( "GetImageDataFromReadingRequest"
             , getImageDataFromReading |> encodeGetImageDataFromReadingRequestStruct
             )
+
+        EffectOnWindowRequest effectRequest ->
+            ( "EffectOnWindowRequest", effectRequest |> jsonEncodeEffectOnWindowStructure )
     )
         |> List.singleton
         |> Json.Encode.object
@@ -359,13 +357,38 @@ decodeGetImageDataFromReading =
         (Json.Decode.field "crops_2x2_r8g8b8" (Json.Decode.list jsonDecodeRect2d))
 
 
-jsonEncodeKey : VirtualKeyCode -> Json.Encode.Value
-jsonEncodeKey virtualKeyCode =
+jsonEncodeEffectOnWindowStructure : EffectOnWindowStructure -> Json.Encode.Value
+jsonEncodeEffectOnWindowStructure effectOnWindow =
+    (case effectOnWindow of
+        SetMouseCursorPositionEffect position ->
+            ( "SetMouseCursorPositionEffect", position |> jsonEncodeLocation2d )
+
+        KeyDownEffect virtualKeyCode ->
+            ( "KeyDownEffect", virtualKeyCode |> jsonEncodeVirtualKeyCode )
+
+        KeyUpEffect virtualKeyCode ->
+            ( "KeyUpEffect", virtualKeyCode |> jsonEncodeVirtualKeyCode )
+    )
+        |> List.singleton
+        |> Json.Encode.object
+
+
+jsonDecodeEffectOnWindowStructure : Json.Decode.Decoder EffectOnWindowStructure
+jsonDecodeEffectOnWindowStructure =
+    Json.Decode.oneOf
+        [ Json.Decode.field "SetMouseCursorPositionEffect" (jsonDecodeLocation2d |> Json.Decode.map SetMouseCursorPositionEffect)
+        , Json.Decode.field "KeyDownEffect" (jsonDecodeVirtualKeyCode |> Json.Decode.map KeyDownEffect)
+        , Json.Decode.field "KeyUpEffect" (jsonDecodeVirtualKeyCode |> Json.Decode.map KeyUpEffect)
+        ]
+
+
+jsonEncodeVirtualKeyCode : VirtualKeyCode -> Json.Encode.Value
+jsonEncodeVirtualKeyCode virtualKeyCode =
     Json.Encode.object [ ( "virtualKeyCode", virtualKeyCode |> virtualKeyCodeAsInteger |> Json.Encode.int ) ]
 
 
-jsonDecodeKey : Json.Decode.Decoder VirtualKeyCode
-jsonDecodeKey =
+jsonDecodeVirtualKeyCode : Json.Decode.Decoder VirtualKeyCode
+jsonDecodeVirtualKeyCode =
     Json.Decode.field "virtualKeyCode" Json.Decode.int |> Json.Decode.map VirtualKeyCodeFromInt
 
 
@@ -406,11 +429,11 @@ jsonEncodeLocation2d location =
 jsonEncodeMouseButton : MouseButton -> Json.Encode.Value
 jsonEncodeMouseButton mouseButton =
     case mouseButton of
-        MouseButtonLeft ->
-            [ ( "MouseButtonLeft", [] |> Json.Encode.object ) ] |> Json.Encode.object
+        LeftMouseButton ->
+            [ ( "LeftMouseButton", [] |> Json.Encode.object ) ] |> Json.Encode.object
 
-        MouseButtonRight ->
-            [ ( "MouseButtonRight", [] |> Json.Encode.object ) ] |> Json.Encode.object
+        RightMouseButton ->
+            [ ( "RightMouseButton", [] |> Json.Encode.object ) ] |> Json.Encode.object
 
 
 jsonDecodeSucceedWhenNotNull : a -> Json.Decode.Decoder a

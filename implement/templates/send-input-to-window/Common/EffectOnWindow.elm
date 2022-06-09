@@ -5,9 +5,9 @@ module Common.EffectOnWindow exposing (..)
 
 
 type EffectOnWindowStructure
-    = MouseMoveTo Location2d
-    | KeyDown VirtualKeyCode
-    | KeyUp VirtualKeyCode
+    = SetMouseCursorPositionEffect Location2d
+    | KeyDownEffect VirtualKeyCode
+    | KeyUpEffect VirtualKeyCode
 
 
 type alias MouseClickAtLocation =
@@ -25,34 +25,42 @@ type VirtualKeyCode
 
 
 type MouseButton
-    = MouseButtonLeft
-    | MouseButtonRight
+    = LeftMouseButton
+    | RightMouseButton
 
 
-effectsMouseClickAtLocation : MouseButton -> Location2d -> List EffectOnWindowStructure
-effectsMouseClickAtLocation mouseButton location =
-    [ MouseMoveTo location
-    , KeyDown (virtualKeyCodeFromMouseButton mouseButton)
-    , KeyUp (virtualKeyCodeFromMouseButton mouseButton)
+effectsMouseClickAtPosition : MouseButton -> Location2d -> List EffectOnWindowStructure
+effectsMouseClickAtPosition mouseButton position =
+    [ SetMouseCursorPositionEffect position
+    , KeyDownEffect (virtualKeyCodeFromMouseButton mouseButton)
+    , KeyUpEffect (virtualKeyCodeFromMouseButton mouseButton)
     ]
 
 
-effectsForDragAndDrop : { startLocation : Location2d, mouseButton : MouseButton, endLocation : Location2d } -> List EffectOnWindowStructure
-effectsForDragAndDrop { startLocation, mouseButton, endLocation } =
-    [ MouseMoveTo startLocation
-    , KeyDown (virtualKeyCodeFromMouseButton mouseButton)
-    , MouseMoveTo endLocation
-    , KeyUp (virtualKeyCodeFromMouseButton mouseButton)
+effectsForMouseDragAndDrop :
+    { startPosition : Location2d
+    , mouseButton : MouseButton
+    , waypointsPositionsInBetween : List Location2d
+    , endPosition : Location2d
+    }
+    -> List EffectOnWindowStructure
+effectsForMouseDragAndDrop { startPosition, mouseButton, waypointsPositionsInBetween, endPosition } =
+    [ SetMouseCursorPositionEffect startPosition
+    , KeyDownEffect (virtualKeyCodeFromMouseButton mouseButton)
     ]
+        ++ List.map SetMouseCursorPositionEffect waypointsPositionsInBetween
+        ++ [ SetMouseCursorPositionEffect endPosition
+           , KeyUpEffect (virtualKeyCodeFromMouseButton mouseButton)
+           ]
 
 
 virtualKeyCodeFromMouseButton : MouseButton -> VirtualKeyCode
 virtualKeyCodeFromMouseButton mouseButton =
     case mouseButton of
-        MouseButtonLeft ->
+        LeftMouseButton ->
             vkey_LBUTTON
 
-        MouseButtonRight ->
+        RightMouseButton ->
             vkey_RBUTTON
 
 
@@ -71,15 +79,15 @@ effectsToEnterString =
                                 let
                                     effectType =
                                         if key.useShiftKey then
-                                            KeyDown
+                                            KeyDownEffect
 
                                         else
-                                            KeyUp
+                                            KeyUpEffect
                                 in
                                 [ effectType vkey_SHIFT ]
 
                         mainKeyEffects =
-                            [ KeyDown key.keyCode, KeyUp key.keyCode ]
+                            [ KeyDownEffect key.keyCode, KeyUpEffect key.keyCode ]
 
                         effects =
                             effectsBefore ++ shiftKeyEffects ++ mainKeyEffects

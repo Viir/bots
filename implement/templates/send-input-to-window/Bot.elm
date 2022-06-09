@@ -18,13 +18,13 @@ import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework
     exposing
         ( bringWindowToForeground
-        , keyboardKeyDown
-        , keyboardKeyUp
-        , mouseButtonDown
+        , keyboardKeyDownTask
+        , keyboardKeyUpTask
+        , mouseButtonDownTask
         , mouseButtonLeft
         , mouseButtonRight
-        , mouseButtonUp
-        , moveMouseToLocation
+        , mouseButtonUpTask
+        , setMouseCursorPositionTask
         )
 import Common.EffectOnWindow
 
@@ -53,22 +53,22 @@ initState =
     , waitingForTaskToComplete = Nothing
     , remainingInputTasks =
         [ bringWindowToForeground
-        , moveMouseToLocation { x = 100, y = 350 }
-        , mouseButtonDown mouseButtonLeft
-        , moveMouseToLocation { x = 200, y = 400 }
-        , mouseButtonUp mouseButtonLeft
-        , mouseButtonDown mouseButtonRight
-        , moveMouseToLocation { x = 300, y = 330 }
-        , mouseButtonUp mouseButtonRight
-        , moveMouseToLocation { x = 160, y = 335 }
-        , mouseButtonDown mouseButtonLeft
-        , mouseButtonUp mouseButtonLeft
+        , setMouseCursorPositionTask { x = 100, y = 350 }
+        , mouseButtonDownTask mouseButtonLeft
+        , setMouseCursorPositionTask { x = 200, y = 400 }
+        , mouseButtonUpTask mouseButtonLeft
+        , mouseButtonDownTask mouseButtonRight
+        , setMouseCursorPositionTask { x = 300, y = 330 }
+        , mouseButtonUpTask mouseButtonRight
+        , setMouseCursorPositionTask { x = 160, y = 335 }
+        , mouseButtonDownTask mouseButtonLeft
+        , mouseButtonUpTask mouseButtonLeft
 
         -- 2019-06-09 MS Paint did also draw when space key was pressed. Next, we draw a line without a mouse button, by holding the space key down.
-        , moveMouseToLocation { x = 180, y = 330 }
-        , keyboardKeyDown Common.EffectOnWindow.vkey_SPACE
-        , moveMouseToLocation { x = 210, y = 340 }
-        , keyboardKeyUp Common.EffectOnWindow.vkey_SPACE
+        , setMouseCursorPositionTask { x = 180, y = 330 }
+        , keyboardKeyDownTask Common.EffectOnWindow.vkey_SPACE
+        , setMouseCursorPositionTask { x = 210, y = 340 }
+        , keyboardKeyUpTask Common.EffectOnWindow.vkey_SPACE
         ]
     }
 

@@ -60,15 +60,11 @@ public class Request
     {
         public object BringWindowToForeground;
 
-        public Location2d? MoveMouseToLocation;
-
-        public VirtualKeyCode KeyDown;
-
-        public VirtualKeyCode KeyUp;
-
         public ReadFromWindowStructure ReadFromWindowRequest;
 
         public GetImageDataFromReadingRequestStruct? GetImageDataFromReadingRequest;
+
+        public EffectOnWindowStructure EffectOnWindowRequest;
     }
 
     public class VirtualKeyCode
@@ -95,10 +91,13 @@ public class Request
         public Rect2d[] crops_2x2_r8g8b8;
     }
 
-    public class MouseButton
+    public class EffectOnWindowStructure
     {
-        public object MouseButtonLeft;
-        public object MouseButtonRight;
+        public Location2d? SetMouseCursorPositionEffect;
+
+        public VirtualKeyCode KeyDownEffect;
+
+        public VirtualKeyCode KeyUpEffect;
     }
 }
 
@@ -365,37 +364,6 @@ Response performTaskOnWindow(
         return new Response { NoReturnValue = new object() };
     }
 
-    if (task.MoveMouseToLocation != null)
-    {
-        WinApi.SetCursorPos(
-            task.MoveMouseToLocation.Value.x + windowRect.left,
-            task.MoveMouseToLocation.Value.y + windowRect.top);
-
-        return new Response { NoReturnValue = new object() };
-    }
-
-    if (task?.KeyDown != null)
-    {
-        var virtualKeyCode = (WindowsInput.Native.VirtualKeyCode)task.KeyDown.virtualKeyCode;
-
-        (MouseActionForKeyUpOrDown(keyCode: virtualKeyCode, buttonUp: false)
-        ??
-        (() => new WindowsInput.InputSimulator().Keyboard.KeyDown(virtualKeyCode)))();
-
-        return new Response { NoReturnValue = new object() };
-    }
-
-    if (task?.KeyUp != null)
-    {
-        var virtualKeyCode = (WindowsInput.Native.VirtualKeyCode)task.KeyUp.virtualKeyCode;
-
-        (MouseActionForKeyUpOrDown(keyCode: virtualKeyCode, buttonUp: true)
-        ??
-        (() => new WindowsInput.InputSimulator().Keyboard.KeyUp(virtualKeyCode)))();
-
-        return new Response { NoReturnValue = new object() };
-    }
-
     if (task.ReadFromWindowRequest != null)
     {
         var readingFromGameIndex = System.Threading.Interlocked.Increment(ref readingFromGameCount);
@@ -489,6 +457,17 @@ Response performTaskOnWindow(
             });
     }
 
+    if(task.EffectOnWindowRequest != null)
+    {
+        ExecuteEffectOnWindow(
+            effectOnWindow: task.EffectOnWindowRequest,
+            windowHandle: windowHandle,
+            windowRect: windowRect,
+            bringWindowToForeground: true);
+
+        return new Response { NoReturnValue = new object() };
+    }
+
     throw new Exception("Unexpected task in request:\n" + Newtonsoft.Json.JsonConvert.SerializeObject(task));
 }
 
@@ -520,6 +499,45 @@ System.Collections.Generic.IReadOnlyList<Response.WindowSummaryStruct> ListWindo
         .ToList();
 
     return windows;
+}
+
+
+void ExecuteEffectOnWindow(
+    Request.EffectOnWindowStructure effectOnWindow,
+    IntPtr windowHandle,
+    WinApi.Rect windowRect,
+    bool bringWindowToForeground)
+{
+    if (bringWindowToForeground)
+    {
+        WinApi.SetForegroundWindow(windowHandle);
+        WinApi.ShowWindow(windowHandle, WinApi.SW_RESTORE);
+    }
+
+    if (effectOnWindow.SetMouseCursorPositionEffect != null)
+    {
+        WinApi.SetCursorPos(
+            effectOnWindow.SetMouseCursorPositionEffect.Value.x + windowRect.left,
+            effectOnWindow.SetMouseCursorPositionEffect.Value.y + windowRect.top);
+    }
+
+    if (effectOnWindow?.KeyDownEffect != null)
+    {
+        var virtualKeyCode = (WindowsInput.Native.VirtualKeyCode)effectOnWindow.KeyDownEffect.virtualKeyCode;
+
+        (MouseActionForKeyUpOrDown(keyCode: virtualKeyCode, buttonUp: false)
+        ??
+        (() => new WindowsInput.InputSimulator().Keyboard.KeyDown(virtualKeyCode)))();
+    }
+
+    if (effectOnWindow?.KeyUpEffect != null)
+    {
+        var virtualKeyCode = (WindowsInput.Native.VirtualKeyCode)effectOnWindow.KeyUpEffect.virtualKeyCode;
+
+        (MouseActionForKeyUpOrDown(keyCode: virtualKeyCode, buttonUp: true)
+        ??
+        (() => new WindowsInput.InputSimulator().Keyboard.KeyUp(virtualKeyCode)))();
+    }
 }
 
 static System.Action MouseActionForKeyUpOrDown(WindowsInput.Native.VirtualKeyCode keyCode, bool buttonUp)

@@ -109,13 +109,9 @@ type MouseButton
 
 type Task
     = BringWindowToForeground
-    | MoveMouseToLocation Location2d
-    | MouseButtonDown MouseButton
-    | MouseButtonUp MouseButton
-    | KeyboardKeyDown Common.EffectOnWindow.VirtualKeyCode
-    | KeyboardKeyUp Common.EffectOnWindow.VirtualKeyCode
     | ReadFromWindow GetImageDataFromReadingStructure
     | GetImageDataFromReading GetImageDataFromReadingStructure
+    | EffectOnWindowTask Common.EffectOnWindow.EffectOnWindowStructure
 
 
 type alias State simpleBotState =
@@ -725,19 +721,7 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                                 BringWindowToForeground ->
                                                                     Ok ( stateBefore, NoResultValue )
 
-                                                                MoveMouseToLocation _ ->
-                                                                    Ok ( stateBefore, NoResultValue )
-
-                                                                MouseButtonDown _ ->
-                                                                    Ok ( stateBefore, NoResultValue )
-
-                                                                MouseButtonUp _ ->
-                                                                    Ok ( stateBefore, NoResultValue )
-
-                                                                KeyboardKeyDown _ ->
-                                                                    Ok ( stateBefore, NoResultValue )
-
-                                                                KeyboardKeyUp _ ->
+                                                                EffectOnWindowTask _ ->
                                                                     Ok ( stateBefore, NoResultValue )
 
                                                                 ReadFromWindow _ ->
@@ -935,23 +919,6 @@ taskOnWindowFromSimpleBotTask state simpleBotTask =
         BringWindowToForeground ->
             VolatileProcessInterface.BringWindowToForeground
 
-        MoveMouseToLocation location ->
-            VolatileProcessInterface.MoveMouseToLocation location
-
-        MouseButtonDown button ->
-            VolatileProcessInterface.KeyDown
-                (volatileProcessMouseButtonFromMouseButton button)
-
-        MouseButtonUp button ->
-            VolatileProcessInterface.KeyUp
-                (volatileProcessMouseButtonFromMouseButton button)
-
-        KeyboardKeyDown key ->
-            VolatileProcessInterface.KeyDown key
-
-        KeyboardKeyUp key ->
-            VolatileProcessInterface.KeyUp key
-
         ReadFromWindow readFromWindowTask ->
             VolatileProcessInterface.ReadFromWindowRequest
                 { getImageData = readFromWindowTask }
@@ -967,6 +934,10 @@ taskOnWindowFromSimpleBotTask state simpleBotTask =
                         { readingId = lastReadFromWindowResult.readFromWindowComplete.readingId
                         , getImageData = getImageDataFromReadingTask
                         }
+
+        EffectOnWindowTask effectOnWindowTask ->
+            effectOnWindowTask
+                |> VolatileProcessInterface.EffectOnWindowRequest
 
 
 integrateEvent : InterfaceToHost.BotEvent -> State simpleBotState -> State simpleBotState
@@ -1136,8 +1107,8 @@ taskIdFromString =
     TaskIdFromString
 
 
-volatileProcessMouseButtonFromMouseButton : MouseButton -> Common.EffectOnWindow.VirtualKeyCode
-volatileProcessMouseButtonFromMouseButton mouseButton =
+volatileProcessKeyFromMouseButton : MouseButton -> Common.EffectOnWindow.VirtualKeyCode
+volatileProcessKeyFromMouseButton mouseButton =
     case mouseButton of
         MouseButtonLeft ->
             Common.EffectOnWindow.vkey_LBUTTON
@@ -1171,29 +1142,36 @@ bringWindowToForeground =
     BringWindowToForeground
 
 
-moveMouseToLocation : Location2d -> Task
-moveMouseToLocation =
-    MoveMouseToLocation
+setMouseCursorPositionTask : Location2d -> Task
+setMouseCursorPositionTask =
+    Common.EffectOnWindow.SetMouseCursorPositionEffect
+        >> EffectOnWindowTask
 
 
-mouseButtonDown : MouseButton -> Task
-mouseButtonDown =
-    MouseButtonDown
+mouseButtonDownTask : MouseButton -> Task
+mouseButtonDownTask =
+    volatileProcessKeyFromMouseButton
+        >> Common.EffectOnWindow.KeyDownEffect
+        >> EffectOnWindowTask
 
 
-mouseButtonUp : MouseButton -> Task
-mouseButtonUp =
-    MouseButtonUp
+mouseButtonUpTask : MouseButton -> Task
+mouseButtonUpTask =
+    volatileProcessKeyFromMouseButton
+        >> Common.EffectOnWindow.KeyUpEffect
+        >> EffectOnWindowTask
 
 
-keyboardKeyDown : Common.EffectOnWindow.VirtualKeyCode -> Task
-keyboardKeyDown =
-    KeyboardKeyDown
+keyboardKeyDownTask : Common.EffectOnWindow.VirtualKeyCode -> Task
+keyboardKeyDownTask =
+    Common.EffectOnWindow.KeyDownEffect
+        >> EffectOnWindowTask
 
 
-keyboardKeyUp : Common.EffectOnWindow.VirtualKeyCode -> Task
-keyboardKeyUp =
-    KeyboardKeyUp
+keyboardKeyUpTask : Common.EffectOnWindow.VirtualKeyCode -> Task
+keyboardKeyUpTask =
+    Common.EffectOnWindow.KeyUpEffect
+        >> EffectOnWindowTask
 
 
 readFromWindow : GetImageDataFromReadingStructure -> Task

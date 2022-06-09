@@ -1,4 +1,4 @@
-{- Elvenar Bot v2022-06-08
+{- Elvenar Bot v2022-06-09
 
    This bot collects coins in the Elvenar game client window.
 
@@ -27,6 +27,7 @@ module Bot exposing
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework
+import Common.EffectOnWindow
 import DecodeBMPImage
 import Dict
 import Random
@@ -186,28 +187,25 @@ simpleProcessEvent event stateBeforeUpdateTime =
                                                         coinFoundLocation
                                                             |> addOffset mouseClickLocationOffsetFromCoin
                                                 in
-                                                ( [ { taskId = SimpleBotFramework.taskIdFromString "move-mouse-to-coin"
-                                                    , task = SimpleBotFramework.MoveMouseToLocation mouseDownLocation
-                                                    }
-                                                  , { taskId = SimpleBotFramework.taskIdFromString "mouse-button-down"
-                                                    , task = SimpleBotFramework.MouseButtonDown SimpleBotFramework.MouseButtonLeft
-                                                    }
-                                                  , { taskId = SimpleBotFramework.taskIdFromString "drag-coin"
-                                                    , task =
-                                                        mouseDownLocation
+                                                ( Common.EffectOnWindow.effectsForMouseDragAndDrop
+                                                    { startPosition = mouseDownLocation
+                                                    , mouseButton = Common.EffectOnWindow.LeftMouseButton
+                                                    , waypointsPositionsInBetween =
+                                                        [ mouseDownLocation
                                                             |> addOffset { x = 15, y = 30 }
-                                                            |> SimpleBotFramework.MoveMouseToLocation
+                                                        ]
+                                                    , endPosition = mouseDownLocation
                                                     }
-                                                  , { taskId = SimpleBotFramework.taskIdFromString "avoid-drift-move-mouse-back"
-                                                    , task = SimpleBotFramework.MoveMouseToLocation mouseDownLocation
-                                                    }
-                                                  , { taskId = SimpleBotFramework.taskIdFromString "mouse-button-up"
-                                                    , task = SimpleBotFramework.MouseButtonUp SimpleBotFramework.MouseButtonLeft
-                                                    }
-                                                  , { taskId = SimpleBotFramework.taskIdFromString "mouse-button-up"
-                                                    , task = SimpleBotFramework.MouseButtonUp SimpleBotFramework.MouseButtonLeft
-                                                    }
-                                                  ]
+                                                    |> List.indexedMap
+                                                        (\i effect ->
+                                                            { taskId =
+                                                                ("collect-coin-step-" ++ String.fromInt i)
+                                                                    |> SimpleBotFramework.taskIdFromString
+                                                            , task =
+                                                                effect
+                                                                    |> SimpleBotFramework.EffectOnWindowTask
+                                                            }
+                                                        )
                                                 , "Collect coin at " ++ describeLocation coinFoundLocation
                                                 )
                             in

@@ -1,6 +1,8 @@
-{- EVE Online Warp-to-0 auto-pilot version 2022-05-26
+{- doverjam1 EVE Online Warp-to-0 auto-pilot version 2022-06-23
+   As discussed at https://forum.botlab.org/t/modifying-eve-warp-to-0-bot-to-use-overview/4395
 
-   This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
+   This bot makes your travels faster and safer by directly warping to gates/stations.
+   It picks entries from the overview window based on the yellow icon color and uses the context menu to initiate jump and dock commands.
 
    Before starting the bot, set up the game client as follows:
 
@@ -43,7 +45,6 @@ import EveOnline.BotFramework
         , SeeUndockingComplete
         , ShipModulesMemory
         , clickOnUIElement
-        , infoPanelRouteFirstMarkerFromReadingFromGameClient
         , menuCascadeCompleted
         , shipUIIndicatesShipIsWarpingOrJumping
         , useMenuEntryWithTextContainingFirstOf
@@ -143,20 +144,20 @@ autopilotBotDecisionRoot context =
 
 decideStepWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
 decideStepWhenInSpace context undockingComplete =
-    case context.readingFromGameClient |> infoPanelRouteFirstMarkerFromReadingFromGameClient of
-        Nothing ->
-            describeBranch "I see no route in the info panel. I will start when a route is set."
-                (decideStepWhenInSpaceWaiting context)
+    if undockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
+        describeBranch
+            "I see the ship is warping or jumping. I wait until that maneuver ends."
+            (decideStepWhenInSpaceWaiting context)
 
-        Just infoPanelRouteFirstMarker ->
-            if undockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
-                describeBranch
-                    "I see the ship is warping or jumping. I wait until that maneuver ends."
+    else
+        case undockingComplete.overviewWindow |> entryWithYellowIconFromReadingFromOverviewWindow of
+            Nothing ->
+                describeBranch "I see no matching entry in the overview window. Check route and overview settings."
                     (decideStepWhenInSpaceWaiting context)
 
-            else
+            Just overviewEntry ->
                 useContextMenuCascade
-                    ( "route element icon", infoPanelRouteFirstMarker.uiNode )
+                    ( "overview entry", overviewEntry.uiNode )
                     (useMenuEntryWithTextContainingFirstOf
                         [ "dock"
 
@@ -170,6 +171,17 @@ decideStepWhenInSpace context undockingComplete =
                         menuCascadeCompleted
                     )
                     context
+
+
+entryWithYellowIconFromReadingFromOverviewWindow : EveOnline.ParseUserInterface.OverviewWindow -> Maybe EveOnline.ParseUserInterface.OverviewWindowEntry
+entryWithYellowIconFromReadingFromOverviewWindow =
+    let
+        isYellow color =
+            color == { a = 100, r = 100, g = 100, b = 0 }
+    in
+    .entries
+        >> List.filter (.iconSpriteColorPercent >> Maybe.map isYellow >> Maybe.withDefault False)
+        >> List.head
 
 
 decideStepWhenInSpaceWaiting : BotDecisionContext -> DecisionPathNode

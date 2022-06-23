@@ -1,8 +1,8 @@
-{- doverjam1 EVE Online Warp-to-0 auto-pilot version 2022-06-23
+{- doverjam1 EVE Online Warp-to-0 nullsec auto-pilot version 2022-06-23
    As discussed at https://forum.botlab.org/t/modifying-eve-warp-to-0-bot-to-use-overview/4395
 
    This bot makes your travels faster and safer by directly warping to gates/stations.
-   It picks entries from the overview window based on the yellow icon color and uses the context menu to initiate jump and dock commands.
+   It picks entries from the overview window based on the yellow icon color and uses the selected item window to initiate jump and dock maneuvers.
 
    Before starting the bot, set up the game client as follows:
 
@@ -45,9 +45,7 @@ import EveOnline.BotFramework
         , SeeUndockingComplete
         , ShipModulesMemory
         , clickOnUIElement
-        , menuCascadeCompleted
         , shipUIIndicatesShipIsWarpingOrJumping
-        , useMenuEntryWithTextContainingFirstOf
         )
 import EveOnline.BotFrameworkSeparatingMemory
     exposing
@@ -55,10 +53,10 @@ import EveOnline.BotFrameworkSeparatingMemory
         , UpdateMemoryContext
         , branchDependingOnDockedOrInSpace
         , decideActionForCurrentStep
-        , useContextMenuCascade
         , waitForProgressInGame
         )
 import EveOnline.ParseUserInterface exposing (centerFromDisplayRegion, getAllContainedDisplayTexts)
+import Set
 
 
 defaultBotSettings : BotSettings
@@ -150,27 +148,53 @@ decideStepWhenInSpace context undockingComplete =
             (decideStepWhenInSpaceWaiting context)
 
     else
-        case undockingComplete.overviewWindow |> entryWithYellowIconFromReadingFromOverviewWindow of
+        case context.readingFromGameClient.selectedItemWindow of
             Nothing ->
-                describeBranch "I see no matching entry in the overview window. Check route and overview settings."
-                    (decideStepWhenInSpaceWaiting context)
+                describeBranch "Did not find a selected item window. Continuing with overview window."
+                    (continueWithOverviewWindow context undockingComplete)
 
-            Just overviewEntry ->
-                useContextMenuCascade
-                    ( "overview entry", overviewEntry.uiNode )
-                    (useMenuEntryWithTextContainingFirstOf
-                        [ "dock"
+            Just selectedItemWindow ->
+                describeBranch "Found a selected item window."
+                    (case
+                        selectedItemWindow.uiNode
+                            |> EveOnline.ParseUserInterface.listDescendantsWithDisplayRegion
+                            |> List.filter
+                                (.uiNode
+                                    >> EveOnline.ParseUserInterface.getNameFromDictEntries
+                                    >> Maybe.map
+                                        (Set.member
+                                            >> (|>) (Set.fromList [ "selectedItemDock", "selectedItemJump" ])
+                                        )
+                                    >> Maybe.withDefault False
+                                )
+                            |> List.head
+                     of
+                        Just dockOrJumpButton ->
+                            describeBranch "Found jump or dock button in selected item window."
+                                (describeBranch "Click button to initiate maneuver."
+                                    (decideActionForCurrentStep
+                                        (dockOrJumpButton |> clickOnUIElement MouseButtonLeft)
+                                    )
+                                )
 
-                        -- https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370/14
-                        , "도킹"
-                        , "jump"
-
-                        -- https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370
-                        , "점프 - 스타게이트 사용"
-                        ]
-                        menuCascadeCompleted
+                        Nothing ->
+                            describeBranch "Did not find a button to jump or dock. Continuing with overview window."
+                                (continueWithOverviewWindow context undockingComplete)
                     )
-                    context
+
+
+continueWithOverviewWindow : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
+continueWithOverviewWindow context undockingComplete =
+    case undockingComplete.overviewWindow |> entryWithYellowIconFromReadingFromOverviewWindow of
+        Nothing ->
+            describeBranch "I see no matching entry in the overview window. Check route and overview settings."
+                (decideStepWhenInSpaceWaiting context)
+
+        Just overviewEntry ->
+            describeBranch "Select overview entry."
+                (decideActionForCurrentStep
+                    (overviewEntry.uiNode |> clickOnUIElement MouseButtonLeft)
+                )
 
 
 entryWithYellowIconFromReadingFromOverviewWindow : EveOnline.ParseUserInterface.OverviewWindow -> Maybe EveOnline.ParseUserInterface.OverviewWindowEntry

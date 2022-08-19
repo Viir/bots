@@ -1,4 +1,4 @@
-{- Elvenar Bot v2022-06-09
+{- Elvenar Bot v2022-08-19
 
    This bot collects coins in the Elvenar game client window.
 

@@ -271,12 +271,6 @@ public struct Rect2d
 
 public record struct Location2d(int x, int y);
 
-byte[] SHA256FromByteArray(byte[] array)
-{
-    using (var hasher = new SHA256Managed())
-        return hasher.ComputeHash(buffer: array);
-}
-
 string ToStringBase16(byte[] array) => BitConverter.ToString(array).Replace("-", "");
 
 

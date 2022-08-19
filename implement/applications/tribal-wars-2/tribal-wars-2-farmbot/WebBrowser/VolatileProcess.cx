@@ -39,12 +39,6 @@ using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 
 
-byte[] SHA256FromByteArray(byte[] array)
-{
-    using (var hasher = new SHA256Managed())
-        return hasher.ComputeHash(buffer: array);
-}
-
 string ToStringBase16(byte[] array) => BitConverter.ToString(array).Replace("-", "");
 
 

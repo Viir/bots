@@ -30,13 +30,6 @@ using System.Runtime.InteropServices;
 var generalStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
 
-byte[] SHA256FromByteArray(byte[] array)
-{
-    using (var hasher = new SHA256Managed())
-        return hasher.ComputeHash(buffer: array);
-}
-
-
 class Request
 {
     public object ListGameClientProcessesRequest;

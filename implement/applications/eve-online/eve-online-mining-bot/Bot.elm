@@ -30,7 +30,7 @@
    module-to-activate-always = afterburner
    ```
 
-   To learn about the mining bot, see https://to.botlab.org/guide/app/eve-online-mining-bot
+   To learn about the mining bot, see <https://to.botlab.org/guide/app/eve-online-mining-bot>
 
 -}
 {-

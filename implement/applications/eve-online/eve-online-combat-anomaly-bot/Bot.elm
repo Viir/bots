@@ -32,7 +32,7 @@
    module-to-activate-always = shield hardener
    ```
 
-   To learn about the anomaly bot, see https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot
+   To learn about the anomaly bot, see <https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot>
 
 -}
 {-

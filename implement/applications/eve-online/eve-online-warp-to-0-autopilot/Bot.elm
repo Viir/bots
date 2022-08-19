@@ -14,7 +14,7 @@
 
    + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "cloaking device".
 
-   To learn about the autopilot, see https://to.botlab.org/guide/app/eve-online-autopilot-bot
+   To learn about the autopilot, see <https://to.botlab.org/guide/app/eve-online-autopilot-bot>
 
 -}
 {-

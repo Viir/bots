@@ -7,8 +7,8 @@
 
    You can test this bot by placing a screenshot in a paint app like MS Paint or Paint.NET, where you can change its location within the window easily.
 
-   You can see the training data samples used to develop this bot at https://github.com/Viir/bots/tree/8b955f4035a9a202ba8450f12f4c38be8a2b8d7e/implement/applications/elvenar/training-data
-   If the bot does not recognize all coins with your setup, post it on GitHub issues at https://github.com/Viir/bots/issues or on the forum at https://forum.botlab.org
+   You can see the training data samples used to develop this bot at <https://github.com/Viir/bots/tree/8b955f4035a9a202ba8450f12f4c38be8a2b8d7e/implement/applications/elvenar/training-data>
+   If the bot does not recognize all coins with your setup, post it on GitHub issues at <https://github.com/Viir/bots/issues> or on the forum at <https://forum.botlab.org>
 -}
 {-
    catalog-tags:elvenar

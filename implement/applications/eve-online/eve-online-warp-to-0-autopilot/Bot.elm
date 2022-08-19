@@ -1,4 +1,4 @@
-{- EVE Online Warp-to-0 auto-pilot version 2022-05-26
+{- EVE Online Warp-to-0 auto-pilot version 2022-08-18
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
@@ -29,6 +29,7 @@ module Bot exposing
     )
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.NotificationsShim
 import Color
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (stringContainsIgnoringCase)
@@ -90,7 +91,8 @@ type alias BotMemory =
 
 
 type alias State =
-    EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory
+    BotLab.NotificationsShim.StateWithNotifications
+        (EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory)
 
 
 type alias BotDecisionContext =
@@ -264,6 +266,33 @@ botMain =
             , statusTextFromDecisionContext = statusTextFromDecisionContext
             }
     }
+        |> BotLab.NotificationsShim.addNotifications notificationsFunction
+
+
+notificationsFunction : { statusText : String } -> List BotLab.NotificationsShim.Notification
+notificationsFunction botResponse =
+    [ ( "undock manually"
+      , BotLab.NotificationsShim.consoleBeepNotification
+            [ { frequency = 0
+              , durationInMs = 200
+              }
+            , { frequency = 400
+              , durationInMs = 300
+              }
+            , { frequency = 500
+              , durationInMs = 300
+              }
+            ]
+      )
+    ]
+        |> List.filterMap
+            (\( keyword, notification ) ->
+                if botResponse.statusText |> String.toLower |> String.contains (String.toLower keyword) then
+                    Just notification
+
+                else
+                    Nothing
+            )
 
 
 currentSolarSystemNameFromReading : ReadingFromGameClient -> Maybe String

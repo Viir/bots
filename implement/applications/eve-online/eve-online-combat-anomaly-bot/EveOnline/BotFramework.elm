@@ -972,9 +972,9 @@ getNextSetupTask botConfiguration botSettings stateBefore =
             ContinueSetup
                 stateBefore
                 (InterfaceToHost.CreateVolatileProcess
-                    { programCode = CompilationInterface.SourceFiles.file____EveOnline_VolatileProcess_cx.utf8 }
+                    { programCode = CompilationInterface.SourceFiles.file____EveOnline_VolatileProcess_csx.utf8 }
                 )
-                "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
+                "Setting up volatile process. This can take several seconds, especially when assemblies are not cached yet."
 
         Just (Err error) ->
             FrameworkStopSession ("Create volatile process failed with exception: " ++ error.exceptionToString)

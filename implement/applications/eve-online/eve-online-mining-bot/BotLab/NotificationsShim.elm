@@ -164,7 +164,7 @@ processEventNotificationsSetup event stateBefore =
                     [ { taskId = InterfaceToHost.TaskIdFromString (taskIdPrefix ++ "create-volatile-process")
                       , task =
                             InterfaceToHost.CreateVolatileProcess
-                                { programCode = CompilationInterface.SourceFiles.file____BotLab_NotificationsShim_VolatileProcess_cx.utf8 }
+                                { programCode = CompilationInterface.SourceFiles.file____BotLab_NotificationsShim_VolatileProcess_csx.utf8 }
                       }
                     ]
               , notifyWhenArrivedAtTime = Nothing

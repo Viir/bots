@@ -1,7 +1,6 @@
 #r "sha256:FE8A38EBCED27A112519023A7A1216C69FE0863BCA3EF766234E972E920096C1"
 #r "sha256:5229128932E6AAFB5433B7AA5E05E6AFA3C19A929897E49F83690AB8FE273162"
 #r "sha256:CADE001866564D185F14798ECFD077EDA6415E69D978748C19B98DDF0EE839BB"
-#r "sha256:FE532D93F820980181F34C163E54F83726876CC9B02FEC72086FD3DC747793BC"
 #r "sha256:831EF0489D9FA85C34C95F0670CC6393D1AD9548EE708E223C1AD87B51F7C7B3"
 #r "sha256:B9B4E633EA6C728BAD5F7CBBEF7F8B842F7E10181731DBE5EC3CD995A6F60287"
 #r "sha256:81110D44256397F0F3C572A20CA94BB4C669E5DE89F9348ABAD263FBD81C54B9"
@@ -63,8 +62,6 @@ class Request
     public ReadFromWindowStructure ReadFromWindow;
 
     public TaskOnWindow<EffectSequenceElement[]> EffectSequenceOnWindow;
-
-    public ConsoleBeepStructure[] EffectConsoleBeepSequence;
 
     public GetImageDataFromSpecificReadingStructure? GetImageDataFromReading;
 
@@ -132,13 +129,6 @@ class Request
     public enum MouseButton
     {
         left, right,
-    }
-
-    public struct ConsoleBeepStructure
-    {
-        public int frequency;
-
-        public int durationInMs;
     }
 }
 
@@ -404,22 +394,6 @@ Response request(Request request)
         return new Response
         {
             CompletedEffectSequenceOnWindow = new object(),
-        };
-    }
-
-    if (request?.EffectConsoleBeepSequence != null)
-    {
-        foreach (var beep in request?.EffectConsoleBeepSequence)
-        {
-            if(beep.frequency == 0) //  Avoid exception "The frequency must be between 37 and 32767."
-                System.Threading.Thread.Sleep(beep.durationInMs);
-            else
-                System.Console.Beep(beep.frequency, beep.durationInMs);
-        }
-
-        return new Response
-        {
-            CompletedOtherEffect = new object(),
         };
     }
 

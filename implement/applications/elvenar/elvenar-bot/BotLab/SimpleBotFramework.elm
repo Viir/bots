@@ -1122,7 +1122,7 @@ getNextSetupStepWithDescriptionFromState state =
         Nothing ->
             { task =
                 { taskId = InterfaceToHost.taskIdFromString "create_volatile_process"
-                , task = InterfaceToHost.CreateVolatileProcess { programCode = CompilationInterface.SourceFiles.file____Windows_VolatileProcess_cx.utf8 }
+                , task = InterfaceToHost.CreateVolatileProcess { programCode = CompilationInterface.SourceFiles.file____Windows_VolatileProcess_csx.utf8 }
                 }
             , taskDescription = "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
             }

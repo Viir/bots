@@ -29,7 +29,7 @@ processEvent botEvent stateBefore =
                     [ { taskId = InterfaceToHost.taskIdFromString "c"
                       , task =
                             InterfaceToHost.CreateVolatileProcess
-                                { programCode = CompilationInterface.SourceFiles.file____VolatileProcess_cx.utf8 }
+                                { programCode = CompilationInterface.SourceFiles.file____VolatileProcess_csx.utf8 }
                       }
                     ]
                 , notifyWhenArrivedAtTime = Nothing

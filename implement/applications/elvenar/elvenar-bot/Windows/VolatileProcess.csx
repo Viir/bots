@@ -174,23 +174,25 @@ public class Response
         public ImageCropRGB[] crops_1x1_r8g8b8;
 
         public IReadOnlyList<ImageCropRGB> crops_2x2_r8g8b8;
-   }
+    }
 }
 
 
 struct ReadingFromGameClient
 {
-    public string windowId;
+    public string windowId = null;
 
-    public string readingId;
+    public string readingId = null;
 
-    public ReadOnlyMemory<int>[] pixels_1x1_R8G8B8;
+    public ReadOnlyMemory<int>[] pixels_1x1_R8G8B8 = null;
 
     private readonly IDictionary<Location2d, ReadOnlyMemory<int>[]> pixels_2x2_R8G8B8_by_offset = new Dictionary<Location2d, ReadOnlyMemory<int>[]>();
 
+    public ReadingFromGameClient() { }
+
     public ReadOnlyMemory<int>[] Pixels_2x2_R8G8B8_by_offset(Location2d offset)
     {
-        if(pixels_2x2_R8G8B8_by_offset.TryGetValue(offset, out var pixels))
+        if (pixels_2x2_R8G8B8_by_offset.TryGetValue(offset, out var pixels))
         {
             return pixels;
         }
@@ -220,7 +222,7 @@ struct ReadingFromGameClient
 
                 var binnedRow = new int[binnedRowLength];
 
-                for(int x = 0; x < binnedRowLength; ++x)
+                for (int x = 0; x < binnedRowLength; ++x)
                 {
                     var p0 = offsetRow0Pixels.Span[x * 2];
                     var p1 = offsetRow0Pixels.Span[x * 2 + 1];
@@ -254,7 +256,7 @@ struct ReadingFromGameClient
             .ToArray();
 
         return pixels_2x2_R8G8B8;
-    }    
+    }
 }
 
 public struct ImageCropRGB
@@ -270,6 +272,7 @@ public struct Rect2d
 }
 
 public record struct Location2d(int x, int y);
+
 
 string ToStringBase16(byte[] array) => BitConverter.ToString(array).Replace("-", "");
 
@@ -374,7 +377,7 @@ Response performTaskOnWindow(
     }
 
     var windowRect = new WinApi.Rect();
-    if(!WinApi.GetWindowRect(windowHandle, ref windowRect))
+    if (!WinApi.GetWindowRect(windowHandle, ref windowRect))
     {
         return ResponseFromResultOnWindow(
             new Response.TaskOnWindowResponseStruct
@@ -438,7 +441,7 @@ Response performTaskOnWindow(
 
         readingFromGameHistory.Enqueue(historyEntry);
 
-        while(4 < readingFromGameHistory.Count)
+        while (4 < readingFromGameHistory.Count)
         {
             readingFromGameHistory.Dequeue();
         }
@@ -459,18 +462,18 @@ Response performTaskOnWindow(
             });
     }
 
-    if(task.EffectSequenceOnWindowRequest != null)
+    if (task.EffectSequenceOnWindowRequest != null)
     {
-        foreach(var sequenceElement in task.EffectSequenceOnWindowRequest)
+        foreach (var sequenceElement in task.EffectSequenceOnWindowRequest)
         {
-            if(sequenceElement?.EffectElement != null)
+            if (sequenceElement?.EffectElement != null)
                 ExecuteEffectOnWindow(
                     sequenceElement.EffectElement,
                     windowHandle: windowHandle,
                     windowRect: windowRect,
                     bringWindowToForeground: false);
 
-            if(sequenceElement?.DelayInMillisecondsElement != null)
+            if (sequenceElement?.DelayInMillisecondsElement != null)
                 System.Threading.Tasks.Task.Delay(TimeSpan.FromMilliseconds(sequenceElement.DelayInMillisecondsElement.Value)).Wait();
         }
 
@@ -824,7 +827,7 @@ static public class WinApi
     {
         var windowHandle = GetForegroundWindow();
 
-        while(windowHandle != IntPtr.Zero)
+        while (windowHandle != IntPtr.Zero)
         {
             yield return windowHandle;
 

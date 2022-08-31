@@ -1,8 +1,8 @@
 // "Newtonsoft.Json"
 #r "sha256:B9B4E633EA6C728BAD5F7CBBEF7F8B842F7E10181731DBE5EC3CD995A6F60287"
 
-//  https://www.nuget.org/api/v2/package/PuppeteerSharp/6.1.0
-#r "sha256:e2fa766285ce46465b9a116313f7424a0fe0348980607b743886a61964514932"
+//  https://www.nuget.org/api/v2/package/PuppeteerSharp/7.1.0
+#r "sha256:3e505ac9f224cc52da9c4d3dcc89d507d120203708c3fdf036cf5079ee346027"
 
 //  https://www.nuget.org/api/v2/package/Microsoft.Bcl.AsyncInterfaces/6.0.0
 #r "sha256:5705D245072D3EB78400547B32147DBB6E2C8B02BA8BDA76729798F5EFDEAECB"

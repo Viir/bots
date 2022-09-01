@@ -283,7 +283,7 @@ Response request(Request request)
         {
             var uiTree = read_memory_64_bit.EveOnline64.ReadUITreeFromAddress(request.ReadFromWindow.uiRootAddress, memoryReader, 99);
 
-            if(uiTree != null)
+            if (uiTree != null)
             {
                 memoryReadingSerialRepresentationJson =
                 read_memory_64_bit.EveOnline64.SerializeMemoryReadingNodeToJson(
@@ -291,6 +291,7 @@ Response request(Request request)
             }
         }
 
+        if (false)
         {
             /*
             Maybe taking screenshots needs the window to be not occluded by other windows.
@@ -298,7 +299,7 @@ Response request(Request request)
             */
             var setForegroundWindowError = SetForegroundWindowInWindows.TrySetForegroundWindow(windowHandle);
 
-            if(setForegroundWindowError != null)
+            if (setForegroundWindowError != null)
             {
                 return new Response
                 {
@@ -320,7 +321,7 @@ Response request(Request request)
 
         readingFromGameHistory.Enqueue(historyEntry);
 
-        while(4 < readingFromGameHistory.Count)
+        while (4 < readingFromGameHistory.Count)
         {
             readingFromGameHistory.Dequeue();
         }
@@ -373,7 +374,7 @@ Response request(Request request)
         {
             var setForegroundWindowError = SetForegroundWindowInWindows.TrySetForegroundWindow(windowHandle);
 
-            if(setForegroundWindowError != null)
+            if (setForegroundWindowError != null)
             {
                 return new Response
                 {
@@ -382,12 +383,12 @@ Response request(Request request)
             }
         }
 
-        foreach(var sequenceElement in request.EffectSequenceOnWindow.task)
+        foreach (var sequenceElement in request.EffectSequenceOnWindow.task)
         {
-            if(sequenceElement?.effect != null)
+            if (sequenceElement?.effect != null)
                 ExecuteEffectOnWindow(sequenceElement.effect, windowHandle, request.EffectSequenceOnWindow.bringWindowToForeground);
 
-            if(sequenceElement?.delayMilliseconds != null)
+            if (sequenceElement?.delayMilliseconds != null)
                 System.Threading.Thread.Sleep(sequenceElement.delayMilliseconds.Value);
         }
 
@@ -484,7 +485,7 @@ void ExecuteEffectOnWindow(
             effectOnWindow.MouseMoveTo.location.x,
             effectOnWindow.MouseMoveTo.location.y);
 
-        var mouseButtons = new BotEngine.Motor.MouseButtonIdEnum[]{};
+        var mouseButtons = new BotEngine.Motor.MouseButtonIdEnum[] { };
 
         var windowMotor = new Sanderling.Motor.WindowMotor(windowHandle);
 
@@ -634,7 +635,7 @@ static public class WinApi
     [DllImport("user32.dll")]
     static public extern bool ClientToScreen(IntPtr hWnd, ref Point lpPoint);
 
-    [DllImport("user32.dll", SetLastError=true)]
+    [DllImport("user32.dll", SetLastError = true)]
     static public extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 }
 

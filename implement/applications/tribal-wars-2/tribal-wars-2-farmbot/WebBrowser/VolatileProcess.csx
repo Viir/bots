@@ -195,7 +195,7 @@ async System.Threading.Tasks.Task KillOtherInstancesAndStartBrowser(
     });
     */
 
-    if(0 < pageGoToUrl?.Length)
+    if (0 < pageGoToUrl?.Length)
     {
         await browserPage.GoToAsync(pageGoToUrl);
     }
@@ -207,7 +207,7 @@ async System.Threading.Tasks.Task<Response.RunJavascriptInCurrentPageResponseStr
     bool callbackCalled = false;
     string callbackReturnValue = null;
 
-    if(browserPage == null)
+    if (browserPage == null)
     {
         return new Response.RunJavascriptInCurrentPageResponseStructure
         {
@@ -248,18 +248,18 @@ void KillPreviousWebBrowserProcesses(string userProfileId)
         System.Diagnostics.Process.GetProcesses()
         .Select(process =>
         {
-            if(!ProcessIsWebBrowser(process))
+            if (!ProcessIsWebBrowser(process))
                 return null;
 
             ProcessCommandLine.Retrieve(process, out var commandLine);
 
-            if(commandLine == null)
+            if (commandLine == null)
                 return null;
 
             var userDataDir =
                 GetUserDataDirFromChromeCommandLine(commandLine);
 
-            if(!(userDataDir?.ToLowerInvariant()?.Contains(userProfileId.ToLowerInvariant()) ?? false))
+            if (!(userDataDir?.ToLowerInvariant()?.Contains(userProfileId.ToLowerInvariant()) ?? false))
                 return null;
 
             return process;

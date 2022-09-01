@@ -1,7 +1,8 @@
-{- Tribal Wars 2 farmbot version 2021-08-25
+{- Tribal Wars 2 farmbot version 2022-08-31
+
    I search for barbarian villages around your villages and then attack them.
 
-   When starting, I first open a new web browser window. This might take more on the first run because I need to download the web browser software.
+   When starting, I first open a new web browser window. This might take longer on the first run because I need to download the web browser software.
    When the web browser has opened, navigate to Tribal Wars 2 and log in to your account, so you see your villages.
    Then the browsers address bar will probably show an URL like https://es.tribalwars2.com/game.php?world=es77&character_id=123456#
 
@@ -30,12 +31,18 @@
    + `farm-player`: Name of a player/character to farm. By default, the bot only farms barbarians, but this setting allows you to also farm players.
    + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
    + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45 - 48`. The bot then picks a random value in this range for each village.
+   + `close-game-client-during-break`: Set this to 'yes' to make the bot close the game client/web browser during breaks.
+   + `open-website-on-start`: Website to open when starting the web browser.
 
    When using more than one setting, start a new line for each setting in the text input field.
-   Here is an example of `app-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
+   Here is an example of `bot-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
 
+   ```
    number-of-farm-cycles = 3
    break-duration = 20 - 40
+   ```
+
+   To learn about the farmbot, see <https://to.botlab.org/guide/app/tribal-wars-2-farmbot>
 
 -}
 {-
@@ -51,6 +58,7 @@ module Bot exposing
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Common.AppSettings as AppSettings
+import Common.Basics exposing (stringContainsIgnoringCase)
 import Common.DecisionTree
     exposing
         ( DecisionPathNode
@@ -80,46 +88,70 @@ initBotSettings =
     , farmArmyPresetPatterns = []
     , limitOutgoingCommandsPerVillage = { minimum = 50, maximum = 50 }
     , webBrowserUserProfileId = "default"
+    , closeGameClientDuringBreak = AppSettings.No
+    , openWebsiteOnStart = Nothing
     }
 
 
 parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
-    AppSettings.parseSimpleListOfAssignments { assignmentsSeparators = [ ",", "\n" ] }
+    AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "number-of-farm-cycles"
-           , AppSettings.valueTypeInteger (\numberOfFarmCycles settings -> { settings | numberOfFarmCycles = numberOfFarmCycles })
+           , AppSettings.valueTypeInteger
+                (\numberOfFarmCycles settings ->
+                    { settings | numberOfFarmCycles = numberOfFarmCycles }
+                )
            )
          , ( "break-duration"
            , parseBotSettingBreakDurationMinutes
            )
          , ( "farm-barb-min-points"
-           , AppSettings.valueTypeInteger (\minimumPoints settings -> { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints })
+           , AppSettings.valueTypeInteger
+                (\minimumPoints settings ->
+                    { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }
+                )
            )
          , ( "farm-barb-max-distance"
-           , AppSettings.valueTypeInteger (\maxDistance settings -> { settings | farmBarbarianVillageMaximumDistance = maxDistance })
+           , AppSettings.valueTypeInteger
+                (\maxDistance settings ->
+                    { settings | farmBarbarianVillageMaximumDistance = maxDistance }
+                )
            )
          , ( "farm-avoid-coordinates"
            , parseSettingFarmAvoidCoordinates
            )
          , ( "farm-player"
            , AppSettings.valueTypeString
-                (\playerName ->
-                    \settings ->
-                        { settings | playersToFarm = playerName :: settings.playersToFarm }
+                (\playerName settings ->
+                    { settings | playersToFarm = playerName :: settings.playersToFarm }
                 )
            )
          , ( "farm-army-preset-pattern"
            , AppSettings.valueTypeString
-                (\presetPattern ->
-                    \settings ->
-                        { settings | farmArmyPresetPatterns = presetPattern :: settings.farmArmyPresetPatterns }
+                (\presetPattern settings ->
+                    { settings | farmArmyPresetPatterns = presetPattern :: settings.farmArmyPresetPatterns }
                 )
            )
          , ( "limit-outgoing-commands-per-village"
            , parseBotSettingLimitOutgoingCommandsPerVillage
            )
          , ( "web-browser-user-profile-id"
-           , AppSettings.valueTypeString (\webBrowserUserProfileId settings -> { settings | webBrowserUserProfileId = webBrowserUserProfileId })
+           , AppSettings.valueTypeString
+                (\webBrowserUserProfileId settings ->
+                    { settings | webBrowserUserProfileId = webBrowserUserProfileId }
+                )
+           )
+         , ( "close-game-client-during-break"
+           , AppSettings.valueTypeYesOrNo
+                (\closeGameClientDuringBreak settings ->
+                    { settings | closeGameClientDuringBreak = closeGameClientDuringBreak }
+                )
+           )
+         , ( "open-website-on-start"
+           , AppSettings.valueTypeString
+                (\openWebsiteOnStart settings ->
+                    { settings | openWebsiteOnStart = Just openWebsiteOnStart }
+                )
            )
          ]
             |> Dict.fromList
@@ -192,6 +224,7 @@ type alias BotState =
             , parseResult : Result Json.Decode.Error RootInformationStructure
             }
     , lastPageLocation : Maybe String
+    , gameLastPageLocation : Maybe String
     , gameRootInformationResult : Maybe { timeInMilliseconds : Int, gameRootInformation : TribalWars2RootInformation }
     , ownVillagesDetails : Dict.Dict Int { timeInMilliseconds : Int, villageDetails : VillageDetails }
     , lastJumpToCoordinates : Maybe { timeInMilliseconds : Int, coordinates : VillageCoordinates }
@@ -204,11 +237,7 @@ type alias BotState =
     , lastStartWebBrowserTimeInSeconds : Maybe Int
     , startWebBrowserCount : Int
     , completedFarmCycles : List FarmCycleConclusion
-    , lastRequestReportListResult :
-        Maybe
-            { request : RequestReportListResponseStructure
-            , decodeResponseResult : Result Json.Decode.Error RequestReportListCallbackDataStructure
-            }
+    , lastRequestReportListResult : Maybe RequestReportListResponseStructure
     , parseResponseError : Maybe Json.Decode.Error
     , cache_relativeCoordinatesToSearchForFarmsPartitions : List (List VillageCoordinates)
     }
@@ -224,6 +253,8 @@ type alias BotSettings =
     , farmArmyPresetPatterns : List String
     , limitOutgoingCommandsPerVillage : IntervalInt
     , webBrowserUserProfileId : String
+    , closeGameClientDuringBreak : AppSettings.YesOrNo
+    , openWebsiteOnStart : Maybe String
     }
 
 
@@ -253,7 +284,7 @@ type alias State =
 type ResponseFromBrowser
     = RootInformation RootInformationStructure
     | ReadSelectedCharacterVillageDetailsResponse ReadSelectedCharacterVillageDetailsResponseStructure
-    | VillageByCoordinatesResponse VillageByCoordinatesResponseStructure
+    | VillagesByCoordinatesResponse VillagesByCoordinatesResponseStructure
     | GetPresetsResponse (List ArmyPreset)
     | ActivatedVillageResponse
     | SendPresetAttackToCoordinatesResponse SendPresetAttackToCoordinatesResponseStructure
@@ -279,6 +310,12 @@ type alias ReadSelectedCharacterVillageDetailsResponseStructure =
     }
 
 
+type alias VillagesByCoordinatesResponseStructure =
+    { argument : List VillageByCoordinatesResponseStructure
+    , villagesData : List { villageCoordinates : VillageCoordinates, villageData : VillageByCoordinatesResult }
+    }
+
+
 type alias VillageByCoordinatesResponseStructure =
     { villageCoordinates : VillageCoordinates
     , jumpToVillage : Bool
@@ -286,8 +323,11 @@ type alias VillageByCoordinatesResponseStructure =
 
 
 type alias RequestReportListResponseStructure =
-    { offset : Int
-    , count : Int
+    { argument :
+        { offset : Int
+        , count : Int
+        }
+    , reportListData : RequestReportListCallbackDataStructure
     }
 
 
@@ -394,7 +434,7 @@ type RequestToPageStructure
     = ReadRootInformationRequest
     | ReadSelectedCharacterVillageDetailsRequest { villageId : Int }
     | ReadArmyPresets
-    | VillageByCoordinatesRequest { coordinates : VillageCoordinates, jumpToVillage : Bool }
+    | VillagesByCoordinatesRequest (List { coordinates : VillageCoordinates, jumpToVillage : Bool })
     | SendPresetAttackToCoordinatesRequest { coordinates : VillageCoordinates, presetId : Int }
     | VillageMenuActivateVillageRequest
     | ReadBattleReportListRequest
@@ -431,6 +471,7 @@ initState =
     , pendingRequestToPageRequestId = Nothing
     , lastRunJavascriptResult = Nothing
     , lastPageLocation = Nothing
+    , gameLastPageLocation = Nothing
     , gameRootInformationResult = Nothing
     , ownVillagesDetails = Dict.empty
     , lastJumpToCoordinates = Nothing
@@ -494,8 +535,8 @@ botMain =
         }
 
 
-processWebBrowserBotEvent : BotEvent -> BotState -> { newState : BotState, response : BotResponse, statusMessage : String }
-processWebBrowserBotEvent event stateBeforeIntegrateEvent =
+processWebBrowserBotEvent : BotEvent -> BotFramework.GenericBotState -> BotState -> { newState : BotState, response : BotResponse, statusMessage : String }
+processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
     case stateBeforeIntegrateEvent |> integrateWebBrowserBotEvent event of
         Err integrateEventError ->
             { newState = stateBeforeIntegrateEvent
@@ -566,18 +607,31 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
                             ( currentActivityToWaitFor.decisionTree
                                 |> continueDecisionTree
                                     (always (endDecisionPath (BotFramework.ContinueSession Nothing)))
-                                |> Common.DecisionTree.mapLastDescriptionBeforeLeaf
-                                    (\originalLeafDescription ->
-                                        originalLeafDescription ++ " waiting for completion (" ++ currentActivityToWaitFor.activityType ++ ")"
-                                    )
                             , Nothing
                             )
 
                         Nothing ->
-                            decideNextAction
-                                { lastPageLocation = stateBeforeIntegrateEvent.lastPageLocation }
-                                { stateBefore | currentActivity = Nothing }
-                                |> Tuple.mapSecond Just
+                            let
+                                ( botResponse, botState ) =
+                                    decideNextAction
+                                        { lastPageLocation = stateBeforeIntegrateEvent.lastPageLocation
+                                        , gameLastPageLocation = stateBeforeIntegrateEvent.gameLastPageLocation
+                                        , webBrowserRunning = genericBotState.webBrowserRunning
+                                        }
+                                        { stateBefore | currentActivity = Nothing }
+
+                                lastPageLocation =
+                                    case botResponse |> Common.DecisionTree.unpackToDecisionStagesDescriptionsAndLeaf |> Tuple.second of
+                                        BotFramework.ContinueSession (Just (BotFramework.StartWebBrowser startWebBrowser)) ->
+                                            startWebBrowser.pageGoToUrl
+
+                                        BotFramework.ContinueSession (Just (BotFramework.CloseWebBrowser _)) ->
+                                            Nothing
+
+                                        _ ->
+                                            botState.lastPageLocation
+                            in
+                            ( botResponse, Just { botState | lastPageLocation = lastPageLocation } )
 
                 ( activityDecisionStages, responseToFramework ) =
                     activityDecision
@@ -592,8 +646,11 @@ processWebBrowserBotEvent event stateBeforeIntegrateEvent =
             }
 
 
-decideNextAction : { lastPageLocation : Maybe String } -> BotState -> ( DecisionPathNode BotResponse, BotState )
-decideNextAction { lastPageLocation } stateBefore =
+decideNextAction :
+    { lastPageLocation : Maybe String, gameLastPageLocation : Maybe String, webBrowserRunning : Bool }
+    -> BotState
+    -> ( DecisionPathNode BotResponse, BotState )
+decideNextAction { lastPageLocation, gameLastPageLocation, webBrowserRunning } stateBefore =
     case stateBefore.farmState of
         InBreak farmBreak ->
             let
@@ -610,6 +667,22 @@ decideNextAction { lastPageLocation } stateBefore =
                 )
 
             else
+                let
+                    botRequest =
+                        if
+                            (stateBefore.settings.closeGameClientDuringBreak == AppSettings.Yes)
+                                && (stateBefore.gameLastPageLocation == stateBefore.lastPageLocation)
+                        then
+                            Just
+                                (BotFramework.StartWebBrowser
+                                    { userProfileId = stateBefore.settings.webBrowserUserProfileId
+                                    , pageGoToUrl = Just "about:blank"
+                                    }
+                                )
+
+                        else
+                            Nothing
+                in
                 ( describeBranch
                     ("Next farm cycle starts in "
                         ++ (minutesToNextFarmCycleStart |> String.fromInt)
@@ -617,7 +690,7 @@ decideNextAction { lastPageLocation } stateBefore =
                         ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
                         ++ " minutes ago."
                     )
-                    (endDecisionPath (BotFramework.ContinueSession Nothing))
+                    (endDecisionPath (BotFramework.ContinueSession botRequest))
                 , stateBefore
                 )
 
@@ -640,47 +713,62 @@ decideNextAction { lastPageLocation } stateBefore =
 
                                         Just activity ->
                                             let
+                                                continueWithStartWebBrowser =
+                                                    ( BotFramework.StartWebBrowser
+                                                        { pageGoToUrl =
+                                                            [ gameLastPageLocation, stateBefore.settings.openWebsiteOnStart ]
+                                                                |> List.filterMap identity
+                                                                |> List.head
+                                                        , userProfileId = stateBefore.settings.webBrowserUserProfileId
+                                                        }
+                                                    , { stateBefore
+                                                        | lastStartWebBrowserTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
+                                                        , startWebBrowserCount = stateBefore.startWebBrowserCount + 1
+                                                        , readFromGameConsecutiveTimeoutsCount = 0
+                                                      }
+                                                    )
+
                                                 ( requestToFramework, updatedStateForActivity ) =
                                                     case activity of
                                                         RequestToPage requestToPage ->
-                                                            let
-                                                                requestComponents =
-                                                                    componentsForRequestToPage requestToPage
+                                                            if
+                                                                not webBrowserRunning
+                                                                    || ((stateBefore.lastPageLocation /= stateBefore.gameLastPageLocation)
+                                                                            && (stateBefore.gameLastPageLocation /= Nothing)
+                                                                       )
+                                                            then
+                                                                continueWithStartWebBrowser
 
-                                                                requestToPageId =
-                                                                    stateBefore.lastRequestToPageId + 1
+                                                            else
+                                                                let
+                                                                    requestComponents =
+                                                                        componentsForRequestToPage requestToPage
 
-                                                                requestToPageIdString =
-                                                                    requestToPageId |> String.fromInt
-                                                            in
-                                                            ( BotFramework.RunJavascriptInCurrentPageRequest
-                                                                { javascript = requestComponents.javascript
-                                                                , requestId = requestToPageIdString
-                                                                , timeToWaitForCallbackMilliseconds =
-                                                                    case requestComponents.waitForCallbackDuration of
-                                                                        Just waitForCallbackDuration ->
-                                                                            waitForCallbackDuration
+                                                                    requestToPageId =
+                                                                        stateBefore.lastRequestToPageId + 1
 
-                                                                        Nothing ->
-                                                                            0
-                                                                }
-                                                            , { stateBefore
-                                                                | lastRequestToPageId = requestToPageId
-                                                                , pendingRequestToPageRequestId = Just requestToPageIdString
-                                                              }
-                                                            )
+                                                                    requestToPageIdString =
+                                                                        requestToPageId |> String.fromInt
+                                                                in
+                                                                ( BotFramework.RunJavascriptInCurrentPageRequest
+                                                                    { javascript = requestComponents.javascript
+                                                                    , requestId = requestToPageIdString
+                                                                    , timeToWaitForCallbackMilliseconds =
+                                                                        case requestComponents.waitForCallbackDuration of
+                                                                            Just waitForCallbackDuration ->
+                                                                                waitForCallbackDuration
+
+                                                                            Nothing ->
+                                                                                0
+                                                                    }
+                                                                , { stateBefore
+                                                                    | lastRequestToPageId = requestToPageId
+                                                                    , pendingRequestToPageRequestId = Just requestToPageIdString
+                                                                  }
+                                                                )
 
                                                         RestartWebBrowser ->
-                                                            ( BotFramework.StartWebBrowser
-                                                                { pageGoToUrl = lastPageLocation
-                                                                , userProfileId = stateBefore.settings.webBrowserUserProfileId
-                                                                }
-                                                            , { stateBefore
-                                                                | lastStartWebBrowserTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
-                                                                , startWebBrowserCount = stateBefore.startWebBrowserCount + 1
-                                                                , readFromGameConsecutiveTimeoutsCount = 0
-                                                              }
-                                                            )
+                                                            continueWithStartWebBrowser
                                             in
                                             ( Just requestToFramework
                                             , updatedStateForActivity
@@ -855,7 +943,7 @@ integrateWebBrowserBotEvent event stateBefore =
                                 relativeCoordinatesToSearchForFarmsPartitions newSettings
                         }
                     )
-                |> Result.mapError (\parseError -> "Failed to parse these app-settings: " ++ parseError)
+                |> Result.mapError (\parseError -> "Failed to parse these bot-settings: " ++ parseError)
 
         BotFramework.ArrivedAtTime { timeInMilliseconds } ->
             Ok { stateBefore | timeInMilliseconds = timeInMilliseconds }
@@ -887,6 +975,16 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                 _ ->
                     stateBefore.lastPageLocation
 
+        gameLastPageLocation =
+            if
+                Maybe.withDefault False (Maybe.map (stringContainsIgnoringCase "tribalwars2.com/game.php") lastPageLocation)
+                    && (Maybe.andThen .tribalWars2 (Result.toMaybe parseAsRootInfoResult) /= Nothing)
+            then
+                lastPageLocation
+
+            else
+                stateBefore.gameLastPageLocation
+
         stateAfterIntegrateResponse =
             { stateBefore
                 | pendingRequestToPageRequestId = pendingRequestToPageRequestId
@@ -897,6 +995,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                         , parseResult = parseAsRootInfoResult
                         }
                 , lastPageLocation = lastPageLocation
+                , gameLastPageLocation = gameLastPageLocation
             }
 
         parseResult =
@@ -935,48 +1034,44 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                                     { timeInMilliseconds = stateBefore.timeInMilliseconds, villageDetails = readVillageDetailsResponse.villageDetails }
                     }
 
-                VillageByCoordinatesResponse readVillageByCoordinatesResponse ->
+                VillagesByCoordinatesResponse villagesByCoordinatesResponse ->
                     let
+                        maybeCoordinatesJumpedTo =
+                            villagesByCoordinatesResponse.argument
+                                |> List.filter .jumpToVillage
+                                |> List.head
+                                |> Maybe.map .villageCoordinates
+
                         stateAfterRememberJump =
-                            if readVillageByCoordinatesResponse.jumpToVillage then
-                                { stateAfterParseSuccess
-                                    | lastJumpToCoordinates =
-                                        Just
-                                            { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                            , coordinates = readVillageByCoordinatesResponse.villageCoordinates
-                                            }
-                                }
+                            case maybeCoordinatesJumpedTo of
+                                Just coordinatesJumpedTo ->
+                                    { stateAfterParseSuccess
+                                        | lastJumpToCoordinates =
+                                            Just
+                                                { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                                , coordinates = coordinatesJumpedTo
+                                                }
+                                    }
 
-                            else
-                                stateAfterParseSuccess
+                                Nothing ->
+                                    stateAfterParseSuccess
                     in
-                    case runJavascriptInCurrentPageResponse.callbackReturnValueAsString of
-                        Nothing ->
-                            -- This case indicates the timeout while waiting for the result from the callback.
-                            { stateAfterRememberJump
-                                | readFromGameConsecutiveTimeoutsCount = stateAfterRememberJump.readFromGameConsecutiveTimeoutsCount + 1
-                            }
-
-                        Just callbackReturnValueAsString ->
-                            case callbackReturnValueAsString |> Json.Decode.decodeString decodeVillageByCoordinatesResult of
-                                Err error ->
-                                    { stateAfterRememberJump
-                                        | parseResponseError = Just error
-                                        , readFromGameConsecutiveTimeoutsCount = 0
-                                    }
-
-                                Ok villageByCoordinates ->
-                                    { stateAfterRememberJump
-                                        | coordinatesLastCheck =
-                                            stateAfterRememberJump.coordinatesLastCheck
-                                                |> Dict.insert
-                                                    ( readVillageByCoordinatesResponse.villageCoordinates.x, readVillageByCoordinatesResponse.villageCoordinates.y )
-                                                    { timeInMilliseconds = stateAfterRememberJump.timeInMilliseconds
-                                                    , result = villageByCoordinates
-                                                    }
-                                        , numberOfReadsFromCoordinates = stateAfterRememberJump.numberOfReadsFromCoordinates + 1
-                                        , readFromGameConsecutiveTimeoutsCount = 0
-                                    }
+                    villagesByCoordinatesResponse.villagesData
+                        |> List.foldl
+                            (\villageByCoordinates intermediateState ->
+                                { intermediateState
+                                    | coordinatesLastCheck =
+                                        intermediateState.coordinatesLastCheck
+                                            |> Dict.insert
+                                                ( villageByCoordinates.villageCoordinates.x, villageByCoordinates.villageCoordinates.y )
+                                                { timeInMilliseconds = intermediateState.timeInMilliseconds
+                                                , result = villageByCoordinates.villageData
+                                                }
+                                    , numberOfReadsFromCoordinates = intermediateState.numberOfReadsFromCoordinates + 1
+                                    , readFromGameConsecutiveTimeoutsCount = 0
+                                }
+                            )
+                            stateAfterRememberJump
 
                 SendPresetAttackToCoordinatesResponse sendPresetAttackToCoordinatesResponse ->
                     let
@@ -1022,17 +1117,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                     { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
 
                 RequestReportListResponse requestReportList ->
-                    let
-                        decodeReportListResult =
-                            runJavascriptInCurrentPageResponse.callbackReturnValueAsString
-                                |> Maybe.withDefault "Looks like the callback was not invoked in time."
-                                |> Json.Decode.decodeString decodeRequestReportListCallbackData
-
-                        -- TODO: Remember specific case of timeout: This information is useful to decide when and how to retry.
-                    in
-                    { stateBefore
-                        | lastRequestReportListResult = Just { request = requestReportList, decodeResponseResult = decodeReportListResult }
-                    }
+                    { stateBefore | lastRequestReportListResult = Just requestReportList }
 
 
 maintainGameClient : BotState -> Maybe (DecisionPathNode InFarmCycleResponse)
@@ -1183,7 +1268,11 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                         ("Search for village at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
                         (endDecisionPath
                             (ContinueFarmCycle
-                                (Just (RequestToPage (VillageByCoordinatesRequest { coordinates = coordinates, jumpToVillage = False })))
+                                (Just
+                                    (RequestToPage
+                                        (requestToPageStructureToReadMapChunkContainingCoordinates coordinates)
+                                    )
+                                )
                             )
                         )
 
@@ -1349,6 +1438,31 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                 )
 
 
+requestToPageStructureToReadMapChunkContainingCoordinates : VillageCoordinates -> RequestToPageStructure
+requestToPageStructureToReadMapChunkContainingCoordinates villageCoordinates =
+    let
+        mapChunkSideLength =
+            10
+
+        mapChunkX =
+            (villageCoordinates.x // mapChunkSideLength) * mapChunkSideLength
+
+        mapChunkY =
+            (villageCoordinates.y // mapChunkSideLength) * mapChunkSideLength
+
+        coordinatesToRead =
+            List.range mapChunkX (mapChunkX + mapChunkSideLength - 1)
+                |> List.concatMap
+                    (\x ->
+                        List.range mapChunkY (mapChunkY + mapChunkSideLength - 1)
+                            |> List.map (\y -> { x = x, y = y })
+                    )
+    in
+    coordinatesToRead
+        |> List.map (\coordinates -> { coordinates = coordinates, jumpToVillage = False })
+        |> VillagesByCoordinatesRequest
+
+
 describeVillageCompletion : VillageCompletedStructure -> { decisionBranch : String, cycleStatsGroup : String }
 describeVillageCompletion villageCompletion =
     case villageCompletion of
@@ -1400,7 +1514,7 @@ requestToJumpToVillageIfNotYetDone state coordinates =
                         - 7000
     in
     if needToJumpThere then
-        Just (VillageByCoordinatesRequest { coordinates = coordinates, jumpToVillage = True })
+        Just (VillagesByCoordinatesRequest [ { coordinates = coordinates, jumpToVillage = True } ])
 
     else
         Nothing
@@ -1587,9 +1701,7 @@ pickBestMatchingArmyPresetForVillage settings presets ( villageId, villageDetail
                             farmPresetFilter
                                 |> List.any
                                     (\presetFilter ->
-                                        String.contains
-                                            (String.toLower presetFilter)
-                                            (String.toLower preset.name)
+                                        stringContainsIgnoringCase presetFilter preset.name
                                     )
                         )
                     |> List.sortBy (.name >> String.toLower)
@@ -1694,8 +1806,10 @@ componentsForRequestToPage requestToPage =
         ReadArmyPresets ->
             { javascript = getPresetsScript, waitForCallbackDuration = Nothing }
 
-        VillageByCoordinatesRequest { coordinates, jumpToVillage } ->
-            { javascript = startVillageByCoordinatesScript coordinates { jumpToVillage = jumpToVillage }, waitForCallbackDuration = Just 800 }
+        VillagesByCoordinatesRequest villagesArguments ->
+            { javascript = startVillagesByCoordinatesScript villagesArguments
+            , waitForCallbackDuration = Nothing
+            }
 
         SendPresetAttackToCoordinatesRequest { coordinates, presetId } ->
             { javascript = startSendPresetAttackToCoordinatesScript coordinates { presetId = presetId }, waitForCallbackDuration = Nothing }
@@ -1714,8 +1828,9 @@ readRootInformationScript =
 tribalWars2 = (function(){
     if (typeof angular == 'undefined' || !(angular.element(document.body).injector().has('modelDataService'))) return { NotInTribalWars: true};
 
-    modelDataService = angular.element(document.body).injector().get('modelDataService');
-    selectedCharacter = modelDataService.getSelectedCharacter()
+    let modelDataService = angular.element(document.body).injector().get('modelDataService');
+    let selectedCharacter = modelDataService.getSelectedCharacter();
+
     if (selectedCharacter == null)
         return { NotInTribalWars: true};
 
@@ -1739,7 +1854,7 @@ decodeResponseFromBrowser =
     Json.Decode.oneOf
         [ decodeRootInformation |> Json.Decode.map RootInformation
         , decodeReadSelectedCharacterVillageDetailsResponse |> Json.Decode.map ReadSelectedCharacterVillageDetailsResponse
-        , decodeVillageByCoordinatesResponse |> Json.Decode.map VillageByCoordinatesResponse
+        , decodeVillagesByCoordinatesResponse |> Json.Decode.map VillagesByCoordinatesResponse
         , decodeRequestReportListResponse |> Json.Decode.map RequestReportListResponse
         , decodeGetPresetsResponse |> Json.Decode.map GetPresetsResponse
         , decodeActivatedVillageResponse |> Json.Decode.map (always ActivatedVillageResponse)
@@ -1772,7 +1887,7 @@ readSelectedCharacterVillageDetailsScript : Int -> String
 readSelectedCharacterVillageDetailsScript villageId =
     """
 (function () {
-    modelDataService = angular.element(document.body).injector().get('modelDataService');
+    let modelDataService = angular.element(document.body).injector().get('modelDataService');
 
     return JSON.stringify({ selectedCharacterVillage : modelDataService.getSelectedCharacter().data.villages[""" ++ "\"" ++ (villageId |> String.fromInt) ++ "\"" ++ """] });
 })()
@@ -1848,49 +1963,62 @@ decodeVillageDetailsUnitCount =
         (Json.Decode.field "available" Json.Decode.int)
 
 
-{-| Example result:
-{"coordinates":{"x":498,"y":502},"villageByCoordinates":{"id":24,"name":"Pueblo de e.é45","x":498,"y":502,"character\_id":null,"province\_name":"Daufahlsur","character\_name":null,"character\_points":null,"points":96,"fortress":0,"tribe\_id":null,"tribe\_name":null,"tribe\_tag":null,"tribe\_points":null,"attack\_protection":0,"barbarian\_boost":null,"flags":{},"affiliation":"barbarian"}}
-
-When there is no village:
-{"coordinates":{"x":499,"y":502},"villageByCoordinates":{"villages":[]}}
-
--}
-startVillageByCoordinatesScript : VillageCoordinates -> { jumpToVillage : Bool } -> String
-startVillageByCoordinatesScript coordinates { jumpToVillage } =
+startVillagesByCoordinatesScript : List { coordinates : VillageCoordinates, jumpToVillage : Bool } -> String
+startVillagesByCoordinatesScript villages =
     let
         argumentJson =
-            [ ( "coordinates", coordinates |> jsonEncodeCoordinates )
-            , ( "jumpToVillage", jumpToVillage |> Json.Encode.bool )
-            ]
-                |> Json.Encode.object
+            villages
+                |> Json.Encode.list
+                    (\village ->
+                        [ ( "coordinates", village.coordinates |> jsonEncodeCoordinates )
+                        , ( "jumpToVillage", village.jumpToVillage |> Json.Encode.bool )
+                        ]
+                            |> Json.Encode.object
+                    )
                 |> Json.Encode.encode 0
     in
     """
-(function readVillageByCoordinates(argument) {
-        coordinates = argument.coordinates;
-        jumpToVillage = argument.jumpToVillage;
+(async function readVillagesByCoordinates(argument) {
 
-        autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
-        mapService = angular.element(document.body).injector().get('mapService');
+        let autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
+        let mapService = angular.element(document.body).injector().get('mapService');
 
-        autoCompleteService.villageByCoordinates(coordinates, function(villageData) {
-            //  console.log(JSON.stringify({ coordinates : coordinates, villageByCoordinates: villageData}));
-            ____callback____(JSON.stringify(villageData));
+        function villageByCoordinatesPromise(coordinates) {
+            return new Promise(resolve => {
+
+                autoCompleteService.villageByCoordinates(coordinates, function(villageData) {
+                    resolve(villageData);
+                });
+            });
+            }
+
+        const villagesData = [];
+
+        for (const villageArgument of argument) {
+
+            let villageCoordinates = villageArgument.coordinates;
+            let jumpToVillage = villageArgument.jumpToVillage;
+
+            let villageData = await villageByCoordinatesPromise(villageCoordinates);
+
+            villagesData.push({ villageCoordinates : villageCoordinates, villageData : villageData });
 
             if(jumpToVillage)
             {
                 if(villageData.id == null)
                 {
-                    //  console.log("Did not find village at " + JSON.stringify(coordinates));
+                    //  console.log("Did not find village at " + JSON.stringify(villageCoordinates));
                 }
                 else
                 {
-                    mapService.jumpToVillage(coordinates.x, coordinates.y, villageData.id);
+                    mapService.jumpToVillage(villageCoordinates.x, villageCoordinates.y, villageData.id);
                 }
             }
-        });
+        }
 
-        return JSON.stringify({ startedVillageByCoordinates : argument });
+        // TODO: Add timeout for villagesData (wrapped in promise) to increment readFromGameConsecutiveTimeoutsCount?
+
+        return JSON.stringify({ villagesByCoordinates : { argument : argument, villagesData : villagesData }});
 })(""" ++ argumentJson ++ ")"
 
 
@@ -1899,17 +2027,41 @@ jsonEncodeCoordinates { x, y } =
     [ ( "x", x ), ( "y", y ) ] |> List.map (Tuple.mapSecond Json.Encode.int) |> Json.Encode.object
 
 
-decodeVillageByCoordinatesResponse : Json.Decode.Decoder VillageByCoordinatesResponseStructure
-decodeVillageByCoordinatesResponse =
-    Json.Decode.field "startedVillageByCoordinates"
-        (Json.Decode.map2 VillageByCoordinatesResponseStructure
-            (Json.Decode.field "coordinates"
+decodeVillagesByCoordinatesResponse : Json.Decode.Decoder VillagesByCoordinatesResponseStructure
+decodeVillagesByCoordinatesResponse =
+    Json.Decode.field "villagesByCoordinates"
+        (Json.Decode.map2 VillagesByCoordinatesResponseStructure
+            (Json.Decode.field "argument"
+                (Json.Decode.list
+                    (Json.Decode.map2 VillageByCoordinatesResponseStructure
+                        (Json.Decode.field "coordinates"
+                            (Json.Decode.map2 VillageCoordinates
+                                (Json.Decode.field "x" Json.Decode.int)
+                                (Json.Decode.field "y" Json.Decode.int)
+                            )
+                        )
+                        (Json.Decode.field "jumpToVillage" Json.Decode.bool)
+                    )
+                )
+            )
+            (Json.Decode.field "villagesData" decodeVillagesByCoordinatesResult)
+        )
+
+
+decodeVillagesByCoordinatesResult : Json.Decode.Decoder (List { villageCoordinates : VillageCoordinates, villageData : VillageByCoordinatesResult })
+decodeVillagesByCoordinatesResult =
+    Json.Decode.list
+        (Json.Decode.map2
+            (\villageCoordinates villageData ->
+                { villageCoordinates = villageCoordinates, villageData = villageData }
+            )
+            (Json.Decode.field "villageCoordinates"
                 (Json.Decode.map2 VillageCoordinates
                     (Json.Decode.field "x" Json.Decode.int)
                     (Json.Decode.field "y" Json.Decode.int)
                 )
             )
-            (Json.Decode.field "jumpToVillage" Json.Decode.bool)
+            (Json.Decode.field "villageData" decodeVillageByCoordinatesResult)
         )
 
 
@@ -1937,7 +2089,7 @@ decodeVillageByCoordinatesResult =
 {-| 2020-03-22 There are also villages without 'points':
 { "x": 597, "y": 545, "name": "Freund einladen", "id": -2, "affiliation": "other" }
 
-2020-12-21 Drklord discovered a case without 'affiliation' field at <https://forum.botengine.org/t/farm-manager-tribal-wars-2-farmbot/3038/207> :
+2020-12-21 Drklord discovered a case without 'affiliation' field at <https://forum.botlab.org/t/farm-manager-tribal-wars-2-farmbot/3038/207> :
 { "x" : 508, "y" : 456, "name" : "Invite a friend", "id" : -2 }
 
 -}
@@ -1966,7 +2118,7 @@ getPresetsScript : String
 getPresetsScript =
     """
 (function getPresets() {
-        presetListService = angular.element(document.body).injector().get('presetListService');
+        let presetListService = angular.element(document.body).injector().get('presetListService');
 
         return JSON.stringify({ getPresets: presetListService.getPresets() });
 })()"""
@@ -2001,18 +2153,18 @@ startSendPresetAttackToCoordinatesScript coordinates { presetId } =
     in
     """
 (function sendPresetAttackToCoordinates(argument) {
-    coordinates = argument.coordinates;
-    presetId = argument.presetId;
+    let coordinates = argument.coordinates;
+    let presetId = argument.presetId;
 
-    autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
-    socketService = angular.element(document.body).injector().get('socketService');
-    routeProvider = angular.element(document.body).injector().get('routeProvider');
-    mapService = angular.element(document.body).injector().get('mapService');
-    presetService = angular.element(document.body).injector().get('presetService');
+    let autoCompleteService = angular.element(document.body).injector().get('autoCompleteService');
+    let socketService = angular.element(document.body).injector().get('socketService');
+    let routeProvider = angular.element(document.body).injector().get('routeProvider');
+    let mapService = angular.element(document.body).injector().get('mapService');
+    let presetService = angular.element(document.body).injector().get('presetService');
 
     sendPresetAttack = function sendPresetAttack(presetId, targetVillageId) {
         //  TODO: Get 'type' from 'conf/commandTypes'.TYPES.ATTACK
-        type = 'attack';
+        let type = 'attack';
 
         socketService.emit(routeProvider.GET_ATTACKING_FACTOR, {
             'target_id' : targetVillageId
@@ -2067,7 +2219,7 @@ villageMenuActivateVillageScript =
         return document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
     };
 
-    var contextMenuEntry = getXPathResultFirstNode("//*[contains(@class, 'context-menu-item') and contains(@class, 'activate')]//*[contains(@ng-click, 'openSubMenu')]");
+    let contextMenuEntry = getXPathResultFirstNode("//*[contains(@class, 'context-menu-item') and contains(@class, 'activate')]//*[contains(@ng-click, 'openSubMenu')]");
     
     contextMenuEntry.click();
 
@@ -2108,30 +2260,20 @@ startRequestReportListScript request =
                 |> Json.Encode.encode 0
     in
     """
-(function requestReportList(argument) {
+(async function requestReportList(argument) {
 
-        reportService = angular.element(document.body).injector().get('reportService');
+        let reportService = angular.element(document.body).injector().get('reportService');
 
-        reportService.requestReportList('battle', argument.offset, argument.count, null, { "BATTLE_RESULTS": { "1": false, "2": false, "3": false }, "BATTLE_TYPES": { "attack": true, "defense": true, "support": true, "scouting": true }, "OTHERS_TYPES": { "trade": true, "system": true, "misc": true }, "MISC": { "favourite": false, "full_haul": false, "forwarded": false, "character": false } }, function (reportsData) {
+        function requestReportListAsync(argument) {
+            return new Promise(resolve => {
 
+                reportService.requestReportList('battle', argument.offset, argument.count, null, { "BATTLE_RESULTS": { "1": false, "2": false, "3": false }, "BATTLE_TYPES": { "attack": true, "defense": true, "support": true, "scouting": true }, "OTHERS_TYPES": { "trade": true, "system": true, "misc": true }, "MISC": { "favourite": false, "full_haul": false, "forwarded": false, "character": false } }, resolve);
+            });
+            }
 
-            /*
-            TODO: Remove.
-            Inspect if the callback given to requestReportList is invoked with a proper value.
-            */
-            console.log(JSON.stringify(reportsData));
+        let reportListData = await requestReportListAsync(argument);
 
-
-            ____callback____(JSON.stringify(reportsData));
-
-
-            /*
-            TODO: Remove.
-            */
-            console.log("Returned from callback");
-        });
-
-        return JSON.stringify({ startedRequestReportList : argument });
+        return JSON.stringify({ startedRequestReportList : { argument : argument, reportListData : reportListData } });
 })(""" ++ argumentJson ++ ")"
 
 
@@ -2139,13 +2281,18 @@ decodeRequestReportListResponse : Json.Decode.Decoder RequestReportListResponseS
 decodeRequestReportListResponse =
     Json.Decode.field "startedRequestReportList"
         (Json.Decode.map2 RequestReportListResponseStructure
-            (Json.Decode.field "offset" Json.Decode.int)
-            (Json.Decode.field "count" Json.Decode.int)
+            (Json.Decode.field "argument"
+                (Json.Decode.map2 (\offset count -> { offset = offset, count = count })
+                    (Json.Decode.field "offset" Json.Decode.int)
+                    (Json.Decode.field "count" Json.Decode.int)
+                )
+            )
+            (Json.Decode.field "reportListData" decodeRequestReportListData)
         )
 
 
-decodeRequestReportListCallbackData : Json.Decode.Decoder RequestReportListCallbackDataStructure
-decodeRequestReportListCallbackData =
+decodeRequestReportListData : Json.Decode.Decoder RequestReportListCallbackDataStructure
+decodeRequestReportListData =
     Json.Decode.map3 RequestReportListCallbackDataStructure
         (Json.Decode.field "offset" Json.Decode.int)
         (Json.Decode.field "total" Json.Decode.int)
@@ -2326,12 +2473,7 @@ statusMessageFromState state { activityDecisionStages } =
                 Just requestReportListResult ->
                     let
                         responseReport =
-                            case requestReportListResult.decodeResponseResult of
-                                Ok requestReportListResponse ->
-                                    "Received IDs of " ++ (requestReportListResponse.reports |> List.length |> String.fromInt) ++ " reports"
-
-                                Err decodeError ->
-                                    "Failed to decode the response: " ++ Json.Decode.errorToString decodeError
+                            "Received IDs of " ++ (requestReportListResult.reportListData.reports |> List.length |> String.fromInt) ++ " reports"
                     in
                     "Read the list of battle reports: " ++ responseReport
 

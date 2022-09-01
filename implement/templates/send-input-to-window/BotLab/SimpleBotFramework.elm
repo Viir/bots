@@ -2,22 +2,25 @@
    This framework helps with bot development by taking care of these common tasks:
 
    + Keeping track of the window the bot should work in so that the bot reads from and sends input to the right window.
-   + Set up the volatile host to interface with Windows.
+   + Set up the volatile process to interface with Windows.
    + Map typical tasks like sending inputs or taking screenshots to the Windows API.
 
    To use this framework:
 
-   + Wrap you bots `processEvent` function with `BotEngine.SimpleBotFramework.processEvent`.
-   + Wrap you bots `initState` function with `BotEngine.SimpleBotFramework.initState`.
+   + Wrap you bots `processEvent` function with `BotLab.SimpleBotFramework.processEvent`.
+   + Wrap you bots `initState` function with `BotLab.SimpleBotFramework.initState`.
 -}
 
 
 module BotLab.SimpleBotFramework exposing (..)
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
-import BotLab.VolatileHostWindowsApi as VolatileHostWindowsApi
+import Common.EffectOnWindow exposing (MouseButton(..))
+import CompilationInterface.SourceFiles
 import Dict
 import Json.Decode
+import List.Extra
+import Windows.VolatileProcessInterface as VolatileProcessInterface
 
 
 type alias BotEvent =
@@ -46,14 +49,26 @@ type alias CompletedTaskStructure =
 
 type TaskResultStructure
     = NoResultValue
-    | TakeScreenshotResult ImageStructure
+    | ReadFromWindowResult ReadFromWindowResultStruct ImageStructure
+
+
+type alias ReadFromWindowResultStruct =
+    { windowSize : Location2d
+    , windowClientRectOffset : Location2d
+    , windowClientAreaSize : Location2d
+    }
 
 
 type alias ImageStructure =
+    { imageAsDict : Dict.Dict ( Int, Int ) PixelValue
+    , imageBinned2x2AsDict : Dict.Dict ( Int, Int ) PixelValue
+    }
+
+
+type alias ImageCropStructure =
     { imageWidth : Int
     , imageHeight : Int
     , imageAsDict : Dict.Dict ( Int, Int ) PixelValue
-    , imageBinned2x2AsDict : Dict.Dict ( Int, Int ) PixelValue
     }
 
 
@@ -87,44 +102,44 @@ type alias Location2d =
     { x : Int, y : Int }
 
 
-type MouseButton
-    = MouseButtonLeft
-    | MouseButtonRight
-
-
-type KeyboardKey
-    = KeyboardKeyFromVirtualKeyCode Int
-
-
 type Task
     = BringWindowToForeground
-    | MoveMouseToLocation Location2d
-    | MouseButtonDown MouseButton
-    | MouseButtonUp MouseButton
-    | KeyboardKeyDown KeyboardKey
-    | KeyboardKeyUp KeyboardKey
-    | TakeScreenshot
+    | ReadFromWindow GetImageDataFromReadingStructure
+    | GetImageDataFromReading GetImageDataFromReadingStructure
+    | EffectSequenceOnWindowTask (List VolatileProcessInterface.EffectSequenceOnWindowElement)
 
 
 type alias State simpleBotState =
     { timeInMilliseconds : Int
-    , createVolatileHostResult : Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
-    , windowId : Maybe VolatileHostWindowsApi.WindowId
-    , lastWindowTitleMeasurement : Maybe { timeInMilliseconds : Int, windowTitle : String }
-    , waitingForTaskId : Maybe InterfaceToHost.TaskId
+    , createVolatileProcessResult :
+        Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
+    , targetWindow : Maybe { windowId : String, windowTitle : String }
+    , lastReadFromWindowResult :
+        Maybe
+            { readFromWindowComplete : VolatileProcessInterface.ReadFromWindowCompleteStruct
+            , aggregateImage : ImageStructure
+            }
+    , tasksInProgress : Dict.Dict String TaskInProgress
+    , lastTaskIndex : Int
     , error : Maybe String
-    , settingsString : Maybe String
-    , simpleBotInitState : simpleBotState
-    , simpleBot : Maybe simpleBotState
-    , simpleBotLastResponse : Maybe BotResponse
-    , simpleBotTasksInProgress : List ( InterfaceToHost.TaskId, StartTaskStructure )
+    , simpleBot : simpleBotState
+    , simpleBotAggregateQueueResponse : Maybe BotResponse
+    }
+
+
+type alias TaskInProgress =
+    { startTimeInMilliseconds : Int
+    , origin : TaskToHostOrigin
     }
 
 
 type FrameworkSetupStepActivity
     = StopWithResult { resultDescription : String }
     | ContinueSetupWithTask { task : InterfaceToHost.StartTaskStructure, taskDescription : String }
-    | OperateSimpleBot { buildTaskFromTaskOnWindow : VolatileHostWindowsApi.TaskOnWindowStructure -> InterfaceToHost.Task }
+    | OperateSimpleBot
+        { windowId : String
+        , buildHostTaskFromRequest : VolatileProcessInterface.RequestToVolatileProcess -> InterfaceToHost.Task
+        }
 
 
 type LocatePatternInImageApproach
@@ -138,19 +153,45 @@ type ImageSearchRegion
     = SearchEverywhere
 
 
+type TaskToHostOrigin
+    = FrameworkOrigin
+    | BotOrigin TaskId Task
+
+
+type InternalBotEventResponse
+    = InternalContinueSession InternalContinueSessionStructure
+    | InternalFinishSession InterfaceToHost.FinishSessionStructure
+
+
+type alias InternalContinueSessionStructure =
+    { statusDescriptionText : String
+    , startTasks : List InternalStartTaskStructure
+    , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
+    }
+
+
+type alias InternalStartTaskStructure =
+    { taskId : InterfaceToHost.TaskId
+    , task : InterfaceToHost.Task
+    , taskOrigin : TaskToHostOrigin
+    }
+
+
+type alias GetImageDataFromReadingStructure =
+    VolatileProcessInterface.GetImageDataFromReadingStructure
+
+
 initState : simpleBotState -> State simpleBotState
 initState simpleBotInitState =
     { timeInMilliseconds = 0
-    , createVolatileHostResult = Nothing
-    , windowId = Nothing
-    , lastWindowTitleMeasurement = Nothing
-    , waitingForTaskId = Nothing
+    , createVolatileProcessResult = Nothing
+    , targetWindow = Nothing
+    , lastReadFromWindowResult = Nothing
+    , tasksInProgress = Dict.empty
+    , lastTaskIndex = 0
     , error = Nothing
-    , settingsString = Nothing
-    , simpleBotInitState = simpleBotInitState
-    , simpleBot = Nothing
-    , simpleBotLastResponse = Nothing
-    , simpleBotTasksInProgress = []
+    , simpleBot = simpleBotInitState
+    , simpleBotAggregateQueueResponse = Nothing
     }
 
 
@@ -159,265 +200,581 @@ processEvent :
     -> InterfaceToHost.BotEvent
     -> State simpleBotState
     -> ( State simpleBotState, InterfaceToHost.BotEventResponse )
-processEvent simpleBotProcessEvent event stateBefore =
+processEvent simpleBotProcessEvent event stateBeforeUpdateTime =
     let
-        state =
-            stateBefore |> integrateEvent event
+        stateBefore =
+            { stateBeforeUpdateTime | timeInMilliseconds = event.timeInMilliseconds }
+    in
+    stateBefore
+        |> integrateEvent event
+        |> processEventTrackingTasksInProgress simpleBotProcessEvent event
+        |> processEventAddStatusDescription
+
+
+processEventAddStatusDescription : ( State simpleBotState, InterfaceToHost.BotEventResponse ) -> ( State simpleBotState, InterfaceToHost.BotEventResponse )
+processEventAddStatusDescription ( state, responseBeforeAddStatusDesc ) =
+    let
+        frameworkStatusDescription =
+            (state |> statusDescriptionFromState) ++ "\n"
+
+        botStatusText =
+            state.simpleBotAggregateQueueResponse
+                |> Maybe.map
+                    (\simpleBotLastResponse ->
+                        case simpleBotLastResponse of
+                            ContinueSession continueSession ->
+                                continueSession.statusDescriptionText
+
+                            FinishSession finishSession ->
+                                finishSession.statusDescriptionText
+                    )
+                |> Maybe.withDefault ""
 
         generalStatusDescription =
-            (state |> statusDescriptionFromState) ++ "\n"
+            [ botStatusText
+            , "--- Framework ---"
+            , frameworkStatusDescription
+            ]
+                |> String.join "\n"
+
+        response =
+            case responseBeforeAddStatusDesc of
+                InterfaceToHost.FinishSession finishSession ->
+                    InterfaceToHost.FinishSession
+                        { finishSession
+                            | statusDescriptionText = generalStatusDescription ++ finishSession.statusDescriptionText
+                        }
+
+                InterfaceToHost.ContinueSession continueSession ->
+                    InterfaceToHost.ContinueSession
+                        { continueSession
+                            | statusDescriptionText = generalStatusDescription ++ continueSession.statusDescriptionText
+                        }
     in
+    ( state, response )
+
+
+processEventTrackingTasksInProgress :
+    (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
+    -> InterfaceToHost.BotEvent
+    -> State simpleBotState
+    -> ( State simpleBotState, InterfaceToHost.BotEventResponse )
+processEventTrackingTasksInProgress simpleBotProcessEvent event stateBefore =
+    let
+        ( tasksInProgressAfterTaskCompleted, maybeCompletedBotTask ) =
+            case event.eventAtTime of
+                InterfaceToHost.TaskCompletedEvent taskCompletedEvent ->
+                    case taskCompletedEvent.taskId of
+                        InterfaceToHost.TaskIdFromString taskIdString ->
+                            let
+                                maybeTaskFromBot =
+                                    case stateBefore.tasksInProgress |> Dict.get taskIdString of
+                                        Nothing ->
+                                            Nothing
+
+                                        Just taskInProgress ->
+                                            case taskInProgress.origin of
+                                                BotOrigin taskIdFromBot taskFromBot ->
+                                                    Just ( taskIdFromBot, taskFromBot )
+
+                                                FrameworkOrigin ->
+                                                    Nothing
+                            in
+                            ( stateBefore.tasksInProgress |> Dict.remove taskIdString
+                            , maybeTaskFromBot
+                            )
+
+                _ ->
+                    ( stateBefore.tasksInProgress, Nothing )
+
+        tasksInProgress =
+            tasksInProgressAfterTaskCompleted
+
+        ( state, response ) =
+            processEventLessTrackingTasks
+                simpleBotProcessEvent
+                event
+                maybeCompletedBotTask
+                { stateBefore
+                    | tasksInProgress = tasksInProgressAfterTaskCompleted
+                }
+    in
+    case response of
+        InternalFinishSession finishSession ->
+            ( state, InterfaceToHost.FinishSession finishSession )
+
+        InternalContinueSession continueSession ->
+            let
+                startTasks =
+                    continueSession.startTasks
+                        |> List.indexedMap
+                            (\startTaskIndex startTask ->
+                                case startTask.taskId of
+                                    InterfaceToHost.TaskIdFromString taskIdString ->
+                                        { startTask
+                                            | taskId =
+                                                InterfaceToHost.TaskIdFromString
+                                                    (taskIdString
+                                                        ++ "-"
+                                                        ++ String.fromInt
+                                                            (stateBefore.lastTaskIndex
+                                                                + 1
+                                                                + startTaskIndex
+                                                            )
+                                                    )
+                                        }
+                            )
+
+                lastTaskIndex =
+                    stateBefore.lastTaskIndex + List.length startTasks
+
+                newTasksInProgress =
+                    startTasks
+                        |> List.map
+                            (\startTask ->
+                                case startTask.taskId of
+                                    InterfaceToHost.TaskIdFromString taskIdString ->
+                                        ( taskIdString
+                                        , { startTimeInMilliseconds = state.timeInMilliseconds
+                                          , origin = startTask.taskOrigin
+                                          }
+                                        )
+                            )
+                        |> Dict.fromList
+
+                startTasksForHost =
+                    startTasks
+                        |> List.map
+                            (\startTask ->
+                                { taskId = startTask.taskId
+                                , task = startTask.task
+                                }
+                            )
+            in
+            ( { state
+                | lastTaskIndex = lastTaskIndex
+                , tasksInProgress = tasksInProgress |> Dict.union newTasksInProgress
+              }
+            , InterfaceToHost.ContinueSession
+                { statusDescriptionText = continueSession.statusDescriptionText
+                , startTasks = startTasksForHost
+                , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
+                }
+            )
+
+
+processEventLessTrackingTasks :
+    (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
+    -> InterfaceToHost.BotEvent
+    -> Maybe ( TaskId, Task )
+    -> State simpleBotState
+    -> ( State simpleBotState, InternalBotEventResponse )
+processEventLessTrackingTasks simpleBotProcessEvent event maybeCompletedBotTask stateBefore =
     case stateBefore.error of
         Just error ->
-            ( state, InterfaceToHost.FinishSession { statusDescriptionText = generalStatusDescription ++ "Error: " ++ error } )
+            ( stateBefore
+            , InternalFinishSession { statusDescriptionText = "Error: " ++ error }
+            )
 
         Nothing ->
-            case state |> getNextSetupStepWithDescriptionFromState of
-                StopWithResult { resultDescription } ->
-                    ( state
-                    , InterfaceToHost.FinishSession
-                        { statusDescriptionText = generalStatusDescription ++ "Stopped with result: " ++ resultDescription
-                        }
-                    )
-
-                ContinueSetupWithTask continue ->
-                    ( state
-                    , InterfaceToHost.ContinueSession
-                        { startTasks = [ continue.task ]
-                        , statusDescriptionText = generalStatusDescription ++ "I continue to set up the framework: Current step: " ++ continue.taskDescription
-                        , notifyWhenArrivedAtTime = Nothing
-                        }
-                    )
-
-                OperateSimpleBot { buildTaskFromTaskOnWindow } ->
-                    let
-                        ( simpleBotStateBefore, simpleBotEventsBefore ) =
-                            case state.simpleBot of
-                                Nothing ->
-                                    let
-                                        configurationEvents =
-                                            case state.settingsString of
-                                                Nothing ->
-                                                    []
-
-                                                Just settingsString ->
-                                                    [ BotSettingsChangedEvent settingsString ]
-                                    in
-                                    ( stateBefore.simpleBotInitState
-                                    , configurationEvents
-                                        ++ [ TimeArrivedEvent ]
-                                    )
-
-                                Just simpleBot ->
-                                    ( simpleBot, [] )
-
-                        simpleBotLastResponseNotifyWhenArrivedAtTime =
-                            case state.simpleBotLastResponse of
-                                Nothing ->
-                                    Nothing
-
-                                Just (ContinueSession simpleBotLastResponseContinue) ->
-                                    simpleBotLastResponseContinue.notifyWhenArrivedAtTime
-
-                                Just (FinishSession _) ->
-                                    Nothing
-
-                        arriveAtTimeEvents =
-                            case simpleBotLastResponseNotifyWhenArrivedAtTime of
-                                Nothing ->
-                                    []
-
-                                Just notifyWhenArrivedAtTime ->
-                                    if notifyWhenArrivedAtTime.timeInMilliseconds <= state.timeInMilliseconds then
-                                        [ TimeArrivedEvent ]
-
-                                    else
-                                        []
-
-                        mapCurrentEventToSimpleBotEventsResult =
-                            case event.eventAtTime of
-                                InterfaceToHost.TimeArrivedEvent ->
-                                    Ok ( [], state.simpleBotTasksInProgress )
-
-                                InterfaceToHost.BotSettingsChangedEvent settingsString ->
-                                    Ok ( [ BotSettingsChangedEvent settingsString ], state.simpleBotTasksInProgress )
-
-                                InterfaceToHost.SessionDurationPlannedEvent sessionDurationPlannedEvent ->
-                                    Ok ( [ SessionDurationPlannedEvent sessionDurationPlannedEvent ], state.simpleBotTasksInProgress )
-
-                                InterfaceToHost.TaskCompletedEvent completedTask ->
-                                    case state.simpleBotTasksInProgress |> List.filter (\( key, _ ) -> key == completedTask.taskId) |> List.head of
-                                        Nothing ->
-                                            Ok ( [], state.simpleBotTasksInProgress )
-
-                                        Just ( completedTaskInterfaceId, simpleBotTask ) ->
-                                            let
-                                                taskResultResult =
-                                                    case completedTask.taskResult of
-                                                        InterfaceToHost.CreateVolatileProcessResponse _ ->
-                                                            Err "CreateVolatileProcessResponse"
-
-                                                        InterfaceToHost.CompleteWithoutResult ->
-                                                            Err "CompleteWithoutResult"
-
-                                                        InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileHostResponse ->
-                                                            case requestToVolatileHostResponse of
-                                                                Err InterfaceToHost.ProcessNotFound ->
-                                                                    Err "Error running script in volatile process: ProcessNotFound"
-
-                                                                Err InterfaceToHost.FailedToAcquireInputFocus ->
-                                                                    Err "Error running script in volatile process: FailedToAcquireInputFocus"
-
-                                                                Ok volatileHostResponseSuccess ->
-                                                                    case volatileHostResponseSuccess.exceptionToString of
-                                                                        Just exceptionInVolatileHost ->
-                                                                            Err ("Exception in volatile process: " ++ exceptionInVolatileHost)
-
-                                                                        Nothing ->
-                                                                            case volatileHostResponseSuccess.returnValueToString |> Maybe.withDefault "" |> VolatileHostWindowsApi.deserializeResponseFromVolatileHost of
-                                                                                Err error ->
-                                                                                    Err ("Failed to parse response from volatile process: " ++ (error |> Json.Decode.errorToString))
-
-                                                                                Ok parsedResponse ->
-                                                                                    case simpleBotTask.task of
-                                                                                        BringWindowToForeground ->
-                                                                                            Ok NoResultValue
-
-                                                                                        MoveMouseToLocation _ ->
-                                                                                            Ok NoResultValue
-
-                                                                                        MouseButtonDown _ ->
-                                                                                            Ok NoResultValue
-
-                                                                                        MouseButtonUp _ ->
-                                                                                            Ok NoResultValue
-
-                                                                                        KeyboardKeyDown _ ->
-                                                                                            Ok NoResultValue
-
-                                                                                        KeyboardKeyUp _ ->
-                                                                                            Ok NoResultValue
-
-                                                                                        TakeScreenshot ->
-                                                                                            case parsedResponse of
-                                                                                                VolatileHostWindowsApi.TakeScreenshotResult takeScreenshotResult ->
-                                                                                                    Ok
-                                                                                                        (TakeScreenshotResult (deriveImageRepresentation takeScreenshotResult.pixels))
-
-                                                                                                _ ->
-                                                                                                    Err ("Unexpected return value from volatile host: " ++ (volatileHostResponseSuccess.returnValueToString |> Maybe.withDefault ""))
-                                            in
-                                            case taskResultResult of
-                                                Err error ->
-                                                    Err ("Unexpected task result: " ++ error)
-
-                                                Ok taskResultOk ->
-                                                    Ok
-                                                        ( [ TaskCompletedEvent
-                                                                { taskId = simpleBotTask.taskId, taskResult = taskResultOk }
-                                                          ]
-                                                        , state.simpleBotTasksInProgress
-                                                            |> List.filter (Tuple.first >> (/=) completedTaskInterfaceId)
-                                                        )
-
-                        ( stateAfterPropagatingEventToSimpleBot, response ) =
-                            case mapCurrentEventToSimpleBotEventsResult of
-                                Err error ->
-                                    ( { state | error = Just error }
-                                    , InterfaceToHost.FinishSession { statusDescriptionText = generalStatusDescription ++ "Error: " ++ error }
-                                    )
-
-                                Ok ( simpleBotEventsFromCurrentEvent, simpleBotTasksInProgressAfterRemoval ) ->
-                                    let
-                                        botEvents =
-                                            (simpleBotEventsBefore ++ arriveAtTimeEvents ++ simpleBotEventsFromCurrentEvent)
-                                                |> List.map
-                                                    (\eventAtTime ->
-                                                        { timeInMilliseconds = state.timeInMilliseconds
-                                                        , eventAtTime = eventAtTime
-                                                        }
-                                                    )
-
-                                        ( simpleBotState, simpleBotResponse ) =
-                                            simpleBotStateBefore
-                                                |> processSequenceOfSimpleBotEventsAndCombineResponses
-                                                    simpleBotProcessEvent
-                                                    botEvents
-
-                                        simpleBotLastResponse =
-                                            [ simpleBotResponse, state.simpleBotLastResponse ]
-                                                |> List.filterMap identity
-                                                |> List.head
-
-                                        ( responseFromSimpleBotLastResponse, simpleBotTasksInProgress ) =
-                                            case simpleBotLastResponse of
-                                                Nothing ->
-                                                    ( InterfaceToHost.ContinueSession
-                                                        { statusDescriptionText = generalStatusDescription ++ "Operate bot:\nNo response from bot so far."
-                                                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = state.timeInMilliseconds + 1000 }
-                                                        , startTasks = []
-                                                        }
-                                                    , simpleBotTasksInProgressAfterRemoval
-                                                    )
-
-                                                Just (ContinueSession continueSession) ->
-                                                    let
-                                                        startTasks =
-                                                            continueSession.startTasks
-                                                                |> List.map
-                                                                    (\simpleBotTaskWithId ->
-                                                                        ( { taskId = simpleBotTaskWithId.taskId |> taskIdFromSimpleBotTaskId
-                                                                          , task = simpleBotTaskWithId.task |> taskOnWindowFromSimpleBotTask |> buildTaskFromTaskOnWindow
-                                                                          }
-                                                                        , simpleBotTaskWithId
-                                                                        )
-                                                                    )
-
-                                                        addedSimpleBotTasksInProgress =
-                                                            startTasks
-                                                                |> List.map
-                                                                    (\( interfaceStartTask, simpleBotStartTask ) ->
-                                                                        ( interfaceStartTask.taskId, simpleBotStartTask )
-                                                                    )
-                                                    in
-                                                    ( InterfaceToHost.ContinueSession
-                                                        { statusDescriptionText = generalStatusDescription ++ "Operate bot:\n" ++ continueSession.statusDescriptionText
-                                                        , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
-                                                        , startTasks = startTasks |> List.map Tuple.first
-                                                        }
-                                                    , simpleBotTasksInProgressAfterRemoval ++ addedSimpleBotTasksInProgress
-                                                    )
-
-                                                Just (FinishSession finishSession) ->
-                                                    ( InterfaceToHost.FinishSession
-                                                        { statusDescriptionText = generalStatusDescription ++ "Finish session: " ++ finishSession.statusDescriptionText
-                                                        }
-                                                    , simpleBotTasksInProgressAfterRemoval
-                                                    )
-                                    in
-                                    ( { state
-                                        | simpleBot = Just simpleBotState
-                                        , simpleBotLastResponse = simpleBotLastResponse
-                                        , simpleBotTasksInProgress = simpleBotTasksInProgress
-                                      }
-                                    , responseFromSimpleBotLastResponse
-                                    )
-                    in
-                    ( stateAfterPropagatingEventToSimpleBot, response )
+            processEventIgnoringLastError simpleBotProcessEvent event maybeCompletedBotTask stateBefore
 
 
-deriveImageRepresentation : List (List PixelValue) -> ImageStructure
-deriveImageRepresentation imageAsNestedList =
+{-| On the relation between tasks from the bot and tasks from the framework:
+
+For some events, it is easier to see that we should forward them to the bot immediately.
+One example is bot-settings-changed: If the bot decides to finish the session in response, the response should reach the host for the same event, not later. The same applies to changes in the status text.
+
+What about commands from the bot? If the bot says "take a screenshot" we need to wait for the completion of the framework setup (volatile process) first.
+Therefore we queue tasks from the bot to forward them when we have completed the framework setup.
+
+-}
+processEventIgnoringLastError :
+    (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
+    -> InterfaceToHost.BotEvent
+    -> Maybe ( TaskId, Task )
+    -> State simpleBotState
+    -> ( State simpleBotState, InternalBotEventResponse )
+processEventIgnoringLastError simpleBotProcessEvent event maybeCompletedBotTask stateBefore =
+    stateBefore
+        |> processEventIntegrateBotEvents simpleBotProcessEvent event maybeCompletedBotTask
+        |> deriveTasksAfterIntegrateBotEvents
+
+
+processEventIntegrateBotEvents :
+    (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
+    -> InterfaceToHost.BotEvent
+    -> Maybe ( TaskId, Task )
+    -> State simpleBotState
+    -> State simpleBotState
+processEventIntegrateBotEvents simpleBotProcessEvent event maybeCompletedBotTask stateBefore =
+    case simpleBotEventsFromHostEvent event maybeCompletedBotTask stateBefore of
+        Err _ ->
+            stateBefore
+
+        Ok ( state, [] ) ->
+            state
+
+        Ok ( state, firstBotEvent :: otherBotEvents ) ->
+            let
+                ( simpleBotState, simpleBotAggregateQueueResponse ) =
+                    state.simpleBot
+                        |> processSequenceOfSimpleBotEventsAndCombineResponses
+                            simpleBotProcessEvent
+                            state.simpleBotAggregateQueueResponse
+                            firstBotEvent
+                            otherBotEvents
+            in
+            { state
+                | simpleBot = simpleBotState
+                , simpleBotAggregateQueueResponse = Just simpleBotAggregateQueueResponse
+            }
+
+
+deriveTasksAfterIntegrateBotEvents :
+    State simpleBotState
+    -> ( State simpleBotState, InternalBotEventResponse )
+deriveTasksAfterIntegrateBotEvents stateBefore =
+    if not (Dict.isEmpty stateBefore.tasksInProgress) then
+        ( stateBefore
+        , InternalContinueSession
+            { startTasks = []
+            , statusDescriptionText = "Waiting for all tasks to complete..."
+            , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
+            }
+        )
+
+    else
+        case stateBefore |> getNextSetupStepWithDescriptionFromState of
+            StopWithResult { resultDescription } ->
+                ( stateBefore
+                , InternalFinishSession
+                    { statusDescriptionText = "Stopped with result: " ++ resultDescription
+                    }
+                )
+
+            ContinueSetupWithTask continue ->
+                ( stateBefore
+                , InternalContinueSession
+                    { startTasks =
+                        [ { taskId = continue.task.taskId
+                          , task = continue.task.task
+                          , taskOrigin = FrameworkOrigin
+                          }
+                        ]
+                    , statusDescriptionText = "I continue to set up the framework: Current step: " ++ continue.taskDescription
+                    , notifyWhenArrivedAtTime = Nothing
+                    }
+                )
+
+            OperateSimpleBot operateSimpleBot ->
+                case stateBefore.simpleBotAggregateQueueResponse of
+                    Nothing ->
+                        ( stateBefore
+                        , InternalContinueSession
+                            { statusDescriptionText = "Bot not started yet."
+                            , startTasks = []
+                            , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
+                            }
+                        )
+
+                    Just (FinishSession finishSession) ->
+                        ( stateBefore
+                        , InternalFinishSession
+                            { statusDescriptionText = "Bot finished the session: " ++ finishSession.statusDescriptionText }
+                        )
+
+                    Just (ContinueSession continueSession) ->
+                        let
+                            ( startTasks, simpleBotAggregateQueueResponse ) =
+                                ( continueSession.startTasks
+                                    |> consolidateBotTasks
+                                    |> List.map
+                                        (\simpleBotTaskWithId ->
+                                            ( { taskId = simpleBotTaskWithId.taskId |> taskIdFromSimpleBotTaskId
+                                              , task =
+                                                    simpleBotTaskWithId.task
+                                                        |> taskOnWindowFromSimpleBotTask { windowId = operateSimpleBot.windowId } stateBefore
+                                                        |> operateSimpleBot.buildHostTaskFromRequest
+                                              , taskOrigin = BotOrigin simpleBotTaskWithId.taskId simpleBotTaskWithId.task
+                                              }
+                                            , simpleBotTaskWithId
+                                            )
+                                        )
+                                , ContinueSession { continueSession | startTasks = [] }
+                                )
+
+                            notifyWhenArrivedAtTime =
+                                if startTasks == [] then
+                                    continueSession.notifyWhenArrivedAtTime
+                                        |> Maybe.withDefault
+                                            { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
+
+                                else
+                                    { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
+                        in
+                        ( { stateBefore
+                            | simpleBotAggregateQueueResponse = Just simpleBotAggregateQueueResponse
+                          }
+                        , InternalContinueSession
+                            { statusDescriptionText = "Operate bot"
+                            , notifyWhenArrivedAtTime = Just notifyWhenArrivedAtTime
+                            , startTasks = startTasks |> List.map Tuple.first
+                            }
+                        )
+
+
+consolidateBotTasks : List StartTaskStructure -> List StartTaskStructure
+consolidateBotTasks =
     let
-        imageWidths =
-            imageAsNestedList |> List.map List.length
+        tryMerge taskA taskB =
+            case ( taskA.task, taskB.task ) of
+                ( ReadFromWindow readFromWindowTaskA, ReadFromWindow readFromWindowTaskB ) ->
+                    Just
+                        { taskId = taskB.taskId
+                        , task =
+                            {-
+                               TODO: Also remove crops which are completely covered by other crop.
+                            -}
+                            ReadFromWindow
+                                { crops_1x1_r8g8b8 =
+                                    readFromWindowTaskA.crops_1x1_r8g8b8
+                                        ++ readFromWindowTaskB.crops_1x1_r8g8b8
+                                        |> List.Extra.unique
+                                , crops_2x2_r8g8b8 =
+                                    readFromWindowTaskA.crops_2x2_r8g8b8
+                                        ++ readFromWindowTaskB.crops_2x2_r8g8b8
+                                        |> List.Extra.unique
+                                }
+                        }
 
-        imageWidth =
-            imageWidths |> List.maximum |> Maybe.withDefault 0
+                _ ->
+                    Nothing
+    in
+    List.foldl
+        (\startTask aggregate ->
+            case List.reverse aggregate of
+                [] ->
+                    aggregate ++ [ startTask ]
 
-        imageHeight =
-            imageWidths |> List.length
+                lastFromAggregate :: previousFromAggregateReversed ->
+                    case tryMerge lastFromAggregate startTask of
+                        Nothing ->
+                            aggregate ++ [ startTask ]
 
+                        Just merged ->
+                            List.reverse previousFromAggregateReversed ++ [ merged ]
+        )
+        []
+
+
+simpleBotEventsFromHostEvent :
+    InterfaceToHost.BotEvent
+    -> Maybe ( TaskId, Task )
+    -> State simpleBotState
+    -> Result String ( State simpleBotState, List BotEvent )
+simpleBotEventsFromHostEvent event maybeCompletedBotTask stateBefore =
+    simpleBotEventsFromHostEventAtTime event.eventAtTime maybeCompletedBotTask stateBefore
+        |> Result.map
+            (Tuple.mapSecond
+                (List.map
+                    (\eventAtTime ->
+                        { timeInMilliseconds = event.timeInMilliseconds, eventAtTime = eventAtTime }
+                    )
+                )
+            )
+
+
+simpleBotEventsFromHostEventAtTime :
+    InterfaceToHost.BotEventAtTime
+    -> Maybe ( TaskId, Task )
+    -> State simpleBotState
+    -> Result String ( State simpleBotState, List BotEventAtTime )
+simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
+    case event of
+        InterfaceToHost.TimeArrivedEvent ->
+            Ok ( stateBefore, [ TimeArrivedEvent ] )
+
+        InterfaceToHost.BotSettingsChangedEvent settingsString ->
+            Ok ( stateBefore, [ BotSettingsChangedEvent settingsString ] )
+
+        InterfaceToHost.SessionDurationPlannedEvent sessionDurationPlannedEvent ->
+            Ok ( stateBefore, [ SessionDurationPlannedEvent sessionDurationPlannedEvent ] )
+
+        InterfaceToHost.TaskCompletedEvent completedTask ->
+            let
+                taskIdString =
+                    case completedTask.taskId of
+                        InterfaceToHost.TaskIdFromString taskIdStringHost ->
+                            taskIdStringHost
+            in
+            case maybeCompletedBotTask of
+                Nothing ->
+                    Err ("Did not find a bot task for task with ID " ++ taskIdString)
+
+                Just ( simpleBotTaskId, simpleBotTask ) ->
+                    let
+                        taskResultResult =
+                            case completedTask.taskResult of
+                                InterfaceToHost.CreateVolatileProcessResponse _ ->
+                                    Err "CreateVolatileProcessResponse"
+
+                                InterfaceToHost.CompleteWithoutResult ->
+                                    Err "CompleteWithoutResult"
+
+                                InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileProcessResponse ->
+                                    case requestToVolatileProcessResponse of
+                                        Err InterfaceToHost.ProcessNotFound ->
+                                            Err "Error running script in volatile process: ProcessNotFound"
+
+                                        Err InterfaceToHost.FailedToAcquireInputFocus ->
+                                            Err "Error running script in volatile process: FailedToAcquireInputFocus"
+
+                                        Ok volatileProcessResponseSuccess ->
+                                            case volatileProcessResponseSuccess.exceptionToString of
+                                                Just exceptionInVolatileProcess ->
+                                                    Err ("Exception in volatile process: " ++ exceptionInVolatileProcess)
+
+                                                Nothing ->
+                                                    case volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault "" |> VolatileProcessInterface.deserializeResponseFromVolatileProcess of
+                                                        Err error ->
+                                                            Err ("Failed to parse response from volatile process: " ++ (error |> Json.Decode.errorToString))
+
+                                                        Ok parsedResponse ->
+                                                            let
+                                                                continueForReadFromWindowOrGetImageData =
+                                                                    case parsedResponse of
+                                                                        VolatileProcessInterface.ReadingNotFound ->
+                                                                            Err "ReadingNotFound"
+
+                                                                        VolatileProcessInterface.TaskOnWindowResponse taskOnWindowResponse ->
+                                                                            case taskOnWindowResponse.result of
+                                                                                VolatileProcessInterface.WindowNotFound ->
+                                                                                    Err "WindowNotFound"
+
+                                                                                VolatileProcessInterface.ReadFromWindowComplete readFromWindowComplete ->
+                                                                                    let
+                                                                                        aggregateImage =
+                                                                                            deriveImageRepresentation
+                                                                                                readFromWindowComplete.imageData
+
+                                                                                        lastReadFromWindowResult =
+                                                                                            { readFromWindowComplete = readFromWindowComplete
+                                                                                            , aggregateImage = aggregateImage
+                                                                                            }
+                                                                                    in
+                                                                                    Ok
+                                                                                        ( { stateBefore
+                                                                                            | lastReadFromWindowResult = Just lastReadFromWindowResult
+                                                                                          }
+                                                                                        , ReadFromWindowResult
+                                                                                            { windowSize = readFromWindowComplete.windowSize
+                                                                                            , windowClientRectOffset = readFromWindowComplete.windowClientRectOffset
+                                                                                            , windowClientAreaSize = readFromWindowComplete.windowClientAreaSize
+                                                                                            }
+                                                                                            aggregateImage
+                                                                                        )
+
+                                                                        VolatileProcessInterface.GetImageDataFromReadingComplete getImageDataFromReadingComplete ->
+                                                                            case stateBefore.lastReadFromWindowResult of
+                                                                                Nothing ->
+                                                                                    Err "No lastReadFromWindowResult"
+
+                                                                                Just lastReadFromWindowResultBefore ->
+                                                                                    if lastReadFromWindowResultBefore.readFromWindowComplete.readingId /= getImageDataFromReadingComplete.readingId then
+                                                                                        Err "readingId mismatch"
+
+                                                                                    else
+                                                                                        let
+                                                                                            newImage =
+                                                                                                deriveImageRepresentation
+                                                                                                    getImageDataFromReadingComplete.imageData
+
+                                                                                            aggregateImage =
+                                                                                                mergeImageRepresentation
+                                                                                                    lastReadFromWindowResultBefore.aggregateImage
+                                                                                                    newImage
+
+                                                                                            lastReadFromWindowResult =
+                                                                                                { lastReadFromWindowResultBefore
+                                                                                                    | aggregateImage = aggregateImage
+                                                                                                }
+                                                                                        in
+                                                                                        Ok
+                                                                                            ( { stateBefore
+                                                                                                | lastReadFromWindowResult = Just lastReadFromWindowResult
+                                                                                              }
+                                                                                            , ReadFromWindowResult
+                                                                                                { windowSize = lastReadFromWindowResult.readFromWindowComplete.windowSize
+                                                                                                , windowClientRectOffset = lastReadFromWindowResult.readFromWindowComplete.windowClientRectOffset
+                                                                                                , windowClientAreaSize = lastReadFromWindowResult.readFromWindowComplete.windowClientAreaSize
+                                                                                                }
+                                                                                                aggregateImage
+                                                                                            )
+
+                                                                        _ ->
+                                                                            Err ("Unexpected return value from volatile process: " ++ (volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault ""))
+                                                            in
+                                                            case simpleBotTask of
+                                                                BringWindowToForeground ->
+                                                                    Ok ( stateBefore, NoResultValue )
+
+                                                                EffectSequenceOnWindowTask _ ->
+                                                                    Ok ( stateBefore, NoResultValue )
+
+                                                                ReadFromWindow _ ->
+                                                                    continueForReadFromWindowOrGetImageData
+
+                                                                GetImageDataFromReading _ ->
+                                                                    continueForReadFromWindowOrGetImageData
+                    in
+                    case taskResultResult of
+                        Err error ->
+                            Err ("Unexpected task result: " ++ error)
+
+                        Ok ( state, taskResultOk ) ->
+                            Ok
+                                ( state
+                                , [ TaskCompletedEvent { taskId = simpleBotTaskId, taskResult = taskResultOk } ]
+                                )
+
+
+mergeImageRepresentation : ImageStructure -> ImageStructure -> ImageStructure
+mergeImageRepresentation imageA imageB =
+    { imageAsDict = Dict.union imageA.imageAsDict imageB.imageAsDict
+    , imageBinned2x2AsDict = Dict.union imageA.imageBinned2x2AsDict imageB.imageBinned2x2AsDict
+    }
+
+
+deriveImageRepresentation : VolatileProcessInterface.GetImageDataFromReadingResultStructure -> ImageStructure
+deriveImageRepresentation imageData =
+    let
+        crops_1x1_r8g8b8_Derivations =
+            imageData.crops_1x1_r8g8b8 |> List.map deriveImageCropRepresentation
+
+        crops_2x2_r8g8b8_Derivations =
+            imageData.crops_2x2_r8g8b8
+                |> List.map (\crop -> { crop | offset = { x = crop.offset.x // 2, y = crop.offset.y // 2 } })
+                |> List.map deriveImageCropRepresentation
+
+        imageAsDict =
+            crops_1x1_r8g8b8_Derivations
+                |> List.map .imageAsDict
+                |> List.foldl Dict.union Dict.empty
+
+        imageBinned2x2AsDict =
+            crops_2x2_r8g8b8_Derivations
+                |> List.map .imageAsDict
+                |> List.foldl Dict.union Dict.empty
+    in
+    { imageAsDict = imageAsDict
+    , imageBinned2x2AsDict = imageBinned2x2AsDict
+    }
+
+
+deriveImageRepresentationFromNestedListOfPixels : List (List PixelValue) -> ImageStructure
+deriveImageRepresentationFromNestedListOfPixels imageAsNestedList =
+    let
         imageAsDict =
             imageAsNestedList |> dictWithTupleKeyFromIndicesInNestedList
 
@@ -463,10 +820,29 @@ deriveImageRepresentation imageAsNestedList =
                     )
                 |> dictWithTupleKeyFromIndicesInNestedList
     in
+    { imageAsDict = imageAsDict
+    , imageBinned2x2AsDict = imageBinned2x2AsDict
+    }
+
+
+deriveImageCropRepresentation : VolatileProcessInterface.ImageCropRGB -> ImageCropStructure
+deriveImageCropRepresentation crop =
+    let
+        imageWidths =
+            crop.pixels |> List.map List.length
+
+        imageWidth =
+            imageWidths |> List.maximum |> Maybe.withDefault 0
+
+        imageHeight =
+            imageWidths |> List.length
+
+        imageAsDict =
+            crop.pixels |> dictWithTupleKeyFromIndicesInNestedListWithOffset crop.offset
+    in
     { imageWidth = imageWidth
     , imageHeight = imageHeight
     , imageAsDict = imageAsDict
-    , imageBinned2x2AsDict = imageBinned2x2AsDict
     }
 
 
@@ -516,153 +892,191 @@ getMatchesLocationsFromImage imageMatchesPatternAtOrigin locationsToSearchAt ima
             )
 
 
-processSequenceOfSimpleBotEventsAndCombineResponses : (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse )) -> List BotEvent -> simpleBotState -> ( simpleBotState, Maybe BotResponse )
-processSequenceOfSimpleBotEventsAndCombineResponses simpleBotProcessEvent events botStateBefore =
-    case events of
-        [] ->
-            ( botStateBefore, Nothing )
+processSequenceOfSimpleBotEventsAndCombineResponses :
+    (BotEvent
+     -> simpleBotState
+     -> ( simpleBotState, BotResponse )
+    )
+    -> Maybe BotResponse
+    -> BotEvent
+    -> List BotEvent
+    -> simpleBotState
+    -> ( simpleBotState, BotResponse )
+processSequenceOfSimpleBotEventsAndCombineResponses simpleBotProcessEvent maybeLastBotResponse nextEvent followingEvents botStateBefore =
+    let
+        integrateLastBotResponse =
+            case maybeLastBotResponse of
+                Nothing ->
+                    identity
 
-        nextEvent :: followingEvents ->
+                Just lastBotResponse ->
+                    combineBotResponse lastBotResponse
+
+        ( nextBotState, nextBotResponse ) =
+            botStateBefore
+                |> simpleBotProcessEvent nextEvent
+                |> Tuple.mapSecond integrateLastBotResponse
+    in
+    case nextBotResponse of
+        FinishSession _ ->
+            ( nextBotState, nextBotResponse )
+
+        ContinueSession _ ->
             let
-                ( nextBotState, nextBotResponse ) =
-                    botStateBefore |> simpleBotProcessEvent nextEvent
-            in
-            case nextBotResponse of
-                FinishSession _ ->
-                    ( nextBotState, Just nextBotResponse )
+                ( followingBotState, followingBotResponse ) =
+                    case followingEvents of
+                        [] ->
+                            ( nextBotState, nextBotResponse )
 
-                ContinueSession nextBotResponseContinue ->
-                    let
-                        ( followingBotState, followingBotResponse ) =
+                        nextNextBotEvent :: nextFollowingBotEvents ->
                             nextBotState
-                                |> processSequenceOfSimpleBotEventsAndCombineResponses simpleBotProcessEvent followingEvents
+                                |> processSequenceOfSimpleBotEventsAndCombineResponses
+                                    simpleBotProcessEvent
+                                    (Just nextBotResponse)
+                                    nextNextBotEvent
+                                    nextFollowingBotEvents
+            in
+            ( followingBotState, followingBotResponse )
 
-                        combinedResponse =
-                            case followingBotResponse of
-                                Nothing ->
-                                    nextBotResponse
 
-                                Just (ContinueSession followingContinueSession) ->
-                                    let
-                                        startTasks =
-                                            nextBotResponseContinue.startTasks ++ followingContinueSession.startTasks
-                                    in
-                                    ContinueSession
-                                        { startTasks = startTasks
-                                        , notifyWhenArrivedAtTime = followingContinueSession.notifyWhenArrivedAtTime
-                                        , statusDescriptionText = followingContinueSession.statusDescriptionText
-                                        }
+combineBotResponse : BotResponse -> BotResponse -> BotResponse
+combineBotResponse firstResponse secondResponse =
+    case firstResponse of
+        FinishSession _ ->
+            firstResponse
 
-                                Just (FinishSession finishSession) ->
-                                    FinishSession finishSession
-                    in
-                    ( followingBotState, Just combinedResponse )
+        ContinueSession firstContinueSession ->
+            case secondResponse of
+                FinishSession _ ->
+                    secondResponse
+
+                ContinueSession secondContinueSession ->
+                    ContinueSession
+                        { secondContinueSession
+                            | startTasks = firstContinueSession.startTasks ++ secondContinueSession.startTasks
+                        }
 
 
 taskIdFromSimpleBotTaskId : TaskId -> InterfaceToHost.TaskId
 taskIdFromSimpleBotTaskId simpleBotTaskId =
     case simpleBotTaskId of
         TaskIdFromString asString ->
-            InterfaceToHost.taskIdFromString ("simple-bot-" ++ asString)
+            InterfaceToHost.taskIdFromString ("bot-" ++ asString)
 
 
-taskOnWindowFromSimpleBotTask : Task -> VolatileHostWindowsApi.TaskOnWindowStructure
-taskOnWindowFromSimpleBotTask simpleBotTask =
+taskOnWindowFromSimpleBotTask :
+    { windowId : String }
+    -> State simpleBotState
+    -> Task
+    -> VolatileProcessInterface.RequestToVolatileProcess
+taskOnWindowFromSimpleBotTask config state simpleBotTask =
+    let
+        continueWithTaskOnWindow taskOnWindow =
+            { windowId = config.windowId, task = taskOnWindow }
+                |> VolatileProcessInterface.TaskOnWindowRequest
+    in
     case simpleBotTask of
         BringWindowToForeground ->
-            VolatileHostWindowsApi.BringWindowToForeground
+            VolatileProcessInterface.BringWindowToForeground
+                |> continueWithTaskOnWindow
 
-        MoveMouseToLocation location ->
-            VolatileHostWindowsApi.MoveMouseToLocation location
+        ReadFromWindow readFromWindowTask ->
+            { getImageData = readFromWindowTask }
+                |> VolatileProcessInterface.ReadFromWindowRequest
+                |> continueWithTaskOnWindow
 
-        MouseButtonDown button ->
-            VolatileHostWindowsApi.MouseButtonDown
-                (volatileHostMouseButtonFromMouseButton button)
+        GetImageDataFromReading getImageDataFromReadingTask ->
+            case state.lastReadFromWindowResult of
+                Nothing ->
+                    { getImageData = getImageDataFromReadingTask }
+                        |> VolatileProcessInterface.ReadFromWindowRequest
+                        |> continueWithTaskOnWindow
 
-        MouseButtonUp button ->
-            VolatileHostWindowsApi.MouseButtonUp
-                (volatileHostMouseButtonFromMouseButton button)
+                Just lastReadFromWindowResult ->
+                    { readingId = lastReadFromWindowResult.readFromWindowComplete.readingId
+                    , getImageData = getImageDataFromReadingTask
+                    }
+                        |> VolatileProcessInterface.GetImageDataFromReadingRequest
 
-        KeyboardKeyDown key ->
-            VolatileHostWindowsApi.KeyboardKeyDown
-                (volatileHostKeyboardKeyFromKeyboardKey key)
-
-        KeyboardKeyUp key ->
-            VolatileHostWindowsApi.KeyboardKeyUp
-                (volatileHostKeyboardKeyFromKeyboardKey key)
-
-        TakeScreenshot ->
-            VolatileHostWindowsApi.TakeScreenshot
+        EffectSequenceOnWindowTask effectSequence ->
+            effectSequence
+                |> VolatileProcessInterface.EffectSequenceOnWindowRequest
+                |> continueWithTaskOnWindow
 
 
 integrateEvent : InterfaceToHost.BotEvent -> State simpleBotState -> State simpleBotState
-integrateEvent event stateBeforeUpdateTime =
-    let
-        stateBefore =
-            { stateBeforeUpdateTime | timeInMilliseconds = event.timeInMilliseconds }
-    in
+integrateEvent event stateBefore =
     case event.eventAtTime of
         InterfaceToHost.TimeArrivedEvent ->
             stateBefore
 
-        InterfaceToHost.BotSettingsChangedEvent settingsString ->
-            { stateBefore | settingsString = Just settingsString }
+        InterfaceToHost.BotSettingsChangedEvent _ ->
+            stateBefore
 
         InterfaceToHost.TaskCompletedEvent { taskId, taskResult } ->
-            case taskResult of
-                InterfaceToHost.CreateVolatileProcessResponse createVolatileHostResult ->
-                    { stateBefore | createVolatileHostResult = Just createVolatileHostResult }
-
-                InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileHostResponse ->
-                    case requestToVolatileHostResponse of
-                        Err InterfaceToHost.ProcessNotFound ->
-                            { stateBefore | error = Just "Error running script in volatile process: ProcessNotFound" }
-
-                        Err InterfaceToHost.FailedToAcquireInputFocus ->
-                            { stateBefore | error = Just "Error running script in volatile process: FailedToAcquireInputFocus" }
-
-                        Ok runInVolatileHostComplete ->
-                            case runInVolatileHostComplete.returnValueToString of
-                                Nothing ->
-                                    { stateBefore | error = Just ("Error in volatile process: " ++ (runInVolatileHostComplete.exceptionToString |> Maybe.withDefault "")) }
-
-                                Just returnValueToString ->
-                                    case stateBefore.createVolatileHostResult of
-                                        Nothing ->
-                                            { stateBefore | error = Just ("Unexpected response from volatile process: " ++ returnValueToString) }
-
-                                        Just (Err createVolatileHostError) ->
-                                            { stateBefore | error = Just ("Failed to create volatile process: " ++ createVolatileHostError.exceptionToString) }
-
-                                        Just (Ok createVolatileHostCompleted) ->
-                                            case returnValueToString |> VolatileHostWindowsApi.deserializeResponseFromVolatileHost of
-                                                Err error ->
-                                                    { stateBefore | error = Just ("Failed to parse response from volatile process: " ++ (error |> Json.Decode.errorToString)) }
-
-                                                Ok responseFromVolatileHost ->
-                                                    case stateBefore.windowId of
-                                                        Nothing ->
-                                                            case responseFromVolatileHost of
-                                                                VolatileHostWindowsApi.GetForegroundWindowResult windowId ->
-                                                                    { stateBefore | windowId = Just windowId }
-
-                                                                _ ->
-                                                                    { stateBefore | error = Just ("Unexpected response from volatile process: " ++ returnValueToString) }
-
-                                                        Just windowId ->
-                                                            case responseFromVolatileHost of
-                                                                VolatileHostWindowsApi.GetWindowTextResult windowText ->
-                                                                    { stateBefore
-                                                                        | lastWindowTitleMeasurement = Just { timeInMilliseconds = stateBefore.timeInMilliseconds, windowTitle = windowText }
-                                                                    }
-
-                                                                _ ->
-                                                                    stateBefore
-
-                InterfaceToHost.CompleteWithoutResult ->
-                    stateBefore
+            integrateEventTaskComplete taskId taskResult stateBefore
 
         InterfaceToHost.SessionDurationPlannedEvent _ ->
+            stateBefore
+
+
+integrateEventTaskComplete : InterfaceToHost.TaskId -> InterfaceToHost.TaskResultStructure -> State simpleBotState -> State simpleBotState
+integrateEventTaskComplete taskId taskResult stateBefore =
+    case taskResult of
+        InterfaceToHost.CreateVolatileProcessResponse createVolatileProcessResult ->
+            { stateBefore | createVolatileProcessResult = Just createVolatileProcessResult }
+
+        InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileProcessResponse ->
+            case requestToVolatileProcessResponse of
+                Err InterfaceToHost.ProcessNotFound ->
+                    { stateBefore | error = Just "Error running script in volatile process: ProcessNotFound" }
+
+                Err InterfaceToHost.FailedToAcquireInputFocus ->
+                    { stateBefore | error = Just "Error running script in volatile process: FailedToAcquireInputFocus" }
+
+                Ok runInVolatileProcessComplete ->
+                    case runInVolatileProcessComplete.returnValueToString of
+                        Nothing ->
+                            { stateBefore | error = Just ("Error in volatile process: " ++ (runInVolatileProcessComplete.exceptionToString |> Maybe.withDefault "")) }
+
+                        Just returnValueToString ->
+                            case stateBefore.createVolatileProcessResult of
+                                Nothing ->
+                                    { stateBefore | error = Just ("Unexpected response from volatile process: " ++ returnValueToString) }
+
+                                Just (Err createVolatileProcessError) ->
+                                    { stateBefore | error = Just ("Failed to create volatile process: " ++ createVolatileProcessError.exceptionToString) }
+
+                                Just (Ok createVolatileProcessCompleted) ->
+                                    case returnValueToString |> VolatileProcessInterface.deserializeResponseFromVolatileProcess of
+                                        Err error ->
+                                            { stateBefore | error = Just ("Failed to parse response from volatile process: " ++ (error |> Json.Decode.errorToString)) }
+
+                                        Ok responseFromVolatileProcess ->
+                                            case stateBefore.targetWindow of
+                                                Nothing ->
+                                                    case responseFromVolatileProcess of
+                                                        VolatileProcessInterface.ListWindowsResponse windowsSummaries ->
+                                                            { stateBefore
+                                                                | targetWindow =
+                                                                    windowsSummaries
+                                                                        |> List.sortBy .windowZIndex
+                                                                        |> List.head
+                                                                        |> Maybe.map
+                                                                            (\summary ->
+                                                                                { windowId = summary.windowId
+                                                                                , windowTitle = summary.windowTitle
+                                                                                }
+                                                                            )
+                                                            }
+
+                                                        _ ->
+                                                            { stateBefore | error = Just ("Unexpected response from volatile process: " ++ returnValueToString) }
+
+                                                Just _ ->
+                                                    stateBefore
+
+        InterfaceToHost.CompleteWithoutResult ->
             stateBefore
 
 
@@ -670,84 +1084,86 @@ statusDescriptionFromState : State simpleBotState -> String
 statusDescriptionFromState state =
     let
         portionWindow =
-            case state.lastWindowTitleMeasurement of
+            case state.targetWindow of
                 Nothing ->
                     ""
 
-                Just { windowTitle } ->
-                    "I work in the window with title '" ++ windowTitle ++ "'."
+                Just targetWindow ->
+                    "I work in the window with title '" ++ targetWindow.windowTitle ++ "'."
+
+        tasksReport =
+            "Waiting for "
+                ++ (state.tasksInProgress |> Dict.size |> String.fromInt)
+                ++ " task(s) to complete: "
+                ++ (state.tasksInProgress |> Dict.keys |> String.join ", ")
+
+        botTaskQueueReport =
+            case state.simpleBotAggregateQueueResponse of
+                Nothing ->
+                    ""
+
+                Just (FinishSession _) ->
+                    "Bot finished the session"
+
+                Just (ContinueSession continueSession) ->
+                    (continueSession.startTasks |> List.length |> String.fromInt)
+                        ++ " task(s) from bot in queue"
     in
-    portionWindow
+    [ portionWindow
+    , tasksReport
+    , botTaskQueueReport
+    ]
+        |> String.join "\n"
 
 
 getNextSetupStepWithDescriptionFromState : State simpleBotState -> FrameworkSetupStepActivity
 getNextSetupStepWithDescriptionFromState state =
-    case state.createVolatileHostResult of
+    case state.createVolatileProcessResult of
         Nothing ->
             { task =
                 { taskId = InterfaceToHost.taskIdFromString "create_volatile_process"
-                , task = InterfaceToHost.CreateVolatileProcess { programCode = VolatileHostWindowsApi.setupScript }
+                , task = InterfaceToHost.CreateVolatileProcess { programCode = CompilationInterface.SourceFiles.file____Windows_VolatileProcess_csx.utf8 }
                 }
-            , taskDescription = "Set up the volatile host. This can take several seconds, especially when assemblies are not cached yet."
+            , taskDescription = "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
             }
                 |> ContinueSetupWithTask
 
-        Just (Err createVolatileHostError) ->
-            StopWithResult { resultDescription = "Failed to create volatile host: " ++ createVolatileHostError.exceptionToString }
+        Just (Err createVolatileProcessError) ->
+            StopWithResult { resultDescription = "Failed to create volatile process: " ++ createVolatileProcessError.exceptionToString }
 
-        Just (Ok createVolatileHostCompleted) ->
-            case state.windowId of
+        Just (Ok createVolatileProcessCompleted) ->
+            case state.targetWindow of
                 Nothing ->
                     let
                         task =
                             InterfaceToHost.RequestToVolatileProcess
                                 (InterfaceToHost.RequestNotRequiringInputFocus
-                                    { processId = createVolatileHostCompleted.processId
+                                    { processId = createVolatileProcessCompleted.processId
                                     , request =
-                                        VolatileHostWindowsApi.GetForegroundWindow
-                                            |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
+                                        VolatileProcessInterface.ListWindowsRequest
+                                            |> VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
                                     }
                                 )
                     in
-                    { task = { taskId = InterfaceToHost.taskIdFromString "get_foreground_window", task = task }
-                    , taskDescription = "Get foreground window"
+                    { task = { taskId = InterfaceToHost.taskIdFromString "list_windows", task = task }
+                    , taskDescription = "List windows"
                     }
                         |> ContinueSetupWithTask
 
-                Just windowId ->
-                    case state.lastWindowTitleMeasurement of
-                        Nothing ->
-                            let
-                                task =
-                                    InterfaceToHost.RequestToVolatileProcess
-                                        (InterfaceToHost.RequestNotRequiringInputFocus
-                                            { processId = createVolatileHostCompleted.processId
-                                            , request =
-                                                windowId
-                                                    |> VolatileHostWindowsApi.GetWindowText
-                                                    |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
-                                            }
-                                        )
-                            in
-                            { task = { taskId = InterfaceToHost.taskIdFromString "get_window_title", task = task }
-                            , taskDescription = "Get window title"
-                            }
-                                |> ContinueSetupWithTask
-
-                        Just { windowTitle } ->
-                            OperateSimpleBot
-                                { buildTaskFromTaskOnWindow =
-                                    \taskOnWindow ->
-                                        InterfaceToHost.RequestToVolatileProcess
-                                            (InterfaceToHost.RequestNotRequiringInputFocus
-                                                { processId = createVolatileHostCompleted.processId
-                                                , request =
-                                                    { windowId = windowId, task = taskOnWindow }
-                                                        |> VolatileHostWindowsApi.TaskOnWindow
-                                                        |> VolatileHostWindowsApi.buildRequestStringToGetResponseFromVolatileHost
-                                                }
-                                            )
-                                }
+                Just targetWindow ->
+                    OperateSimpleBot
+                        { windowId = targetWindow.windowId
+                        , buildHostTaskFromRequest =
+                            \request ->
+                                InterfaceToHost.RequestToVolatileProcess
+                                    (InterfaceToHost.RequestNotRequiringInputFocus
+                                        { processId = createVolatileProcessCompleted.processId
+                                        , request =
+                                            request
+                                                |> VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
+                                        }
+                                    )
+                        }
 
 
 taskIdFromString : String -> TaskId
@@ -755,32 +1171,20 @@ taskIdFromString =
     TaskIdFromString
 
 
-volatileHostMouseButtonFromMouseButton : MouseButton -> VolatileHostWindowsApi.MouseButton
-volatileHostMouseButtonFromMouseButton mouseButton =
-    case mouseButton of
-        MouseButtonLeft ->
-            VolatileHostWindowsApi.MouseButtonLeft
-
-        MouseButtonRight ->
-            VolatileHostWindowsApi.MouseButtonRight
-
-
-volatileHostKeyboardKeyFromKeyboardKey : KeyboardKey -> VolatileHostWindowsApi.KeyboardKey
-volatileHostKeyboardKeyFromKeyboardKey keyboardKey =
-    case keyboardKey of
-        KeyboardKeyFromVirtualKeyCode keyCode ->
-            VolatileHostWindowsApi.KeyboardKeyFromVirtualKeyCode keyCode
-
-
 dictWithTupleKeyFromIndicesInNestedList : List (List element) -> Dict.Dict ( Int, Int ) element
-dictWithTupleKeyFromIndicesInNestedList nestedList =
+dictWithTupleKeyFromIndicesInNestedList =
+    dictWithTupleKeyFromIndicesInNestedListWithOffset { x = 0, y = 0 }
+
+
+dictWithTupleKeyFromIndicesInNestedListWithOffset : Location2d -> List (List element) -> Dict.Dict ( Int, Int ) element
+dictWithTupleKeyFromIndicesInNestedListWithOffset offset nestedList =
     nestedList
         |> List.indexedMap
             (\rowIndex list ->
                 list
                     |> List.indexedMap
                         (\columnIndex element ->
-                            ( ( columnIndex, rowIndex ), element )
+                            ( ( columnIndex + offset.x, rowIndex + offset.y ), element )
                         )
             )
         |> List.concat
@@ -792,53 +1196,182 @@ bringWindowToForeground =
     BringWindowToForeground
 
 
-moveMouseToLocation : Location2d -> Task
-moveMouseToLocation =
-    MoveMouseToLocation
+setMouseCursorPositionEffect : Location2d -> Common.EffectOnWindow.EffectOnWindowStructure
+setMouseCursorPositionEffect =
+    Common.EffectOnWindow.SetMouseCursorPositionEffect
 
 
-mouseButtonDown : MouseButton -> Task
-mouseButtonDown =
-    MouseButtonDown
+mouseButtonDownEffect : MouseButton -> Common.EffectOnWindow.EffectOnWindowStructure
+mouseButtonDownEffect =
+    Common.EffectOnWindow.virtualKeyCodeFromMouseButton
+        >> Common.EffectOnWindow.KeyDownEffect
 
 
-mouseButtonUp : MouseButton -> Task
-mouseButtonUp =
-    MouseButtonUp
+mouseButtonUpEffect : MouseButton -> Common.EffectOnWindow.EffectOnWindowStructure
+mouseButtonUpEffect =
+    Common.EffectOnWindow.virtualKeyCodeFromMouseButton
+        >> Common.EffectOnWindow.KeyUpEffect
 
 
-keyboardKeyDown : KeyboardKey -> Task
-keyboardKeyDown =
-    KeyboardKeyDown
+keyboardKeyDownEffect : Common.EffectOnWindow.VirtualKeyCode -> Common.EffectOnWindow.EffectOnWindowStructure
+keyboardKeyDownEffect =
+    Common.EffectOnWindow.KeyDownEffect
 
 
-keyboardKeyUp : KeyboardKey -> Task
-keyboardKeyUp =
-    KeyboardKeyUp
+keyboardKeyUpEffect : Common.EffectOnWindow.VirtualKeyCode -> Common.EffectOnWindow.EffectOnWindowStructure
+keyboardKeyUpEffect =
+    Common.EffectOnWindow.KeyUpEffect
 
 
-takeScreenshot : Task
-takeScreenshot =
-    TakeScreenshot
+effectSequenceTask :
+    { delayBetweenEffectsMilliseconds : Int }
+    -> List Common.EffectOnWindow.EffectOnWindowStructure
+    -> Task
+effectSequenceTask config effects =
+    effects
+        |> List.concatMap
+            (\effect ->
+                [ VolatileProcessInterface.EffectElement effect
+                , VolatileProcessInterface.DelayInMillisecondsElement config.delayBetweenEffectsMilliseconds
+                ]
+            )
+        |> EffectSequenceOnWindowTask
 
 
-mouseButtonLeft : MouseButton
-mouseButtonLeft =
-    MouseButtonLeft
+readFromWindow : GetImageDataFromReadingStructure -> Task
+readFromWindow getImageData =
+    getImageData
+        |> sanitizeGetImageDataFromReading
+        |> ReadFromWindow
 
 
-mouseButtonRight : MouseButton
-mouseButtonRight =
-    MouseButtonRight
+getImageDataFromReading : GetImageDataFromReadingStructure -> Task
+getImageDataFromReading getImageData =
+    getImageData
+        |> sanitizeGetImageDataFromReading
+        |> GetImageDataFromReading
 
 
-{-| For documentation of virtual key codes, see <https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes>
--}
-keyboardKeyFromVirtualKeyCode : Int -> KeyboardKey
-keyboardKeyFromVirtualKeyCode =
-    KeyboardKeyFromVirtualKeyCode
+sanitizeGetImageDataFromReading : GetImageDataFromReadingStructure -> GetImageDataFromReadingStructure
+sanitizeGetImageDataFromReading getImageData =
+    let
+        sanitizeAndOptimizeCrops =
+            sanitizeGetImageDataFromReadingCrops
+                >> optimizeGetImageDataFromReadingCrops
+    in
+    { crops_1x1_r8g8b8 = sanitizeAndOptimizeCrops getImageData.crops_1x1_r8g8b8
+    , crops_2x2_r8g8b8 = sanitizeAndOptimizeCrops getImageData.crops_2x2_r8g8b8
+    }
 
 
-keyboardKey_space : KeyboardKey
-keyboardKey_space =
-    keyboardKeyFromVirtualKeyCode 0x20
+sanitizeGetImageDataFromReadingCrops :
+    List VolatileProcessInterface.Rect2dStructure
+    -> List VolatileProcessInterface.Rect2dStructure
+sanitizeGetImageDataFromReadingCrops =
+    List.map (rectIntersection { x = 0, y = 0, width = 9999, height = 9999 })
+        >> List.filter (\rect -> 0 < rect.width && 0 < rect.height)
+
+
+optimizeGetImageDataFromReadingCrops :
+    List VolatileProcessInterface.Rect2dStructure
+    -> List VolatileProcessInterface.Rect2dStructure
+optimizeGetImageDataFromReadingCrops =
+    optimizeGetImageDataFromReadingCropsRecursive
+
+
+optimizeGetImageDataFromReadingCropsRecursive :
+    List VolatileProcessInterface.Rect2dStructure
+    -> List VolatileProcessInterface.Rect2dStructure
+optimizeGetImageDataFromReadingCropsRecursive crops =
+    let
+        rectIntersectEnoughToConsolidate a b =
+            let
+                intersection =
+                    rectIntersection a b
+            in
+            (max 0 intersection.width * max 0 intersection.height * 4)
+                > min (a.width * a.height) (b.width * b.height)
+
+        groupedCrops =
+            List.Extra.gatherWith rectIntersectEnoughToConsolidate crops
+
+        boundingBoxes =
+            groupedCrops
+                |> List.map
+                    (\( firstCrop, otherCrops ) ->
+                        otherCrops |> List.foldl rectBoundingBox firstCrop
+                    )
+    in
+    if crops == boundingBoxes then
+        boundingBoxes
+
+    else
+        optimizeGetImageDataFromReadingCropsRecursive boundingBoxes
+
+
+rectIntersection : VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure
+rectIntersection a b =
+    let
+        a_right =
+            a.x + a.width
+
+        b_right =
+            b.x + b.width
+
+        a_bottom =
+            a.y + a.height
+
+        b_bottom =
+            b.y + b.height
+
+        x =
+            max a.x b.x
+
+        y =
+            max a.y b.y
+
+        right =
+            min a_right b_right
+
+        bottom =
+            min a_bottom b_bottom
+    in
+    { x = x
+    , y = y
+    , width = right - x
+    , height = bottom - y
+    }
+
+
+rectBoundingBox : VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure
+rectBoundingBox a b =
+    let
+        a_right =
+            a.x + a.width
+
+        b_right =
+            b.x + b.width
+
+        a_bottom =
+            a.y + a.height
+
+        b_bottom =
+            b.y + b.height
+
+        x =
+            min a.x b.x
+
+        y =
+            min a.y b.y
+
+        right =
+            max a_right b_right
+
+        bottom =
+            max a_bottom b_bottom
+    in
+    { x = x
+    , y = y
+    , width = right - x
+    , height = bottom - y
+    }

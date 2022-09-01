@@ -1,4 +1,4 @@
-{- This module contains a framework to build bots to work in web browsers.
+{- A framework to build bots to work in web browsers.
    This framework automatically starts a new web browser window.
    To use this framework, import this module and use the `webBrowserBotMain` function.
 -}
@@ -8,6 +8,7 @@ module WebBrowser.BotFramework exposing
     ( BotEvent(..)
     , BotRequest(..)
     , BotResponse(..)
+    , GenericBotState
     , RunJavascriptInCurrentPageResponseStructure
     , SetupState
     , StateIncludingSetup
@@ -17,13 +18,14 @@ module WebBrowser.BotFramework exposing
     )
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import Common.Basics exposing (stringContainsIgnoringCase)
+import CompilationInterface.SourceFiles
 import WebBrowser.VolatileProcessInterface as VolatileProcessInterface
-import WebBrowser.VolatileProcessProgram as VolatileProcessProgram
 
 
 type alias BotConfig botState =
     { init : botState
-    , processEvent : BotEvent -> botState -> BotProcessEventResult botState
+    , processEvent : BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState
     }
 
 
@@ -48,6 +50,7 @@ type BotResponse
 type BotRequest
     = RunJavascriptInCurrentPageRequest RunJavascriptInCurrentPageRequestStructure
     | StartWebBrowser { userProfileId : String, pageGoToUrl : Maybe String }
+    | CloseWebBrowser { userProfileId : String }
 
 
 type alias RunJavascriptInCurrentPageRequestStructure =
@@ -91,14 +94,30 @@ type alias BotState botState =
 type alias SetupState =
     { createVolatileProcessResult : Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
     , lastRunScriptResult : Maybe (Result String (Maybe String))
-    , webBrowserStarted : Bool
+    , webBrowserRunning : Bool
     }
+
+
+type alias GenericBotState =
+    { webBrowserRunning : Bool }
 
 
 type SetupTask
     = ContinueSetup SetupState InterfaceToHost.Task String
     | OperateBot { taskFromBotRequestRunJavascript : RunJavascriptInCurrentPageRequestStructure -> InterfaceToHost.Task }
     | FailSetup String
+
+
+type InternalBotEventResponse
+    = InternalContinueSession InternalContinueSessionStructure
+    | InternalFinishSession { statusDescriptionText : String }
+
+
+type alias InternalContinueSessionStructure =
+    { statusDescriptionText : String
+    , startTask : Maybe { areaId : String, taskDescription : String, task : InterfaceToHost.Task }
+    , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
+    }
 
 
 webBrowserBotMain : BotConfig state -> InterfaceToHost.BotConfig (StateIncludingSetup state)
@@ -127,16 +146,70 @@ initSetup : SetupState
 initSetup =
     { createVolatileProcessResult = Nothing
     , lastRunScriptResult = Nothing
-    , webBrowserStarted = False
+    , webBrowserRunning = False
     }
 
 
 processEvent :
-    (BotEvent -> botState -> BotProcessEventResult botState)
+    (BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState)
     -> InterfaceToHost.BotEvent
     -> StateIncludingSetup botState
     -> ( StateIncludingSetup botState, InterfaceToHost.BotEventResponse )
-processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
+processEvent botProcessEvent fromHostEvent stateBefore =
+    let
+        ( state, response ) =
+            processEventLessMappingTasks botProcessEvent fromHostEvent stateBefore
+    in
+    case response of
+        InternalFinishSession finishSession ->
+            ( state, InterfaceToHost.FinishSession finishSession )
+
+        InternalContinueSession continueSession ->
+            case continueSession.startTask of
+                Nothing ->
+                    ( state
+                    , InterfaceToHost.ContinueSession
+                        { statusDescriptionText = continueSession.statusDescriptionText
+                        , startTasks = []
+                        , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
+                        }
+                    )
+
+                Just startTask ->
+                    let
+                        taskIdString =
+                            startTask.areaId ++ "-" ++ String.fromInt stateBefore.lastTaskIndex
+
+                        startTasks =
+                            [ { taskId = InterfaceToHost.TaskIdFromString taskIdString
+                              , task = startTask.task
+                              }
+                            ]
+
+                        taskInProgress =
+                            { startTimeInMilliseconds = state.timeInMilliseconds
+                            , taskIdString = taskIdString
+                            , taskDescription = startTask.taskDescription
+                            }
+                    in
+                    ( { state
+                        | lastTaskIndex = state.lastTaskIndex + List.length startTasks
+                        , taskInProgress = Just taskInProgress
+                      }
+                    , InterfaceToHost.ContinueSession
+                        { statusDescriptionText = continueSession.statusDescriptionText
+                        , startTasks = startTasks
+                        , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
+                        }
+                    )
+
+
+processEventLessMappingTasks :
+    (BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState)
+    -> InterfaceToHost.BotEvent
+    -> StateIncludingSetup botState
+    -> ( StateIncludingSetup botState, InternalBotEventResponse )
+processEventLessMappingTasks botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
     let
         stateBefore =
             stateBeforeIntegratingEvent |> integrateFromHostEvent botProcessEvent fromHostEvent
@@ -159,7 +232,7 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                 ( stateBefore
                 , { statusDescriptionText = "The bot finished the session."
                   }
-                    |> InterfaceToHost.FinishSession
+                    |> InternalFinishSession
                 )
 
             else
@@ -171,9 +244,9 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
                         ( stateBefore
                         , { statusDescriptionText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
                           , notifyWhenArrivedAtTime = Nothing
-                          , startTasks = []
+                          , startTask = Nothing
                           }
-                            |> InterfaceToHost.ContinueSession
+                            |> InternalContinueSession
                         )
 
         statusMessagePrefix =
@@ -184,51 +257,40 @@ processEvent botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
 
         response =
             case responseBeforeAddingStatusMessageAndSubscribeToTime of
-                InterfaceToHost.ContinueSession continueSession ->
+                InternalContinueSession continueSession ->
                     { continueSession
                         | statusDescriptionText = statusMessagePrefix ++ continueSession.statusDescriptionText
                         , notifyWhenArrivedAtTime = Just { timeInMilliseconds = notifyWhenArrivedAtTime }
                     }
-                        |> InterfaceToHost.ContinueSession
+                        |> InternalContinueSession
 
-                InterfaceToHost.FinishSession finishSession ->
+                InternalFinishSession finishSession ->
                     { finishSession
                         | statusDescriptionText = statusMessagePrefix ++ finishSession.statusDescriptionText
                     }
-                        |> InterfaceToHost.FinishSession
+                        |> InternalFinishSession
     in
     ( state, response )
 
 
-processEventNotWaitingForTask : StateIncludingSetup botState -> ( StateIncludingSetup botState, InterfaceToHost.BotEventResponse )
+processEventNotWaitingForTask : StateIncludingSetup botState -> ( StateIncludingSetup botState, InternalBotEventResponse )
 processEventNotWaitingForTask stateBefore =
     case
         stateBefore.setup
             |> getNextSetupTask stateBefore.pendingRequestToRestartWebBrowser
     of
         ContinueSetup setupState setupTask setupTaskDescription ->
-            let
-                taskIndex =
-                    stateBefore.lastTaskIndex + 1
-
-                taskIdString =
-                    "setup-" ++ (taskIndex |> String.fromInt)
-            in
-            ( { stateBefore
-                | setup = setupState
-                , lastTaskIndex = taskIndex
-                , taskInProgress =
+            ( { stateBefore | setup = setupState }
+            , { startTask =
                     Just
-                        { startTimeInMilliseconds = stateBefore.timeInMilliseconds
-                        , taskIdString = taskIdString
-                        , taskDescription = setupTaskDescription
+                        { areaId = "setup"
+                        , task = setupTask
+                        , taskDescription = "setup: " ++ setupTaskDescription
                         }
-              }
-            , { startTasks = [ { taskId = InterfaceToHost.taskIdFromString taskIdString, task = setupTask } ]
               , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
               , notifyWhenArrivedAtTime = Nothing
               }
-                |> InterfaceToHost.ContinueSession
+                |> InternalContinueSession
             )
 
         OperateBot operateBot ->
@@ -236,88 +298,95 @@ processEventNotWaitingForTask stateBefore =
                 botStateBefore =
                     stateBefore.botState
 
-                ( state, startTasks ) =
+                ( state, startTask ) =
                     case botStateBefore.remainingBotRequests of
                         botRequest :: remainingBotRequests ->
                             let
-                                ( stateUpdatedForBotRequest, tasksFromBotRequest ) =
+                                ( stateUpdatedForBotRequest, maybeTaskFromBotRequest ) =
                                     case botRequest of
                                         RunJavascriptInCurrentPageRequest runJavascriptInCurrentPageRequest ->
                                             ( stateBefore
-                                            , [ runJavascriptInCurrentPageRequest |> operateBot.taskFromBotRequestRunJavascript ]
+                                            , runJavascriptInCurrentPageRequest
+                                                |> operateBot.taskFromBotRequestRunJavascript
+                                                |> Just
                                             )
 
                                         StartWebBrowser startWebBrowser ->
                                             let
-                                                releaseVolatileHostTasks =
+                                                releaseVolatileHostTask =
                                                     case stateBefore.setup.createVolatileProcessResult of
                                                         Just (Ok createVolatileProcessSuccess) ->
-                                                            [ InterfaceToHost.ReleaseVolatileProcess
-                                                                { processId = createVolatileProcessSuccess.processId }
-                                                            ]
+                                                            Just
+                                                                (InterfaceToHost.ReleaseVolatileProcess
+                                                                    { processId = createVolatileProcessSuccess.processId }
+                                                                )
 
                                                         _ ->
-                                                            []
+                                                            Nothing
                                             in
                                             ( { stateBefore
                                                 | pendingRequestToRestartWebBrowser = Just startWebBrowser
                                                 , setup = initSetup
                                               }
-                                            , releaseVolatileHostTasks
+                                            , releaseVolatileHostTask
+                                            )
+
+                                        CloseWebBrowser closeWebBrowser ->
+                                            let
+                                                closeWebBrowserTask =
+                                                    case stateBefore.setup.createVolatileProcessResult of
+                                                        Just (Ok createVolatileProcessSuccess) ->
+                                                            Just
+                                                                (InterfaceToHost.RequestToVolatileProcess
+                                                                    (InterfaceToHost.RequestNotRequiringInputFocus
+                                                                        { processId = createVolatileProcessSuccess.processId
+                                                                        , request =
+                                                                            VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
+                                                                                (VolatileProcessInterface.CloseWebBrowserRequest { userProfileId = closeWebBrowser.userProfileId })
+                                                                        }
+                                                                    )
+                                                                )
+
+                                                        _ ->
+                                                            Nothing
+                                            in
+                                            ( stateBefore
+                                            , closeWebBrowserTask
                                             )
 
                                 botState =
                                     { botStateBefore | remainingBotRequests = remainingBotRequests }
-
-                                tasksWithIds =
-                                    tasksFromBotRequest
-                                        |> List.indexedMap
-                                            (\taskIndex task ->
-                                                let
-                                                    taskIdString =
-                                                        "operate-bot-" ++ (taskIndex |> String.fromInt)
-                                                in
-                                                ( { taskId = InterfaceToHost.taskIdFromString taskIdString, task = task }, taskIdString )
-                                            )
-
-                                taskInProgress =
-                                    tasksWithIds
-                                        |> List.reverse
-                                        |> List.head
-                                        |> Maybe.map
-                                            (\( _, taskIdString ) ->
-                                                { startTimeInMilliseconds = stateBefore.timeInMilliseconds
-                                                , taskIdString = taskIdString
-                                                , taskDescription = "Task from bot request."
-                                                }
-                                            )
                             in
-                            ( { stateUpdatedForBotRequest
-                                | taskInProgress = taskInProgress
-                                , botState = botState
-                              }
-                            , tasksWithIds |> List.map Tuple.first
+                            ( { stateUpdatedForBotRequest | botState = botState }
+                            , maybeTaskFromBotRequest
+                                |> Maybe.map
+                                    (\task ->
+                                        { areaId = "operate-bot"
+                                        , task = task
+                                        , taskDescription = "Task from bot request."
+                                        }
+                                    )
                             )
 
                         _ ->
-                            ( stateBefore, [] )
+                            ( stateBefore, Nothing )
             in
             ( state
-            , { startTasks = startTasks
+            , { startTask = startTask
               , statusDescriptionText = "Operate bot."
               , notifyWhenArrivedAtTime = Nothing
               }
-                |> InterfaceToHost.ContinueSession
+                |> InternalContinueSession
             )
 
         FailSetup reason ->
             ( stateBefore
-            , InterfaceToHost.FinishSession { statusDescriptionText = "Setup failed: " ++ reason }
+            , InternalFinishSession { statusDescriptionText = "Setup failed: " ++ reason }
             )
 
 
 integrateFromHostEvent :
-    (BotEvent -> botState -> BotProcessEventResult botState)
+    (BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState)
     -> InterfaceToHost.BotEvent
     -> StateIncludingSetup botState
     -> StateIncludingSetup botState
@@ -340,7 +409,7 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBeforeUpdateTime =
                                 |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
 
                         webBrowserStartedInThisUpdate =
-                            not stateBefore.setup.webBrowserStarted && setupState.webBrowserStarted
+                            not stateBefore.setup.webBrowserRunning && setupState.webBrowserRunning
 
                         pendingRequestToRestartWebBrowser =
                             if webBrowserStartedInThisUpdate then
@@ -373,7 +442,8 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBeforeUpdateTime =
                         stateBeforeIntegrateBotEvent.botState
 
                     botEventResult =
-                        botStateBefore.botState |> botProcessEvent botEvent
+                        botStateBefore.botState
+                            |> botProcessEvent botEvent { webBrowserRunning = stateBefore.setup.webBrowserRunning }
 
                     newBotRequests =
                         case botEventResult.response of
@@ -427,6 +497,19 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                                         Err ("Exception from volatile process: " ++ exception)
                             )
 
+                webBrowserWasClosed =
+                    case requestToVolatileHostResponse of
+                        Ok fromVolatileProcessResult ->
+                            case fromVolatileProcessResult.exceptionToString of
+                                Nothing ->
+                                    False
+
+                                Just exception ->
+                                    stringContainsIgnoringCase "Most likely the Page has been closed" exception
+
+                        Err _ ->
+                            False
+
                 maybeResponseFromVolatileProcess =
                     runScriptResult
                         |> Result.toMaybe
@@ -435,7 +518,15 @@ integrateTaskResult ( time, taskResult ) setupStateBefore =
                         |> Maybe.andThen Result.toMaybe
 
                 setupStateWithScriptRunResult =
-                    { setupStateBefore | lastRunScriptResult = Just runScriptResult }
+                    { setupStateBefore
+                        | lastRunScriptResult = Just runScriptResult
+                        , webBrowserRunning =
+                            if webBrowserWasClosed then
+                                False
+
+                            else
+                                setupStateBefore.webBrowserRunning
+                    }
             in
             case maybeResponseFromVolatileProcess of
                 Nothing ->
@@ -453,7 +544,7 @@ integrateResponseFromVolatileProcess : ( Int, VolatileProcessInterface.ResponseF
 integrateResponseFromVolatileProcess ( _, response ) stateBefore =
     case response of
         VolatileProcessInterface.WebBrowserStarted ->
-            ( { stateBefore | webBrowserStarted = True }, Nothing )
+            ( { stateBefore | webBrowserRunning = True }, Nothing )
 
         VolatileProcessInterface.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
             let
@@ -462,6 +553,9 @@ integrateResponseFromVolatileProcess ( _, response ) stateBefore =
             in
             ( stateBefore, Just botEvent )
 
+        VolatileProcessInterface.WebBrowserClosed ->
+            ( { stateBefore | webBrowserRunning = False }, Nothing )
+
 
 getNextSetupTask : Maybe RequestToRestartWebBrowserStructure -> SetupState -> SetupTask
 getNextSetupTask startWebBrowserRequest stateBefore =
@@ -469,7 +563,7 @@ getNextSetupTask startWebBrowserRequest stateBefore =
         Nothing ->
             ContinueSetup
                 stateBefore
-                (InterfaceToHost.CreateVolatileProcess { programCode = VolatileProcessProgram.programCode })
+                (InterfaceToHost.CreateVolatileProcess { programCode = CompilationInterface.SourceFiles.file____WebBrowser_VolatileProcess_csx.utf8 })
                 "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
 
         Just (Err error) ->
@@ -520,14 +614,14 @@ getSetupTaskWhenVolatileHostSetupCompleted maybeStartWebBrowserRequest stateBefo
                 }
 
 
-runScriptResultDisplayString : Result String (Maybe String) -> { string : String, isErr : Bool }
+runScriptResultDisplayString : Result String (Maybe String) -> String
 runScriptResultDisplayString result =
     case result of
-        Err error ->
-            { string = "Error: " ++ error, isErr = True }
+        Err _ ->
+            "Error"
 
-        Ok successResult ->
-            { string = "Success: " ++ (successResult |> Maybe.withDefault "null"), isErr = False }
+        Ok _ ->
+            "Success"
 
 
 statusReportFromState : StateIncludingSetup s -> String
@@ -537,18 +631,6 @@ statusReportFromState state =
             "Last script run result is: "
                 ++ (state.setup.lastRunScriptResult
                         |> Maybe.map runScriptResultDisplayString
-                        |> Maybe.map
-                            (\resultDisplayInfo ->
-                                resultDisplayInfo.string
-                                    |> stringEllipsis
-                                        (if resultDisplayInfo.isErr then
-                                            640
-
-                                         else
-                                            140
-                                        )
-                                        "...."
-                            )
                         |> Maybe.withDefault "Nothing"
                    )
     in
@@ -558,12 +640,3 @@ statusReportFromState state =
     , lastScriptRunResult
     ]
         |> String.join "\n"
-
-
-stringEllipsis : Int -> String -> String -> String
-stringEllipsis howLong append string =
-    if String.length string <= howLong then
-        string
-
-    else
-        String.left (howLong - String.length append) string ++ append

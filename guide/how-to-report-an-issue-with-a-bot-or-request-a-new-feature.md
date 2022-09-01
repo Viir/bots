@@ -11,44 +11,47 @@ Explaining your use-case in human language is a good start, but a developer will
 
 ## Session Recording and Archive
 
-The most common way to describe your scenario or use-case is to share a recording of your session using the bot.
+The most common way to describe your scenario or use-case is to share a recording of a play session using the bot.
 
 The artifact of the session recording allows us to:
 
-+ See which bot program was used in the session and how it was configured (including app-settings).
++ See which bot program was used in the session and how it was configured (including bot-settings).
 + Travel back in time and see what the bot saw in the past.
 + Understand why our bot did what it did.
-+ Create simulations to test new program codes. ([Testing a bot using simulations](https://to.botlab.org/guide/testing-a-bot-using-simulations))
++ Create simulation environments to test new bot programs: https://to.botlab.org/guide/testing-a-bot-using-simulated-environments
++ Extract training data used to adapt bot program codes to new users and their setups.
 
-In summary, by providing a session recording, you answer many questions from people who want to help you.
+In summary, sharing a session recording is a fast and efficient way to answer many questions from people who want to help you.
 
 ### Getting the Session Recording Archive
 
 How do you get a session recording that you can share with others?
 
-By default, the BotLab client for Windows automatically creates that recording for you every time you run a bot. That means saving the session recording is already taken care of unless you chose to disable it for that session.
+By default, the BotLab client automatically creates that recording every time you run a bot. That means saving the session recording is already taken care of unless you chose to disable it for that session.
 
 (If you have set the `--detailed-session-recording` switch to `off` on a session, the recording will not be available for that session)
 
-After running a bot, use the `botlab  devtools` command to get a list of completed sessions:
+To export a recording after running a bot, we use the `Devtools` in the BotLab client:
 
-![Opening DevTools from the command-line](./image/2020-07-18-open-botengine-devtools.png)
+![Opening DevTools from the main menu](./image/2021-12-09-botlab-client-main-menu-enter-devtools.png)
 
-You can enter this command, for example, in the 'Command Prompt' app that comes preinstalled with Windows.
+A button in the main menu brings us into the `Devtools` view:
 
-Running this command opens a web browser window. From here on, you can continue in the web browser without looking at the command prompt window anymore.
+![DevTools view in the botlab client](./image/2021-12-09-botlab-client-devtools-default.png)
 
-![DevTools - choose a session to inspect](./image/2020-07-18-botengine-devtools-choose-session.png)
+Here we see a link to a web page on the `localhost` domain. Clicking that link brings opens a web browser. The actual graphical user interface for the Devtools is on this web page.
 
-On that web page, you find a list of recent app-sessions, the last one at the top.
+![DevTools - choose a session to inspect](./image/2021-12-09-botlab-devtools-select-session.png)
 
-When you run a bot, the BotLab window also displays the session's name, so you can find it again in this list later, even if you started other sessions in the meantime.
+You find a list of recent play sessions on that web page, the last one at the top.
 
-Clicking on one of the names of the sessions brings you into the view of this particular session:
+When you run a bot, the BotLab client window also displays the session's name, so you can find it again in this list later, even if you started other sessions in the meantime.
 
-![DevTools - initial view of a session](./image/2020-07-18-botengine-devtools-session-init.png)
+Clicking on one of the sessions' names brings us into the view of this particular session:
 
-You can click the button "Download session archive" to get the session recording bundled in a single file.
+![DevTools - initial view of a session](./image/2021-12-09-botlab-devtools-session-summary.png)
+
+To export the session recording, use the `Download session recording archive` button. This gets you a zip archive that you can then share with other people. Now you can get help from other developers for your exact situation, no matter if the solution requires a change in program code or just different bot-settings.
 
 ### Inspecting a Session and Identifying the Time of Interest
 
@@ -58,11 +61,11 @@ A precise way to communicate the time range of interest is to note the events in
 
 In the session view, there is a timeline of events in that session. The events are numbered so that we can identify them; each has its index.
 
-A bot session can easily contain thousands of events, and we want to find out what subsequence of events is related to the current problem or feature request.
+A play session can easily contain thousands of events, and we want to find out what subsequence of events is related to the current problem or feature request.
 
 Clicking on an event in the timeline opens the details for this event. Here you can see what the game looked like at that time and what the bot did. The event details contain the complete bot's response to this event, including the inputs to send to a game client.
 
-![DevTools - view of a bot session event](./image/2020-07-18-botengine-devtools-session-selected-event.png)
+![DevTools - view of play session event details](./image/2021-12-09-botlab-devtools-session-event-details.png)
 
 Bot authors often use the status text to inform about what action the bot takes and how it decided to prefer this action. The bot generates a new status text for each event. The status texts for consecutive events can be very similar or even the same, especially if the bot was waiting for a process in the game to complete and did not take any action in the event.
 

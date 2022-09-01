@@ -1,5 +1,20 @@
 module EveOnline.BotFrameworkSeparatingMemory exposing (..)
 
+{-| A framework to build EVE Online bots and intel tools.
+Features:
+
+  - Read from the game client using Sanderling memory reading and parse the user interface from the memory reading (<https://github.com/Arcitectus/Sanderling>).
+  - Play sounds.
+  - Send mouse and keyboard input to the game client.
+  - Parse the bot-settings and inform the user about the result.
+
+The framework automatically selects an EVE Online client process and finishes the session when that process disappears.
+When multiple game clients are open, the framework prioritizes the one with the topmost window. This approach helps users control which game client is picked by an app.
+
+To learn more about developing for EVE Online, see the guide at <https://to.botlab.org/guide/developing-for-eve-online>
+
+-}
+
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Common.DecisionPath
 import Common.EffectOnWindow
@@ -223,7 +238,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                                 // 100
                     in
                     EveOnline.BotFramework.ContinueSession
-                        { effects = [ EveOnline.BotFramework.EffectSequenceOnGameClientWindow effectsOnGameClientWindow ]
+                        { effects = effectsOnGameClientWindow
                         , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
                         , screenshotRegionsToRead = config.screenshotRegionsToRead
                         , statusDescriptionText = statusMessage

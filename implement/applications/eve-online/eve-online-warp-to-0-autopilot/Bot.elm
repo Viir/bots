@@ -1,4 +1,5 @@
-{- EVE Online Warp-to-0 auto-pilot version 2021-08-25
+{- EVE Online warp-to-0 auto-pilot version 2022-08-25
+
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
    Before starting the bot, set up the game client as follows:
@@ -13,6 +14,8 @@
 
    + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "cloaking device".
 
+   To learn about the autopilot, see <https://to.botlab.org/guide/app/eve-online-autopilot-bot>
+
 -}
 {-
    catalog-tags:eve-online,auto-pilot,travel
@@ -26,8 +29,10 @@ module Bot exposing
     )
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.NotificationsShim
 import Color
 import Common.AppSettings as AppSettings
+import Common.Basics exposing (stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow exposing (Location2d, MouseButton(..))
 import Dict
@@ -63,7 +68,7 @@ defaultBotSettings =
 
 parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
-    AppSettings.parseSimpleListOfAssignments { assignmentsSeparators = [ ",", "\n" ] }
+    AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "module-to-activate-always"
            , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
            )
@@ -86,7 +91,8 @@ type alias BotMemory =
 
 
 type alias State =
-    EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory
+    BotLab.NotificationsShim.StateWithNotifications
+        (EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory)
 
 
 type alias BotDecisionContext =
@@ -154,7 +160,15 @@ decideStepWhenInSpace context undockingComplete =
                 useContextMenuCascade
                     ( "route element icon", infoPanelRouteFirstMarker.uiNode )
                     (useMenuEntryWithTextContainingFirstOf
-                        [ "dock", "jump" ]
+                        [ "dock"
+
+                        -- https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370/14
+                        , "도킹"
+                        , "jump"
+
+                        -- https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370
+                        , "점프 - 스타게이트 사용"
+                        ]
                         menuCascadeCompleted
                     )
                     context
@@ -228,7 +242,7 @@ tooltipLooksLikeModuleToActivateAlways context =
                 context.eventContext.botSettings.modulesToActivateAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
-                            if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
+                            if tooltipText |> stringContainsIgnoringCase moduleToActivateAlways then
                                 Just tooltipText
 
                             else
@@ -252,6 +266,33 @@ botMain =
             , statusTextFromDecisionContext = statusTextFromDecisionContext
             }
     }
+        |> BotLab.NotificationsShim.addNotifications notificationsFunction
+
+
+notificationsFunction : { statusText : String } -> List BotLab.NotificationsShim.Notification
+notificationsFunction botResponse =
+    [ ( "undock manually"
+      , BotLab.NotificationsShim.consoleBeepNotification
+            [ { frequency = 0
+              , durationInMs = 200
+              }
+            , { frequency = 400
+              , durationInMs = 300
+              }
+            , { frequency = 500
+              , durationInMs = 300
+              }
+            ]
+      )
+    ]
+        |> List.filterMap
+            (\( keyword, notification ) ->
+                if botResponse.statusText |> String.toLower |> String.contains (String.toLower keyword) then
+                    Just notification
+
+                else
+                    Nothing
+            )
 
 
 currentSolarSystemNameFromReading : ReadingFromGameClient -> Maybe String
@@ -353,7 +394,7 @@ moduleButtonLooksActive context moduleButton =
         {-
            Adapt to discovery in March 2021 by Victor Santamaría Caballero and Samuel Pagé:
            Some module buttons don't have the ramp:
-           https://forum.botengine.org/t/cloaking-device-in-warp-to-0-bot/3917/3
+           https://forum.botlab.org/t/cloaking-device-in-warp-to-0-bot/3917/3
         -}
         case moduleButtonImageProcessing context moduleButton of
             Nothing ->

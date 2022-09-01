@@ -1,4 +1,5 @@
 {- This program demonstrates how to use the session time limit.
+
    Some bots should consider the remaining time in the current session when choosing the next activity.
    This program gets and stores the session length limit set in the configuration interface.
    It also computes the remaining time as the difference between the present time and the configured limit and displays the result via the status text.

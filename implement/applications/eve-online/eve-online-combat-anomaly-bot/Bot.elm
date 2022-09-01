@@ -1,4 +1,5 @@
-{- EVE Online combat anomaly bot version 2021-08-25
+{- EVE Online combat anomaly bot version 2022-08-25
+
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
    Setup instructions for the EVE Online client:
@@ -23,11 +24,16 @@
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
 
+   ```
    anomaly-name = Drone Patrol
    anomaly-name = Drone Horde
    hide-when-neutral-in-local = yes
    rat-to-avoid = Infested Carrier
    module-to-activate-always = shield hardener
+   ```
+
+   To learn about the anomaly bot, see <https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot>
+
 -}
 {-
    catalog-tags:eve-online,anomaly,ratting
@@ -42,7 +48,7 @@ module Bot exposing
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import Common.AppSettings as AppSettings
-import Common.Basics exposing (listElementAtWrappedIndex)
+import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
@@ -99,7 +105,7 @@ defaultBotSettings =
 
 parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
-    AppSettings.parseSimpleListOfAssignments { assignmentsSeparators = [ ",", "\n" ] }
+    AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "hide-when-neutral-in-local"
            , AppSettings.valueTypeYesOrNo
                 (\hide -> \settings -> { settings | hideWhenNeutralInLocal = hide })
@@ -202,7 +208,7 @@ findReasonToIgnoreProbeScanResult context probeScanResult =
                 isCombatAnomaly =
                     probeScanResult.cellsTexts
                         |> Dict.get "Group"
-                        |> Maybe.map (String.toLower >> String.contains "combat")
+                        |> Maybe.map (stringContainsIgnoringCase "combat")
                         |> Maybe.withDefault False
 
                 matchesAnomalyNameFromSettings =
@@ -368,7 +374,7 @@ continueIfShouldHide config context =
                                     |> List.any
                                         (\goodStandingPattern ->
                                             chatUser.standingIconHint
-                                                |> Maybe.map (String.toLower >> String.contains goodStandingPattern)
+                                                |> Maybe.map (stringContainsIgnoringCase goodStandingPattern)
                                                 |> Maybe.withDefault False
                                         )
 
@@ -397,7 +403,7 @@ dockAtRandomStationOrStructure context =
 
         menuEntryIsSuitable menuEntry =
             [ "cyno beacon", "jump gate" ]
-                |> List.any (\toAvoid -> menuEntry.text |> String.toLower |> String.contains toAvoid)
+                |> List.any (\toAvoid -> menuEntry.text |> stringContainsIgnoringCase toAvoid)
                 |> not
 
         chooseNextMenuEntry =
@@ -670,7 +676,12 @@ launchAndEngageDrones context =
                             idlingDrones =
                                 droneGroupInLocalSpace
                                     |> EveOnline.ParseUserInterface.enumerateAllDronesFromDronesGroup
-                                    |> List.filter (.uiNode >> .uiNode >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts >> List.any (String.toLower >> String.contains "idle"))
+                                    |> List.filter
+                                        (.uiNode
+                                            >> .uiNode
+                                            >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts
+                                            >> List.any (stringContainsIgnoringCase "idle")
+                                        )
 
                             dronesInBayQuantity =
                                 droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
@@ -766,7 +777,7 @@ tooltipLooksLikeModuleToActivateAlways context =
                 context.eventContext.botSettings.modulesToActivateAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
-                            if tooltipText |> String.toLower |> String.contains (moduleToActivateAlways |> String.toLower) then
+                            if tooltipText |> stringContainsIgnoringCase moduleToActivateAlways then
                                 Just tooltipText
 
                             else

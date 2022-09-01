@@ -1,4 +1,4 @@
-{- EVE Online Intel Bot - Local Watch Script - 2021-08-25
+{- EVE Online Intel Bot - Local Watch Script - 2022-09-01
    This bot watches local and plays an alarm sound when a pilot with bad standing appears.
 -}
 {-
@@ -13,14 +13,18 @@ module Bot exposing
     )
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.NotificationsShim
 import Common.AppSettings as AppSettings
 import Common.EffectOnWindow exposing (MouseButton(..))
 import EveOnline.BotFramework
     exposing
-        ( BotEventResponseEffect(..)
-        , ReadingFromGameClient
+        ( ReadingFromGameClient
         , UseContextMenuCascadeNode(..)
         , localChatWindowFromUserInterface
+        )
+import EveOnline.BotFrameworkSeparatingMemory
+    exposing
+        ( waitForProgressInGame
         )
 
 
@@ -29,72 +33,66 @@ goodStandingPatterns =
     [ "good standing", "excellent standing", "is in your" ]
 
 
-{-| To support the feature that finishes the session some time of inactivity, it needs to remember the time of the last activity.
--}
-type alias BotState =
+type alias BotMemory =
     {}
 
 
 type alias State =
-    EveOnline.BotFramework.StateIncludingFramework {} BotState
+    BotLab.NotificationsShim.StateWithNotifications
+        (EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework {} BotMemory)
 
 
 botMain : InterfaceToHost.BotConfig State
 botMain =
-    { init = initState
-    , processEvent = processEvent
+    { init = EveOnline.BotFrameworkSeparatingMemory.initState {}
+    , processEvent =
+        EveOnline.BotFrameworkSeparatingMemory.processEventWithImageProcessing
+            { parseBotSettings = AppSettings.parseAllowOnlyEmpty {}
+            , selectGameClientInstance = always EveOnline.BotFramework.selectGameClientInstanceWithTopmostWindow
+            , screenshotRegionsToRead = always { rects1x1 = [] }
+            , updateMemoryForNewReadingFromGame = always identity
+            , decideNextStep =
+                always waitForProgressInGame
+                    >> EveOnline.BotFrameworkSeparatingMemory.setMillisecondsToNextReadingFromGameBase 2000
+            , statusTextFromDecisionContext = .readingFromGameClient >> botEffectsFromGameClientState
+            }
     }
+        |> BotLab.NotificationsShim.addNotifications notificationsFunction
 
 
-initState : State
-initState =
-    EveOnline.BotFramework.initState {}
+notificationsFunction : { statusText : String } -> List BotLab.NotificationsShim.Notification
+notificationsFunction botResponse =
+    [ ( "don't see the local chat window."
+      , BotLab.NotificationsShim.consoleBeepNotification
+            [ { frequency = 700, durationInMs = 100 }
+            , { frequency = 0, durationInMs = 100 }
+            , { frequency = 700, durationInMs = 100 }
+            , { frequency = 400, durationInMs = 100 }
+            ]
+      )
+    , ( "there is a pilot with bad standing"
+      , BotLab.NotificationsShim.consoleBeepNotification
+            [ { frequency = 700, durationInMs = 100 }
+            , { frequency = 0, durationInMs = 100 }
+            , { frequency = 700, durationInMs = 500 }
+            ]
+      )
+    ]
+        |> List.filterMap
+            (\( keyword, notification ) ->
+                if botResponse.statusText |> String.toLower |> String.contains (String.toLower keyword) then
+                    Just notification
 
-
-processEvent : InterfaceToHost.BotEvent -> State -> ( State, InterfaceToHost.BotEventResponse )
-processEvent =
-    EveOnline.BotFramework.processEvent
-        { parseBotSettings = AppSettings.parseAllowOnlyEmpty {}
-        , selectGameClientInstance = always EveOnline.BotFramework.selectGameClientInstanceWithTopmostWindow
-        , processEvent = processEveOnlineBotEvent
-        }
-
-
-processEveOnlineBotEvent :
-    EveOnline.BotFramework.BotEventContext BotState
-    -> EveOnline.BotFramework.BotEvent
-    -> BotState
-    -> ( BotState, EveOnline.BotFramework.BotEventResponse )
-processEveOnlineBotEvent eventContext event stateBefore =
-    case event of
-        EveOnline.BotFramework.ReadingFromGameClientCompleted parsedUserInterface _ ->
-            let
-                ( effects, statusMessage ) =
-                    botEffectsFromGameClientState parsedUserInterface
-            in
-            ( stateBefore
-            , EveOnline.BotFramework.ContinueSession
-                { effects = effects
-                , millisecondsToNextReadingFromGame = 2000
-                , statusDescriptionText = statusMessage
-                , screenshotRegionsToRead = always { rects1x1 = [] }
-                }
+                else
+                    Nothing
             )
 
 
-botEffectsFromGameClientState : ReadingFromGameClient -> ( List BotEventResponseEffect, String )
+botEffectsFromGameClientState : ReadingFromGameClient -> String
 botEffectsFromGameClientState parsedUserInterface =
     case parsedUserInterface |> localChatWindowFromUserInterface of
         Nothing ->
-            ( [ EveOnline.BotFramework.EffectConsoleBeepSequence
-                    [ { frequency = 700, durationInMs = 100 }
-                    , { frequency = 0, durationInMs = 100 }
-                    , { frequency = 700, durationInMs = 100 }
-                    , { frequency = 400, durationInMs = 100 }
-                    ]
-              ]
-            , "I don't see the local chat window."
-            )
+            "I don't see the local chat window."
 
         Just localChatWindow ->
             let
@@ -123,16 +121,11 @@ botEffectsFromGameClientState parsedUserInterface =
                         ++ (subsetOfUsersWithNoGoodStanding |> List.length |> String.fromInt)
                         ++ " with no good standing."
 
-                alarmRequests =
+                alarmTriggers =
                     if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
-                        [ EveOnline.BotFramework.EffectConsoleBeepSequence
-                            [ { frequency = 700, durationInMs = 100 }
-                            , { frequency = 0, durationInMs = 100 }
-                            , { frequency = 700, durationInMs = 500 }
-                            ]
-                        ]
+                        [ "There is a pilot with bad standing" ]
 
                     else
                         []
             in
-            ( alarmRequests, chatWindowReport )
+            chatWindowReport :: alarmTriggers |> String.join "\n"

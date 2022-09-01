@@ -23,3 +23,8 @@ listUnique =
                 nextElement :: elements
         )
         []
+
+
+stringContainsIgnoringCase : String -> String -> Bool
+stringContainsIgnoringCase pattern =
+    String.toLower >> String.contains (String.toLower pattern)

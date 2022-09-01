@@ -1,18 +1,18 @@
 # Testing a Bot Using Simulations
 
-Simulations are a great time saver when it comes to testing and debugging a bot. Simulations let us test a complete bot without the need to start a game client.
+Simulated environments are a great time saver for testing and debugging a bot. Simulated environments let us test a complete bot without starting a game client.
 
-When we run a bot for productive use, we want it to interface with a real game client. For the bot to be useful, it needs to affect the game world or read and forward information from the game.
+When we run a bot for productive use, we want it to interface with a real game client. For the bot to be useful, it needs to affect the game world or read and forward information from the game. This mode is what we call a 'live environment'.
 
-During development, our goals are different. We are confronted with a vast amount of possible program codes and want to test and compare those. There are various ways to find program codes. We could write it ourselves or copy it from some website. But no matter how we find program code, we want to test it before letting it run unattended for hours. We want to check if it works for our scenarios. For these tests, we often want to run different program codes in the same scenario, to compare their fitness. Setting up a game client for each test would be a distraction and would slow us down.
+During bot development, our goals are different. We are confronted with many possible bot programs and want to test and compare those. There are various ways to find a bot program. We could write it ourselves or copy it from some website. But no matter how we find a bot program, we want to test it before letting it run unattended for hours. We want to check if it works for our scenarios. We often want to run different bot programs in the same scenario to compare their fitness. Setting up a game client for each test would be a distraction and would slow us down.
 
 But even after the setup, testing a new bot on a real game client can still require further work. If we let a new, previously untested bot run unattended, it might put in-game resources at risk.
 
-To test and compare bots faster and without risk, we use simulations. Simulations allow us to test different bots in the same situation, without using a live game client.
+We use simulated environments to test and compare bots faster and without risk. Simulated environments allow us to test different bots in the same situation without using a live game client.
 
 How does this work? Remember that all information that a bot receives comes through events. This also implies that the sequence of events in a session determines all outputs of a bot.
 
-In the case of productive use, the events encode information from the user (bot-settings) and the game client (e.g. screenshots). When we run a simulation, another program generates the events that the bot receives.
+In the case of productive use, the events encode information from the user (bot-settings) and the game client (e.g. screenshots). When we use a simulated environment, another program generates the events that the bot receives.
 
 ## Simulation from Session Replay
 
@@ -20,11 +20,11 @@ The simplest type of simulation is replaying a session. This is a kind of off-po
 
 To create a simulation by session replay, we only need the recording of a session as input. Here we can use a session archive as we get it from the [export function in DevTools](https://to.botlab.org/guide/how-to-report-an-issue-with-a-bot-or-request-a-new-feature).
 
-We can start a session replay by using the `botlab  sim-run` command with the `--replay-session` option. We use the `--replay-session` to point to the file containing the session recording archive. After the `--replay-session` option, we add the path to the bot program code, the same way as with the `botlab  run` command.
+We can start a session replay by using the `botlab  play` command with the `--environment` option. We use the `--environment` to point to the file containing the session recording archive. After the `--environment` option, we add the path to the bot program code, the same way as with the `botlab  play` command.
 Here is an example of the final command as we can run it in the Windows Command Prompt:
 
 ```
-botlab  sim-run  --replay-session="C:\Users\John\Downloads\session-2020-08-04T06-44-41-3bfe2b.zip"  https://github.com/Viir/bots/tree/358bc43a64ec864cc2402e58f6d9a0dc66f6d4f3/implement/applications/eve-online/eve-online-combat-anomaly-bot
+botlab  play  --environment="C:\Users\John\Downloads\session-2020-08-04T06-44-41-3bfe2b.zip"  https://github.com/Viir/bots/tree/e733ebde1f86b878dd29ae9cb90e6a12d007c1f9/implement/applications/eve-online/eve-online-combat-anomaly-bot
 ```
 
 ![command to simulate-run in Command Prompt](./image/2020-08-08-simulate-run-cmd.png)
@@ -41,7 +41,7 @@ When the simulation is complete, we find the recording in the list of sessions s
 
 When developing a new feature for a bot, we sometimes want to add a new setting to let users configure that feature. But how do we test this with a session replay? The session replay contains an event with the bot-settings string, so the replay determines the settings. What we want in this case is not an exact replay but one with modified events.
 
-To make modifying the bot-settings events easy, the `simulate-run` command offers the `--replace-bot-settings` option. When you use this option, BotLab replaces the bot-settings string with the new value for each bot-settings event in the loaded session before giving it to the bot.
+Use the `--bot-settings` option to override these bot settings. BotLab then replaces the bot-settings string with the new value for each bot-settings event in the loaded session before giving it to the bot.
 
 ## Related Resources
 

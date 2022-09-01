@@ -3,7 +3,7 @@
 This file lists some of the customizations of bot programs found on the internet. Often these emerged from answering developers' questions.
 The list serves as an additional way to find customizations again, besides the general [catalog](https://catalog.botlab.org).
 If you think a change should be merged into the main branch, you can post on the [forum](https://forum.botlab.org) or create an issue on the [bots GitHub page](https://github.com/Viir/bots/issues).
-If a majority of users choose to apply a change to an program code, that change is more likely to be merged into the main branch. You can see the popularity displayed at `Total running time in hours` on the programs catalog entry.
+The main branch of the example programs develops by evolution: The more popular a change with users, the more likely it will be merged into the main branch. You can see the popularity displayed at `Total running time in hours` on the program's catalog entry.
 To find a program on the catalog, you can also enter the commit as a search term, or use the `botlab  describe` command.
 
 ## 2020-03-19 - goondola - EVE Online - print the list of pilots in local
@@ -76,6 +76,10 @@ Original discussion: https://forum.botlab.org/t/orca-targeting-mining/3591
 
 > Total running time in hours: 33
 
+2022-04-15 the catalog entry for [Bot 81395744f5...](https://catalog.botlab.org/81395744f5857f15f5cf22cf091a71b440b42a81dddd0e992a0d9db1fce92da2) shows:
+
+> Total running time in hours: 175
+
 ## 2020-10-31 - Stephan Fuchs - EVE Online - Merged Mining Scripts
 
 https://github.com/Viir/bots/commit/f6246764ac106894e74669815c0e675c48ab9262
@@ -92,3 +96,45 @@ Thanks for your help and your great tools
 2020-11-06 the catalog entry for [App dbbec0a31d...](https://catalog.botlab.org/dbbec0a31dfe05b39cf37bb4f329c1fe5e4eb5ed85ceadac37f04ccff4a14c0b) shows:
 
 > Total running time in hours: 116
+
+2022-04-15 the catalog entry for [Bot dbbec0a31d...](https://catalog.botlab.org/dbbec0a31dfe05b39cf37bb4f329c1fe5e4eb5ed85ceadac37f04ccff4a14c0b) shows:
+
+> Total running time in hours: 292
+
+## 2021-09-22 - Drklord and opticcanadian - Tribal Wars 2 - avoid targets based on outgoing commands
+
+https://github.com/Viir/bots/commit/828e5b23a892b050f34680e006543af4df823221
+
+Original discussion:
+
++ https://forum.botlab.org/t/farm-manager-tribal-wars-2-farmbot/3038/222
++ https://forum.botlab.org/t/farm-manager-tribal-wars-2-farmbot/3038/314
+
+2021-09-22 the catalog entry for [d5a06db64f](https://botcatalog.org/d5a06db64fd579fbcf695ef99162cd1cd069b7c9eddc19e6e5abee5d7be21c43) shows:
+
+> Total running time in hours: 71
+
+2022-04-15 the catalog entry for [d5a06db64fd579fb](https://botcatalog.org/d5a06db64fd579fbcf695ef99162cd1cd069b7c9eddc19e6e5abee5d7be21c43) shows:
+
+> Total running time in hours: 1343
+
+## 2021-10-05 - qmail - EVE Online Intel Bot - Local Watch Script
+
+Original discussion:
+
++ https://forum.botlab.org/t/bot-not-working-with-new-engine/4142
+
+> EVE Online Intel Bot - Local Watch Script - 2021-09-21
+> This bot watches local and plays an alarm sound when a pilot with bad standing appears.
+
++ https://github.com/Viir/bots/tree/0bce0d7f3cd6e560d5a625e9f8a8068610950901/implement/applications/eve-online/eve-online-local-watch
++ https://reactor.botlab.org/catalog/b590279a1fbac9b39a76512df2d5dae3ef92ece4863f307ad4faea03a193ce4d
+
+2021-10-05 the catalog entry shows:
+
+> Total running time in hours: 91
+
+2022-04-15 the catalog entry shows:
+
+> Total running time in hours: 1442
+

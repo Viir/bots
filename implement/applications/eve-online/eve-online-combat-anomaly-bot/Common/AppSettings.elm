@@ -1,5 +1,12 @@
 module Common.AppSettings exposing (..)
 
+{-| This module helps you build settings-string parsers with two purposes:
+
+  - Mapping an unstructured settings string into a structured representation for easy consumption by other program parts.
+  - If the given settings string does not conform with the configured format, generate specific error messages for the user to explain available settings and how to use them.
+
+-}
+
 import Dict
 import JaroWinkler
 import Result.Extra
@@ -17,14 +24,19 @@ type alias SettingValueType appSettings =
 
 messageOnlyAcceptEmptyAppSettings : String
 messageOnlyAcceptEmptyAppSettings =
-    "I received an settings string that is not empty, but I only accept an empty settings string. I am not programmed to support any app settings. Maybe there is another app which better matches your use case?"
+    "I got a settings string that is not empty, but I only accept an empty settings string. I am not programmed to support any settings. Maybe there is another program that better suits your use case?"
 
 
+{-| Build a setting that only accepts the strings `Yes` or `No`.
+-}
 valueTypeYesOrNo : (YesOrNo -> appSettings -> appSettings) -> SettingValueType appSettings
 valueTypeYesOrNo =
     listAllSupportedValues { supportedValues = [ ( "yes", Yes ), ( "no", No ) ], ignoreCase = True }
 
 
+{-| Build a setting that only accepts strings representing valid integers and maps them to integer values.
+Here are some examples for supported values: `-1` `0`, `1234`.
+-}
 valueTypeInteger : (Int -> appSettings -> appSettings) -> SettingValueType appSettings
 valueTypeInteger integrateSettingValue =
     \settingValueAsString ->
@@ -36,25 +48,49 @@ valueTypeInteger integrateSettingValue =
                 Ok (integrateSettingValue int)
 
 
+{-| Build a setting that accepts any string.
+-}
 valueTypeString : (String -> appSettings -> appSettings) -> SettingValueType appSettings
 valueTypeString integrateSettingValue =
     integrateSettingValue >> Ok
 
 
+{-| This function builds a settings-string parser that only accepts an empty settings string.
+-}
 parseAllowOnlyEmpty : appSettings -> String -> Result String appSettings
 parseAllowOnlyEmpty appSettings appSettingsString =
-    if appSettingsString |> String.isEmpty then
+    if String.isEmpty appSettingsString then
         Ok appSettings
 
     else
         Err messageOnlyAcceptEmptyAppSettings
 
 
-parseSimpleCommaSeparatedListOfAssignments : Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
-parseSimpleCommaSeparatedListOfAssignments =
-    parseSimpleListOfAssignments { assignmentsSeparators = [ "," ] }
+{-| This function builds a settings-string parser with two purposes:
+
+  - Mapping an unstructured settings string into a structured representation for easy consumption by other program parts.
+  - If the given settings string does not conform with the configured format, generate specific error messages for the user to explain available settings and how to use them.
+
+This function parses a plain string into a value of any type, combining parsers from multiple named settings.
+Use the dictionary argument to specify the settings to support in the settings string. The key of a dictionary entry is the name of the setting in the settings string. If the settings string contains an unsupported setting name, this framework generates an error message pointing out the most similar settings name and listing available settings. A parser for an individual setting from the dictionary can fail depending on the string found for this setting. In this case, this framework generates an error message, pointing out the name of the setting for which parsing the value failed.
+This framework expects to find an equals sign (`=`) in each setting, separating the setting name and the assigned value.
+
+-}
+parseSimpleListOfAssignmentsSeparatedByNewlines : Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
+parseSimpleListOfAssignmentsSeparatedByNewlines =
+    parseSimpleListOfAssignments { assignmentsSeparators = [ "\n" ] }
 
 
+{-| This function builds a settings-string parser with two purposes:
+
+  - Mapping an unstructured settings string into a structured representation for easy consumption by other program parts.
+  - If the given settings string does not conform with the configured format, generate specific error messages for the user to explain available settings and how to use them.
+
+This function parses a plain string into a value of any type, combining parsers from multiple named settings.
+Use the dictionary argument to specify the settings to support in the settings string. The key of a dictionary entry is the name of the setting in the settings string. If the settings string contains an unsupported setting name, this framework generates an error message pointing out the most similar settings name and listing available settings. A parser for an individual setting from the dictionary can fail depending on the string found for this setting. In this case, this framework generates an error message, pointing out the name of the setting for which parsing the value failed.
+This framework expects to find an equals sign (`=`) in each setting, separating the setting name and the assigned value.
+
+-}
 parseSimpleListOfAssignments : { assignmentsSeparators : List String } -> Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
 parseSimpleListOfAssignments { assignmentsSeparators } namedSettings defaultSettings settingsString =
     let
@@ -62,6 +98,9 @@ parseSimpleListOfAssignments { assignmentsSeparators } namedSettings defaultSett
             assignmentsSeparators
                 |> List.foldl (\assignmentSeparator -> List.concatMap (String.split assignmentSeparator))
                     [ settingsString ]
+
+        assignmentValueSeparator =
+            "="
 
         assignmentFunctionResults =
             assignments
@@ -74,8 +113,17 @@ parseSimpleListOfAssignments { assignmentsSeparators } namedSettings defaultSett
                                 Err messageOnlyAcceptEmptyAppSettings
 
                             firstNamedSetting :: _ ->
-                                case assignment |> String.split "=" |> List.map String.trim of
-                                    [ settingName, assignedValue ] ->
+                                case assignment |> String.split assignmentValueSeparator of
+                                    settingNameBeforeTrim :: assignedValueFirstElement :: assignedValueOtherElements ->
+                                        let
+                                            settingName =
+                                                String.trim settingNameBeforeTrim
+
+                                            assignedValue =
+                                                (assignedValueFirstElement :: assignedValueOtherElements)
+                                                    |> String.join assignmentValueSeparator
+                                                    |> String.trim
+                                        in
                                         case namedSettings |> Dict.get settingName of
                                             Nothing ->
                                                 let

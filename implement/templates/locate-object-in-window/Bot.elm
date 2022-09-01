@@ -15,19 +15,76 @@ module Bot exposing
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework exposing (PixelValue)
+import Dict
 import Maybe.Extra
+
+
+type alias Location2d =
+    SimpleBotFramework.Location2d
+
+
+type alias Rect =
+    { x : Int
+    , y : Int
+    , width : Int
+    , height : Int
+    }
+
+
+readFromWindowIntervalMilliseconds : Int
+readFromWindowIntervalMilliseconds =
+    1000
+
+
+windowOriginalLocationsToInspectOffset : Location2d
+windowOriginalLocationsToInspectOffset =
+    { x = 100, y = 200 }
+
+
+window2x2LocationsToInspectOffset : Location2d
+window2x2LocationsToInspectOffset =
+    { x = windowOriginalLocationsToInspectOffset.x // 2
+    , y = windowOriginalLocationsToInspectOffset.y // 2
+    }
+
+
+windowOriginalLocationsToInspect : List Location2d
+windowOriginalLocationsToInspect =
+    [ { x = 0, y = 0 }
+    , { x = 1, y = 0 }
+    , { x = 0, y = 1 }
+    , { x = 1, y = 1 }
+    , { x = 10, y = 0 }
+    , { x = 11, y = 0 }
+    , { x = 10, y = 1 }
+    , { x = 11, y = 1 }
+    , { x = 0, y = 10 }
+    , { x = 1, y = 10 }
+    , { x = 0, y = 11 }
+    , { x = 1, y = 11 }
+    ]
+        |> List.map (addOffset windowOriginalLocationsToInspectOffset)
+
+
+window2x2LocationsToInspect : List Location2d
+window2x2LocationsToInspect =
+    [ { x = 0, y = 0 }
+    , { x = 5, y = 0 }
+    , { x = 0, y = 5 }
+    ]
+        |> List.map (addOffset window2x2LocationsToInspectOffset)
 
 
 type alias SimpleState =
     { timeInMilliseconds : Int
-    , lastTakeScreenshotResult :
+    , lastReadFromWindowResult :
         Maybe
             { timeInMilliseconds : Int
-            , screenshot : SimpleBotFramework.ImageStructure
+            , readResult : SimpleBotFramework.ReadFromWindowResultStruct
+            , image : SimpleBotFramework.ImageStructure
             , objectFoundLocations : List { x : Int, y : Int }
+            , missingOriginalPixelsCrops : List Rect
             }
-    , waitingForTaskToComplete : Maybe SimpleBotFramework.TaskId
-    , nextTaskIndex : Int
     }
 
 
@@ -45,9 +102,7 @@ botMain =
 initState : SimpleState
 initState =
     { timeInMilliseconds = 0
-    , waitingForTaskToComplete = Nothing
-    , lastTakeScreenshotResult = Nothing
-    , nextTaskIndex = 0
+    , lastReadFromWindowResult = Nothing
     }
 
 
@@ -56,31 +111,59 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
     let
         stateBefore =
             stateBeforeIntegratingEvent |> integrateEvent event
-    in
-    -- Do not start a new task before the engine has completed the last task.
-    if stateBefore.waitingForTaskToComplete /= Nothing then
-        ( stateBefore
-        , SimpleBotFramework.ContinueSession
-            { statusDescriptionText = lastScreenshotDescription stateBefore ++ "\nWaiting for task to complete."
-            , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 100 }
-            , startTasks = []
-            }
-        )
 
-    else
-        let
-            taskToStart =
-                { taskId = SimpleBotFramework.taskIdFromString ("take-screenshot-" ++ (stateBefore.nextTaskIndex |> String.fromInt))
-                , task = SimpleBotFramework.takeScreenshot
-                }
-        in
-        ( { stateBefore | nextTaskIndex = stateBefore.nextTaskIndex + 1, waitingForTaskToComplete = Just taskToStart.taskId }
-        , SimpleBotFramework.ContinueSession
-            { startTasks = [ taskToStart ]
-            , statusDescriptionText = lastScreenshotDescription stateBefore
-            , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 300 }
-            }
-        )
+        timeToTakeNewReadingFromGameWindow =
+            case stateBefore.lastReadFromWindowResult of
+                Nothing ->
+                    True
+
+                Just lastReadFromWindowResult ->
+                    readFromWindowIntervalMilliseconds
+                        < (stateBefore.timeInMilliseconds - lastReadFromWindowResult.timeInMilliseconds)
+
+        startTasksIfDoneWithLastReading =
+            if timeToTakeNewReadingFromGameWindow then
+                [ { taskId = SimpleBotFramework.taskIdFromString "read-from-window"
+                  , task =
+                        SimpleBotFramework.readFromWindow
+                            { crops_1x1_r8g8b8 = []
+                            , crops_2x2_r8g8b8 = [ { x = 0, y = 0, width = 9999, height = 9999 } ]
+                            }
+                  }
+                ]
+
+            else
+                []
+
+        startTasks =
+            case stateBefore.lastReadFromWindowResult of
+                Just lastReadFromWindowResult ->
+                    if
+                        (lastReadFromWindowResult.missingOriginalPixelsCrops /= [])
+                            && Dict.isEmpty lastReadFromWindowResult.image.imageAsDict
+                    then
+                        [ { taskId = SimpleBotFramework.taskIdFromString "get-image-data-from-reading"
+                          , task =
+                                SimpleBotFramework.getImageDataFromReading
+                                    { crops_1x1_r8g8b8 = lastReadFromWindowResult.missingOriginalPixelsCrops
+                                    , crops_2x2_r8g8b8 = []
+                                    }
+                          }
+                        ]
+
+                    else
+                        startTasksIfDoneWithLastReading
+
+                Nothing ->
+                    startTasksIfDoneWithLastReading
+    in
+    ( stateBefore
+    , SimpleBotFramework.ContinueSession
+        { startTasks = startTasks
+        , statusDescriptionText = lastReadingDescription stateBefore
+        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
+        }
+    )
 
 
 integrateEvent : SimpleBotFramework.BotEvent -> SimpleState -> SimpleState
@@ -100,61 +183,141 @@ integrateEvent event stateBeforeUpdateTime =
             stateBefore
 
         SimpleBotFramework.TaskCompletedEvent completedTask ->
-            if stateBefore.waitingForTaskToComplete == Just completedTask.taskId then
-                let
-                    lastTakeScreenshotResult =
-                        case completedTask.taskResult of
-                            SimpleBotFramework.NoResultValue ->
-                                stateBefore.lastTakeScreenshotResult
+            let
+                lastReadFromWindowResult =
+                    case completedTask.taskResult of
+                        SimpleBotFramework.NoResultValue ->
+                            stateBefore.lastReadFromWindowResult
 
-                            SimpleBotFramework.TakeScreenshotResult screenshot ->
-                                let
-                                    objectFoundLocations =
-                                        SimpleBotFramework.locatePatternInImage
-                                            locate_EVE_Online_Undock_Button
-                                            SimpleBotFramework.SearchEverywhere
-                                            screenshot
-                                in
-                                Just
-                                    { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                    , screenshot = screenshot
-                                    , objectFoundLocations = objectFoundLocations
-                                    }
-                in
-                { stateBefore
-                    | waitingForTaskToComplete = Nothing
-                    , lastTakeScreenshotResult = lastTakeScreenshotResult
-                }
+                        SimpleBotFramework.ReadFromWindowResult readFromWindowResult image ->
+                            let
+                                objectFoundLocations =
+                                    SimpleBotFramework.locatePatternInImage
+                                        locate_EVE_Online_Undock_Button
+                                        SimpleBotFramework.SearchEverywhere
+                                        image
 
-            else
-                stateBefore
+                                binnedSearchLocations =
+                                    image.imageBinned2x2AsDict
+                                        |> Dict.keys
+                                        |> List.map (\( x, y ) -> { x = x, y = y })
+
+                                testOnBinned2x2 =
+                                    case locate_EVE_Online_Undock_Button of
+                                        SimpleBotFramework.TestPerPixelWithBroadPhase2x2 pattern ->
+                                            pattern.testOnBinned2x2
+
+                                matchLocationsOnBinned2x2 =
+                                    image.imageBinned2x2AsDict
+                                        |> SimpleBotFramework.getMatchesLocationsFromImage
+                                            testOnBinned2x2
+                                            binnedSearchLocations
+
+                                missingOriginalPixelsCrops =
+                                    (matchLocationsOnBinned2x2
+                                        |> List.map (\binnedLocation -> ( binnedLocation.x * 2, binnedLocation.y * 2 ))
+                                    )
+                                        ++ List.map (\loc -> ( loc.x, loc.y )) windowOriginalLocationsToInspect
+                                        |> List.filter (\location -> not (Dict.member location image.imageAsDict))
+                                        |> List.map
+                                            (\( x, y ) ->
+                                                { x = x - 100
+                                                , y = y - 50
+                                                , width = 200
+                                                , height = 100
+                                                }
+                                            )
+                                        |> List.filter (\rect -> 0 < rect.width && 0 < rect.height)
+                            in
+                            Just
+                                { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                , readResult = readFromWindowResult
+                                , image = image
+                                , objectFoundLocations = objectFoundLocations
+                                , missingOriginalPixelsCrops = missingOriginalPixelsCrops
+                                }
+            in
+            { stateBefore
+                | lastReadFromWindowResult = lastReadFromWindowResult
+            }
 
 
-lastScreenshotDescription : SimpleState -> String
-lastScreenshotDescription stateBefore =
-    case stateBefore.lastTakeScreenshotResult of
+lastReadingDescription : SimpleState -> String
+lastReadingDescription stateBefore =
+    case stateBefore.lastReadFromWindowResult of
         Nothing ->
-            "Taking the first screenshot..."
+            "Taking the first reading from the window..."
 
-        Just lastTakeScreenshotResult ->
+        Just lastReadFromWindowResult ->
             let
                 objectFoundLocationsToDescribe =
-                    lastTakeScreenshotResult.objectFoundLocations
+                    lastReadFromWindowResult.objectFoundLocations
                         |> List.take 10
 
                 objectFoundLocationsDescription =
                     "I found the object in "
-                        ++ (lastTakeScreenshotResult.objectFoundLocations |> List.length |> String.fromInt)
+                        ++ (lastReadFromWindowResult.objectFoundLocations |> List.length |> String.fromInt)
                         ++ " locations:\n[ "
                         ++ (objectFoundLocationsToDescribe |> List.map describeLocation |> String.join ", ")
                         ++ " ]"
+
+                pixelValues =
+                    [ { reprName = "binned-2x2"
+                      , locations = window2x2LocationsToInspect
+                      , getter = .imageBinned2x2AsDict
+                      }
+                    , { reprName = "original"
+                      , locations = windowOriginalLocationsToInspect
+                      , getter = .imageAsDict
+                      }
+                    ]
+                        |> List.map
+                            (\reprConfig ->
+                                "Inspecting on representation '"
+                                    ++ reprConfig.reprName
+                                    ++ "':\n"
+                                    ++ (reprConfig.locations
+                                            |> List.map
+                                                (\location ->
+                                                    String.fromInt location.x
+                                                        ++ ","
+                                                        ++ String.fromInt location.y
+                                                        ++ ": "
+                                                        ++ (lastReadFromWindowResult.image
+                                                                |> reprConfig.getter
+                                                                |> Dict.get ( location.x, location.y )
+                                                                |> Maybe.map describePixelValue
+                                                                |> Maybe.withDefault "NA"
+                                                           )
+                                                )
+                                            |> String.join "\n"
+                                       )
+                            )
+                        |> String.join "\n"
+
+                windowProperties =
+                    [ ( "window.width", lastReadFromWindowResult.readResult.windowSize.x )
+                    , ( "window.height", lastReadFromWindowResult.readResult.windowSize.y )
+                    , ( "windowClientArea.width", lastReadFromWindowResult.readResult.windowClientAreaSize.x )
+                    , ( "windowClientArea.height", lastReadFromWindowResult.readResult.windowClientAreaSize.y )
+                    ]
+                        |> List.map (\( property, value ) -> property ++ " = " ++ String.fromInt value)
+                        |> String.join ", "
             in
-            "The last screenshot had a width of "
-                ++ (lastTakeScreenshotResult.screenshot.imageWidth |> String.fromInt)
-                ++ " and a height of "
-                ++ (lastTakeScreenshotResult.screenshot.imageHeight |> String.fromInt)
-                ++ " pixels.\n"
-                ++ objectFoundLocationsDescription
+            [ "Last reading from window: " ++ windowProperties
+            , "Pixels: "
+                ++ ([ ( "binned 2x2", lastReadFromWindowResult.image.imageBinned2x2AsDict |> Dict.size )
+                    , ( "original", lastReadFromWindowResult.image.imageAsDict |> Dict.size )
+                    ]
+                        |> List.map (\( name, value ) -> String.fromInt value ++ " " ++ name)
+                        |> String.join ", "
+                   )
+                ++ "."
+            , objectFoundLocationsDescription
+            , "Inspecting individual pixel values:"
+            , pixelValues
+            ]
+                |> String.join "\n"
 
 
 {-| This is from the game EVE Online, the undock button in the station window.
@@ -197,7 +360,9 @@ locate_EVE_Online_Undock_Button =
             getPixelValueAtLocation { x = -30, y = -5 }
                 |> Maybe.map
                     (\pixelValue ->
-                        (pixelValue.red - 106 |> abs) < 40 && (pixelValue.green - 78 |> abs) < 30 && pixelValue.blue < 20
+                        ((pixelValue.red - 106 |> abs) < 40)
+                            && ((pixelValue.green - 78 |> abs) < 30)
+                            && (pixelValue.blue < 20)
                     )
                 |> Maybe.withDefault False
     in
@@ -210,3 +375,25 @@ locate_EVE_Online_Undock_Button =
 describeLocation : { x : Int, y : Int } -> String
 describeLocation { x, y } =
     "{ x = " ++ (x |> String.fromInt) ++ ", y = " ++ (y |> String.fromInt) ++ " }"
+
+
+describePixelValue : PixelValue -> String
+describePixelValue pixelValue =
+    [ "{ "
+    , [ ( "red", .red )
+      , ( "green", .green )
+      , ( "blue", .blue )
+      ]
+        |> List.map
+            (\( name, getter ) ->
+                name ++ " = " ++ (pixelValue |> getter |> String.fromInt)
+            )
+        |> String.join ", "
+    , " }"
+    ]
+        |> String.join ""
+
+
+addOffset : Location2d -> Location2d -> Location2d
+addOffset a b =
+    { x = a.x + b.x, y = a.y + b.y }

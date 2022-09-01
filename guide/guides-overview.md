@@ -11,11 +11,13 @@
 
 + Observing and inspecting (aka 'debugging') a bot: https://to.botlab.org/guide/observing-and-inspecting-a-bot
 
-+ Testing a bot using simulations: https://to.botlab.org/guide/testing-a-bot-using-simulations
++ Testing a bot using simulated environments: https://to.botlab.org/guide/testing-a-bot-using-simulated-environments
 
 + Input focus scheduling for multiple bot instances: https://to.botlab.org/guide/input-focus-scheduling-for-multiple-bot-instances
 
 + Running bots on multiple game clients: https://to.botlab.org/guide/running-bots-on-multiple-game-clients
+
++ [Walkthrough, Programming, Video] Combining behaviors of multiple bot programs: https://youtu.be/ALXsLznDOfM
 
 + Learn how to develop EVE Online bots and intel tools. Discover the engineering methods and tools behind the most advanced bots: https://to.botlab.org/guide/developing-for-eve-online
 
@@ -59,8 +61,6 @@ Wondering what outcome you can expect from following the guides? Below is a list
 
 + Explore Elm syntax and core library with the Elm Explorer: https://botlabs.blob.core.windows.net/blob-library/by-name/ElmExplorer.html
 
-+ Learn about recursion, a concept we frequently use in programming: https://www.recursively.xyz
-
-+ Inspection tool to explore the structure of EVE Online memory readings: https://botlabs.blob.core.windows.net/blob-library/by-name/2020-12-11-eve-online-alternate-ui.html
++ Inspection tool to explore the structure of EVE Online memory readings: https://botlabs.blob.core.windows.net/blob-library/by-name/2022-05-01-eve-online-alternate-ui.html
 
 + How to Allow Multiple RDP Sessions in Windows 10: http://woshub.com/how-to-allow-multiple-rdp-sessions-in-windows-10/

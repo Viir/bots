@@ -2,6 +2,11 @@
 
 The parsed user interface is a library of building blocks to build apps that read from the EVE Online game client.
 
+Developers use the parsing library to make ratting, mining, and mission running bots and intel tools. Following are some links to bots and tools using the parsing library:
+
++ https://forum.botlab.org/t/list-of-eve-online-bots-for-beginners/629
++ https://catalog.botlab.org/?q=eve%2Bonline
+
 ### Functions
 
 The EVE Online client's UI tree can contain thousands of nodes and tens of thousands of individual properties. Because of this large amount of data, navigating in there can be time-consuming.
@@ -12,7 +17,7 @@ When programming an app, we use functions to reach into the UI tree and extract 
 
 To find things faster and automatically detect program code errors, we also use types adapted to the user interface's shape. We use the type system of the Elm programming language to assign names to parts of the UI tree describe the values that we expect in certain parts of the UI. The types provide us with names more closely related to players' experience, such as the overview window or ship modules.
 
-To help find these functions and types, we collect the most popular ones in the [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/358bc43a64ec864cc2402e58f6d9a0dc66f6d4f3/implement/applications/eve-online/eve-online-mining-bot/EveOnline/ParseUserInterface.elm) Elm module.
+To help find these functions and types, we collect the most popular ones in the [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/5a80367063af122ea679930952d570ba2b7cd026/implement/applications/eve-online/eve-online-mining-bot/EveOnline/ParseUserInterface.elm) Elm module.
 
 If you are not sure how to read the type definitions in that module, see the ["Reading Types"](https://guide.elm-lang.org/types/reading_types.html) and ["Type Aliases"](https://guide.elm-lang.org/types/type_aliases.html) sections in the Elm programming language guide.
 
@@ -153,7 +158,7 @@ To work with items in the inventory, use the field `selectedContainerInventory` 
 
 Are looking for an item with a specific name? You could use the filtering function in the game client, but there is an easier way: Using the function `getAllContainedDisplayTexts` on the inventory item, you can filter the list of items immediately.
 
-As you can also see in the screenshot of the live inspector, we get the used, selected, and maximum capacity of the selected container with the field `selectedContainerCapacityGauge`. You can compare the `used` and `maximum` values to see if the container is (almost) full. [Mining bots do this](https://github.com/Viir/bots/blob/358bc43a64ec864cc2402e58f6d9a0dc66f6d4f3/implement/applications/eve-online/eve-online-mining-bot/Bot.elm#L1119-L1124) on the ore hold to know when to travel to the unload location.
+As you can also see in the screenshot of the live inspector, we get the used, selected, and maximum capacity of the selected container with the field `selectedContainerCapacityGauge`. You can compare the `used` and `maximum` values to see if the container is (almost) full. [Mining bots do this](https://github.com/Viir/bots/blob/3a19d243ce02b9fdc8ac199c74164d86b4777a5b/implement/applications/eve-online/eve-online-mining-bot/Bot.elm#L1115-L1120) on the mining hold to know when to travel to the unload location.
 
 ## Drones Window
 

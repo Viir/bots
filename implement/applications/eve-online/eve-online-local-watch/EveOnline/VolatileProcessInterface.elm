@@ -12,7 +12,6 @@ type RequestToVolatileHost
     | SearchUIRootAddress SearchUIRootAddressStructure
     | ReadFromWindow ReadFromWindowStructure
     | EffectSequenceOnWindow (TaskOnWindowStructure (List EffectSequenceElement))
-    | EffectConsoleBeepSequence (List ConsoleBeepStructure)
     | GetImageDataFromReading GetImageDataFromSpecificReadingStructure
 
 
@@ -23,7 +22,6 @@ type ResponseFromVolatileHost
     | GetImageDataFromReadingResult GetImageDataFromReadingResultStructure
     | FailedToBringWindowToFront String
     | CompletedEffectSequenceOnWindow
-    | CompletedOtherEffect
 
 
 type alias GameClientProcessSummaryStruct =
@@ -125,12 +123,6 @@ type alias Location2d =
     { x : Int, y : Int }
 
 
-type alias ConsoleBeepStructure =
-    { frequency : Int
-    , durationInMs : Int
-    }
-
-
 type alias Rect2dStructure =
     { x : Int
     , y : Int
@@ -167,7 +159,6 @@ decodeResponseFromVolatileHost =
             |> Json.Decode.map GetImageDataFromReadingResult
         , Json.Decode.field "FailedToBringWindowToFront" (Json.Decode.map FailedToBringWindowToFront Json.Decode.string)
         , Json.Decode.field "CompletedEffectSequenceOnWindow" (jsonDecodeSucceedWhenNotNull CompletedEffectSequenceOnWindow)
-        , Json.Decode.field "CompletedOtherEffect" (jsonDecodeSucceedWhenNotNull CompletedOtherEffect)
         ]
 
 
@@ -193,9 +184,6 @@ encodeRequestToVolatileHost request =
                   )
                 ]
 
-        EffectConsoleBeepSequence effectConsoleBeepSequence ->
-            Json.Encode.object [ ( "EffectConsoleBeepSequence", effectConsoleBeepSequence |> Json.Encode.list encodeConsoleBeep ) ]
-
 
 decodeRequestToVolatileHost : Json.Decode.Decoder RequestToVolatileHost
 decodeRequestToVolatileHost =
@@ -205,7 +193,6 @@ decodeRequestToVolatileHost =
         , Json.Decode.field "ReadFromWindow" (decodeReadFromWindow |> Json.Decode.map ReadFromWindow)
         , Json.Decode.field "GetImageDataFromReading" (decodeGetImageDataFromSpecificReading |> Json.Decode.map GetImageDataFromReading)
         , Json.Decode.field "EffectSequenceOnWindow" (decodeTaskOnWindow (Json.Decode.list decodeEffectSequenceElement) |> Json.Decode.map EffectSequenceOnWindow)
-        , Json.Decode.field "EffectConsoleBeepSequence" (Json.Decode.list decodeConsoleBeep |> Json.Decode.map EffectConsoleBeepSequence)
         ]
 
 
@@ -451,21 +438,6 @@ jsonDecodePixelValue_R8G8B8 =
                 , blue = asInt |> modBy 256
                 }
             )
-
-
-encodeConsoleBeep : ConsoleBeepStructure -> Json.Encode.Value
-encodeConsoleBeep consoleBeep =
-    Json.Encode.object
-        [ ( "frequency", consoleBeep.frequency |> Json.Encode.int )
-        , ( "durationInMs", consoleBeep.durationInMs |> Json.Encode.int )
-        ]
-
-
-decodeConsoleBeep : Json.Decode.Decoder ConsoleBeepStructure
-decodeConsoleBeep =
-    Json.Decode.map2 ConsoleBeepStructure
-        (Json.Decode.field "frequency" Json.Decode.int)
-        (Json.Decode.field "durationInMs" Json.Decode.int)
 
 
 jsonDecodeSucceedWhenNotNull : a -> Json.Decode.Decoder a

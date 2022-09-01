@@ -1,5 +1,17 @@
 module EveOnline.ParseUserInterface exposing (..)
 
+{-| A library of building blocks to build programs that read from the EVE Online game client.
+
+The EVE Online client's UI tree can contain thousands of nodes and tens of thousands of individual properties. Because of this large amount of data, navigating in there can be time-consuming.
+
+This library helps us navigate the UI tree with functions to filter out redundant data and extract the interesting bits.
+
+The types in this module provide names more closely related to players' experience, such as the overview window or ship modules.
+
+To learn about the user interface structures in the EVE Online game client, see the guide at <https://to.botlab.org/guide/parsed-user-interface-of-the-eve-online-game-client>
+
+-}
+
 import Common.EffectOnWindow
 import Dict
 import EveOnline.MemoryReading
@@ -585,8 +597,8 @@ getDisplayRegionFromDictEntries uiNode =
         fixedNumberFromJsonValue =
             Json.Decode.decodeValue
                 (Json.Decode.oneOf
-                    [ jsonDecodeIntFromString
-                    , Json.Decode.field "int_low32" jsonDecodeIntFromString
+                    [ jsonDecodeIntFromIntOrString
+                    , Json.Decode.field "int_low32" jsonDecodeIntFromIntOrString
                     ]
                 )
 
@@ -631,6 +643,7 @@ parseInfoPanelContainerFromUIRoot uiTreeRoot =
         uiTreeRoot
             |> listDescendantsWithDisplayRegion
             |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "InfoPanelContainer")
+            |> List.sortBy (.uiNode >> EveOnline.MemoryReading.countDescendantsInUITreeNode >> negate)
             |> List.head
     of
         Nothing ->
@@ -703,7 +716,7 @@ parseInfoPanelLocationInfoFromInfoPanelContainer infoPanelContainerNode =
                 currentSolarSystemName =
                     infoPanelNode.uiNode
                         |> getAllContainedDisplayTexts
-                        |> List.filterMap (getSubstringBetweenXmlTagsAfterMarker "alt='Current Solar System'")
+                        |> List.filterMap parseCurrentSolarSystemFromUINodeText
                         |> List.head
                         |> Maybe.map String.trim
 
@@ -752,6 +765,14 @@ parseSecurityStatusPercentFromUINodeText =
         ]
         >> Maybe.andThen (String.trim >> String.toFloat)
         >> Maybe.map ((*) 100 >> round)
+
+
+parseCurrentSolarSystemFromUINodeText : String -> Maybe String
+parseCurrentSolarSystemFromUINodeText =
+    Maybe.Extra.oneOf
+        [ getSubstringBetweenXmlTagsAfterMarker "alt='Current Solar System'"
+        , getSubstringBetweenXmlTagsAfterMarker "alt=\"Current Solar System\""
+        ]
 
 
 parseCurrentStationNameFromInfoPanelLocationInfoLabelText : String -> Maybe String
@@ -1070,6 +1091,12 @@ parseShipUIIndication indicationUINode =
             , ( "Jump", ManeuverJump )
             , ( "Orbit", ManeuverOrbit )
             , ( "Approach", ManeuverApproach )
+
+            -- Sample `session-2022-05-23T23-00-32-87ba97.zip` shared by Abaddon at https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370/9
+            , ( "워프 드라이브 가동", ManeuverWarp )
+
+            -- Sample `session-2022-05-26T03-13-42-83df2b.zip` shared by Abaddon at https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370/14
+            , ( "점프 중", ManeuverJump )
             ]
                 |> List.filterMap
                     (\( pattern, candidateManeuverType ) ->
@@ -1902,7 +1929,7 @@ parseInventoryWindow windowUiNode =
                     (listDescendantsWithDisplayRegion
                         >> List.filter
                             (\uiNode ->
-                                [ "ShipCargo", "ShipDroneBay", "ShipOreHold", "StationItems", "ShipFleetHangar", "StructureItemHangar" ]
+                                [ "ShipCargo", "ShipDroneBay", "ShipGeneralMiningHold", "StationItems", "ShipFleetHangar", "StructureItemHangar" ]
                                     |> List.member uiNode.uiNode.pythonObjectTypeName
                             )
                         >> List.head
@@ -2777,10 +2804,10 @@ getColorPercentFromDictEntries =
 jsonDecodeColorPercent : Json.Decode.Decoder ColorComponents
 jsonDecodeColorPercent =
     Json.Decode.map4 ColorComponents
-        (Json.Decode.field "aPercent" jsonDecodeIntFromString)
-        (Json.Decode.field "rPercent" jsonDecodeIntFromString)
-        (Json.Decode.field "gPercent" jsonDecodeIntFromString)
-        (Json.Decode.field "bPercent" jsonDecodeIntFromString)
+        (Json.Decode.field "aPercent" jsonDecodeIntFromIntOrString)
+        (Json.Decode.field "rPercent" jsonDecodeIntFromIntOrString)
+        (Json.Decode.field "gPercent" jsonDecodeIntFromIntOrString)
+        (Json.Decode.field "bPercent" jsonDecodeIntFromIntOrString)
 
 
 getRotationFloatFromDictEntries : EveOnline.MemoryReading.UITreeNode -> Maybe Float
@@ -2790,18 +2817,21 @@ getRotationFloatFromDictEntries =
         >> Maybe.andThen (Json.Decode.decodeValue Json.Decode.float >> Result.toMaybe)
 
 
-jsonDecodeIntFromString : Json.Decode.Decoder Int
-jsonDecodeIntFromString =
-    Json.Decode.string
-        |> Json.Decode.andThen
-            (\asString ->
-                case asString |> String.toInt of
-                    Just asInt ->
-                        Json.Decode.succeed asInt
+jsonDecodeIntFromIntOrString : Json.Decode.Decoder Int
+jsonDecodeIntFromIntOrString =
+    Json.Decode.oneOf
+        [ Json.Decode.int
+        , Json.Decode.string
+            |> Json.Decode.andThen
+                (\asString ->
+                    case asString |> String.toInt of
+                        Just asInt ->
+                            Json.Decode.succeed asInt
 
-                    Nothing ->
-                        Json.Decode.fail ("Failed to parse integer from string '" ++ asString ++ "'")
-            )
+                        Nothing ->
+                            Json.Decode.fail ("Failed to parse integer from string '" ++ asString ++ "'")
+                )
+        ]
 
 
 getHorizontalOffsetFromParentAndWidth : EveOnline.MemoryReading.UITreeNode -> Maybe { offset : Int, width : Int }

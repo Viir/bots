@@ -43,8 +43,14 @@ type alias BotProcessEventResult botState =
 
 
 type BotResponse
-    = ContinueSession (Maybe BotRequest)
+    = ContinueSession ContinueSessionStruct
     | FinishSession
+
+
+type alias ContinueSessionStruct =
+    { request : Maybe BotRequest
+    , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
+    }
 
 
 type BotRequest
@@ -86,8 +92,8 @@ type alias RequestToRestartWebBrowserStructure =
 
 type alias BotState botState =
     { botState : botState
-    , lastProcessEventResult : Maybe (BotProcessEventResult botState)
-    , remainingBotRequests : List BotRequest
+    , lastProcessEventStatusText : Maybe String
+    , queuedBotRequests : List BotRequest
     }
 
 
@@ -108,9 +114,13 @@ type SetupTask
     | FailSetup String
 
 
-type InternalBotEventResponse
-    = InternalContinueSession InternalContinueSessionStructure
-    | InternalFinishSession { statusDescriptionText : String }
+type alias InternalBotEventResponse =
+    ContinueOrFinishResponse InternalContinueSessionStructure { statusDescriptionText : String }
+
+
+type ContinueOrFinishResponse continue finish
+    = ContinueResponse continue
+    | FinishResponse finish
 
 
 type alias InternalContinueSessionStructure =
@@ -133,8 +143,8 @@ initState botState =
     , pendingRequestToRestartWebBrowser = Nothing
     , botState =
         { botState = botState
-        , lastProcessEventResult = Nothing
-        , remainingBotRequests = []
+        , lastProcessEventStatusText = Nothing
+        , queuedBotRequests = []
         }
     , timeInMilliseconds = 0
     , lastTaskIndex = 0
@@ -157,51 +167,76 @@ processEvent :
     -> ( StateIncludingSetup botState, InterfaceToHost.BotEventResponse )
 processEvent botProcessEvent fromHostEvent stateBefore =
     let
+        ( state, responseBeforeStatusText ) =
+            processEventLessComposingStatusText botProcessEvent fromHostEvent stateBefore
+
+        statusMessagePrefix =
+            (state |> statusReportFromState) ++ "\nCurrent activity: "
+
+        response =
+            case responseBeforeStatusText of
+                InterfaceToHost.ContinueSession continueSession ->
+                    { continueSession
+                        | statusDescriptionText = statusMessagePrefix ++ continueSession.statusDescriptionText
+                    }
+                        |> InterfaceToHost.ContinueSession
+
+                InterfaceToHost.FinishSession finishSession ->
+                    { finishSession
+                        | statusDescriptionText = statusMessagePrefix ++ finishSession.statusDescriptionText
+                    }
+                        |> InterfaceToHost.FinishSession
+    in
+    ( state, response )
+
+
+processEventLessComposingStatusText :
+    (BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState)
+    -> InterfaceToHost.BotEvent
+    -> StateIncludingSetup botState
+    -> ( StateIncludingSetup botState, InterfaceToHost.BotEventResponse )
+processEventLessComposingStatusText botProcessEvent fromHostEvent stateBefore =
+    let
         ( state, response ) =
             processEventLessMappingTasks botProcessEvent fromHostEvent stateBefore
     in
     case response of
-        InternalFinishSession finishSession ->
+        FinishResponse finishSession ->
             ( state, InterfaceToHost.FinishSession finishSession )
 
-        InternalContinueSession continueSession ->
-            case continueSession.startTask of
-                Nothing ->
-                    ( state
-                    , InterfaceToHost.ContinueSession
-                        { statusDescriptionText = continueSession.statusDescriptionText
-                        , startTasks = []
-                        , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
-                        }
-                    )
+        ContinueResponse continueSession ->
+            let
+                ( startTasks, taskInProgress ) =
+                    case continueSession.startTask of
+                        Nothing ->
+                            ( [], state.taskInProgress )
 
-                Just startTask ->
-                    let
-                        taskIdString =
-                            startTask.areaId ++ "-" ++ String.fromInt stateBefore.lastTaskIndex
-
-                        startTasks =
-                            [ { taskId = InterfaceToHost.TaskIdFromString taskIdString
-                              , task = startTask.task
-                              }
-                            ]
-
-                        taskInProgress =
-                            { startTimeInMilliseconds = state.timeInMilliseconds
-                            , taskIdString = taskIdString
-                            , taskDescription = startTask.taskDescription
-                            }
-                    in
-                    ( { state
-                        | lastTaskIndex = state.lastTaskIndex + List.length startTasks
-                        , taskInProgress = Just taskInProgress
-                      }
-                    , InterfaceToHost.ContinueSession
-                        { statusDescriptionText = continueSession.statusDescriptionText
-                        , startTasks = startTasks
-                        , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
-                        }
-                    )
+                        Just startTask ->
+                            let
+                                taskIdString =
+                                    startTask.areaId ++ "-" ++ String.fromInt stateBefore.lastTaskIndex
+                            in
+                            ( [ { taskId = InterfaceToHost.TaskIdFromString taskIdString
+                                , task = startTask.task
+                                }
+                              ]
+                            , Just
+                                { startTimeInMilliseconds = state.timeInMilliseconds
+                                , taskIdString = taskIdString
+                                , taskDescription = startTask.taskDescription
+                                }
+                            )
+            in
+            ( { state
+                | lastTaskIndex = state.lastTaskIndex + List.length startTasks
+                , taskInProgress = taskInProgress
+              }
+            , InterfaceToHost.ContinueSession
+                { statusDescriptionText = continueSession.statusDescriptionText
+                , startTasks = startTasks
+                , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
+                }
+            )
 
 
 processEventLessMappingTasks :
@@ -211,11 +246,12 @@ processEventLessMappingTasks :
     -> ( StateIncludingSetup botState, InternalBotEventResponse )
 processEventLessMappingTasks botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
     let
-        stateBefore =
-            stateBeforeIntegratingEvent |> integrateFromHostEvent botProcessEvent fromHostEvent
+        ( stateBefore, maybeBotResponse ) =
+            stateBeforeIntegratingEvent
+                |> integrateFromHostEvent botProcessEvent fromHostEvent
 
         botRequestedFinishSession =
-            stateBefore.botState.lastProcessEventResult
+            maybeBotResponse
                 |> Maybe.map
                     (\lastProcessEventResult ->
                         case lastProcessEventResult.response of
@@ -227,12 +263,11 @@ processEventLessMappingTasks botProcessEvent fromHostEvent stateBeforeIntegratin
                     )
                 |> Maybe.withDefault False
 
-        ( state, responseBeforeAddingStatusMessageAndSubscribeToTime ) =
+        ( state, responseBeforeSubscribeToTime ) =
             if botRequestedFinishSession then
                 ( stateBefore
-                , { statusDescriptionText = "The bot finished the session."
-                  }
-                    |> InternalFinishSession
+                , { statusDescriptionText = "The bot finished the session." }
+                    |> FinishResponse
                 )
 
             else
@@ -246,29 +281,36 @@ processEventLessMappingTasks botProcessEvent fromHostEvent stateBeforeIntegratin
                           , notifyWhenArrivedAtTime = Nothing
                           , startTask = Nothing
                           }
-                            |> InternalContinueSession
+                            |> ContinueResponse
                         )
 
-        statusMessagePrefix =
-            (state |> statusReportFromState) ++ "\nCurrent activity: "
+        notifyWhenArrivedAtTimeFromBot =
+            case maybeBotResponse |> Maybe.map .response of
+                Nothing ->
+                    Nothing
+
+                Just (ContinueSession continueSession) ->
+                    continueSession.notifyWhenArrivedAtTime
+
+                Just FinishSession ->
+                    Nothing
 
         notifyWhenArrivedAtTime =
-            stateBefore.timeInMilliseconds + 500
+            notifyWhenArrivedAtTimeFromBot
+                |> Maybe.map .timeInMilliseconds
+                |> Maybe.withDefault (stateBefore.timeInMilliseconds + 1000)
+                |> min (stateBefore.timeInMilliseconds + 4000)
 
         response =
-            case responseBeforeAddingStatusMessageAndSubscribeToTime of
-                InternalContinueSession continueSession ->
+            case responseBeforeSubscribeToTime of
+                ContinueResponse continueSession ->
                     { continueSession
-                        | statusDescriptionText = statusMessagePrefix ++ continueSession.statusDescriptionText
-                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = notifyWhenArrivedAtTime }
+                        | notifyWhenArrivedAtTime = Just { timeInMilliseconds = notifyWhenArrivedAtTime }
                     }
-                        |> InternalContinueSession
+                        |> ContinueResponse
 
-                InternalFinishSession finishSession ->
-                    { finishSession
-                        | statusDescriptionText = statusMessagePrefix ++ finishSession.statusDescriptionText
-                    }
-                        |> InternalFinishSession
+                FinishResponse _ ->
+                    responseBeforeSubscribeToTime
     in
     ( state, response )
 
@@ -290,7 +332,7 @@ processEventNotWaitingForTask stateBefore =
               , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
               , notifyWhenArrivedAtTime = Nothing
               }
-                |> InternalContinueSession
+                |> ContinueResponse
             )
 
         OperateBot operateBot ->
@@ -299,7 +341,7 @@ processEventNotWaitingForTask stateBefore =
                     stateBefore.botState
 
                 ( state, startTask ) =
-                    case botStateBefore.remainingBotRequests of
+                    case botStateBefore.queuedBotRequests of
                         botRequest :: remainingBotRequests ->
                             let
                                 ( stateUpdatedForBotRequest, maybeTaskFromBotRequest ) =
@@ -355,7 +397,7 @@ processEventNotWaitingForTask stateBefore =
                                             )
 
                                 botState =
-                                    { botStateBefore | remainingBotRequests = remainingBotRequests }
+                                    { botStateBefore | queuedBotRequests = remainingBotRequests }
                             in
                             ( { stateUpdatedForBotRequest | botState = botState }
                             , maybeTaskFromBotRequest
@@ -376,12 +418,12 @@ processEventNotWaitingForTask stateBefore =
               , statusDescriptionText = "Operate bot."
               , notifyWhenArrivedAtTime = Nothing
               }
-                |> InternalContinueSession
+                |> ContinueResponse
             )
 
         FailSetup reason ->
             ( stateBefore
-            , InternalFinishSession { statusDescriptionText = "Setup failed: " ++ reason }
+            , FinishResponse { statusDescriptionText = "Setup failed: " ++ reason }
             )
 
 
@@ -389,7 +431,7 @@ integrateFromHostEvent :
     (BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState)
     -> InterfaceToHost.BotEvent
     -> StateIncludingSetup botState
-    -> StateIncludingSetup botState
+    -> ( StateIncludingSetup botState, Maybe (BotProcessEventResult botState) )
 integrateFromHostEvent botProcessEvent fromHostEvent stateBeforeUpdateTime =
     let
         stateBefore =
@@ -434,38 +476,40 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBeforeUpdateTime =
                 InterfaceToHost.SessionDurationPlannedEvent _ ->
                     ( stateBefore, Nothing )
     in
-    maybeBotEvent
-        |> Maybe.map
-            (\botEvent ->
-                let
-                    botStateBefore =
-                        stateBeforeIntegrateBotEvent.botState
+    case maybeBotEvent of
+        Nothing ->
+            ( stateBeforeIntegrateBotEvent, Nothing )
 
-                    botEventResult =
-                        botStateBefore.botState
-                            |> botProcessEvent botEvent { webBrowserRunning = stateBefore.setup.webBrowserRunning }
+        Just botEvent ->
+            let
+                botStateBefore =
+                    stateBeforeIntegrateBotEvent.botState
 
-                    newBotRequests =
-                        case botEventResult.response of
-                            ContinueSession maybeBotRequest ->
-                                [ maybeBotRequest ] |> List.filterMap identity
+                botEventResult =
+                    botStateBefore.botState
+                        |> botProcessEvent botEvent { webBrowserRunning = stateBefore.setup.webBrowserRunning }
 
-                            FinishSession ->
-                                []
+                newBotRequests =
+                    case botEventResult.response of
+                        ContinueSession continueSession ->
+                            continueSession.request |> Maybe.map List.singleton |> Maybe.withDefault []
 
-                    remainingBotRequests =
-                        stateBeforeIntegrateBotEvent.botState.remainingBotRequests ++ newBotRequests
+                        FinishSession ->
+                            []
 
-                    botState =
-                        { botStateBefore
-                            | botState = botEventResult.newState
-                            , lastProcessEventResult = Just botEventResult
-                            , remainingBotRequests = remainingBotRequests
-                        }
-                in
-                { stateBeforeIntegrateBotEvent | botState = botState }
+                queuedBotRequests =
+                    stateBeforeIntegrateBotEvent.botState.queuedBotRequests ++ newBotRequests
+
+                botState =
+                    { botStateBefore
+                        | botState = botEventResult.newState
+                        , lastProcessEventStatusText = Just botEventResult.statusMessage
+                        , queuedBotRequests = queuedBotRequests
+                    }
+            in
+            ( { stateBeforeIntegrateBotEvent | botState = botState }
+            , Just botEventResult
             )
-        |> Maybe.withDefault stateBeforeIntegrateBotEvent
 
 
 integrateTaskResult : ( Int, InterfaceToHost.TaskResultStructure ) -> SetupState -> ( SetupState, Maybe BotEvent )
@@ -634,7 +678,7 @@ statusReportFromState state =
                         |> Maybe.withDefault "Nothing"
                    )
     in
-    [ state.botState.lastProcessEventResult |> Maybe.map .statusMessage |> Maybe.withDefault ""
+    [ state.botState.lastProcessEventStatusText |> Maybe.withDefault ""
     , "--------"
     , "Web browser framework status:"
     , lastScriptRunResult

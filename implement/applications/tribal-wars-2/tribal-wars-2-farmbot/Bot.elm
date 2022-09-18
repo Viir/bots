@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-09-01
+{- Tribal Wars 2 farmbot version 2022-09-18
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -255,6 +255,13 @@ type alias BotSettings =
     , webBrowserUserProfileId : String
     , closeGameClientDuringBreak : AppSettings.YesOrNo
     , openWebsiteOnStart : Maybe String
+    }
+
+
+type alias WebBrowserStatus =
+    { lastPageLocation : Maybe String
+    , gameLastPageLocation : Maybe String
+    , webBrowserRunning : Bool
     }
 
 
@@ -535,7 +542,11 @@ botMain =
         }
 
 
-processWebBrowserBotEvent : BotEvent -> BotFramework.GenericBotState -> BotState -> { newState : BotState, response : BotResponse, statusMessage : String }
+processWebBrowserBotEvent :
+    BotEvent
+    -> BotFramework.GenericBotState
+    -> BotState
+    -> { newState : BotState, response : BotResponse, statusMessage : String }
 processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
     case stateBeforeIntegrateEvent |> integrateWebBrowserBotEvent event of
         Err integrateEventError ->
@@ -606,7 +617,16 @@ processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
                         Just currentActivityToWaitFor ->
                             ( currentActivityToWaitFor.decisionTree
                                 |> continueDecisionTree
-                                    (always (endDecisionPath (BotFramework.ContinueSession Nothing)))
+                                    (always
+                                        (endDecisionPath
+                                            (BotFramework.ContinueSession
+                                                { request = Nothing
+                                                , notifyWhenArrivedAtTime =
+                                                    Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
+                                                }
+                                            )
+                                        )
+                                    )
                             , Nothing
                             )
 
@@ -622,11 +642,13 @@ processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
 
                                 lastPageLocation =
                                     case botResponse |> Common.DecisionTree.unpackToDecisionStagesDescriptionsAndLeaf |> Tuple.second of
-                                        BotFramework.ContinueSession (Just (BotFramework.StartWebBrowser startWebBrowser)) ->
-                                            startWebBrowser.pageGoToUrl
+                                        BotFramework.ContinueSession continueSession ->
+                                            case continueSession.request of
+                                                Just (BotFramework.StartWebBrowser startWebBrowser) ->
+                                                    startWebBrowser.pageGoToUrl
 
-                                        BotFramework.ContinueSession (Just (BotFramework.CloseWebBrowser _)) ->
-                                            Nothing
+                                                _ ->
+                                                    botState.lastPageLocation
 
                                         _ ->
                                             botState.lastPageLocation
@@ -646,11 +668,8 @@ processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
             }
 
 
-decideNextAction :
-    { lastPageLocation : Maybe String, gameLastPageLocation : Maybe String, webBrowserRunning : Bool }
-    -> BotState
-    -> ( DecisionPathNode BotResponse, BotState )
-decideNextAction { lastPageLocation, gameLastPageLocation, webBrowserRunning } stateBefore =
+decideNextAction : WebBrowserStatus -> BotState -> ( DecisionPathNode BotResponse, BotState )
+decideNextAction browserStatus stateBefore =
     case stateBefore.farmState of
         InBreak farmBreak ->
             let
@@ -662,8 +681,17 @@ decideNextAction { lastPageLocation, gameLastPageLocation, webBrowserRunning } s
             in
             if minutesToNextFarmCycleStart < 1 then
                 ( describeBranch "Start next farm cycle."
-                    (endDecisionPath (BotFramework.ContinueSession Nothing))
-                , { stateBefore | farmState = InFarmCycle { beginTime = stateBefore.timeInMilliseconds // 1000 } initFarmCycle }
+                    (endDecisionPath
+                        (BotFramework.ContinueSession
+                            { request = Nothing
+                            , notifyWhenArrivedAtTime =
+                                Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
+                            }
+                        )
+                    )
+                , { stateBefore
+                    | farmState = InFarmCycle { beginTime = stateBefore.timeInMilliseconds // 1000 } initFarmCycle
+                  }
                 )
 
             else
@@ -690,14 +718,21 @@ decideNextAction { lastPageLocation, gameLastPageLocation, webBrowserRunning } s
                         ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
                         ++ " minutes ago."
                     )
-                    (endDecisionPath (BotFramework.ContinueSession botRequest))
+                    (endDecisionPath
+                        (BotFramework.ContinueSession
+                            { request = botRequest
+                            , notifyWhenArrivedAtTime =
+                                Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 4000 }
+                            }
+                        )
+                    )
                 , stateBefore
                 )
 
         InFarmCycle farmCycleBegin farmCycleState ->
             let
                 decisionInFarmCycle =
-                    decideInFarmCycle stateBefore farmCycleState
+                    decideInFarmCycle browserStatus stateBefore farmCycleState
 
                 ( _, decisionInFarmCycleLeaf ) =
                     unpackToDecisionStagesDescriptionsAndLeaf decisionInFarmCycle
@@ -716,7 +751,9 @@ decideNextAction { lastPageLocation, gameLastPageLocation, webBrowserRunning } s
                                                 continueWithStartWebBrowser =
                                                     ( BotFramework.StartWebBrowser
                                                         { pageGoToUrl =
-                                                            [ gameLastPageLocation, stateBefore.settings.openWebsiteOnStart ]
+                                                            [ browserStatus.gameLastPageLocation
+                                                            , stateBefore.settings.openWebsiteOnStart
+                                                            ]
                                                                 |> List.filterMap identity
                                                                 |> List.head
                                                         , userProfileId = stateBefore.settings.webBrowserUserProfileId
@@ -731,41 +768,32 @@ decideNextAction { lastPageLocation, gameLastPageLocation, webBrowserRunning } s
                                                 ( requestToFramework, updatedStateForActivity ) =
                                                     case activity of
                                                         RequestToPage requestToPage ->
-                                                            if
-                                                                not webBrowserRunning
-                                                                    || ((stateBefore.lastPageLocation /= stateBefore.gameLastPageLocation)
-                                                                            && (stateBefore.gameLastPageLocation /= Nothing)
-                                                                       )
-                                                            then
-                                                                continueWithStartWebBrowser
+                                                            let
+                                                                requestComponents =
+                                                                    componentsForRequestToPage requestToPage
 
-                                                            else
-                                                                let
-                                                                    requestComponents =
-                                                                        componentsForRequestToPage requestToPage
+                                                                requestToPageId =
+                                                                    stateBefore.lastRequestToPageId + 1
 
-                                                                    requestToPageId =
-                                                                        stateBefore.lastRequestToPageId + 1
+                                                                requestToPageIdString =
+                                                                    requestToPageId |> String.fromInt
+                                                            in
+                                                            ( BotFramework.RunJavascriptInCurrentPageRequest
+                                                                { javascript = requestComponents.javascript
+                                                                , requestId = requestToPageIdString
+                                                                , timeToWaitForCallbackMilliseconds =
+                                                                    case requestComponents.waitForCallbackDuration of
+                                                                        Just waitForCallbackDuration ->
+                                                                            waitForCallbackDuration
 
-                                                                    requestToPageIdString =
-                                                                        requestToPageId |> String.fromInt
-                                                                in
-                                                                ( BotFramework.RunJavascriptInCurrentPageRequest
-                                                                    { javascript = requestComponents.javascript
-                                                                    , requestId = requestToPageIdString
-                                                                    , timeToWaitForCallbackMilliseconds =
-                                                                        case requestComponents.waitForCallbackDuration of
-                                                                            Just waitForCallbackDuration ->
-                                                                                waitForCallbackDuration
-
-                                                                            Nothing ->
-                                                                                0
-                                                                    }
-                                                                , { stateBefore
-                                                                    | lastRequestToPageId = requestToPageId
-                                                                    , pendingRequestToPageRequestId = Just requestToPageIdString
-                                                                  }
-                                                                )
+                                                                        Nothing ->
+                                                                            0
+                                                                }
+                                                            , { stateBefore
+                                                                | lastRequestToPageId = requestToPageId
+                                                                , pendingRequestToPageRequestId = Just requestToPageIdString
+                                                              }
+                                                            )
 
                                                         RestartWebBrowser ->
                                                             continueWithStartWebBrowser
@@ -774,7 +802,13 @@ decideNextAction { lastPageLocation, gameLastPageLocation, webBrowserRunning } s
                                             , updatedStateForActivity
                                             )
                             in
-                            ( endDecisionPath (BotFramework.ContinueSession maybeRequest)
+                            ( endDecisionPath
+                                (BotFramework.ContinueSession
+                                    { request = maybeRequest
+                                    , notifyWhenArrivedAtTime =
+                                        Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
+                                    }
+                                )
                             , Just decisionInFarmCycle
                             , updatedStateFromContinueCycle
                             )
@@ -832,7 +866,13 @@ decideNextAction { lastPageLocation, gameLastPageLocation, webBrowserRunning } s
 
                                  else
                                     describeBranch "Enter break."
-                                        (endDecisionPath (BotFramework.ContinueSession Nothing))
+                                        (endDecisionPath
+                                            (BotFramework.ContinueSession
+                                                { request = Nothing
+                                                , notifyWhenArrivedAtTime = Nothing
+                                                }
+                                            )
+                                        )
                                 )
                             , Nothing
                             , stateAfterFinishingFarmCycle
@@ -1120,8 +1160,8 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                     { stateBefore | lastRequestReportListResult = Just requestReportList }
 
 
-maintainGameClient : BotState -> Maybe (DecisionPathNode InFarmCycleResponse)
-maintainGameClient botState =
+maintainGameClient : WebBrowserStatus -> BotState -> Maybe (DecisionPathNode InFarmCycleResponse)
+maintainGameClient browserStatus botState =
     case
         botState
             |> lastStartWebBrowserAgeInSecondsFromState
@@ -1134,28 +1174,44 @@ maintainGameClient botState =
                 |> Just
 
         Nothing ->
-            case botState |> reasonToRestartGameClientFromBotState of
-                Just reasonToRestartGameClient ->
-                    describeBranch
-                        ("Restart the game client (" ++ reasonToRestartGameClient ++ ").")
-                        (endDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
-                        |> Just
+            if not browserStatus.webBrowserRunning then
+                describeBranch
+                    "Restart web browser because it is not running"
+                    (endDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
+                    |> Just
 
-                Nothing ->
-                    case botState.lastRunJavascriptResult of
-                        Nothing ->
-                            describeBranch
-                                "Test if web browser is already open."
-                                (endDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
-                                |> Just
+            else if
+                (browserStatus.lastPageLocation /= browserStatus.gameLastPageLocation)
+                    && (browserStatus.gameLastPageLocation /= Nothing)
+            then
+                describeBranch
+                    "Restart web browser because it is in wrong location"
+                    (endDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
+                    |> Just
 
-                        Just _ ->
-                            Nothing
+            else
+                case botState |> reasonToRestartGameClientFromBotState of
+                    Just reasonToRestartGameClient ->
+                        describeBranch
+                            ("Restart the game client (" ++ reasonToRestartGameClient ++ ").")
+                            (endDecisionPath (ContinueFarmCycle (Just RestartWebBrowser)))
+                            |> Just
+
+                    Nothing ->
+                        case botState.lastRunJavascriptResult of
+                            Nothing ->
+                                describeBranch
+                                    "Test if web browser is already open."
+                                    (endDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
+                                    |> Just
+
+                            Just _ ->
+                                Nothing
 
 
-decideInFarmCycle : BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
-decideInFarmCycle botState farmCycleState =
-    maintainGameClient botState
+decideInFarmCycle : WebBrowserStatus -> BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
+decideInFarmCycle browserStatus botState farmCycleState =
+    maintainGameClient browserStatus botState
         |> Maybe.withDefault (decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState)
 
 
@@ -1192,7 +1248,11 @@ decideInFarmCycleWhenNotWaitingGlobally botState farmCycleState =
             decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInformation
 
 
-decideInFarmCycleWithGameRootInformation : BotState -> FarmCycleState -> TribalWars2RootInformation -> DecisionPathNode InFarmCycleResponse
+decideInFarmCycleWithGameRootInformation :
+    BotState
+    -> FarmCycleState
+    -> TribalWars2RootInformation
+    -> DecisionPathNode InFarmCycleResponse
 decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInformation =
     let
         ownVillageUpdateTimeMinimumMilli =
@@ -1325,7 +1385,10 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                     |> Dict.map
                                         (\otherVillageId otherVillageDetails ->
                                             ( otherVillageDetails
-                                            , decideNextActionForVillage botState farmCycleState ( otherVillageId, otherVillageDetails )
+                                            , decideNextActionForVillage
+                                                botState
+                                                farmCycleState
+                                                ( otherVillageId, otherVillageDetails )
                                             )
                                         )
 

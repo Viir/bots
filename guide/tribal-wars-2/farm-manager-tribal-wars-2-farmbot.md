@@ -34,7 +34,7 @@ https://youtu.be/yzkernqechE
 
 Following are the first steps shown in the video, using a dedicated Windows program to run the farmbot:
 
-+ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2022-03-11.zip
++ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2022-09-18.zip
 + Extract the downloaded zip archive. The extraction will give you a file named `tribal-wars-2-farmbot.exe`.
 + Run the `tribal-wars-2-farmbot.exe` program.
 
@@ -47,9 +47,9 @@ When the browser download is finished, the bot opens a 'chromium' web browser wi
 ![Chromium Window Appears](./image/2020-01-25.tribal-wars-2-farmbot-chromium-taskbar.png)
 
 In the browser window opened by the bot, navigate to the Tribal Wars 2 website and log in to your world so that you see your villages.
-Then the browsers address bar will probably show an URL like [https://es.tribalwars2.com/game.php?world=es77&character_id=12345](https://es.tribalwars2.com/game.php?world=es77&character_id=12345)
+Then the browsers address bar will probably show an URL like https://es.tribalwars2.com/game.php?world=es77&character_id=12345
 
-Now the bot will probably display a message like this:
+Now the bot will display a message like this:
 
 > Found no army presets matching the filter 'farm'.
 
@@ -115,7 +115,7 @@ Following is a list of available settings:
 + `close-game-client-during-break`: Set this to 'yes' to make the bot close the game client/web browser during breaks.
 + `open-website-on-start`: Website to open when starting the web browser.
 
-To configure settings, open the configuration page at [https://catalog.botlab.org/600654cba5345f30](https://catalog.botlab.org/600654cba5345f30) in a web browser.
+To configure settings, open the configuration page at <https://catalog.botlab.org/85fd684b37c56d67> in a web browser.
 
 On this page, scroll down to the button `Configure bot`.
 
@@ -145,9 +145,9 @@ When you have applied settings for multiple farm cycles, the bot displays this m
 
 ## Pricing and Online Sessions
 
-You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online session as explained at [https://to.botlab.org/guide/online-session](https://to.botlab.org/guide/online-session)
+You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online session as explained at <https://to.botlab.org/guide/online-session>
 
-Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botlab.org/billing/add-credits](https://reactor.botlab.org/billing/add-credits)
+Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at <https://reactor.botlab.org/billing/add-credits>
 
 For more about purchasing and using credits, see the guide at https://forum.botlab.org/t/purchasing-and-using-botlab-credits-frequently-asked-questions-faq/837
 
@@ -199,4 +199,4 @@ If you have any questions, the [BotLab forum](https://forum.botlab.org) is a goo
 When asking for help with the bot, include one of these two artifacts to help us see what happened on your setup:
 
 + The summary from the `Report Problem or Share Session` dialog in the play session interface. Either upload the saved JSON file or copy the text in that file. To reach this dialog, use the buttons labeled `Get Help With This Bot Session` and then `Report Problem or Share Session`.
-+ The play session recording archive from the session view in Devtools.
++ The play session recording archive from the session view in DevTools.

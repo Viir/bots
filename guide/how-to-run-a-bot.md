@@ -12,7 +12,7 @@ Every time we start running a bot, we choose one of these two modes, depending o
 
 ## Prerequisites - Installing and Registering the `botlab` Command
 
-Before running any bot for the first time, we install the BotLab client on Windows and register the `botlab` command. If you are not sure you have done this for your system, check the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
+Before running any bot for the first time, we install the BotLab client on Windows and register the `botlab` command. If you are not sure you have done this for your system, check the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client
 
 ## Running a Bot Live
 

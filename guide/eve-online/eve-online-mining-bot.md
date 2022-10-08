@@ -29,7 +29,7 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 To start the mining bot, download the script from <https://catalog.botlab.org/999f03ff3e728e68> and then run it.
 
-In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command>
+In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
 
 After completing the installation, run the script again to start the mining bot.
 

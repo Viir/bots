@@ -3,7 +3,7 @@
 
 + Video on how to run a bot live: https://to.botlab.org/guide/video/how-to-run-a-bot-live
 
-+ How to install the BotLab client and register the `botlab` command: https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
++ How to install the BotLab client and register the `botlab` command: https://to.botlab.org/guide/how-to-install-the-botlab-client
 
 + How to run a bot: https://to.botlab.org/guide/how-to-run-a-bot
 

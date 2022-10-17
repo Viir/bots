@@ -148,3 +148,17 @@ Discussion:
 + <https://catalog.botlab.org/413d1319fc4d45a8>
 + https://github.com/Viir/bots/tree/1067c27ab4e56a91f6d7b00c2f45926dd76b8a3a/implement/applications/eve-online/eve-online-local-watch
 
+
+## 2022-09-19 - opticcanadian and Drklord - Tribal Wars 2 - avoid targets based on outgoing commands
+
++ https://github.com/Viir/bots/commit/96b22107183d708ec1c44f6e0d2bd6d322d33ba4
++ <https://catalog.botlab.org/ab0771677670681c>
+
+Original discussion:
+
++ https://forum.botlab.org/t/update-upgrade-to-recent-tribal-wars-2-bot/4443
+
+2022-10-17 the catalog entry <https://catalog.botlab.org/ab0771677670681c> shows:
+
+> Total running time in hours: 1293
+

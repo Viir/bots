@@ -138,3 +138,13 @@ Original discussion:
 
 > Total running time in hours: 1442
 
+
+## 2022-09-01 - Maunzinator - EVE Online Intel Bot - Local Watch Bot
+
+Discussion:
+
++ https://forum.botlab.org/t/local-watch-bot/4112/3
+
++ <https://catalog.botlab.org/413d1319fc4d45a8>
++ https://github.com/Viir/bots/tree/1067c27ab4e56a91f6d7b00c2f45926dd76b8a3a/implement/applications/eve-online/eve-online-local-watch
+

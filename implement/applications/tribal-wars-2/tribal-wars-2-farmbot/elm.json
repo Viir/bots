@@ -14,6 +14,7 @@
             "elm-community/list-extra": "8.2.3",
             "elm-community/result-extra": "2.2.1",
             "elm-community/string-extra": "4.0.1",
+            "marcosh/elm-html-to-unicode": "1.0.4",
             "z5h/jaro-winkler": "1.0.2"
         },
         "indirect": {

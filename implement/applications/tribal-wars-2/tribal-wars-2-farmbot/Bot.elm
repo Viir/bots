@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-09-18
+{- Tribal Wars 2 farmbot version 2022-10-24
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -56,7 +56,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_10_23 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (stringContainsIgnoringCase)
 import Common.DecisionTree
@@ -87,7 +87,6 @@ initBotSettings =
     , playersToFarm = []
     , farmArmyPresetPatterns = []
     , limitOutgoingCommandsPerVillage = { minimum = 50, maximum = 50 }
-    , webBrowserUserProfileId = "default"
     , closeGameClientDuringBreak = AppSettings.No
     , openWebsiteOnStart = Nothing
     }
@@ -134,12 +133,6 @@ parseBotSettings =
            )
          , ( "limit-outgoing-commands-per-village"
            , parseBotSettingLimitOutgoingCommandsPerVillage
-           )
-         , ( "web-browser-user-profile-id"
-           , AppSettings.valueTypeString
-                (\webBrowserUserProfileId settings ->
-                    { settings | webBrowserUserProfileId = webBrowserUserProfileId }
-                )
            )
          , ( "close-game-client-during-break"
            , AppSettings.valueTypeYesOrNo
@@ -220,8 +213,8 @@ type alias BotState =
     , lastRunJavascriptResult :
         Maybe
             { timeInMilliseconds : Int
-            , response : BotFramework.RunJavascriptInCurrentPageResponseStructure
-            , parseResult : Result Json.Decode.Error RootInformationStructure
+            , response : BotFramework.ChromeDevToolsProtocolRuntimeEvaluateResponseStruct
+            , parseResult : Result String ResponseFromBrowser
             }
     , lastPageLocation : Maybe String
     , gameLastPageLocation : Maybe String
@@ -238,7 +231,7 @@ type alias BotState =
     , startWebBrowserCount : Int
     , completedFarmCycles : List FarmCycleConclusion
     , lastRequestReportListResult : Maybe RequestReportListResponseStructure
-    , parseResponseError : Maybe Json.Decode.Error
+    , parseResponseError : Maybe String
     , cache_relativeCoordinatesToSearchForFarmsPartitions : List (List VillageCoordinates)
     }
 
@@ -252,7 +245,6 @@ type alias BotSettings =
     , playersToFarm : List String
     , farmArmyPresetPatterns : List String
     , limitOutgoingCommandsPerVillage : IntervalInt
-    , webBrowserUserProfileId : String
     , closeGameClientDuringBreak : AppSettings.YesOrNo
     , openWebsiteOnStart : Maybe String
     }
@@ -644,8 +636,13 @@ processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
                                     case botResponse |> Common.DecisionTree.unpackToDecisionStagesDescriptionsAndLeaf |> Tuple.second of
                                         BotFramework.ContinueSession continueSession ->
                                             case continueSession.request of
-                                                Just (BotFramework.StartWebBrowser startWebBrowser) ->
-                                                    startWebBrowser.pageGoToUrl
+                                                Just (BotFramework.StartWebBrowserRequest startWebBrowser) ->
+                                                    case startWebBrowser.content of
+                                                        Just (BotFramework.WebSiteContent location) ->
+                                                            Just location
+
+                                                        _ ->
+                                                            botState.lastPageLocation
 
                                                 _ ->
                                                     botState.lastPageLocation
@@ -701,12 +698,7 @@ decideNextAction browserStatus stateBefore =
                             (stateBefore.settings.closeGameClientDuringBreak == AppSettings.Yes)
                                 && (stateBefore.gameLastPageLocation == stateBefore.lastPageLocation)
                         then
-                            Just
-                                (BotFramework.StartWebBrowser
-                                    { userProfileId = stateBefore.settings.webBrowserUserProfileId
-                                    , pageGoToUrl = Just "about:blank"
-                                    }
-                                )
+                            Just (BotFramework.StartWebBrowserRequest { content = Nothing })
 
                         else
                             Nothing
@@ -749,14 +741,14 @@ decideNextAction browserStatus stateBefore =
                                         Just activity ->
                                             let
                                                 continueWithStartWebBrowser =
-                                                    ( BotFramework.StartWebBrowser
-                                                        { pageGoToUrl =
+                                                    ( BotFramework.StartWebBrowserRequest
+                                                        { content =
                                                             [ browserStatus.gameLastPageLocation
                                                             , stateBefore.settings.openWebsiteOnStart
                                                             ]
                                                                 |> List.filterMap identity
                                                                 |> List.head
-                                                        , userProfileId = stateBefore.settings.webBrowserUserProfileId
+                                                                |> Maybe.map BotFramework.WebSiteContent
                                                         }
                                                     , { stateBefore
                                                         | lastStartWebBrowserTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
@@ -778,16 +770,9 @@ decideNextAction browserStatus stateBefore =
                                                                 requestToPageIdString =
                                                                     requestToPageId |> String.fromInt
                                                             in
-                                                            ( BotFramework.RunJavascriptInCurrentPageRequest
-                                                                { javascript = requestComponents.javascript
+                                                            ( BotFramework.ChromeDevToolsProtocolRuntimeEvaluateRequest
+                                                                { expression = requestComponents.expression
                                                                 , requestId = requestToPageIdString
-                                                                , timeToWaitForCallbackMilliseconds =
-                                                                    case requestComponents.waitForCallbackDuration of
-                                                                        Just waitForCallbackDuration ->
-                                                                            waitForCallbackDuration
-
-                                                                        Nothing ->
-                                                                            0
                                                                 }
                                                             , { stateBefore
                                                                 | lastRequestToPageId = requestToPageId
@@ -988,28 +973,58 @@ integrateWebBrowserBotEvent event stateBefore =
         BotFramework.ArrivedAtTime { timeInMilliseconds } ->
             Ok { stateBefore | timeInMilliseconds = timeInMilliseconds }
 
-        BotFramework.RunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse ->
+        BotFramework.ChromeDevToolsProtocolRuntimeEvaluateResponse runtimeEvaluateResponse ->
             Ok
-                (integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse stateBefore)
+                (integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runtimeEvaluateResponse stateBefore)
 
 
-integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse : BotFramework.RunJavascriptInCurrentPageResponseStructure -> BotState -> BotState
-integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCurrentPageResponse stateBefore =
+integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse :
+    BotFramework.ChromeDevToolsProtocolRuntimeEvaluateResponseStruct
+    -> BotState
+    -> BotState
+integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runtimeEvaluateResponse stateBefore =
     let
         pendingRequestToPageRequestId =
-            if Just runJavascriptInCurrentPageResponse.requestId == stateBefore.pendingRequestToPageRequestId then
+            if Just runtimeEvaluateResponse.requestId == stateBefore.pendingRequestToPageRequestId then
                 Nothing
 
             else
                 stateBefore.pendingRequestToPageRequestId
 
+        parseResult =
+            runtimeEvaluateResponse.returnValueJsonSerialized
+                |> Json.Decode.decodeString BotFramework.decodeRuntimeEvaluateResponse
+                |> Result.mapError Json.Decode.errorToString
+                |> Result.andThen
+                    (\evalResult ->
+                        case evalResult of
+                            BotFramework.StringResultEvaluateResponse stringResult ->
+                                stringResult
+                                    |> Json.Decode.decodeString decodeResponseFromBrowser
+                                    |> Result.mapError Json.Decode.errorToString
+
+                            BotFramework.ExceptionEvaluateResponse exception ->
+                                Err ("Web browser responded with exception: " ++ Json.Encode.encode 0 exception)
+
+                            BotFramework.OtherResultEvaluateResponse other ->
+                                Err ("Web browser responded with non-string result: " ++ Json.Encode.encode 0 other)
+                    )
+
         parseAsRootInfoResult =
-            runJavascriptInCurrentPageResponse.directReturnValueAsString
-                |> Json.Decode.decodeString decodeRootInformation
+            parseResult
+                |> Result.map
+                    (\parseOk ->
+                        case parseOk of
+                            RootInformation parseAsRootInfoSuccess ->
+                                Just parseAsRootInfoSuccess
+
+                            _ ->
+                                Nothing
+                    )
 
         lastPageLocation =
             case parseAsRootInfoResult of
-                Ok parseAsRootInfoSuccess ->
+                Ok (Just parseAsRootInfoSuccess) ->
                     Just parseAsRootInfoSuccess.location
 
                 _ ->
@@ -1018,7 +1033,7 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
         gameLastPageLocation =
             if
                 Maybe.withDefault False (Maybe.map (stringContainsIgnoringCase "tribalwars2.com/game.php") lastPageLocation)
-                    && (Maybe.andThen .tribalWars2 (Result.toMaybe parseAsRootInfoResult) /= Nothing)
+                    && (Maybe.andThen .tribalWars2 (Maybe.andThen identity (Result.toMaybe parseAsRootInfoResult)) /= Nothing)
             then
                 lastPageLocation
 
@@ -1031,16 +1046,12 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runJavascriptInCur
                 , lastRunJavascriptResult =
                     Just
                         { timeInMilliseconds = stateBefore.timeInMilliseconds
-                        , response = runJavascriptInCurrentPageResponse
-                        , parseResult = parseAsRootInfoResult
+                        , response = runtimeEvaluateResponse
+                        , parseResult = parseResult
                         }
                 , lastPageLocation = lastPageLocation
                 , gameLastPageLocation = gameLastPageLocation
             }
-
-        parseResult =
-            runJavascriptInCurrentPageResponse.directReturnValueAsString
-                |> Json.Decode.decodeString decodeResponseFromBrowser
     in
     case parseResult of
         Err error ->
@@ -1857,31 +1868,30 @@ squareDistanceBetweenCoordinates coordsA coordsB =
     distX * distX + distY * distY
 
 
-componentsForRequestToPage : RequestToPageStructure -> { javascript : String, waitForCallbackDuration : Maybe Int }
+componentsForRequestToPage : RequestToPageStructure -> { expression : String }
 componentsForRequestToPage requestToPage =
     case requestToPage of
         ReadRootInformationRequest ->
-            { javascript = readRootInformationScript, waitForCallbackDuration = Nothing }
+            { expression = readRootInformationScript }
 
         ReadSelectedCharacterVillageDetailsRequest { villageId } ->
-            { javascript = readSelectedCharacterVillageDetailsScript villageId, waitForCallbackDuration = Nothing }
+            { expression = readSelectedCharacterVillageDetailsScript villageId }
 
         ReadArmyPresets ->
-            { javascript = getPresetsScript, waitForCallbackDuration = Nothing }
+            { expression = getPresetsScript }
 
         VillagesByCoordinatesRequest villagesArguments ->
-            { javascript = startVillagesByCoordinatesScript villagesArguments
-            , waitForCallbackDuration = Nothing
+            { expression = startVillagesByCoordinatesScript villagesArguments
             }
 
         SendPresetAttackToCoordinatesRequest { coordinates, presetId } ->
-            { javascript = startSendPresetAttackToCoordinatesScript coordinates { presetId = presetId }, waitForCallbackDuration = Nothing }
+            { expression = startSendPresetAttackToCoordinatesScript coordinates { presetId = presetId } }
 
         VillageMenuActivateVillageRequest ->
-            { javascript = villageMenuActivateVillageScript, waitForCallbackDuration = Nothing }
+            { expression = villageMenuActivateVillageScript }
 
         ReadBattleReportListRequest ->
-            { javascript = startRequestReportListScript { offset = 0, count = 25 }, waitForCallbackDuration = Just 3000 }
+            { expression = startRequestReportListScript { offset = 0, count = 25 } }
 
 
 readRootInformationScript : String
@@ -2506,7 +2516,7 @@ statusMessageFromState state { activityDecisionStages } =
                     ""
 
                 Just parseResponseError ->
-                    Json.Decode.errorToString parseResponseError
+                    parseResponseError
 
         debugInspectionLines =
             [ jsRunResult ]
@@ -2549,7 +2559,6 @@ statusMessageFromState state { activityDecisionStages } =
                             ++ (state.settings.breakDurationMinutes.maximum |> String.fromInt)
                       )
                     , ( "max dist", state.settings.farmBarbarianVillageMaximumDistance |> String.fromInt )
-                    , ( "web-browser-user-profile-id", state.settings.webBrowserUserProfileId )
                     ]
                         |> List.map (\( settingName, settingValue ) -> settingName ++ ": " ++ settingValue)
                         |> String.join ", "
@@ -2674,7 +2683,9 @@ villageCoordinatesDisplayText { x, y } =
     (x |> String.fromInt) ++ "|" ++ (y |> String.fromInt)
 
 
-describeRunJavascriptInCurrentPageResponseStructure : BotFramework.RunJavascriptInCurrentPageResponseStructure -> String
+describeRunJavascriptInCurrentPageResponseStructure :
+    BotFramework.ChromeDevToolsProtocolRuntimeEvaluateResponseStruct
+    -> String
 describeRunJavascriptInCurrentPageResponseStructure response =
     "{ webBrowserAvailable = "
         ++ (if response.webBrowserAvailable then
@@ -2683,11 +2694,8 @@ describeRunJavascriptInCurrentPageResponseStructure response =
             else
                 "false"
            )
-        ++ ", directReturnValueAsString = "
-        ++ describeString 300 response.directReturnValueAsString
-        ++ "\n"
-        ++ ", callbackReturnValueAsString = "
-        ++ describeMaybe (describeString 300) response.callbackReturnValueAsString
+        ++ ", returnValueJsonSerialized = "
+        ++ describeString 300 response.returnValueJsonSerialized
         ++ "\n}"
 
 

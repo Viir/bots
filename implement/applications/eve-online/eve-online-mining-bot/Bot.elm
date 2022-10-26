@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2022-09-01
+{- EVE Online mining bot version 2022-10-26
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -820,7 +820,7 @@ launchDrones context =
                             dronesInLocalSpaceQuantity =
                                 droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
                         in
-                        if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
+                        if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 4 then
                             Just
                                 (describeBranch "Launch drones"
                                     (useContextMenuCascade

@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-10-24
+{- Tribal Wars 2 farmbot version 2022-10-28
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -673,10 +673,10 @@ decideNextAction browserStatus stateBefore =
                 minutesSinceLastFarmCycleCompletion =
                     (stateBefore.timeInMilliseconds // 1000 - farmBreak.lastCycleCompletionTime) // 60
 
-                minutesToNextFarmCycleStart =
-                    (farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000) // 60
+                secondsToNextFarmCycleStart =
+                    farmBreak.nextCycleStartTime - stateBefore.timeInMilliseconds // 1000
             in
-            if minutesToNextFarmCycleStart < 1 then
+            if secondsToNextFarmCycleStart < 1 then
                 ( describeBranch "Start next farm cycle."
                     (endDecisionPath
                         (BotFramework.ContinueSession
@@ -705,9 +705,9 @@ decideNextAction browserStatus stateBefore =
                 in
                 ( describeBranch
                     ("Next farm cycle starts in "
-                        ++ (minutesToNextFarmCycleStart |> String.fromInt)
+                        ++ String.fromInt (secondsToNextFarmCycleStart // 60)
                         ++ " minutes. Last cycle completed "
-                        ++ (minutesSinceLastFarmCycleCompletion |> String.fromInt)
+                        ++ String.fromInt minutesSinceLastFarmCycleCompletion
                         ++ " minutes ago."
                     )
                     (endDecisionPath

@@ -31,7 +31,7 @@
    + `farm-player`: Name of a player/character to farm. By default, the bot only farms barbarians, but this setting allows you to also farm players.
    + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
    + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45 - 48`. The bot then picks a random value in this range for each village.
-   + `close-game-client-during-break`: Set this to 'yes' to make the bot close the game client/web browser during breaks.
+   + `restart-game-client-after-break`: Set this to 'yes' to make the bot restart the game client/web browser after each break.
    + `open-website-on-start`: Website to open when starting the web browser.
 
    When using more than one setting, start a new line for each setting in the text input field.
@@ -709,7 +709,11 @@ maintainGameClientAndDecideNextAction browserStatus stateBefore =
                 |> List.head
 
         maybeRestartAfterBreakReason =
-            if not isInFarmCycle || wasInFarmCycle then
+            if
+                not isInFarmCycle
+                    || wasInFarmCycle
+                    || not (stateBefore.settings.restartGameClientAfterBreak == AppSettings.Yes)
+            then
                 Nothing
 
             else

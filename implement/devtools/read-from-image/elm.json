@@ -17,7 +17,14 @@
         }
     },
     "test-dependencies": {
-        "direct": {},
-        "indirect": {}
+        "direct": {
+            "elm-explorations/test": "2.0.1"
+        },
+        "indirect": {
+            "elm/html": "1.0.0",
+            "elm/random": "1.0.0",
+            "elm/time": "1.0.0",
+            "elm/virtual-dom": "1.0.3"
+        }
     }
 }

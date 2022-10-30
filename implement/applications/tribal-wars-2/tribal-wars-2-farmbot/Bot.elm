@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-10-29
+{- Tribal Wars 2 farmbot version 2022-10-30
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -181,7 +181,7 @@ gameRootInformationQueryInterval =
 
 waitDurationAfterReloadWebPage : Int
 waitDurationAfterReloadWebPage =
-    15
+    10
 
 
 ownVillageInfoMaxAge : Int
@@ -192,11 +192,6 @@ ownVillageInfoMaxAge =
 selectedVillageInfoMaxAge : Int
 selectedVillageInfoMaxAge =
     30
-
-
-readFromGameTimeoutCountThresholdToRestart : Int
-readFromGameTimeoutCountThresholdToRestart =
-    5
 
 
 switchToOtherVillageCommandCapacityMinimum : Int
@@ -223,12 +218,9 @@ type alias BotState =
     , lastJumpToCoordinates : Maybe { timeInMilliseconds : Int, coordinates : VillageCoordinates }
     , coordinatesLastCheck : Dict.Dict ( Int, Int ) { timeInMilliseconds : Int, result : VillageByCoordinatesResult }
     , numberOfReadsFromCoordinates : Int
-    , readFromGameConsecutiveTimeoutsCount : Int
     , farmState : FarmState
     , lastAttackTimeInMilliseconds : Maybe Int
     , lastActivatedVillageTimeInMilliseconds : Maybe Int
-    , lastStartWebBrowserTimeInSeconds : Maybe Int
-    , startWebBrowserCount : Int
     , completedFarmCycles : List FarmCycleConclusion
     , lastRequestReportListResult : Maybe RequestReportListResponseStructure
     , parseResponseError : Maybe String
@@ -253,7 +245,7 @@ type alias BotSettings =
 type alias WebBrowserStatus =
     { lastPageLocation : Maybe String
     , gameLastPageLocation : Maybe String
-    , webBrowserRunning : Bool
+    , webBrowser : Maybe BotFramework.WebBrowserState
     }
 
 
@@ -272,7 +264,7 @@ type alias FarmCycleConclusion =
 
 
 type FarmState
-    = InFarmCycle { beginTime : Int } FarmCycleState
+    = InFarmCycle { beginTimeSeconds : Int } FarmCycleState
     | InBreak { lastCycleCompletionTime : Int, nextCycleStartTime : Int }
 
 
@@ -421,11 +413,7 @@ type InFarmCycleResponse
 
 
 type alias ContinueFarmCycleStructure =
-    Maybe ContinueFarmCycleActivity
-
-
-type ContinueFarmCycleActivity
-    = RequestToPage RequestToPageStructure
+    Maybe RequestToPageStructure
 
 
 type RequestToPageStructure
@@ -460,6 +448,11 @@ type alias IntervalInt =
     { minimum : Int, maximum : Int }
 
 
+type MaintainGameClientAction
+    = RestartWebBrowser
+    | WaitForWebBrowser
+
+
 initState : BotState
 initState =
     { timeInMilliseconds = 0
@@ -475,12 +468,9 @@ initState =
     , lastJumpToCoordinates = Nothing
     , coordinatesLastCheck = Dict.empty
     , numberOfReadsFromCoordinates = 0
-    , readFromGameConsecutiveTimeoutsCount = 0
-    , farmState = InFarmCycle { beginTime = 0 } initFarmCycle
+    , farmState = InFarmCycle { beginTimeSeconds = 0 } initFarmCycle
     , lastAttackTimeInMilliseconds = Nothing
     , lastActivatedVillageTimeInMilliseconds = Nothing
-    , lastStartWebBrowserTimeInSeconds = Nothing
-    , startWebBrowserCount = 0
     , completedFarmCycles = []
     , lastRequestReportListResult = Nothing
     , parseResponseError = Nothing
@@ -488,34 +478,25 @@ initState =
     }
 
 
-reasonToRestartGameClientFromBotState : BotState -> Maybe String
-reasonToRestartGameClientFromBotState state =
-    case state.lastStartWebBrowserTimeInSeconds of
-        Nothing ->
-            Just "Did not yet start the web browser."
+reasonToRestartGameClientFromBotState : BotFramework.RunningWebBrowserStateStruct -> BotState -> Maybe String
+reasonToRestartGameClientFromBotState webBrowser state =
+    if restartGameClientInterval < (state.timeInMilliseconds - webBrowser.startTimeMilliseconds) // 1000 then
+        Just ("Last restart was more than " ++ (restartGameClientInterval |> String.fromInt) ++ " seconds ago.")
 
-        Just lastStartWebBrowserTimeInSeconds ->
-            let
-                continueAfterCheckLastRunJs =
-                    if restartGameClientInterval < (state.timeInMilliseconds // 1000) - lastStartWebBrowserTimeInSeconds then
-                        Just ("Last restart was more than " ++ (restartGameClientInterval |> String.fromInt) ++ " seconds ago.")
+    else
+        case state.farmState of
+            InBreak _ ->
+                Nothing
 
-                    else if readFromGameTimeoutCountThresholdToRestart < state.readFromGameConsecutiveTimeoutsCount then
-                        Just ("Reading from game timed out consecutively more than " ++ (readFromGameTimeoutCountThresholdToRestart |> String.fromInt) ++ " times.")
+            InFarmCycle farmCycleStart _ ->
+                if
+                    (webBrowser.startTimeMilliseconds // 1000 < farmCycleStart.beginTimeSeconds)
+                        && (state.settings.restartGameClientAfterBreak == AppSettings.Yes)
+                then
+                    Just "Restart game client after break"
 
-                    else
-                        Nothing
-            in
-            case state.lastRunJavascriptResult of
-                Just lastRunJavascriptResult ->
-                    if lastRunJavascriptResult.response.webBrowserAvailable then
-                        continueAfterCheckLastRunJs
-
-                    else
-                        Just "Last request to run javascript returned no browser instance available."
-
-                Nothing ->
-                    continueAfterCheckLastRunJs
+                else
+                    Nothing
 
 
 initFarmCycle : FarmCycleState
@@ -627,7 +608,7 @@ processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
                                     maintainGameClientAndDecideNextAction
                                         { lastPageLocation = stateBeforeIntegrateEvent.lastPageLocation
                                         , gameLastPageLocation = stateBeforeIntegrateEvent.gameLastPageLocation
-                                        , webBrowserRunning = genericBotState.webBrowserRunning
+                                        , webBrowser = genericBotState.webBrowser
                                         }
                                         { stateBefore | currentActivity = Nothing }
 
@@ -645,12 +626,7 @@ processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
                                                                 _ ->
                                                                     botStateBeforeRememberStartBrowser.lastPageLocation
                                                     in
-                                                    { stateBefore
-                                                        | lastStartWebBrowserTimeInSeconds = Just (stateBefore.timeInMilliseconds // 1000)
-                                                        , startWebBrowserCount = stateBefore.startWebBrowserCount + 1
-                                                        , readFromGameConsecutiveTimeoutsCount = 0
-                                                        , lastPageLocation = lastPageLocation
-                                                    }
+                                                    { stateBefore | lastPageLocation = lastPageLocation }
 
                                                 _ ->
                                                     botStateBeforeRememberStartBrowser
@@ -689,87 +665,12 @@ maintainGameClientAndDecideNextAction browserStatus stateBefore =
                 InBreak _ ->
                     False
 
-        wasInFarmCycle =
-            case stateBefore.farmState of
-                InFarmCycle _ _ ->
-                    True
-
-                InBreak _ ->
-                    False
-
-        maybeLastStartWebBrowserAgeInSeconds =
-            botState
-                |> lastStartWebBrowserAgeInSecondsFromState
-
         webBrowserLocationIfRestart =
             [ browserStatus.gameLastPageLocation
             , stateBefore.settings.openWebsiteOnStart
             ]
                 |> List.filterMap identity
                 |> List.head
-
-        maybeRestartAfterBreakReason =
-            if
-                not isInFarmCycle
-                    || wasInFarmCycle
-                    || not (stateBefore.settings.restartGameClientAfterBreak == AppSettings.Yes)
-            then
-                Nothing
-
-            else
-                case ( maybeLastStartWebBrowserAgeInSeconds, webBrowserLocationIfRestart ) of
-                    ( Just lastStartWebBrowserAgeInSeconds, Just _ ) ->
-                        if lastStartWebBrowserAgeInSeconds < 60 then
-                            Nothing
-
-                        else
-                            Just "Restarting game client after break"
-
-                    _ ->
-                        Nothing
-
-        maybeShouldRestartWebBrowserReason =
-            [ maintainGameClientRestartReason browserStatus stateBefore
-            , maybeRestartAfterBreakReason
-            ]
-                |> List.filterMap identity
-                |> List.head
-
-        maybeReplaceActionToMaintainGameClient : Maybe (BotFramework.ContinueSessionStruct -> ( String, BotFramework.ContinueSessionStruct ))
-        maybeReplaceActionToMaintainGameClient =
-            case
-                maybeLastStartWebBrowserAgeInSeconds
-                    |> Maybe.andThen (nothingFromIntIfGreaterThan waitDurationAfterReloadWebPage)
-            of
-                Just lastReloadPageAgeInSeconds ->
-                    Just
-                        (\continueSession ->
-                            ( "Waiting because reloaded web page " ++ (lastReloadPageAgeInSeconds |> String.fromInt) ++ " seconds ago."
-                            , { continueSession | request = Nothing }
-                            )
-                        )
-
-                Nothing ->
-                    case maybeShouldRestartWebBrowserReason of
-                        Nothing ->
-                            Nothing
-
-                        Just shouldRestartWebBrowserReason ->
-                            Just
-                                (\continueSession ->
-                                    ( shouldRestartWebBrowserReason
-                                    , { continueSession
-                                        | request =
-                                            Just
-                                                (BotFramework.StartWebBrowserRequest
-                                                    { content =
-                                                        webBrowserLocationIfRestart
-                                                            |> Maybe.map BotFramework.WebSiteContent
-                                                    }
-                                                )
-                                      }
-                                    )
-                                )
     in
     if not isInFarmCycle then
         ( actionPath, botState )
@@ -783,14 +684,32 @@ maintainGameClientAndDecideNextAction browserStatus stateBefore =
                             endDecisionPath action
 
                         BotFramework.ContinueSession continueSession ->
-                            case maybeReplaceActionToMaintainGameClient |> Maybe.map ((|>) continueSession) of
+                            case maintainGameClientActionFromState browserStatus stateBefore of
                                 Nothing ->
                                     endDecisionPath action
 
-                                Just ( pathDescription, newContinueSession ) ->
+                                Just ( actionDescription, maintainGameClientAction ) ->
                                     describeBranch
-                                        pathDescription
-                                        (endDecisionPath (BotFramework.ContinueSession newContinueSession))
+                                        actionDescription
+                                        (endDecisionPath
+                                            (BotFramework.ContinueSession
+                                                { continueSession
+                                                    | request =
+                                                        case maintainGameClientAction of
+                                                            RestartWebBrowser ->
+                                                                Just
+                                                                    (BotFramework.StartWebBrowserRequest
+                                                                        { content =
+                                                                            webBrowserLocationIfRestart
+                                                                                |> Maybe.map BotFramework.WebSiteContent
+                                                                        }
+                                                                    )
+
+                                                            WaitForWebBrowser ->
+                                                                Nothing
+                                                }
+                                            )
+                                        )
                 )
         , botState
         )
@@ -818,7 +737,7 @@ decideNextAction stateBefore =
                         )
                     )
                 , { stateBefore
-                    | farmState = InFarmCycle { beginTime = stateBefore.timeInMilliseconds // 1000 } initFarmCycle
+                    | farmState = InFarmCycle { beginTimeSeconds = stateBefore.timeInMilliseconds // 1000 } initFarmCycle
                   }
                 )
 
@@ -862,7 +781,7 @@ decideNextAction stateBefore =
                                             let
                                                 ( requestToFramework, updatedStateForActivity ) =
                                                     case activity of
-                                                        RequestToPage requestToPage ->
+                                                        requestToPage ->
                                                             let
                                                                 requestComponents =
                                                                     componentsForRequestToPage requestToPage
@@ -901,7 +820,7 @@ decideNextAction stateBefore =
                         FinishFarmCycle { villagesResults } ->
                             let
                                 completedFarmCycles =
-                                    { beginTime = farmCycleBegin.beginTime
+                                    { beginTime = farmCycleBegin.beginTimeSeconds
                                     , completionTime = stateBefore.timeInMilliseconds // 1000
                                     , attacksCount = farmCycleState.sentAttackByCoordinates |> Dict.size
                                     , villagesResults = villagesResults
@@ -1219,7 +1138,6 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runtimeEvaluateRes
                                                 , result = villageByCoordinates.villageData
                                                 }
                                     , numberOfReadsFromCoordinates = intermediateState.numberOfReadsFromCoordinates + 1
-                                    , readFromGameConsecutiveTimeoutsCount = 0
                                 }
                             )
                             stateAfterRememberJump
@@ -1271,26 +1189,48 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runtimeEvaluateRes
                     { stateBefore | lastRequestReportListResult = Just requestReportList }
 
 
-maintainGameClientRestartReason : WebBrowserStatus -> BotState -> Maybe String
-maintainGameClientRestartReason browserStatus botState =
-    if not browserStatus.webBrowserRunning then
-        Just
-            "Restart web browser because it is not running"
+maintainGameClientActionFromState : WebBrowserStatus -> BotState -> Maybe ( String, MaintainGameClientAction )
+maintainGameClientActionFromState browserStatus botState =
+    case browserStatus.webBrowser of
+        Just (BotFramework.OpeningWebBrowserState _) ->
+            Just
+                ( "Wait until opening web browser complete..."
+                , WaitForWebBrowser
+                )
 
-    else if
-        (browserStatus.lastPageLocation /= browserStatus.gameLastPageLocation)
-            && (browserStatus.gameLastPageLocation /= Nothing)
-    then
-        Just "Restart web browser because it is in wrong location"
-
-    else
-        case botState |> reasonToRestartGameClientFromBotState of
-            Just reasonToRestartGameClient ->
+        Just (BotFramework.RunningWebBrowserState runningWebBrowser) ->
+            let
+                startAgeSeconds =
+                    (botState.timeInMilliseconds - runningWebBrowser.startTimeMilliseconds) // 1000
+            in
+            if startAgeSeconds < waitDurationAfterReloadWebPage then
                 Just
-                    ("Restart the game client (" ++ reasonToRestartGameClient ++ ").")
+                    ( "Wait because started web browser only " ++ (startAgeSeconds |> String.fromInt) ++ " seconds ago."
+                    , WaitForWebBrowser
+                    )
 
-            Nothing ->
-                Nothing
+            else if
+                (browserStatus.lastPageLocation /= browserStatus.gameLastPageLocation)
+                    && (browserStatus.gameLastPageLocation /= Nothing)
+            then
+                Just
+                    ( "Restart web browser because it is in wrong location"
+                    , RestartWebBrowser
+                    )
+
+            else
+                case botState |> reasonToRestartGameClientFromBotState runningWebBrowser of
+                    Just reasonToRestartGameClient ->
+                        Just
+                            ( "Restart the game client (" ++ reasonToRestartGameClient ++ ")."
+                            , RestartWebBrowser
+                            )
+
+                    Nothing ->
+                        Nothing
+
+        _ ->
+            Just ( "Start web browser because it is not running", RestartWebBrowser )
 
 
 decideInFarmCycle : BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
@@ -1320,7 +1260,7 @@ decideInFarmCycle botState farmCycleState =
     case sufficientlyNewGameRootInformation of
         Err error ->
             describeBranch ("Read game root info (" ++ error ++ ")")
-                (endDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadRootInformationRequest))))
+                (endDecisionPath (ContinueFarmCycle (Just ReadRootInformationRequest)))
 
         Ok gameRootInformation ->
             decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInformation
@@ -1406,11 +1346,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                         ("Search for village at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
                         (endDecisionPath
                             (ContinueFarmCycle
-                                (Just
-                                    (RequestToPage
-                                        (requestToPageStructureToReadMapChunkContainingCoordinates coordinates)
-                                    )
-                                )
+                                (Just (requestToPageStructureToReadMapChunkContainingCoordinates coordinates))
                             )
                         )
 
@@ -1421,7 +1357,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                             Just jumpToVillageRequest ->
                                 describeBranch
                                     ("Jump to village at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
-                                    (endDecisionPath (ContinueFarmCycle (Just (RequestToPage jumpToVillageRequest))))
+                                    (endDecisionPath (ContinueFarmCycle (Just jumpToVillageRequest)))
 
                             Nothing ->
                                 describeBranch
@@ -1429,8 +1365,8 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                     (endDecisionPath
                                         (ContinueFarmCycle
                                             (Just
-                                                (RequestToPage
-                                                    (SendPresetAttackToCoordinatesRequest { coordinates = coordinates, presetId = armyPreset.id })
+                                                (SendPresetAttackToCoordinatesRequest
+                                                    { coordinates = coordinates, presetId = armyPreset.id }
                                                 )
                                             )
                                         )
@@ -1511,10 +1447,8 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                     (endDecisionPath
                                         (ContinueFarmCycle
                                             (Just
-                                                (RequestToPage
-                                                    (requestToJumpToVillageIfNotYetDone botState villageToActivateDetails.coordinates
-                                                        |> Maybe.withDefault VillageMenuActivateVillageRequest
-                                                    )
+                                                (requestToJumpToVillageIfNotYetDone botState villageToActivateDetails.coordinates
+                                                    |> Maybe.withDefault VillageMenuActivateVillageRequest
                                                 )
                                             )
                                         )
@@ -1523,7 +1457,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
 
         readBattleReportList =
             describeBranch "Read report list"
-                (endDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadBattleReportListRequest))))
+                (endDecisionPath (ContinueFarmCycle (Just ReadBattleReportListRequest)))
     in
     {-
        Disable reading battle report list for to clean up status message.
@@ -1539,7 +1473,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                 ("Read status of own village " ++ (ownVillageNeedingDetailsUpdate |> String.fromInt) ++ ".")
                 (endDecisionPath
                     (ContinueFarmCycle
-                        (Just (RequestToPage (ReadSelectedCharacterVillageDetailsRequest { villageId = ownVillageNeedingDetailsUpdate })))
+                        (Just (ReadSelectedCharacterVillageDetailsRequest { villageId = ownVillageNeedingDetailsUpdate }))
                     )
                 )
 
@@ -1551,7 +1485,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                             ("Read status of current selected village (" ++ (gameRootInformation.selectedVillageId |> String.fromInt) ++ ")")
                             (endDecisionPath
                                 (ContinueFarmCycle
-                                    (Just (RequestToPage (ReadSelectedCharacterVillageDetailsRequest { villageId = gameRootInformation.selectedVillageId })))
+                                    (Just (ReadSelectedCharacterVillageDetailsRequest { villageId = gameRootInformation.selectedVillageId }))
                                 )
                             )
 
@@ -1567,7 +1501,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                     "Did not find any army presets. Maybe loading is not completed yet."
                                     (describeBranch
                                         "Read army presets."
-                                        (endDecisionPath (ContinueFarmCycle (Just (RequestToPage ReadArmyPresets))))
+                                        (endDecisionPath (ContinueFarmCycle (Just ReadArmyPresets)))
                                     )
 
                             _ ->
@@ -1631,12 +1565,6 @@ describeVillageCompletion villageCompletion =
             { decisionBranch = "Farming for this village is disabled in the settings."
             , cycleStatsGroup = "Disabled in settings"
             }
-
-
-lastStartWebBrowserAgeInSecondsFromState : BotState -> Maybe Int
-lastStartWebBrowserAgeInSecondsFromState state =
-    state.lastStartWebBrowserTimeInSeconds
-        |> Maybe.map (\lastStartWebBrowserTimeInSeconds -> state.timeInMilliseconds // 1000 - lastStartWebBrowserTimeInSeconds)
 
 
 requestToJumpToVillageIfNotYetDone : BotState -> VillageCoordinates -> Maybe RequestToPageStructure
@@ -2591,20 +2519,6 @@ statusMessageFromState state { activityDecisionStages } =
         enableDebugInspection =
             False
 
-        reloadReportLines =
-            state
-                |> lastStartWebBrowserAgeInSecondsFromState
-                |> Maybe.map
-                    (\lastReloadPageAgeInSeconds ->
-                        [ "Started the web browser "
-                            ++ (state.startWebBrowserCount |> String.fromInt)
-                            ++ " times, last time was "
-                            ++ ((lastReloadPageAgeInSeconds // 60) |> String.fromInt)
-                            ++ " minutes ago."
-                        ]
-                    )
-                |> Maybe.withDefault []
-
         readBattleReportsReport =
             case state.lastRequestReportListResult of
                 Nothing ->
@@ -2643,7 +2557,6 @@ statusMessageFromState state { activityDecisionStages } =
     , [ coordinatesChecksReport ]
     , [ inGameReport ]
     , [ readBattleReportsReport ]
-    , reloadReportLines
     , [ parseResponseErrorReport ]
     , if enableDebugInspection then
         debugInspectionLines
@@ -2754,21 +2667,16 @@ describeRunJavascriptInCurrentPageResponseStructure :
     BotFramework.ChromeDevToolsProtocolRuntimeEvaluateResponseStruct
     -> String
 describeRunJavascriptInCurrentPageResponseStructure response =
-    "{ webBrowserAvailable = "
-        ++ (if response.webBrowserAvailable then
-                "true"
-
-            else
-                "false"
-           )
-        ++ ", returnValueJsonSerialized = "
+    "{ returnValueJsonSerialized = "
         ++ describeString 300 response.returnValueJsonSerialized
         ++ "\n}"
 
 
 describeString : Int -> String -> String
-describeString maxLength string =
-    "\"" ++ (string |> stringEllipsis maxLength "...") ++ "\""
+describeString maxLength =
+    stringEllipsis maxLength "..."
+        >> Json.Encode.string
+        >> Json.Encode.encode 0
 
 
 describeMaybe : (just -> String) -> Maybe just -> String
@@ -2788,15 +2696,6 @@ stringEllipsis howLong append string =
 
     else
         String.left (howLong - String.length append) string ++ append
-
-
-nothingFromIntIfGreaterThan : Int -> Int -> Maybe Int
-nothingFromIntIfGreaterThan limit originalInt =
-    if limit < originalInt then
-        Nothing
-
-    else
-        Just originalInt
 
 
 jsonDecodeOptionalField : String -> Json.Decode.Decoder a -> Json.Decode.Decoder (Maybe a)

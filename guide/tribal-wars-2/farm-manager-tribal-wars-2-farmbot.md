@@ -34,7 +34,7 @@ https://youtu.be/yzkernqechE
 
 Following are the first steps shown in the video:
 
-+ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2022-11-15.zip
++ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/2022-12-01-tribal-wars-2-farmbot.zip
 + Extract the downloaded zip archive. The extraction will give you a file named `tribal-wars-2-farmbot.exe`.
 + Run the `tribal-wars-2-farmbot.exe` program.
 + Click on 'Continue without Installing'
@@ -45,10 +45,13 @@ Then you will land on this screen where you can select the Tribal Wars 2 farmbot
 ![Screen to select the Tribal Wars 2 Farmbot](./image/2022-11-15-tribal-wars-2-farmbot-pick-bot-bundled-bot-with-marker.png)
 
 + Here click on the 'Tribal Wars 2 farmbot' under 'Bundled Bot'
-+ On the next screen, click 'Start Play Session'
-+ Now the bot starts.
++ On the next screen, scroll down and click the button 'Start Play Session'
 
-Now the bot will display a message like this:
+![Start the play session](./image/2022-12-01-tw2-farmbot-configure-session-start-marked.png)
+
++ Then the bot starts.
+
+A few seconds after starting, the bot will display a message like this:
 
 > Found no army presets matching the filter 'farm'.
 
@@ -77,7 +80,7 @@ You can use the in-game user interface to configure an army preset and enable it
 Besides the army presets, no configuration is required.
 The bot searches for barbarian villages and then attacks them using the matching presets. You can also see it jumping to the barbarian villages on the map.
 
-In the console window, you can read about the number of sent attacks and what the bot is currently doing:
+Under 'Status text from bot', you can read about the number of sent attacks and what the bot is currently doing:
 
 ```text
 Session performance: attacks sent: 129, coordinates read: 1478, completed farm cycles: 1
@@ -114,29 +117,23 @@ Following is a list of available settings:
 + `restart-game-client-after-break`: Set this to 'yes' to make the bot restart the game client/web browser after each break.
 + `open-website-on-start`: Website to open when starting the web browser.
 
-To configure settings, open the configuration page at <https://catalog.botlab.org/b7d580d499d5e330> in a web browser.
+You can enter any combination of settings before starting the bot. When in the 'Configure Session' view, scroll to the 'Bot Settings' section and click on 'Edit'.
 
-On this page, scroll down to the button `Configure bot`.
+![Button to enter configuration](./image/2022-12-01-tw2-farmbot-configure-session-section-bot-settings-marked-edit.png)
 
-![Button to enter configuration](./image/2021-12-02-catalog-tribal-wars-2-farmbot-configure-bot-button.png)
+This opens a popup where you can enter a settings text:
 
-Click this button to enter the configuration interface:
-
-![Input fields for configuration](./image/2021-12-02-catalog-tribal-wars-2-farmbot-configure-bot-form.png)
-
-Here we have multiple input fields, but to use any of the bot settings mentioned above, we only need the text box right of the `--bot-settings` label.
+![Text input to enter bot settings](./image/2022-12-01-tw2-farmbot-configure-session-section-bot-settings-edited-crop.png)
 
 When using more than one setting, start a new line for each setting in the text input field.
-Here is an example of `bot-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
+Here is an example for three farm cycles with breaks of 20 to 40 minutes in between:
 
 ```text
 number-of-farm-cycles = 3
 break-duration = 20 - 40
 ```
 
-![Input fields for configuration with bot-settings](./image/2021-12-02-catalog-tribal-wars-2-farmbot-configure-bot-form-filled-crop.png)
-
-Use the button `Download script with this command line to run the bot` to download a script to run the bot with the entered settings.
+After entering the settings, use the 'Save' button to apply these to the new session.
 
 When you have applied settings for multiple farm cycles, the bot displays this message during the breaks between farm cycles:
 
@@ -162,17 +159,16 @@ Sending one attack takes less than four seconds. The bot can cover 800 farms per
 
 ### How can I farm (multiple) inactive players?
 
-To select multiple player characters for farming, use the `character-to-farm` setting name multiple times. Here is an example of a complete bot-settings string with multiple `character-to-farm`:
+To select multiple players for farming, use the `farm-player` setting name multiple times. Here is an example of a complete bot-settings string with multiple `farm-player`:
 
 ```text
-number-of-farm-cycles = 36
-break-duration = 30 - 60
-character-to-farm = player character one
-character-to-farm = player character two
-character-to-farm = player character three
+number-of-farm-cycles = 3
+farm-player = player one
+farm-player = player two
+farm-player = player three
 ```
 
-There is no limit to the number of characters here, you can add as many `character-to-farm` as you want.
+There is no limit to the number of players here, you can add as many `farm-player` as you want.
 
 ### How to use it with multiple accounts at the same time?
 

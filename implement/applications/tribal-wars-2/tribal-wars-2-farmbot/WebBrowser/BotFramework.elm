@@ -12,15 +12,15 @@ import Json.Decode
 import Json.Encode
 
 
-type alias BotConfig botState =
+type alias BotConfig botSettings botState =
     { init : botState
-    , processEvent : BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState
+    , parseBotSettings : String -> Result String botSettings
+    , processEvent : botSettings -> BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState
     }
 
 
 type BotEvent
-    = SetBotSettings String
-    | ArrivedAtTime { timeInMilliseconds : Int }
+    = ArrivedAtTime { timeInMilliseconds : Int }
     | ChromeDevToolsProtocolRuntimeEvaluateResponse ChromeDevToolsProtocolRuntimeEvaluateResponseStruct
 
 
@@ -70,13 +70,14 @@ type alias ChromeDevToolsProtocolRuntimeEvaluateResponseStruct =
     }
 
 
-type alias StateIncludingSetup botState =
+type alias StateIncludingSetup botSettings botState =
     { webBrowser : Maybe WebBrowserState
     , botState : BotState botState
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
     , tasksInProgress : Dict.Dict String { startTimeInMilliseconds : Int, taskDescription : String }
     , startWebBrowserCount : Int
+    , botSettings : Maybe botSettings
     }
 
 
@@ -143,14 +144,25 @@ type SetupOrOperationTask setup operation
     | OperationTask operation
 
 
-webBrowserBotMain : BotConfig state -> InterfaceToHost.BotConfig (StateIncludingSetup state)
+type EventMainBranch
+    = ReturnToHostBranch (Result String String)
+    | ContinueToBotBranch BotEventInternal
+
+
+type BotEventInternal
+    = TimeArrivedInternal
+    | SessionDurationPlannedInternal { timeInMilliseconds : Int }
+    | TaskCompletedInternal InterfaceToHost.CompletedTaskStructure
+
+
+webBrowserBotMain : BotConfig botSettings state -> InterfaceToHost.BotConfig (StateIncludingSetup botSettings state)
 webBrowserBotMain webBrowserBotConfig =
     { init = initState webBrowserBotConfig.init
-    , processEvent = processEvent webBrowserBotConfig.processEvent
+    , processEvent = processEvent webBrowserBotConfig
     }
 
 
-initState : botState -> StateIncludingSetup botState
+initState : botState -> StateIncludingSetup botSettings botState
 initState botState =
     { webBrowser = Nothing
     , botState =
@@ -161,18 +173,92 @@ initState botState =
     , lastTaskIndex = 0
     , tasksInProgress = Dict.empty
     , startWebBrowserCount = 0
+    , botSettings = Nothing
     }
 
 
 processEvent :
-    (BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState)
+    BotConfig botSettings botState
     -> InterfaceToHost.BotEvent
-    -> StateIncludingSetup botState
-    -> ( StateIncludingSetup botState, InterfaceToHost.BotEventResponse )
-processEvent botProcessEvent fromHostEvent stateBefore =
+    -> StateIncludingSetup botSettings botState
+    -> ( StateIncludingSetup botSettings botState, InterfaceToHost.BotEventResponse )
+processEvent botConfig fromHostEvent stateBeforeUpdateTime =
+    let
+        ( stateBefore, responseClass ) =
+            eventMainBranch botConfig
+                fromHostEvent.eventAtTime
+                { stateBeforeUpdateTime | timeInMilliseconds = fromHostEvent.timeInMilliseconds }
+    in
+    case responseClass of
+        ReturnToHostBranch (Ok continueSessionStatusText) ->
+            ( stateBefore
+            , InterfaceToHost.ContinueSession
+                { statusText = continueSessionStatusText
+                , startTasks = []
+                , notifyWhenArrivedAtTime = Just { timeInMilliseconds = 0 }
+                }
+            )
+
+        ReturnToHostBranch (Err finishSessionStatusText) ->
+            ( stateBefore
+            , InterfaceToHost.FinishSession
+                { statusText = finishSessionStatusText }
+            )
+
+        ContinueToBotBranch internalEvent ->
+            processEventLessBotSettingsChanged
+                botConfig
+                internalEvent
+                stateBefore
+
+
+eventMainBranch :
+    BotConfig botSettings botState
+    -> InterfaceToHost.BotEventAtTime
+    -> StateIncludingSetup botSettings botState
+    -> ( StateIncludingSetup botSettings botState, EventMainBranch )
+eventMainBranch botConfig eventAtTime stateBefore =
+    case eventAtTime of
+        InterfaceToHost.TimeArrivedEvent ->
+            ( stateBefore
+            , ContinueToBotBranch TimeArrivedInternal
+            )
+
+        InterfaceToHost.BotSettingsChangedEvent botSettingsString ->
+            case botConfig.parseBotSettings botSettingsString of
+                Err err ->
+                    ( stateBefore
+                    , ReturnToHostBranch
+                        (Err ("Failed to parse these bot settings: " ++ err))
+                    )
+
+                Ok ok ->
+                    ( { stateBefore | botSettings = Just ok }
+                    , ReturnToHostBranch (Ok "Succeeded parsing these bot-settings.")
+                    )
+
+        InterfaceToHost.TaskCompletedEvent taskCompleted ->
+            ( stateBefore
+            , ContinueToBotBranch (TaskCompletedInternal taskCompleted)
+            )
+
+        InterfaceToHost.SessionDurationPlannedEvent durationPlanned ->
+            ( stateBefore
+            , ContinueToBotBranch (SessionDurationPlannedInternal durationPlanned)
+            )
+
+
+processEventLessBotSettingsChanged :
+    BotConfig botSettings botState
+    -> BotEventInternal
+    -> StateIncludingSetup botSettings botState
+    -> ( StateIncludingSetup botSettings botState, InterfaceToHost.BotEventResponse )
+processEventLessBotSettingsChanged botConfig fromHostEvent stateBefore =
     let
         ( state, responseBeforeStatusText ) =
-            processEventLessComposingStatusText botProcessEvent fromHostEvent stateBefore
+            processEventLessComposingStatusText botConfig
+                fromHostEvent
+                stateBefore
 
         statusText =
             statusReportFromState state
@@ -201,14 +287,14 @@ processEvent botProcessEvent fromHostEvent stateBefore =
 
 
 processEventLessComposingStatusText :
-    (BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState)
-    -> InterfaceToHost.BotEvent
-    -> StateIncludingSetup botState
-    -> ( StateIncludingSetup botState, ContinueOrFinishResponse ContinueSessionStructure () )
-processEventLessComposingStatusText botProcessEvent fromHostEvent stateBefore =
+    BotConfig botSettings botState
+    -> BotEventInternal
+    -> StateIncludingSetup botSettings botState
+    -> ( StateIncludingSetup botSettings botState, ContinueOrFinishResponse ContinueSessionStructure () )
+processEventLessComposingStatusText botConfig fromHostEvent stateBefore =
     let
         ( state, response ) =
-            processEventLessMappingTasks botProcessEvent fromHostEvent stateBefore
+            processEventLessMappingTasks botConfig fromHostEvent stateBefore
     in
     case response of
         FinishResponse finishSession ->
@@ -272,15 +358,15 @@ browserDefaultContent =
 
 
 processEventLessMappingTasks :
-    (BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState)
-    -> InterfaceToHost.BotEvent
-    -> StateIncludingSetup botState
-    -> ( StateIncludingSetup botState, InternalBotEventResponse )
-processEventLessMappingTasks botProcessEvent fromHostEvent stateBeforeIntegratingEvent =
+    BotConfig botSettings botState
+    -> BotEventInternal
+    -> StateIncludingSetup botSettings botState
+    -> ( StateIncludingSetup botSettings botState, InternalBotEventResponse )
+processEventLessMappingTasks botConfig fromHostEvent stateBeforeIntegratingEvent =
     let
         ( stateBefore, maybeBotResponse ) =
             stateBeforeIntegratingEvent
-                |> integrateFromHostEvent botProcessEvent fromHostEvent
+                |> integrateFromHostEvent botConfig fromHostEvent
     in
     case maybeBotResponse of
         Nothing ->
@@ -333,7 +419,10 @@ processEventLessMappingTasks botProcessEvent fromHostEvent stateBeforeIntegratin
                                     )
 
 
-startTasksFromBotRequest : BotRequest -> StateIncludingSetup bot -> ( StateIncludingSetup bot, List InternalStartTask )
+startTasksFromBotRequest :
+    BotRequest
+    -> StateIncludingSetup botSettings bot
+    -> ( StateIncludingSetup botSettings bot, List InternalStartTask )
 startTasksFromBotRequest botRequest stateBefore =
     let
         closeWindowTaskFromWindowId windowId =
@@ -418,23 +507,20 @@ startTasksFromBotRequest botRequest stateBefore =
 
 
 integrateFromHostEvent :
-    (BotEvent -> GenericBotState -> botState -> BotProcessEventResult botState)
-    -> InterfaceToHost.BotEvent
-    -> StateIncludingSetup botState
-    -> ( StateIncludingSetup botState, Maybe (SetupOrOperationTask InternalStartTask (BotProcessEventResult botState)) )
-integrateFromHostEvent botProcessEvent fromHostEvent stateBeforeUpdateTime =
+    BotConfig botSettings botState
+    -> BotEventInternal
+    -> StateIncludingSetup botSettings botState
+    -> ( StateIncludingSetup botSettings botState, Maybe (SetupOrOperationTask InternalStartTask (BotProcessEventResult botState)) )
+integrateFromHostEvent botConfig event stateBefore =
     let
-        stateBefore =
-            { stateBeforeUpdateTime | timeInMilliseconds = fromHostEvent.timeInMilliseconds }
-
         ( stateBeforeIntegrateBotEvent, maybeTask ) =
-            case fromHostEvent.eventAtTime of
-                InterfaceToHost.TimeArrivedEvent ->
+            case event of
+                TimeArrivedInternal ->
                     ( stateBefore
-                    , Just (OperationTask (ArrivedAtTime { timeInMilliseconds = fromHostEvent.timeInMilliseconds }))
+                    , Just (OperationTask (ArrivedAtTime { timeInMilliseconds = stateBefore.timeInMilliseconds }))
                     )
 
-                InterfaceToHost.TaskCompletedEvent taskComplete ->
+                TaskCompletedInternal taskComplete ->
                     let
                         ( webBrowserState, maybeBotEventFromTaskComplete ) =
                             stateBefore.webBrowser
@@ -455,12 +541,7 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBeforeUpdateTime =
                     , maybeBotEventFromTaskComplete
                     )
 
-                InterfaceToHost.BotSettingsChangedEvent botSettings ->
-                    ( stateBefore
-                    , Just (OperationTask (SetBotSettings botSettings))
-                    )
-
-                InterfaceToHost.SessionDurationPlannedEvent _ ->
+                SessionDurationPlannedInternal _ ->
                     ( stateBefore, Nothing )
     in
     case maybeTask of
@@ -478,6 +559,9 @@ integrateFromHostEvent botProcessEvent fromHostEvent stateBeforeUpdateTime =
             let
                 botStateBefore =
                     stateBeforeIntegrateBotEvent.botState
+
+                botProcessEvent =
+                    buildBotProcessEventWithDefaultConfig botConfig stateBefore.botSettings
 
                 botEventResult =
                     botStateBefore.botState
@@ -677,7 +761,7 @@ runScriptResultDisplayString result =
             "Success"
 
 
-statusReportFromState : StateIncludingSetup s -> String
+statusReportFromState : StateIncludingSetup settings state -> String
 statusReportFromState state =
     let
         webBrowserStatus =
@@ -710,3 +794,29 @@ statusReportFromState state =
         ++ " times)"
     ]
         |> String.join "\n"
+
+
+buildBotProcessEventWithDefaultConfig :
+    BotConfig settings state
+    -> Maybe settings
+    -> BotEvent
+    -> GenericBotState
+    -> state
+    -> BotProcessEventResult state
+buildBotProcessEventWithDefaultConfig botConfig maybeParsedSettings =
+    let
+        parseSettingsResult =
+            maybeParsedSettings
+                |> Maybe.map Ok
+                |> Maybe.withDefault (botConfig.parseBotSettings "")
+    in
+    case parseSettingsResult of
+        Err err ->
+            \_ _ botState ->
+                { newState = botState
+                , response = FinishSession
+                , statusMessage = "Failed to use an empty settings-string:\n" ++ err
+                }
+
+        Ok parsedSettings ->
+            botConfig.processEvent parsedSettings

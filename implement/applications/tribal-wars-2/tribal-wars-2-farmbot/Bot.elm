@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-10-30
+{- Tribal Wars 2 farmbot version 2022-12-01
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -201,7 +201,6 @@ switchToOtherVillageCommandCapacityMinimum =
 
 type alias BotState =
     { timeInMilliseconds : Int
-    , settings : BotSettings
     , currentActivity : Maybe { beginTimeInMilliseconds : Int, decision : DecisionPathNode InFarmCycleResponse }
     , lastRequestToPageId : Int
     , pendingRequestToPageRequestId : Maybe String
@@ -242,10 +241,11 @@ type alias BotSettings =
     }
 
 
-type alias WebBrowserStatus =
+type alias EventContext =
     { lastPageLocation : Maybe String
     , gameLastPageLocation : Maybe String
     , webBrowser : Maybe BotFramework.WebBrowserState
+    , settings : BotSettings
     }
 
 
@@ -269,7 +269,7 @@ type FarmState
 
 
 type alias State =
-    BotFramework.StateIncludingSetup BotState
+    BotFramework.StateIncludingSetup BotSettings BotState
 
 
 type ResponseFromBrowser
@@ -456,7 +456,6 @@ type MaintainGameClientAction
 initState : BotState
 initState =
     { timeInMilliseconds = 0
-    , settings = initBotSettings
     , currentActivity = Nothing
     , lastRequestToPageId = 0
     , pendingRequestToPageRequestId = Nothing
@@ -478,8 +477,8 @@ initState =
     }
 
 
-reasonToRestartGameClientFromBotState : BotFramework.RunningWebBrowserStateStruct -> BotState -> Maybe String
-reasonToRestartGameClientFromBotState webBrowser state =
+reasonToRestartGameClientFromBotState : BotSettings -> BotFramework.RunningWebBrowserStateStruct -> BotState -> Maybe String
+reasonToRestartGameClientFromBotState settings webBrowser state =
     if restartGameClientInterval < (state.timeInMilliseconds - webBrowser.startTimeMilliseconds) // 1000 then
         Just ("Last restart was more than " ++ (restartGameClientInterval |> String.fromInt) ++ " seconds ago.")
 
@@ -491,7 +490,7 @@ reasonToRestartGameClientFromBotState webBrowser state =
             InFarmCycle farmCycleStart _ ->
                 if
                     (webBrowser.startTimeMilliseconds // 1000 < farmCycleStart.beginTimeSeconds)
-                        && (state.settings.restartGameClientAfterBreak == AppSettings.Yes)
+                        && (settings.restartGameClientAfterBreak == AppSettings.Yes)
                 then
                     Just "Restart game client after break"
 
@@ -511,15 +510,17 @@ botMain =
     BotFramework.webBrowserBotMain
         { init = initState
         , processEvent = processWebBrowserBotEvent
+        , parseBotSettings = parseBotSettings
         }
 
 
 processWebBrowserBotEvent :
-    BotEvent
+    BotSettings
+    -> BotEvent
     -> BotFramework.GenericBotState
     -> BotState
     -> { newState : BotState, response : BotResponse, statusMessage : String }
-processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
+processWebBrowserBotEvent botSettings event genericBotState stateBeforeIntegrateEvent =
     case stateBeforeIntegrateEvent |> integrateWebBrowserBotEvent event of
         Err integrateEventError ->
             { newState = stateBeforeIntegrateEvent
@@ -609,6 +610,7 @@ processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
                                         { lastPageLocation = stateBeforeIntegrateEvent.lastPageLocation
                                         , gameLastPageLocation = stateBeforeIntegrateEvent.gameLastPageLocation
                                         , webBrowser = genericBotState.webBrowser
+                                        , settings = botSettings
                                         }
                                         { stateBefore | currentActivity = Nothing }
 
@@ -647,15 +649,15 @@ processWebBrowserBotEvent event genericBotState stateBeforeIntegrateEvent =
             in
             { newState = newState
             , response = responseToFramework
-            , statusMessage = statusMessageFromState newState { activityDecisionStages = activityDecisionStages }
+            , statusMessage = statusMessageFromState botSettings newState { activityDecisionStages = activityDecisionStages }
             }
 
 
-maintainGameClientAndDecideNextAction : WebBrowserStatus -> BotState -> ( DecisionPathNode BotResponse, BotState )
-maintainGameClientAndDecideNextAction browserStatus stateBefore =
+maintainGameClientAndDecideNextAction : EventContext -> BotState -> ( DecisionPathNode BotResponse, BotState )
+maintainGameClientAndDecideNextAction eventContext stateBefore =
     let
         ( actionPath, botState ) =
-            decideNextAction stateBefore
+            decideNextAction eventContext.settings stateBefore
 
         isInFarmCycle =
             case botState.farmState of
@@ -666,8 +668,8 @@ maintainGameClientAndDecideNextAction browserStatus stateBefore =
                     False
 
         webBrowserLocationIfRestart =
-            [ browserStatus.gameLastPageLocation
-            , stateBefore.settings.openWebsiteOnStart
+            [ eventContext.gameLastPageLocation
+            , eventContext.settings.openWebsiteOnStart
             ]
                 |> List.filterMap identity
                 |> List.head
@@ -684,7 +686,7 @@ maintainGameClientAndDecideNextAction browserStatus stateBefore =
                             endDecisionPath action
 
                         BotFramework.ContinueSession continueSession ->
-                            case maintainGameClientActionFromState browserStatus stateBefore of
+                            case maintainGameClientActionFromState eventContext stateBefore of
                                 Nothing ->
                                     endDecisionPath action
 
@@ -715,8 +717,8 @@ maintainGameClientAndDecideNextAction browserStatus stateBefore =
         )
 
 
-decideNextAction : BotState -> ( DecisionPathNode BotResponse, BotState )
-decideNextAction stateBefore =
+decideNextAction : BotSettings -> BotState -> ( DecisionPathNode BotResponse, BotState )
+decideNextAction botSettings stateBefore =
     case stateBefore.farmState of
         InBreak farmBreak ->
             let
@@ -763,7 +765,7 @@ decideNextAction stateBefore =
         InFarmCycle farmCycleBegin farmCycleState ->
             let
                 decisionInFarmCycle =
-                    decideInFarmCycle stateBefore farmCycleState
+                    decideInFarmCycle botSettings stateBefore farmCycleState
 
                 ( _, decisionInFarmCycleLeaf ) =
                     unpackToDecisionStagesDescriptionsAndLeaf decisionInFarmCycle
@@ -831,8 +833,8 @@ decideNextAction stateBefore =
                                     stateBefore.timeInMilliseconds // 1000
 
                                 breakLengthRange =
-                                    (stateBefore.settings.breakDurationMinutes.maximum
-                                        - stateBefore.settings.breakDurationMinutes.minimum
+                                    (botSettings.breakDurationMinutes.maximum
+                                        - botSettings.breakDurationMinutes.minimum
                                     )
                                         * 60
 
@@ -844,7 +846,7 @@ decideNextAction stateBefore =
                                         stateBefore.timeInMilliseconds |> modBy breakLengthRange
 
                                 breakLength =
-                                    (stateBefore.settings.breakDurationMinutes.minimum * 60)
+                                    (botSettings.breakDurationMinutes.minimum * 60)
                                         + breakLengthRandomComponent
 
                                 nextCycleStartTime =
@@ -863,7 +865,7 @@ decideNextAction stateBefore =
                                     }
                             in
                             ( describeBranch "Finish farm cycle."
-                                (if stateBefore.settings.numberOfFarmCycles <= (stateAfterFinishingFarmCycle.completedFarmCycles |> List.length) then
+                                (if botSettings.numberOfFarmCycles <= (stateAfterFinishingFarmCycle.completedFarmCycles |> List.length) then
                                     describeBranch
                                         ("Finish session because I finished all " ++ (stateAfterFinishingFarmCycle.completedFarmCycles |> List.length |> String.fromInt) ++ " configured farm cycles.")
                                         (endDecisionPath BotFramework.FinishSession)
@@ -973,22 +975,6 @@ parseSettingListCoordinates listOfCoordinatesAsString =
 integrateWebBrowserBotEvent : BotEvent -> BotState -> Result String BotState
 integrateWebBrowserBotEvent event stateBefore =
     case event of
-        BotFramework.SetBotSettings settingsString ->
-            let
-                parseSettingsResult =
-                    parseBotSettings settingsString
-            in
-            parseSettingsResult
-                |> Result.map
-                    (\newSettings ->
-                        { stateBefore
-                            | settings = newSettings
-                            , cache_relativeCoordinatesToSearchForFarmsPartitions =
-                                relativeCoordinatesToSearchForFarmsPartitions newSettings
-                        }
-                    )
-                |> Result.mapError (\parseError -> "Failed to parse these bot-settings: " ++ parseError)
-
         BotFramework.ArrivedAtTime { timeInMilliseconds } ->
             Ok { stateBefore | timeInMilliseconds = timeInMilliseconds }
 
@@ -1189,9 +1175,9 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runtimeEvaluateRes
                     { stateBefore | lastRequestReportListResult = Just requestReportList }
 
 
-maintainGameClientActionFromState : WebBrowserStatus -> BotState -> Maybe ( String, MaintainGameClientAction )
-maintainGameClientActionFromState browserStatus botState =
-    case browserStatus.webBrowser of
+maintainGameClientActionFromState : EventContext -> BotState -> Maybe ( String, MaintainGameClientAction )
+maintainGameClientActionFromState eventContext botState =
+    case eventContext.webBrowser of
         Just (BotFramework.OpeningWebBrowserState _) ->
             Just
                 ( "Wait until opening web browser complete..."
@@ -1210,8 +1196,8 @@ maintainGameClientActionFromState browserStatus botState =
                     )
 
             else if
-                (browserStatus.lastPageLocation /= browserStatus.gameLastPageLocation)
-                    && (browserStatus.gameLastPageLocation /= Nothing)
+                (eventContext.lastPageLocation /= eventContext.gameLastPageLocation)
+                    && (eventContext.gameLastPageLocation /= Nothing)
             then
                 Just
                     ( "Restart web browser because it is in wrong location"
@@ -1219,7 +1205,7 @@ maintainGameClientActionFromState browserStatus botState =
                     )
 
             else
-                case botState |> reasonToRestartGameClientFromBotState runningWebBrowser of
+                case botState |> reasonToRestartGameClientFromBotState eventContext.settings runningWebBrowser of
                     Just reasonToRestartGameClient ->
                         Just
                             ( "Restart the game client (" ++ reasonToRestartGameClient ++ ")."
@@ -1233,8 +1219,8 @@ maintainGameClientActionFromState browserStatus botState =
             Just ( "Start web browser because it is not running", RestartWebBrowser )
 
 
-decideInFarmCycle : BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
-decideInFarmCycle botState farmCycleState =
+decideInFarmCycle : BotSettings -> BotState -> FarmCycleState -> DecisionPathNode InFarmCycleResponse
+decideInFarmCycle botSettings botState farmCycleState =
     let
         sufficientlyNewGameRootInformation =
             botState.gameRootInformationResult
@@ -1263,15 +1249,16 @@ decideInFarmCycle botState farmCycleState =
                 (endDecisionPath (ContinueFarmCycle (Just ReadRootInformationRequest)))
 
         Ok gameRootInformation ->
-            decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInformation
+            decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gameRootInformation
 
 
 decideInFarmCycleWithGameRootInformation :
-    BotState
+    BotSettings
+    -> BotState
     -> FarmCycleState
     -> TribalWars2RootInformation
     -> DecisionPathNode InFarmCycleResponse
-decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInformation =
+decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gameRootInformation =
     let
         ownVillageUpdateTimeMinimumMilli =
             botState.timeInMilliseconds - (ownVillageInfoMaxAge * 1000)
@@ -1400,6 +1387,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
                                         (\otherVillageId otherVillageDetails ->
                                             ( otherVillageDetails
                                             , decideNextActionForVillage
+                                                botSettings
                                                 botState
                                                 farmCycleState
                                                 ( otherVillageId, otherVillageDetails )
@@ -1506,6 +1494,7 @@ decideInFarmCycleWithGameRootInformation botState farmCycleState gameRootInforma
 
                             _ ->
                                 decideNextActionForVillage
+                                    botSettings
                                     botState
                                     farmCycleState
                                     ( gameRootInformation.selectedVillageId, selectedVillageDetails )
@@ -1590,29 +1579,31 @@ requestToJumpToVillageIfNotYetDone state coordinates =
 
 
 decideNextActionForVillage :
-    BotState
+    BotSettings
+    -> BotState
     -> FarmCycleState
     -> ( Int, VillageDetails )
     -> DecisionPathNode VillageEndDecisionPathStructure
-decideNextActionForVillage botState farmCycleState ( villageId, villageDetails ) =
-    if botState.settings.farmAvoidCoordinates |> List.member villageDetails.coordinates then
+decideNextActionForVillage botSettings botState farmCycleState ( villageId, villageDetails ) =
+    if botSettings.farmAvoidCoordinates |> List.member villageDetails.coordinates then
         endDecisionPath (CompletedThisVillage VillageDisabledInSettings)
 
     else
         pickBestMatchingArmyPresetForVillage
-            (implicitSettingsFromExplicitSettings botState.settings)
+            (implicitSettingsFromExplicitSettings botSettings)
             (farmCycleState.getArmyPresetsResult |> Maybe.withDefault [])
             ( villageId, villageDetails )
-            (decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ))
+            (decideNextActionForVillageAfterChoosingPreset botSettings botState farmCycleState ( villageId, villageDetails ))
 
 
 decideNextActionForVillageAfterChoosingPreset :
-    BotState
+    BotSettings
+    -> BotState
     -> FarmCycleState
     -> ( Int, VillageDetails )
     -> ArmyPreset
     -> DecisionPathNode VillageEndDecisionPathStructure
-decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageId, villageDetails ) armyPreset =
+decideNextActionForVillageAfterChoosingPreset botSettings botState farmCycleState ( villageId, villageDetails ) armyPreset =
     let
         villageInfoCheckFromCoordinates coordinates =
             botState.coordinatesLastCheck |> Dict.get ( coordinates.x, coordinates.y )
@@ -1621,8 +1612,8 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
             villageDetails.commands.outgoing |> List.length
 
         limitOutgoingCommandsPerVillageRandomizedAmount =
-            botState.settings.limitOutgoingCommandsPerVillage.maximum
-                - botState.settings.limitOutgoingCommandsPerVillage.minimum
+            botSettings.limitOutgoingCommandsPerVillage.maximum
+                - botSettings.limitOutgoingCommandsPerVillage.minimum
 
         limitOutgoingCommandsPerVillageRandomAmount =
             if 0 < limitOutgoingCommandsPerVillageRandomizedAmount then
@@ -1632,7 +1623,7 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
                 0
 
         limitOutgoingCommandsPerVillage =
-            botState.settings.limitOutgoingCommandsPerVillage.minimum
+            botSettings.limitOutgoingCommandsPerVillage.minimum
                 + limitOutgoingCommandsPerVillageRandomAmount
 
         remainingCapacityCommands =
@@ -1669,7 +1660,7 @@ decideNextActionForVillageAfterChoosingPreset botState farmCycleState ( villageI
                                                 False
 
                                             VillageThere village ->
-                                                villageMatchesSettingsForFarm botState.settings coordinates village
+                                                villageMatchesSettingsForFarm botSettings coordinates village
                         )
                     >> List.head
 
@@ -2391,8 +2382,8 @@ decodeBattleReportResult =
             )
 
 
-statusMessageFromState : BotState -> { activityDecisionStages : List String } -> String
-statusMessageFromState state { activityDecisionStages } =
+statusMessageFromState : BotSettings -> BotState -> { activityDecisionStages : List String } -> String
+statusMessageFromState botSettings state { activityDecisionStages } =
     let
         sentAttacks =
             countSentAttacks state
@@ -2428,7 +2419,7 @@ statusMessageFromState state { activityDecisionStages } =
 
         villagesMatchingSettingsForFarm =
             villagesByCoordinates
-                |> Dict.filter (\( x, y ) village -> villageMatchesSettingsForFarm state.settings { x = x, y = y } village)
+                |> Dict.filter (\( x, y ) village -> villageMatchesSettingsForFarm botSettings { x = x, y = y } village)
 
         numberOfVillagesAvoidedBySettings =
             (barbarianVillages |> Dict.size) - (villagesMatchingSettingsForFarm |> Dict.size)
@@ -2533,13 +2524,13 @@ statusMessageFromState state { activityDecisionStages } =
 
         settingsReport =
             "Settings: "
-                ++ ([ ( "cycles", state.settings.numberOfFarmCycles |> String.fromInt )
+                ++ ([ ( "cycles", botSettings.numberOfFarmCycles |> String.fromInt )
                     , ( "breaks"
-                      , (state.settings.breakDurationMinutes.minimum |> String.fromInt)
+                      , (botSettings.breakDurationMinutes.minimum |> String.fromInt)
                             ++ " - "
-                            ++ (state.settings.breakDurationMinutes.maximum |> String.fromInt)
+                            ++ (botSettings.breakDurationMinutes.maximum |> String.fromInt)
                       )
-                    , ( "max dist", state.settings.farmBarbarianVillageMaximumDistance |> String.fromInt )
+                    , ( "max dist", botSettings.farmBarbarianVillageMaximumDistance |> String.fromInt )
                     ]
                         |> List.map (\( settingName, settingValue ) -> settingName ++ ": " ++ settingValue)
                         |> String.join ", "

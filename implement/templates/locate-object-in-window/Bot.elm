@@ -15,6 +15,7 @@ module Bot exposing
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework exposing (PixelValue)
+import Common.AppSettings as AppSettings
 import Dict
 import Maybe.Extra
 
@@ -89,14 +90,20 @@ type alias SimpleState =
 
 
 type alias State =
-    SimpleBotFramework.State SimpleState
+    SimpleBotFramework.State BotSettings SimpleState
+
+
+type alias BotSettings =
+    {}
 
 
 botMain : InterfaceToHost.BotConfig State
 botMain =
-    { init = SimpleBotFramework.initState initState
-    , processEvent = SimpleBotFramework.processEvent simpleProcessEvent
-    }
+    SimpleBotFramework.composeSimpleBotMain
+        { parseBotSettings = AppSettings.parseAllowOnlyEmpty {}
+        , init = initState
+        , processEvent = simpleProcessEvent
+        }
 
 
 initState : SimpleState
@@ -106,8 +113,8 @@ initState =
     }
 
 
-simpleProcessEvent : SimpleBotFramework.BotEvent -> SimpleState -> ( SimpleState, SimpleBotFramework.BotResponse )
-simpleProcessEvent event stateBeforeIntegratingEvent =
+simpleProcessEvent : BotSettings -> SimpleBotFramework.BotEvent -> SimpleState -> ( SimpleState, SimpleBotFramework.BotResponse )
+simpleProcessEvent _ event stateBeforeIntegratingEvent =
     let
         stateBefore =
             stateBeforeIntegratingEvent |> integrateEvent event
@@ -160,7 +167,7 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
     ( stateBefore
     , SimpleBotFramework.ContinueSession
         { startTasks = startTasks
-        , statusDescriptionText = lastReadingDescription stateBefore
+        , statusText = lastReadingDescription stateBefore
         , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 500 }
         }
     )
@@ -174,9 +181,6 @@ integrateEvent event stateBeforeUpdateTime =
     in
     case event.eventAtTime of
         SimpleBotFramework.TimeArrivedEvent ->
-            stateBefore
-
-        SimpleBotFramework.BotSettingsChangedEvent _ ->
             stateBefore
 
         SimpleBotFramework.SessionDurationPlannedEvent _ ->

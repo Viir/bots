@@ -1,4 +1,4 @@
-{- Elvenar Bot v2022-10-29
+{- Elvenar Bot v2022-11-30
 
    This bot collects coins in the Elvenar game client window.
 
@@ -27,6 +27,7 @@ module Bot exposing
 
 import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework
+import Common.AppSettings as AppSettings
 import Common.EffectOnWindow
 import DecodeBMPImage
 import Dict
@@ -60,7 +61,11 @@ type alias ReadFromWindowResult =
 
 
 type alias State =
-    SimpleBotFramework.State SimpleState
+    SimpleBotFramework.State BotSettings SimpleState
+
+
+type alias BotSettings =
+    {}
 
 
 type alias PixelValue =
@@ -73,9 +78,11 @@ type alias ImagePattern =
 
 botMain : InterfaceToHost.BotConfig State
 botMain =
-    { init = SimpleBotFramework.initState initState
-    , processEvent = SimpleBotFramework.processEvent simpleProcessEvent
-    }
+    SimpleBotFramework.composeSimpleBotMain
+        { parseBotSettings = AppSettings.parseAllowOnlyEmpty {}
+        , init = initState
+        , processEvent = simpleProcessEvent
+        }
 
 
 initState : SimpleState
@@ -85,8 +92,8 @@ initState =
     }
 
 
-simpleProcessEvent : SimpleBotFramework.BotEvent -> SimpleState -> ( SimpleState, SimpleBotFramework.BotResponse )
-simpleProcessEvent event stateBeforeUpdateTime =
+simpleProcessEvent : BotSettings -> SimpleBotFramework.BotEvent -> SimpleState -> ( SimpleState, SimpleBotFramework.BotResponse )
+simpleProcessEvent _ event stateBeforeUpdateTime =
     let
         stateBefore =
             { stateBeforeUpdateTime | timeInMilliseconds = event.timeInMilliseconds }
@@ -126,9 +133,6 @@ simpleProcessEvent event stateBeforeUpdateTime =
         ( state, ( startTasks, activityDescription ) ) =
             case event.eventAtTime of
                 SimpleBotFramework.TimeArrivedEvent ->
-                    continueWaitingOrRead stateBefore
-
-                SimpleBotFramework.BotSettingsChangedEvent _ ->
                     continueWaitingOrRead stateBefore
 
                 SimpleBotFramework.SessionDurationPlannedEvent _ ->
@@ -222,7 +226,7 @@ simpleProcessEvent event stateBeforeUpdateTime =
     ( state
     , SimpleBotFramework.ContinueSession
         { startTasks = startTasks
-        , statusDescriptionText = statusDescriptionText
+        , statusText = statusDescriptionText
         , notifyWhenArrivedAtTime = Just notifyWhenArrivedAtTime
         }
     )

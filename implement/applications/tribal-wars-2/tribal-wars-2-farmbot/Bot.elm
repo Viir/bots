@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-12-01
+{- Tribal Wars 2 farmbot version 2022-12-02
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -223,7 +223,7 @@ type alias BotState =
     , completedFarmCycles : List FarmCycleConclusion
     , lastRequestReportListResult : Maybe RequestReportListResponseStructure
     , parseResponseError : Maybe String
-    , cache_relativeCoordinatesToSearchForFarmsPartitions : List (List VillageCoordinates)
+    , cache_relativeCoordinatesToSearchForFarmsPartitions : ( BotSettings, List (List VillageCoordinates) )
     }
 
 
@@ -473,7 +473,8 @@ initState =
     , completedFarmCycles = []
     , lastRequestReportListResult = Nothing
     , parseResponseError = Nothing
-    , cache_relativeCoordinatesToSearchForFarmsPartitions = []
+    , cache_relativeCoordinatesToSearchForFarmsPartitions =
+        ( initBotSettings, relativeCoordinatesToSearchForFarmsPartitions initBotSettings )
     }
 
 
@@ -521,7 +522,20 @@ processWebBrowserBotEvent :
     -> BotState
     -> { newState : BotState, response : BotResponse, statusMessage : String }
 processWebBrowserBotEvent botSettings event genericBotState stateBeforeIntegrateEvent =
-    case stateBeforeIntegrateEvent |> integrateWebBrowserBotEvent event of
+    let
+        cache_relativeCoordinatesToSearchForFarmsPartitions =
+            if Tuple.first stateBeforeIntegrateEvent.cache_relativeCoordinatesToSearchForFarmsPartitions == botSettings then
+                stateBeforeIntegrateEvent.cache_relativeCoordinatesToSearchForFarmsPartitions
+
+            else
+                ( botSettings, relativeCoordinatesToSearchForFarmsPartitions botSettings )
+    in
+    case
+        { stateBeforeIntegrateEvent
+            | cache_relativeCoordinatesToSearchForFarmsPartitions = cache_relativeCoordinatesToSearchForFarmsPartitions
+        }
+            |> integrateWebBrowserBotEvent event
+    of
         Err integrateEventError ->
             { newState = stateBeforeIntegrateEvent
             , response = BotFramework.FinishSession
@@ -1670,6 +1684,7 @@ decideNextActionForVillageAfterChoosingPreset botSettings botState farmCycleStat
                    Process the coordinates in partitions to reduce computations of results we will not use anyway. In the end, we only take the first element, but the current runtime performs a more eager evaluation.
                 -}
                 botState.cache_relativeCoordinatesToSearchForFarmsPartitions
+                    |> Tuple.second
                     |> List.foldl
                         (\coordinatesPartition result ->
                             if result /= Nothing then

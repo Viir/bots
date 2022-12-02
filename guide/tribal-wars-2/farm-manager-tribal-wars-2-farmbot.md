@@ -40,7 +40,7 @@ Following are the first steps shown in the video:
 + Click on 'Continue without Installing'
 + Click on 'Run Bot'
 
-Then you will land on this screen where you can select the Tribal Wars 2 farmbot:
+Then we land on this screen where we can select the Tribal Wars 2 farmbot:
 
 ![Screen to select the Tribal Wars 2 Farmbot](./image/2022-11-15-tribal-wars-2-farmbot-pick-bot-bundled-bot-with-marker.png)
 
@@ -49,13 +49,28 @@ Then you will land on this screen where you can select the Tribal Wars 2 farmbot
 
 ![Start the play session](./image/2022-12-01-tw2-farmbot-configure-session-start-marked.png)
 
-+ Then the bot starts.
+Then the bot starts and we see a screen like this:
 
-A few seconds after starting, the bot will display a message like this:
+![Tribal Wars 2 farmbot session started](./image/2022-12-02-tribal-wars-2-farmbot-started.png)
+
+In the left pane, we see information about the play session and controls to pause and continue the bot. The left pane also shows a status report from the bot under 'Status text from bot'.
+
+Here the bot also informs us about any setup we need to complete manually.
+When we have just started the session, the bot also shows this text:
+
+> I did not yet read game root information. Please log in to the game so that you see your villages.
+
+In the right pane, the bot opens a web browser tab. The web browser tab is initially empty, but there is an address bar at the top where we can enter a new web page to load, just as in other web browsers.
+Here we enter the address of the Tribal Wars 2 game world we want to enter with the bot. Since the browser by the bot is completely separate from other web browsers and has a separate user profile, we need to log in to the game to be able to enter the game world.
+After logging in and selecting the game world, this new browser tab shoulds the game as any other web browser:
+
+![Tribal Wars 2 farmbot session started](./image/2022-12-02-tribal-wars-2-farmbot-game-entered.jpg)
+
+Then the bot displays a message like this:
 
 > Found no army presets matching the filter 'farm'.
 
-Or, in case your account has no army presets configured at all, it shows this message:
+Or, in case our Tribal Wars 2 account has no army presets configured at all, it shows this message:
 
 > Did not find any army presets. Maybe loading is not completed yet.
 

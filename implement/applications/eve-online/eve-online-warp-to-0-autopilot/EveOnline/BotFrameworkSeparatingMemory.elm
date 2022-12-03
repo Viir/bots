@@ -15,7 +15,7 @@ To learn more about developing for EVE Online, see the guide at <https://to.botl
 
 -}
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
 import Common.DecisionPath
 import Common.EffectOnWindow
 import Dict
@@ -245,7 +245,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                         }
 
                 FinishSession ->
-                    EveOnline.BotFramework.FinishSession { statusDescriptionText = statusMessage }
+                    EveOnline.BotFramework.FinishSession { statusText = statusMessage }
             )
 
 

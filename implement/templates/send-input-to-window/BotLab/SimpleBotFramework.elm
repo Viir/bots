@@ -14,7 +14,7 @@
 
 module BotLab.SimpleBotFramework exposing (..)
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
 import Common.EffectOnWindow exposing (MouseButton(..))
 import CompilationInterface.SourceFiles
 import Dict
@@ -192,7 +192,7 @@ type alias InternalContinueSessionStructure =
 
 
 type alias InternalStartTaskStructure =
-    { taskId : InterfaceToHost.TaskId
+    { taskId : String
     , task : InterfaceToHost.Task
     , taskOrigin : TaskToHostOrigin
     }
@@ -239,7 +239,7 @@ processEvent botConfig event stateBeforeUpdateTime =
         ReturnToHostBranch (Ok continueSessionStatusText) ->
             ( stateBefore
             , InterfaceToHost.ContinueSession
-                { statusDescriptionText = continueSessionStatusText
+                { statusText = continueSessionStatusText
                 , startTasks = []
                 , notifyWhenArrivedAtTime = Just { timeInMilliseconds = 0 }
                 }
@@ -248,7 +248,7 @@ processEvent botConfig event stateBeforeUpdateTime =
         ReturnToHostBranch (Err finishSessionStatusText) ->
             ( stateBefore
             , InterfaceToHost.FinishSession
-                { statusDescriptionText = finishSessionStatusText }
+                { statusText = finishSessionStatusText }
             )
 
         ContinueToBotBranch internalEvent ->
@@ -290,13 +290,13 @@ processEventAddStatusText ( state, responseBeforeAddStatusText ) =
                 InterfaceToHost.FinishSession finishSession ->
                     InterfaceToHost.FinishSession
                         { finishSession
-                            | statusDescriptionText = generalStatusText ++ finishSession.statusDescriptionText
+                            | statusText = generalStatusText ++ finishSession.statusText
                         }
 
                 InterfaceToHost.ContinueSession continueSession ->
                     InterfaceToHost.ContinueSession
                         { continueSession
-                            | statusDescriptionText = generalStatusText ++ continueSession.statusDescriptionText
+                            | statusText = generalStatusText ++ continueSession.statusText
                         }
     in
     ( state, response )
@@ -312,25 +312,23 @@ processEventTrackingTasksInProgress botConfig event stateBefore =
         ( tasksInProgressAfterTaskCompleted, maybeCompletedBotTask ) =
             case event of
                 TaskCompletedInternal taskCompletedEvent ->
-                    case taskCompletedEvent.taskId of
-                        InterfaceToHost.TaskIdFromString taskIdString ->
-                            let
-                                maybeTaskFromBot =
-                                    case stateBefore.tasksInProgress |> Dict.get taskIdString of
-                                        Nothing ->
+                    let
+                        maybeTaskFromBot =
+                            case stateBefore.tasksInProgress |> Dict.get taskCompletedEvent.taskId of
+                                Nothing ->
+                                    Nothing
+
+                                Just taskInProgress ->
+                                    case taskInProgress.origin of
+                                        BotOrigin taskIdFromBot taskFromBot ->
+                                            Just ( taskIdFromBot, taskFromBot )
+
+                                        FrameworkOrigin ->
                                             Nothing
-
-                                        Just taskInProgress ->
-                                            case taskInProgress.origin of
-                                                BotOrigin taskIdFromBot taskFromBot ->
-                                                    Just ( taskIdFromBot, taskFromBot )
-
-                                                FrameworkOrigin ->
-                                                    Nothing
-                            in
-                            ( stateBefore.tasksInProgress |> Dict.remove taskIdString
-                            , maybeTaskFromBot
-                            )
+                    in
+                    ( stateBefore.tasksInProgress |> Dict.remove taskCompletedEvent.taskId
+                    , maybeTaskFromBot
+                    )
 
                 _ ->
                     ( stateBefore.tasksInProgress, Nothing )
@@ -357,20 +355,16 @@ processEventTrackingTasksInProgress botConfig event stateBefore =
                     continueSession.startTasks
                         |> List.indexedMap
                             (\startTaskIndex startTask ->
-                                case startTask.taskId of
-                                    InterfaceToHost.TaskIdFromString taskIdString ->
-                                        { startTask
-                                            | taskId =
-                                                InterfaceToHost.TaskIdFromString
-                                                    (taskIdString
-                                                        ++ "-"
-                                                        ++ String.fromInt
-                                                            (stateBefore.lastTaskIndex
-                                                                + 1
-                                                                + startTaskIndex
-                                                            )
-                                                    )
-                                        }
+                                { startTask
+                                    | taskId =
+                                        startTask.taskId
+                                            ++ "-"
+                                            ++ String.fromInt
+                                                (stateBefore.lastTaskIndex
+                                                    + 1
+                                                    + startTaskIndex
+                                                )
+                                }
                             )
 
                 lastTaskIndex =
@@ -380,13 +374,11 @@ processEventTrackingTasksInProgress botConfig event stateBefore =
                     startTasks
                         |> List.map
                             (\startTask ->
-                                case startTask.taskId of
-                                    InterfaceToHost.TaskIdFromString taskIdString ->
-                                        ( taskIdString
-                                        , { startTimeInMilliseconds = state.timeInMilliseconds
-                                          , origin = startTask.taskOrigin
-                                          }
-                                        )
+                                ( startTask.taskId
+                                , { startTimeInMilliseconds = state.timeInMilliseconds
+                                  , origin = startTask.taskOrigin
+                                  }
+                                )
                             )
                         |> Dict.fromList
 
@@ -404,7 +396,7 @@ processEventTrackingTasksInProgress botConfig event stateBefore =
                 , tasksInProgress = tasksInProgress |> Dict.union newTasksInProgress
               }
             , InterfaceToHost.ContinueSession
-                { statusDescriptionText = continueSession.statusText
+                { statusText = continueSession.statusText
                 , startTasks = startTasksForHost
                 , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
                 }
@@ -421,7 +413,7 @@ processEventLessTrackingTasks botConfig event maybeCompletedBotTask stateBefore 
     case stateBefore.error of
         Just error ->
             ( stateBefore
-            , InternalFinishSession { statusDescriptionText = "Error: " ++ error }
+            , InternalFinishSession { statusText = "Error: " ++ error }
             )
 
         Nothing ->
@@ -509,7 +501,7 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
             StopWithResult { resultDescription } ->
                 ( stateBefore
                 , InternalFinishSession
-                    { statusDescriptionText = "Stopped with result: " ++ resultDescription
+                    { statusText = "Stopped with result: " ++ resultDescription
                     }
                 )
 
@@ -541,7 +533,7 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
                     Just (FinishSession finishSession) ->
                         ( stateBefore
                         , InternalFinishSession
-                            { statusDescriptionText = "Bot finished the session: " ++ finishSession.statusText }
+                            { statusText = "Bot finished the session: " ++ finishSession.statusText }
                         )
 
                     Just (ContinueSession continueSession) ->
@@ -661,9 +653,7 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
         TaskCompletedInternal completedTask ->
             let
                 taskIdString =
-                    case completedTask.taskId of
-                        InterfaceToHost.TaskIdFromString taskIdStringHost ->
-                            taskIdStringHost
+                    completedTask.taskId
             in
             case maybeCompletedBotTask of
                 Nothing ->
@@ -678,6 +668,12 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
 
                                 InterfaceToHost.CompleteWithoutResult ->
                                     Err "CompleteWithoutResult"
+
+                                InterfaceToHost.OpenWindowResponse _ ->
+                                    Err "OpenWindowResponse"
+
+                                InterfaceToHost.InvokeMethodOnWindowResponse _ ->
+                                    Err "InvokeMethodOnWindowResponse"
 
                                 InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileProcessResponse ->
                                     case requestToVolatileProcessResponse of
@@ -1011,11 +1007,11 @@ combineBotResponse firstResponse secondResponse =
                         }
 
 
-taskIdFromSimpleBotTaskId : TaskId -> InterfaceToHost.TaskId
+taskIdFromSimpleBotTaskId : TaskId -> String
 taskIdFromSimpleBotTaskId simpleBotTaskId =
     case simpleBotTaskId of
         TaskIdFromString asString ->
-            InterfaceToHost.taskIdFromString ("bot-" ++ asString)
+            "bot-" ++ asString
 
 
 taskOnWindowFromSimpleBotTask :
@@ -1095,7 +1091,7 @@ integrateEvent botConfig eventAtTime stateBefore =
 
 
 integrateEventTaskComplete :
-    InterfaceToHost.TaskId
+    String
     -> InterfaceToHost.TaskResultStructure
     -> State botSettings botState
     -> State botSettings botState
@@ -1163,6 +1159,12 @@ integrateEventTaskComplete taskId taskResult stateBefore =
         InterfaceToHost.CompleteWithoutResult ->
             stateBefore
 
+        InterfaceToHost.OpenWindowResponse _ ->
+            stateBefore
+
+        InterfaceToHost.InvokeMethodOnWindowResponse _ ->
+            stateBefore
+
 
 statusTextFromState : State botSettings botState -> String
 statusTextFromState state =
@@ -1205,7 +1207,7 @@ getNextSetupStepWithDescriptionFromState state =
     case state.createVolatileProcessResponse of
         Nothing ->
             { task =
-                { taskId = InterfaceToHost.taskIdFromString "create_volatile_process"
+                { taskId = "create_volatile_process"
                 , task = InterfaceToHost.CreateVolatileProcess { programCode = CompilationInterface.SourceFiles.file____Windows_VolatileProcess_csx.utf8 }
                 }
             , taskDescription = "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
@@ -1236,7 +1238,7 @@ getNextSetupStepWithDescriptionFromState state =
                                 )
 
                         continueWithListWindows =
-                            { task = { taskId = InterfaceToHost.taskIdFromString "list_windows", task = listWindowsTask }
+                            { task = { taskId = "list_windows", task = listWindowsTask }
                             , taskDescription = "List windows"
                             }
                                 |> ContinueSetupWithTask

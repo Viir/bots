@@ -1,4 +1,4 @@
-module BotLab.BotInterface_To_Host_20210823 exposing (..)
+module BotLab.BotInterface_To_Host_2022_12_03 exposing (..)
 
 {-| This module contains types for the interface between a bot and the botlab client.
 The structures in these types reflect the standard interface for player agents to observe their environment and act in their environment.
@@ -34,7 +34,7 @@ type BotEventResponse
 
 
 type alias CompletedTaskStructure =
-    { taskId : TaskId
+    { taskId : String
     , taskResult : TaskResultStructure
     }
 
@@ -43,6 +43,8 @@ type TaskResultStructure
     = CreateVolatileProcessResponse (Result CreateVolatileProcessErrorStructure CreateVolatileProcessComplete)
     | RequestToVolatileProcessResponse (Result RequestToVolatileProcessError RequestToVolatileProcessComplete)
     | CompleteWithoutResult
+    | OpenWindowResponse (Result String OpenWindowSuccess)
+    | InvokeMethodOnWindowResponse (Result InvokeMethodOnWindowError InvokeMethodOnWindowResult)
 
 
 type alias CreateVolatileProcessErrorStructure =
@@ -51,7 +53,7 @@ type alias CreateVolatileProcessErrorStructure =
 
 
 type alias CreateVolatileProcessComplete =
-    { processId : VolatileProcessId }
+    { processId : String }
 
 
 type RequestToVolatileProcessError
@@ -68,25 +70,25 @@ type alias RequestToVolatileProcessComplete =
 
 
 type alias ReleaseVolatileProcessStructure =
-    { processId : VolatileProcessId }
+    { processId : String }
 
 
 type alias ContinueSessionStructure =
-    { statusDescriptionText : String
+    { statusText : String
     , startTasks : List StartTaskStructure
     , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
     }
 
 
 type alias FinishSessionStructure =
-    { statusDescriptionText : String
+    { statusText : String
     }
 
 
 {-| Tasks can yield some result to return to the bot. That is why we use the identifier.
 -}
 type alias StartTaskStructure =
-    { taskId : TaskId
+    { taskId : String
     , task : Task
     }
 
@@ -95,6 +97,67 @@ type Task
     = CreateVolatileProcess CreateVolatileProcessStructure
     | RequestToVolatileProcess RequestToVolatileProcessConsideringInputFocusStructure
     | ReleaseVolatileProcess ReleaseVolatileProcessStructure
+    | OpenWindowRequest OpenWindowRequestStruct
+    | InvokeMethodOnWindowRequest String MethodOnWindow
+
+
+type InvokeMethodOnWindowError
+    = WindowNotFoundError { windowsIds : List String }
+    | MethodNotAvailableError
+
+
+type InvokeMethodOnWindowResult
+    = ChromeDevToolsProtocolRuntimeEvaluateMethodResult (Result String ChromeDevToolsProtocolRuntimeEvaluateMethodSuccess)
+    | InvokeMethodOnWindowResultWithoutValue
+
+
+type MethodOnWindow
+    = CloseWindowMethod
+    | ChromeDevToolsProtocolRuntimeEvaluateMethod ChromeDevToolsProtocolRuntimeEvaluateParams
+
+
+type alias ChromeDevToolsProtocolRuntimeEvaluateParams =
+    { expression : String
+    , awaitPromise : Bool
+    }
+
+
+type alias ChromeDevToolsProtocolRuntimeEvaluateMethodSuccess =
+    { returnValueJsonSerialized : String
+    }
+
+
+type alias OpenWindowRequestStruct =
+    { windowType : Maybe WindowType
+    , userGuide : String
+    }
+
+
+type alias OpenWindowSuccess =
+    { windowId : String
+    , osProcessId : String
+    }
+
+
+type WindowType
+    = WebBrowserWindow WebBrowserWindowParameters
+
+
+{-| Use 'Nothing' to inherit the defaults from the environment.
+-}
+type alias WebBrowserWindowParameters =
+    { -- https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.winforms.corewebview2creationproperties.userdatafolder?view=webview2-dotnet-1.0.1343.22
+      userDataFolder : Maybe String
+
+    -- https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2environmentoptions.language?view=webview2-dotnet-1.0.1343.22
+    , language : Maybe String
+
+    -- https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.winforms.corewebview2creationproperties.isinprivatemodeenabled?view=webview2-dotnet-1.0.1343.22
+    , isInPrivateModeEnabled : Maybe Bool
+
+    -- https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2environmentoptions.additionalbrowserarguments?view=webview2-dotnet-1.0.1343.22
+    , additionalBrowserArguments : String
+    }
 
 
 type alias CreateVolatileProcessStructure =
@@ -113,7 +176,7 @@ type alias RequestToVolatileProcessRequiringInputFocusStructure =
 
 
 type alias RequestToVolatileProcessStructure =
-    { processId : VolatileProcessId
+    { processId : String
     , request : String
     }
 
@@ -121,16 +184,3 @@ type alias RequestToVolatileProcessStructure =
 type alias AcquireInputFocusStructure =
     { maximumDelayMilliseconds : Int
     }
-
-
-type TaskId
-    = TaskIdFromString String
-
-
-type VolatileProcessId
-    = VolatileProcessIdFromString String
-
-
-taskIdFromString : String -> TaskId
-taskIdFromString =
-    TaskIdFromString

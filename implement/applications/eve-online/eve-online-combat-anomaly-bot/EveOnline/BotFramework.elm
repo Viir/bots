@@ -16,7 +16,7 @@ To learn more about developing for EVE Online, see the guide at <https://to.botl
 
 -}
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
 import Common.Basics
 import Common.EffectOnWindow
 import Common.FNV
@@ -44,16 +44,16 @@ type BotEvent
 
 type BotEventResponse
     = ContinueSession ContinueSessionStructure
-    | FinishSession { statusDescriptionText : String }
+    | FinishSession { statusText : String }
 
 
 type InternalBotEventResponse
     = InternalContinueSession InternalContinueSessionStructure
-    | InternalFinishSession { statusDescriptionText : String }
+    | InternalFinishSession { statusText : String }
 
 
 type alias InternalContinueSessionStructure =
-    { statusDescriptionText : String
+    { statusText : String
     , startTask : Maybe { areaId : String, taskDescription : String, task : InterfaceToHost.Task }
     , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
     }
@@ -295,7 +295,7 @@ processEvent botConfiguration fromHostEvent stateBefore =
                 Nothing ->
                     ( state
                     , InterfaceToHost.ContinueSession
-                        { statusDescriptionText = continueSession.statusDescriptionText
+                        { statusText = continueSession.statusText
                         , startTasks = []
                         , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
                         }
@@ -307,7 +307,7 @@ processEvent botConfiguration fromHostEvent stateBefore =
                             startTask.areaId ++ "-" ++ String.fromInt stateBefore.lastTaskIndex
 
                         startTasks =
-                            [ { taskId = InterfaceToHost.TaskIdFromString taskIdString
+                            [ { taskId = taskIdString
                               , task = startTask.task
                               }
                             ]
@@ -323,7 +323,7 @@ processEvent botConfiguration fromHostEvent stateBefore =
                         , taskInProgress = Just taskInProgress
                       }
                     , InterfaceToHost.ContinueSession
-                        { statusDescriptionText = continueSession.statusDescriptionText
+                        { statusText = continueSession.statusText
                         , startTasks = startTasks
                         , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
                         }
@@ -362,13 +362,13 @@ processEventLessMappingTasks botConfiguration fromHostEvent stateBeforeUpdateTim
                 Err parseSettingsError ->
                     ( stateBefore
                     , InternalFinishSession
-                        { statusDescriptionText = "Failed to parse these bot-settings: " ++ parseSettingsError }
+                        { statusText = "Failed to parse these bot-settings: " ++ parseSettingsError }
                     )
 
                 Ok parsedBotSettings ->
                     ( { stateBefore | botSettings = Just parsedBotSettings }
                     , InternalContinueSession
-                        { statusDescriptionText = "Succeeded parsing these bot-settings."
+                        { statusText = "Succeeded parsing these bot-settings."
                         , startTask = Nothing
                         , notifyWhenArrivedAtTime = Just { timeInMilliseconds = 0 }
                         }
@@ -394,7 +394,7 @@ processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stat
                         Nothing ->
                             ( stateBefore
                             , InternalFinishSession
-                                { statusDescriptionText =
+                                { statusText =
                                     "Unexpected order of events: I did not receive any bot-settings changed event."
                                 }
                             )
@@ -412,7 +412,7 @@ processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stat
                 Just taskInProgress ->
                     ( stateBefore
                     , InternalContinueSession
-                        { statusDescriptionText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
+                        { statusText = "Waiting for completion of task '" ++ taskInProgress.taskIdString ++ "': " ++ taskInProgress.taskDescription
                         , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
                         , startTask = Nothing
                         }
@@ -459,7 +459,7 @@ processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stat
                 InternalContinueSession continueSession ->
                     InternalContinueSession
                         { continueSession
-                            | statusDescriptionText = statusMessagePrefix ++ continueSession.statusDescriptionText
+                            | statusText = statusMessagePrefix ++ continueSession.statusText
                             , notifyWhenArrivedAtTime =
                                 Just
                                     { timeInMilliseconds =
@@ -472,7 +472,7 @@ processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stat
 
                 InternalFinishSession finishSession ->
                     InternalFinishSession
-                        { statusDescriptionText = statusMessagePrefix ++ finishSession.statusDescriptionText
+                        { statusText = statusMessagePrefix ++ finishSession.statusText
                         }
     in
     ( state, response )
@@ -494,7 +494,7 @@ processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeRe
                         , task = setupTask
                         , taskDescription = "Setup: " ++ setupTaskDescription
                         }
-              , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
+              , statusText = "Continue setup: " ++ setupTaskDescription
               , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
               }
                 |> InternalContinueSession
@@ -522,7 +522,7 @@ processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeRe
                             , task = operateBot.releaseVolatileProcessTask
                             , taskDescription = setupTaskDescription
                             }
-                  , statusDescriptionText = "Continue setup: " ++ setupTaskDescription
+                  , statusText = "Continue setup: " ++ setupTaskDescription
                   , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
                   }
                     |> InternalContinueSession
@@ -538,7 +538,7 @@ processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeRe
 
         FrameworkStopSession reason ->
             ( stateBefore
-            , InternalFinishSession { statusDescriptionText = "Stop session (" ++ reason ++ ")" }
+            , InternalFinishSession { statusText = "Stop session (" ++ reason ++ ")" }
             )
 
 
@@ -606,7 +606,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeRe
                         , taskDescription = taskDescription
                         , task = task
                         }
-              , statusDescriptionText = "Operate bot - " ++ taskDescription
+              , statusText = "Operate bot - " ++ taskDescription
               , notifyWhenArrivedAtTime = Nothing
               }
                 |> InternalContinueSession
@@ -708,7 +708,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeRe
                         case botEventResponse of
                             FinishSession _ ->
                                 InternalFinishSession
-                                    { statusDescriptionText = "The bot finished the session." }
+                                    { statusText = "The bot finished the session." }
 
                             ContinueSession continueSession ->
                                 let
@@ -729,7 +729,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeRe
                                                     }
                                 in
                                 { startTask = startTask
-                                , statusDescriptionText = "Operate bot"
+                                , statusText = "Operate bot"
                                 , notifyWhenArrivedAtTime =
                                     if startTask == Nothing then
                                         Just { timeInMilliseconds = timeForNextReadingFromGame }
@@ -787,7 +787,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeRe
             else
                 ( stateBefore
                 , { startTask = Nothing
-                  , statusDescriptionText = "Operate bot."
+                  , statusText = "Operate bot."
                   , notifyWhenArrivedAtTime = Just { timeInMilliseconds = timeForNextReadingFromGame }
                   }
                     |> InternalContinueSession
@@ -855,6 +855,12 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
                             }
 
         InterfaceToHost.CompleteWithoutResult ->
+            ( setupStateBefore, Nothing )
+
+        InterfaceToHost.OpenWindowResponse _ ->
+            ( setupStateBefore, Nothing )
+
+        InterfaceToHost.InvokeMethodOnWindowResponse _ ->
             ( setupStateBefore, Nothing )
 
 
@@ -991,7 +997,7 @@ getSetupTaskWhenVolatileProcessSetupCompleted :
     BotConfiguration botSettings appState
     -> Maybe botSettings
     -> SetupState
-    -> InterfaceToHost.VolatileProcessId
+    -> String
     -> SetupTask
 getSetupTaskWhenVolatileProcessSetupCompleted botConfiguration botSettings stateBefore volatileProcessId =
     case stateBefore.gameClientProcesses of
@@ -1245,7 +1251,7 @@ statusReportFromState state =
                     (\lastEvent ->
                         case lastEvent.eventResult |> Tuple.second of
                             FinishSession finishSession ->
-                                finishSession.statusDescriptionText
+                                finishSession.statusText
 
                             ContinueSession continueSession ->
                                 continueSession.statusDescriptionText

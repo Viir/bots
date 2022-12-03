@@ -1,4 +1,4 @@
-{- Elvenar Bot v2022-11-30
+{- Elvenar Bot v2022-12-03
 
    This bot collects coins in the Elvenar game client window.
 
@@ -25,7 +25,7 @@ module Bot exposing
     , filterRemoveCloseLocations
     )
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework
 import Common.AppSettings as AppSettings
 import Common.EffectOnWindow

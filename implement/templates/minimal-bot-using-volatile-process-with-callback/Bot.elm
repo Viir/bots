@@ -3,7 +3,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
 import CompilationInterface.SourceFiles
 
 
@@ -24,9 +24,9 @@ processEvent botEvent stateBefore =
         InterfaceToHost.BotSettingsChangedEvent _ ->
             ( stateBefore
             , InterfaceToHost.ContinueSession
-                { statusDescriptionText = "Create volatile process."
+                { statusText = "Create volatile process."
                 , startTasks =
-                    [ { taskId = InterfaceToHost.taskIdFromString "c"
+                    [ { taskId = "c"
                       , task =
                             InterfaceToHost.CreateVolatileProcess
                                 { programCode = CompilationInterface.SourceFiles.file____VolatileProcess_csx.utf8 }
@@ -43,15 +43,15 @@ processEvent botEvent stateBefore =
                         Err error ->
                             ( stateBefore
                             , InterfaceToHost.FinishSession
-                                { statusDescriptionText = "Failed to create volatile process: " ++ error.exceptionToString }
+                                { statusText = "Failed to create volatile process: " ++ error.exceptionToString }
                             )
 
                         Ok createVolatileProcessOk ->
                             ( stateBefore
                             , InterfaceToHost.ContinueSession
-                                { statusDescriptionText = "Request to volatile process."
+                                { statusText = "Request to volatile process."
                                 , startTasks =
-                                    [ { taskId = InterfaceToHost.taskIdFromString "r"
+                                    [ { taskId = "r"
                                       , task =
                                             InterfaceToHost.RequestToVolatileProcess
                                                 (InterfaceToHost.RequestNotRequiringInputFocus
@@ -70,12 +70,12 @@ processEvent botEvent stateBefore =
                         Err _ ->
                             ( stateBefore
                             , InterfaceToHost.FinishSession
-                                { statusDescriptionText = "Failed request to volatile process." }
+                                { statusText = "Failed request to volatile process." }
                             )
 
                         Ok requestToVolatileProcessOk ->
                             let
-                                statusDescriptionText =
+                                statusText =
                                     case requestToVolatileProcessOk.returnValueToString of
                                         Nothing ->
                                             "Got no returnValueToString. exceptionToString: "
@@ -86,18 +86,18 @@ processEvent botEvent stateBefore =
                                                 ++ returnValueToString
                             in
                             ( stateBefore
-                            , InterfaceToHost.FinishSession { statusDescriptionText = statusDescriptionText }
+                            , InterfaceToHost.FinishSession { statusText = statusText }
                             )
 
                 _ ->
                     ( stateBefore
-                    , InterfaceToHost.FinishSession { statusDescriptionText = "Not implemented yet." }
+                    , InterfaceToHost.FinishSession { statusText = "Not implemented yet." }
                     )
 
         _ ->
             ( stateBefore
             , InterfaceToHost.ContinueSession
-                { statusDescriptionText = "Unused event."
+                { statusText = "Unused event."
                 , startTasks = []
                 , notifyWhenArrivedAtTime = Nothing
                 }

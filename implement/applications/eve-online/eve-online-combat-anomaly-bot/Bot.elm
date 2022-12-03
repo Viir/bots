@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2022-11-17
+{- EVE Online combat anomaly bot version 2022-12-03
 
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
@@ -46,7 +46,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)

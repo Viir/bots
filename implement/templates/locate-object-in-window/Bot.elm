@@ -13,7 +13,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework exposing (PixelValue)
 import Common.AppSettings as AppSettings
 import Dict

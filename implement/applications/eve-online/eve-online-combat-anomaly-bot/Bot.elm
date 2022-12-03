@@ -100,6 +100,7 @@ defaultBotSettings =
     , modulesToActivateAlways = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1400
+    , anomalyWaitTimeSeconds = 15
     }
 
 
@@ -125,6 +126,12 @@ parseBotSettings =
          , ( "module-to-activate-always"
            , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
            )
+         , ( "anomaly-wait-time"
+           , AppSettings.valueTypeInteger
+                (\anomalyWaitTimeSeconds settings ->
+                    { settings | anomalyWaitTimeSeconds = anomalyWaitTimeSeconds }
+                )
+           )
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
@@ -145,6 +152,7 @@ type alias BotSettings =
     , ratsToAvoid : List String
     , modulesToActivateAlways : List String
     , maxTargetCount : Int
+    , anomalyWaitTimeSeconds : Int
     , botStepDelayMilliseconds : Int
     }
 
@@ -162,7 +170,10 @@ type alias BotMemory =
 
 
 type alias MemoryOfAnomaly =
-    { otherPilotsFoundOnArrival : List String, ratsSeen : Set.Set String }
+    { arrivalTime : { milliseconds : Int }
+    , otherPilotsFoundOnArrival : List String
+    , ratsSeen : Set.Set String
+    }
 
 
 type alias BotDecisionContext =
@@ -470,23 +481,38 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                         describeBranch "Looks like we are not in an anomaly." returnDronesAndEnterAnomalyOrWait
 
                     Just anomalyID ->
-                        describeBranch ("We are in anomaly '" ++ anomalyID ++ "'")
-                            (case findReasonToAvoidAnomalyFromMemory context { anomalyID = anomalyID } of
-                                Just reasonToAvoidAnomaly ->
-                                    describeBranch
-                                        ("Found a reason to avoid this anomaly: "
-                                            ++ describeReasonToAvoidAnomaly reasonToAvoidAnomaly
-                                        )
-                                        (returnDronesAndEnterAnomaly
-                                            { ifNoAcceptableAnomalyAvailable =
-                                                describeBranch "Get out of this anomaly."
-                                                    (dockAtRandomStationOrStructure context)
-                                            }
-                                        )
+                        case memoryOfAnomalyWithID anomalyID context.memory of
+                            Nothing ->
+                                describeBranch
+                                    ("Program error: Did not find memory of anomaly " ++ anomalyID)
+                                    waitForProgressInGame
 
-                                Nothing ->
-                                    combat context seeUndockingComplete returnDronesAndEnterAnomalyOrWait
-                            )
+                            Just memoryOfAnomaly ->
+                                let
+                                    arrivalInAnomalyAgeSeconds =
+                                        (context.eventContext.timeInMilliseconds - memoryOfAnomaly.arrivalTime.milliseconds) // 1000
+                                in
+                                describeBranch ("We are in anomaly '" ++ anomalyID ++ "' since " ++ String.fromInt arrivalInAnomalyAgeSeconds ++ " seconds.")
+                                    (case findReasonToAvoidAnomalyFromMemory context { anomalyID = anomalyID } of
+                                        Just reasonToAvoidAnomaly ->
+                                            describeBranch
+                                                ("Found a reason to avoid this anomaly: "
+                                                    ++ describeReasonToAvoidAnomaly reasonToAvoidAnomaly
+                                                )
+                                                (returnDronesAndEnterAnomaly
+                                                    { ifNoAcceptableAnomalyAvailable =
+                                                        describeBranch "Get out of this anomaly."
+                                                            (dockAtRandomStationOrStructure context)
+                                                    }
+                                                )
+
+                                        Nothing ->
+                                            decideActionInAnomaly
+                                                { arrivalInAnomalyAgeSeconds = arrivalInAnomalyAgeSeconds }
+                                                context
+                                                seeUndockingComplete
+                                                returnDronesAndEnterAnomalyOrWait
+                                    )
 
 
 undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
@@ -512,8 +538,13 @@ undockUsingStationWindow context =
                         )
 
 
-combat : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode -> DecisionPathNode
-combat context seeUndockingComplete continueIfCombatComplete =
+decideActionInAnomaly :
+    { arrivalInAnomalyAgeSeconds : Int }
+    -> BotDecisionContext
+    -> SeeUndockingComplete
+    -> DecisionPathNode
+    -> DecisionPathNode
+decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplete continueIfCombatComplete =
     let
         overviewEntriesToAttack =
             seeUndockingComplete.overviewWindow.entries
@@ -536,6 +567,24 @@ combat context seeUndockingComplete continueIfCombatComplete =
                 |> List.head
                 |> Maybe.andThen (\overviewEntryToAttack -> ensureShipIsOrbiting seeUndockingComplete.shipUI overviewEntryToAttack)
 
+        waitTimeRemainingSeconds =
+            context.eventContext.botSettings.anomalyWaitTimeSeconds - arrivalInAnomalyAgeSeconds
+
+        decisionIfNoEnemyToAttack =
+            if overviewEntriesToAttack |> List.isEmpty then
+                if waitTimeRemainingSeconds <= 0 then
+                    returnDronesToBay context
+                        |> Maybe.withDefault
+                            (describeBranch "No drones to return." continueIfCombatComplete)
+
+                else
+                    describeBranch
+                        ("Wait before considering the anomaly finished: " ++ String.fromInt waitTimeRemainingSeconds ++ " seconds")
+                        waitForProgressInGame
+
+            else
+                describeBranch "Wait for target locking to complete." waitForProgressInGame
+
         decisionIfAlreadyOrbiting =
             case targetsToUnlock |> List.head of
                 Just targetToUnlock ->
@@ -553,14 +602,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                 (case overviewEntriesToLock of
                                     [] ->
                                         describeBranch "I see no overview entry to lock."
-                                            (if overviewEntriesToAttack |> List.isEmpty then
-                                                returnDronesToBay context
-                                                    |> Maybe.withDefault
-                                                        (describeBranch "No drones to return." continueIfCombatComplete)
-
-                                             else
-                                                describeBranch "Wait for target locking to complete." waitForProgressInGame
-                                            )
+                                            decisionIfNoEnemyToAttack
 
                                     nextOverviewEntryToLock :: _ ->
                                         describeBranch "I see an overview entry to lock."
@@ -938,7 +980,7 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
         namesOfRatsInOverview =
             getNamesOfRatsInOverview context.readingFromGameClient
 
-        weJustArrivedOnGrid =
+        weJustFinishedWarping =
             (botMemoryBefore.shipWarpingInLastReading == Just True) && (shipIsWarping == Just False)
 
         visitedAnomalies =
@@ -955,10 +997,14 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
                             anomalyMemoryBefore =
                                 botMemoryBefore.visitedAnomalies
                                     |> Dict.get currentAnomalyID
-                                    |> Maybe.withDefault { otherPilotsFoundOnArrival = [], ratsSeen = Set.empty }
+                                    |> Maybe.withDefault
+                                        { arrivalTime = { milliseconds = context.timeInMilliseconds }
+                                        , otherPilotsFoundOnArrival = []
+                                        , ratsSeen = Set.empty
+                                        }
 
                             anomalyMemoryWithOtherPilotsOnArrival =
-                                if weJustArrivedOnGrid then
+                                if weJustFinishedWarping then
                                     { anomalyMemoryBefore
                                         | otherPilotsFoundOnArrival = getNamesOfOtherPilotsInOverview context.readingFromGameClient
                                     }

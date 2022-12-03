@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2022-12-02
+{- Tribal Wars 2 farmbot version 2022-12-03
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -33,6 +33,7 @@
    + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45 - 48`. The bot then picks a random value in this range for each village.
    + `restart-game-client-after-break`: Set this to 'yes' to make the bot restart the game client/web browser after each break.
    + `open-website-on-start`: Website to open when starting the web browser.
+   + `web-browser-user-data-dir`: To use the bot with multiple Tribal Wars 2 accounts simultaneously, configure a different name here for each account.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of `bot-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
@@ -56,7 +57,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_2022_10_23 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (stringContainsIgnoringCase)
 import Common.DecisionTree
@@ -89,6 +90,7 @@ initBotSettings =
     , limitOutgoingCommandsPerVillage = { minimum = 50, maximum = 50 }
     , restartGameClientAfterBreak = AppSettings.No
     , openWebsiteOnStart = Nothing
+    , webBrowserUserDataDir = Nothing
     }
 
 
@@ -144,6 +146,12 @@ parseBotSettings =
            , AppSettings.valueTypeString
                 (\openWebsiteOnStart settings ->
                     { settings | openWebsiteOnStart = Just openWebsiteOnStart }
+                )
+           )
+         , ( "web-browser-user-data-dir"
+           , AppSettings.valueTypeString
+                (\userDataDir settings ->
+                    { settings | webBrowserUserDataDir = Just userDataDir }
                 )
            )
          ]
@@ -238,6 +246,7 @@ type alias BotSettings =
     , limitOutgoingCommandsPerVillage : IntervalInt
     , restartGameClientAfterBreak : AppSettings.YesOrNo
     , openWebsiteOnStart : Maybe String
+    , webBrowserUserDataDir : Maybe String
     }
 
 
@@ -718,6 +727,8 @@ maintainGameClientAndDecideNextAction eventContext stateBefore =
                                                                         { content =
                                                                             webBrowserLocationIfRestart
                                                                                 |> Maybe.map BotFramework.WebSiteContent
+                                                                        , language = Nothing
+                                                                        , userDataDir = eventContext.settings.webBrowserUserDataDir
                                                                         }
                                                                     )
 

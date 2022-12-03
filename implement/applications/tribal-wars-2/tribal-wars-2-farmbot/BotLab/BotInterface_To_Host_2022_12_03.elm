@@ -1,4 +1,4 @@
-module BotLab.BotInterface_To_Host_2022_10_23 exposing (..)
+module BotLab.BotInterface_To_Host_2022_12_03 exposing (..)
 
 {-| This module contains types for the interface between a bot and the botlab client.
 The structures in these types reflect the standard interface for player agents to observe their environment and act in their environment.
@@ -140,7 +140,24 @@ type alias OpenWindowSuccess =
 
 
 type WindowType
-    = WebBrowserWindow
+    = WebBrowserWindow WebBrowserWindowParameters
+
+
+{-| Use 'Nothing' to inherit the defaults from the environment.
+-}
+type alias WebBrowserWindowParameters =
+    { -- https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.winforms.corewebview2creationproperties.userdatafolder?view=webview2-dotnet-1.0.1343.22
+      userDataFolder : Maybe String
+
+    -- https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2environmentoptions.language?view=webview2-dotnet-1.0.1343.22
+    , language : Maybe String
+
+    -- https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.winforms.corewebview2creationproperties.isinprivatemodeenabled?view=webview2-dotnet-1.0.1343.22
+    , isInPrivateModeEnabled : Maybe Bool
+
+    -- https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2environmentoptions.additionalbrowserarguments?view=webview2-dotnet-1.0.1343.22
+    , additionalBrowserArguments : String
+    }
 
 
 type alias CreateVolatileProcessStructure =

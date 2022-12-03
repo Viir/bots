@@ -6,7 +6,7 @@
 
 module WebBrowser.BotFramework exposing (..)
 
-import BotLab.BotInterface_To_Host_2022_10_23 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
 import Dict
 import Json.Decode
 import Json.Encode
@@ -48,8 +48,14 @@ type BotRequest
     | CloseWebBrowserRequest
 
 
+{-| Use 'Nothing' to inherit the defaults from the environment.
+-}
 type alias StartWebBrowserRequestStruct =
     { content : Maybe BrowserPageContent
+
+    -- https://chromium.googlesource.com/chromium/src/+/master/docs/user_data_dir.md
+    , userDataDir : Maybe String
+    , language : Maybe String
     }
 
 
@@ -476,7 +482,15 @@ startTasksFromBotRequest botRequest stateBefore =
                         openWindowTask =
                             ( Just "open-window"
                             , InterfaceToHost.OpenWindowRequest
-                                { windowType = Just InterfaceToHost.WebBrowserWindow
+                                { windowType =
+                                    Just
+                                        (InterfaceToHost.WebBrowserWindow
+                                            { userDataFolder = startWebBrowser.userDataDir
+                                            , language = startWebBrowser.language
+                                            , isInPrivateModeEnabled = Nothing
+                                            , additionalBrowserArguments = ""
+                                            }
+                                        )
                                 , userGuide = "Web browser window to load the game."
                                 }
                             )

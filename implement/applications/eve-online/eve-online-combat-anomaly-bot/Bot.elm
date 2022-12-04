@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2022-12-03
+{- EVE Online combat anomaly bot version 2022-12-04
 
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
@@ -20,6 +20,7 @@
    + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
    + `rat-to-avoid` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
    + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
+   + `anomaly-wait-time`: Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:

@@ -21,7 +21,7 @@ Despite being quite robust, this bot is far from being as smart as a human. For 
 
 ## Starting the Bot
 
-To start the bot, download the script from <https://catalog.botlab.org/0edb5a7f0f115d61> and then run it.
+To start the bot, download the script from <https://catalog.botlab.org/7f1312a04f07b15a> and then run it.
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
 
@@ -41,6 +41,7 @@ All settings are optional; you only need them in case the defaults don't fit you
 + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
 + `rat-to-avoid` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
 + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
++ `anomaly-wait-time`: Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid.
 
 When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of a complete settings string:

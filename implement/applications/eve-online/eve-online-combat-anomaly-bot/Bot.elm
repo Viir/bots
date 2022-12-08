@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2022-12-04
+{- EVE Online combat anomaly bot version 2022-12-08
 
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
@@ -33,7 +33,7 @@
    module-to-activate-always = shield hardener
    ```
 
-   To learn about the anomaly bot, see <https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot>
+   To learn more about the anomaly bot, see <https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot>
 
 -}
 {-
@@ -102,6 +102,7 @@ defaultBotSettings =
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1400
     , anomalyWaitTimeSeconds = 15
+    , orbitInCombat = AppSettings.Yes
     }
 
 
@@ -133,6 +134,9 @@ parseBotSettings =
                     { settings | anomalyWaitTimeSeconds = anomalyWaitTimeSeconds }
                 )
            )
+         , ( "orbit-in-combat"
+           , AppSettings.valueTypeYesOrNo (\orbitInCombat settings -> { settings | orbitInCombat = orbitInCombat })
+           )
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
@@ -155,6 +159,7 @@ type alias BotSettings =
     , maxTargetCount : Int
     , anomalyWaitTimeSeconds : Int
     , botStepDelayMilliseconds : Int
+    , orbitInCombat : AppSettings.YesOrNo
     }
 
 
@@ -586,7 +591,7 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
             else
                 describeBranch "Wait for target locking to complete." waitForProgressInGame
 
-        decisionIfAlreadyOrbiting =
+        decisionToKillRats =
             case targetsToUnlock |> List.head of
                 Just targetToUnlock ->
                     describeBranch "I see a target to unlock."
@@ -644,7 +649,11 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                                             (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                                 )
     in
-    ensureShipIsOrbitingDecision |> Maybe.withDefault decisionIfAlreadyOrbiting
+    if context.eventContext.botSettings.orbitInCombat == AppSettings.Yes then
+        ensureShipIsOrbitingDecision |> Maybe.withDefault decisionToKillRats
+
+    else
+        decisionToKillRats
 
 
 enterAnomaly : { ifNoAcceptableAnomalyAvailable : DecisionPathNode } -> BotDecisionContext -> DecisionPathNode

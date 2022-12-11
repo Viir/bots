@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2022-12-03
+{- EVE Online mining bot version 2022-12-11
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -30,7 +30,7 @@
    module-to-activate-always = afterburner
    ```
 
-   To learn about the mining bot, see <https://to.botlab.org/guide/app/eve-online-mining-bot>
+   To learn more about the mining bot, see <https://to.botlab.org/guide/app/eve-online-mining-bot>
 
 -}
 {-
@@ -100,12 +100,12 @@ defaultBotSettings =
     { runAwayShieldHitpointsThresholdPercent = 70
     , unloadStationName = Nothing
     , unloadStructureName = Nothing
+    , unloadMiningHoldPercent = 99
     , modulesToActivateAlways = []
     , hideWhenNeutralInLocal = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 1300
-    , miningHoldMaxPercent = 99
     , selectInstancePilotName = Nothing
     }
 
@@ -122,6 +122,9 @@ parseBotSettings =
          , ( "unload-structure-name"
            , AppSettings.valueTypeString (\structureName -> \settings -> { settings | unloadStructureName = Just structureName })
            )
+         , ( "unload-mining-hold-percent"
+           , AppSettings.valueTypeInteger (\percent settings -> { settings | unloadMiningHoldPercent = percent })
+           )
          , ( "module-to-activate-always"
            , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
            )
@@ -134,9 +137,6 @@ parseBotSettings =
            )
          , ( "mining-module-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | miningModuleRange = range })
-           )
-         , ( "ore-hold-max-percent"
-           , AppSettings.valueTypeInteger (\percent settings -> { settings | miningHoldMaxPercent = percent })
            )
          , ( "select-instance-pilot-name"
            , AppSettings.valueTypeString (\pilotName -> \settings -> { settings | selectInstancePilotName = Just pilotName })
@@ -159,12 +159,12 @@ type alias BotSettings =
     { runAwayShieldHitpointsThresholdPercent : Int
     , unloadStationName : Maybe String
     , unloadStructureName : Maybe String
+    , unloadMiningHoldPercent : Int
     , modulesToActivateAlways : List String
     , hideWhenNeutralInLocal : Maybe AppSettings.YesOrNo
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
-    , miningHoldMaxPercent : Int
     , selectInstancePilotName : Maybe String
     }
 
@@ -428,12 +428,12 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                     Just fillPercent ->
                         let
                             describeThresholdToUnload =
-                                (context.eventContext.botSettings.miningHoldMaxPercent |> String.fromInt) ++ "%"
+                                (context.eventContext.botSettings.unloadMiningHoldPercent |> String.fromInt) ++ "%"
 
                             knownMiningModules =
                                 knownMiningModulesFromContext context
                         in
-                        if context.eventContext.botSettings.miningHoldMaxPercent <= fillPercent then
+                        if context.eventContext.botSettings.unloadMiningHoldPercent <= fillPercent then
                             describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
                                 (returnDronesToBay context
                                     |> Maybe.withDefault (dockToUnloadOre context)

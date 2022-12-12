@@ -1,4 +1,4 @@
-{- EVE Online warp-to-0 auto-pilot version 2022-12-03
+{- EVE Online warp-to-0 auto-pilot version 2022-12-12
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
@@ -14,7 +14,7 @@
 
    + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "cloaking device".
 
-   To learn about the autopilot, see <https://to.botlab.org/guide/app/eve-online-autopilot-bot>
+   To learn more about the autopilot, see <https://to.botlab.org/guide/app/eve-online-autopilot-bot>
 
 -}
 {-

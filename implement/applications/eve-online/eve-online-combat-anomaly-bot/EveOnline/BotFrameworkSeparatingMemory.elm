@@ -32,10 +32,13 @@ import EveOnline.BotFramework
         , doesPointIntersectRegion
         , getModuleButtonTooltipFromModuleButton
         , growRegionOnAllSides
-        , subtractRegionsFromRegion
         , unpackContextMenuTreeToListOfActionsDependingOnReadings
         )
-import EveOnline.ParseUserInterface exposing (centerFromDisplayRegion)
+import EveOnline.ParseUserInterface
+    exposing
+        ( centerFromDisplayRegion
+        , subtractRegionsFromRegion
+        )
 
 
 type EndDecisionPathStructure

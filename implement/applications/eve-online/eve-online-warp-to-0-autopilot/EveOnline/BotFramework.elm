@@ -655,7 +655,8 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeRe
                             )
 
                 isRegionCovered region =
-                    subtractRegionsFromRegion { minuend = region, subtrahend = coveredRegions }
+                    EveOnline.ParseUserInterface.subtractRegionsFromRegion
+                        { minuend = region, subtrahend = coveredRegions }
                         |> List.isEmpty
             in
             if
@@ -1427,7 +1428,9 @@ secondsToSessionEnd botEventContext =
 
 clickOnUIElement : Common.EffectOnWindow.MouseButton -> UIElement -> List Common.EffectOnWindow.EffectOnWindowStructure
 clickOnUIElement mouseButton uiElement =
-    Common.EffectOnWindow.effectsMouseClickAtLocation mouseButton (uiElement.totalDisplayRegion |> centerFromDisplayRegion)
+    Common.EffectOnWindow.effectsMouseClickAtLocation
+        mouseButton
+        (uiElement.totalDisplayRegionVisible |> centerFromDisplayRegion)
 
 
 type UseContextMenuCascadeNode
@@ -1590,90 +1593,6 @@ cornersFromDisplayRegion region =
     , { x = region.x, y = region.y + region.height }
     , { x = region.x + region.width, y = region.y + region.height }
     ]
-
-
-subtractRegionsFromRegion :
-    { minuend : EveOnline.ParseUserInterface.DisplayRegion
-    , subtrahend : List EveOnline.ParseUserInterface.DisplayRegion
-    }
-    -> List EveOnline.ParseUserInterface.DisplayRegion
-subtractRegionsFromRegion { minuend, subtrahend } =
-    subtrahend
-        |> List.foldl
-            (\subtrahendPart previousResults ->
-                previousResults
-                    |> List.concatMap
-                        (\minuendPart ->
-                            subtractRegionFromRegion { subtrahend = subtrahendPart, minuend = minuendPart }
-                        )
-            )
-            [ minuend ]
-
-
-subtractRegionFromRegion :
-    { minuend : EveOnline.ParseUserInterface.DisplayRegion
-    , subtrahend : EveOnline.ParseUserInterface.DisplayRegion
-    }
-    -> List EveOnline.ParseUserInterface.DisplayRegion
-subtractRegionFromRegion { minuend, subtrahend } =
-    let
-        minuendRight =
-            minuend.x + minuend.width
-
-        minuendBottom =
-            minuend.y + minuend.height
-
-        subtrahendRight =
-            subtrahend.x + subtrahend.width
-
-        subtrahendBottom =
-            subtrahend.y + subtrahend.height
-    in
-    {-
-       Similar to approach from https://stackoverflow.com/questions/3765283/how-to-subtract-a-rectangle-from-another/15228510#15228510
-       We want to support finding the largest rectangle, so we let them overlap here.
-
-       ----------------------------
-       |  A  |       A      |  A  |
-       |  B  |              |  C  |
-       |--------------------------|
-       |  B  |  subtrahend  |  C  |
-       |--------------------------|
-       |  B  |              |  C  |
-       |  D  |      D       |  D  |
-       ----------------------------
-    -}
-    [ { left = minuend.x
-      , top = minuend.y
-      , right = minuendRight
-      , bottom = minuendBottom |> min subtrahend.y
-      }
-    , { left = minuend.x
-      , top = minuend.y
-      , right = minuendRight |> min subtrahend.x
-      , bottom = minuendBottom
-      }
-    , { left = minuend.x |> max subtrahendRight
-      , top = minuend.y
-      , right = minuendRight
-      , bottom = minuendBottom
-      }
-    , { left = minuend.x
-      , top = minuend.y |> max subtrahendBottom
-      , right = minuendRight
-      , bottom = minuendBottom
-      }
-    ]
-        |> List.map
-            (\rect ->
-                { x = rect.left
-                , y = rect.top
-                , width = rect.right - rect.left
-                , height = rect.bottom - rect.top
-                }
-            )
-        |> List.filter (\rect -> 0 < rect.width && 0 < rect.height)
-        |> Common.Basics.listUnique
 
 
 growRegionOnAllSides : Int -> EveOnline.ParseUserInterface.DisplayRegion -> EveOnline.ParseUserInterface.DisplayRegion

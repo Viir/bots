@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2022-12-11
+{- EVE Online mining bot version 2022-12-12
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -84,6 +84,7 @@ import EveOnline.BotFrameworkSeparatingMemory
 import EveOnline.ParseUserInterface
     exposing
         ( OverviewWindowEntry
+        , UITreeNodeWithDisplayRegion
         , centerFromDisplayRegion
         , getAllContainedDisplayTexts
         )
@@ -370,8 +371,8 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
                         (describeBranch "Drag and drop."
                             (decideActionForCurrentStep
                                 (EffectOnWindow.effectsForDragAndDrop
-                                    { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
-                                    , endLocation = itemHangar.totalDisplayRegion |> centerFromDisplayRegion
+                                    { startLocation = itemInInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
+                                    , endLocation = itemHangar.totalDisplayRegionVisible |> centerFromDisplayRegion
                                     , mouseButton = MouseButtonLeft
                                     }
                                 )
@@ -500,7 +501,7 @@ unlockTargetsNotForMining context =
 
 travelToMiningSiteAndLaunchDronesAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
 travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
-    case context.readingFromGameClient |> topmostAsteroidFromOverviewWindow of
+    case context.readingFromGameClient |> topmostClickableAsteroidFromOverviewWindow of
         Nothing ->
             describeBranch "I see no asteroid in the overview. Warp to mining site."
                 (returnDronesToBay context
@@ -630,7 +631,13 @@ lockTargetFromOverviewEntryAndEnsureIsInRange context rangeInMeters overviewEntr
 
 lockTargetFromOverviewEntry : OverviewWindowEntry -> BotDecisionContext -> DecisionPathNode
 lockTargetFromOverviewEntry overviewEntry context =
-    describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
+    describeBranch
+        ("Lock target from overview entry '"
+            ++ (overviewEntry.objectName |> Maybe.withDefault "")
+            ++ "' ("
+            ++ (overviewEntry.objectDistance |> Maybe.withDefault "")
+            ++ ")"
+        )
         (useContextMenuCascadeOnOverviewEntry
             (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
             overviewEntry
@@ -1108,9 +1115,10 @@ activeShipTreeEntryFromInventoryWindow =
         >> List.head
 
 
-topmostAsteroidFromOverviewWindow : ReadingFromGameClient -> Maybe OverviewWindowEntry
-topmostAsteroidFromOverviewWindow =
+topmostClickableAsteroidFromOverviewWindow : ReadingFromGameClient -> Maybe OverviewWindowEntry
+topmostClickableAsteroidFromOverviewWindow =
     overviewWindowEntriesRepresentingAsteroids
+        >> List.filter (.uiNode >> uiNodeIsLargeEnoughForClicking)
         >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
         >> List.head
 
@@ -1180,3 +1188,8 @@ shipManeuverIsApproaching =
         >> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverApproach)
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
+
+
+uiNodeIsLargeEnoughForClicking : UITreeNodeWithDisplayRegion -> Bool
+uiNodeIsLargeEnoughForClicking node =
+    3 < node.totalDisplayRegionVisible.width && 3 < node.totalDisplayRegionVisible.height

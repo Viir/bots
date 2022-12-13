@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2022-12-12
+{- EVE Online mining bot version Gerald 2022-12-13
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -108,6 +108,7 @@ defaultBotSettings =
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 1300
     , selectInstancePilotName = Nothing
+    , asteroidIncludePatterns = []
     }
 
 
@@ -145,6 +146,12 @@ parseBotSettings =
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
+         , ( "asteroid-include-pattern"
+           , AppSettings.valueTypeString
+                (\pattern settings ->
+                    { settings | asteroidIncludePatterns = pattern :: settings.asteroidIncludePatterns }
+                )
+           )
          ]
             |> Dict.fromList
         )
@@ -167,6 +174,7 @@ type alias BotSettings =
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
     , selectInstancePilotName : Maybe String
+    , asteroidIncludePatterns : List String
     }
 
 
@@ -501,29 +509,46 @@ unlockTargetsNotForMining context =
 
 travelToMiningSiteAndLaunchDronesAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
 travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
-    case context.readingFromGameClient |> topmostClickableAsteroidFromOverviewWindow of
-        Nothing ->
-            describeBranch "I see no asteroid in the overview. Warp to mining site."
-                (returnDronesToBay context
-                    |> Maybe.withDefault
-                        (warpToMiningSite context)
-                )
+    let
+        continueWithWarpToMiningSite =
+            returnDronesToBay context
+                |> Maybe.withDefault (warpToMiningSite context)
+    in
+    case context.readingFromGameClient |> clickableAsteroidsFromOverviewWindow of
+        [] ->
+            describeBranch "I see no clickable asteroid in the overview. Warp to mining site."
+                continueWithWarpToMiningSite
 
-        Just asteroidInOverview ->
-            describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                (warpToOverviewEntryIfFarEnough context asteroidInOverview
-                    |> Maybe.withDefault
-                        (launchDrones context
+        clickableAsteroids ->
+            case
+                clickableAsteroids
+                    |> List.filter (asteroidOverviewEntryMatchesSettings context.eventContext.botSettings)
+                    |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
+                    |> List.head
+            of
+                Nothing ->
+                    describeBranch
+                        ("I see "
+                            ++ String.fromInt (List.length clickableAsteroids)
+                            ++ "clickable asteroids in the overview. But none of these matches the filter from settings. Warp to mining site."
+                        )
+                        continueWithWarpToMiningSite
+
+                Just asteroidInOverview ->
+                    describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                        (warpToOverviewEntryIfFarEnough context asteroidInOverview
                             |> Maybe.withDefault
-                                (lockTargetFromOverviewEntryAndEnsureIsInRange
-                                    context
-                                    (min context.eventContext.botSettings.targetingRange
-                                        context.eventContext.botSettings.miningModuleRange
-                                    )
-                                    asteroidInOverview
+                                (launchDrones context
+                                    |> Maybe.withDefault
+                                        (lockTargetFromOverviewEntryAndEnsureIsInRange
+                                            context
+                                            (min context.eventContext.botSettings.targetingRange
+                                                context.eventContext.botSettings.miningModuleRange
+                                            )
+                                            asteroidInOverview
+                                        )
                                 )
                         )
-                )
 
 
 warpToOverviewEntryIfFarEnough : BotDecisionContext -> OverviewWindowEntry -> Maybe DecisionPathNode
@@ -1115,12 +1140,25 @@ activeShipTreeEntryFromInventoryWindow =
         >> List.head
 
 
-topmostClickableAsteroidFromOverviewWindow : ReadingFromGameClient -> Maybe OverviewWindowEntry
-topmostClickableAsteroidFromOverviewWindow =
+clickableAsteroidsFromOverviewWindow : ReadingFromGameClient -> List OverviewWindowEntry
+clickableAsteroidsFromOverviewWindow =
     overviewWindowEntriesRepresentingAsteroids
         >> List.filter (.uiNode >> uiNodeIsLargeEnoughForClicking)
         >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
-        >> List.head
+
+
+asteroidOverviewEntryMatchesSettings : BotSettings -> OverviewWindowEntry -> Bool
+asteroidOverviewEntryMatchesSettings settings overviewEntry =
+    let
+        textMatchesPattern text =
+            (settings.asteroidIncludePatterns == [])
+                || (settings.asteroidIncludePatterns
+                        |> List.any (\pattern -> String.contains (String.toLower pattern) (String.toLower text))
+                   )
+    in
+    overviewEntry.cellsTexts
+        |> Dict.values
+        |> List.any textMatchesPattern
 
 
 overviewWindowEntriesRepresentingAsteroids : ReadingFromGameClient -> List OverviewWindowEntry

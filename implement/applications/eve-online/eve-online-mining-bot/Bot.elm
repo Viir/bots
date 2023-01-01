@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2022-12-12
+{- EVE Online mining bot version 2023-01-01
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -350,7 +350,7 @@ closeMessageBox readingFromGameClient =
 
 dockedWithMiningHoldSelected : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
 dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
-    case inventoryWindowWithMiningHoldSelected |> itemHangarFromInventoryWindow of
+    case inventoryWindowWithMiningHoldSelected |> itemHangarFromInventoryWindow |> Maybe.map .uiNode of
         Nothing ->
             describeBranch "I do not see the item hangar in the inventory." askForHelpToGetUnstuck
 
@@ -572,13 +572,11 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
 
                             Just activeShipTreeEntry ->
                                 let
-                                    maybeminingHoldTreeEntry =
-                                        activeShipTreeEntry.children
-                                            |> List.map EveOnline.ParseUserInterface.unwrapInventoryWindowLeftTreeEntryChild
-                                            |> List.filter (.text >> stringContainsIgnoringCase "mining hold")
-                                            |> List.head
+                                    maybeMiningHoldTreeEntry =
+                                        activeShipTreeEntry
+                                            |> miningHoldFromInventoryWindowShipEntry
                                 in
-                                case maybeminingHoldTreeEntry of
+                                case maybeMiningHoldTreeEntry of
                                     Nothing ->
                                         describeBranch "I do not see the mining hold under the active ship in the inventory."
                                             (case activeShipTreeEntry.toggleBtn of
@@ -1152,7 +1150,21 @@ inventoryWindowWithMiningHoldSelectedFromGameClient =
 
 
 inventoryWindowSelectedContainerIsMiningHold : EveOnline.ParseUserInterface.InventoryWindow -> Bool
-inventoryWindowSelectedContainerIsMiningHold =
+inventoryWindowSelectedContainerIsMiningHold inventoryWindow =
+    inventoryWindowSelectedContainerIsMiningHold_PhotonUI inventoryWindow
+        || inventoryWindowSelectedContainerIsMiningHold_pre_PhotonUI inventoryWindow
+
+
+inventoryWindowSelectedContainerIsMiningHold_PhotonUI : EveOnline.ParseUserInterface.InventoryWindow -> Bool
+inventoryWindowSelectedContainerIsMiningHold_PhotonUI =
+    activeShipTreeEntryFromInventoryWindow
+        >> Maybe.andThen miningHoldFromInventoryWindowShipEntry
+        >> Maybe.map (.uiNode >> containsSelectionIndicatorPhotonUI)
+        >> Maybe.withDefault False
+
+
+inventoryWindowSelectedContainerIsMiningHold_pre_PhotonUI : EveOnline.ParseUserInterface.InventoryWindow -> Bool
+inventoryWindowSelectedContainerIsMiningHold_pre_PhotonUI =
     .subCaptionLabelText >> Maybe.map (stringContainsIgnoringCase "mining hold") >> Maybe.withDefault False
 
 
@@ -1172,12 +1184,23 @@ selectedContainerFirstItemFromInventoryWindow =
         >> Maybe.andThen List.head
 
 
-itemHangarFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe UIElement
+miningHoldFromInventoryWindowShipEntry :
+    EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry
+    -> Maybe EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry
+miningHoldFromInventoryWindowShipEntry =
+    .children
+        >> List.map EveOnline.ParseUserInterface.unwrapInventoryWindowLeftTreeEntryChild
+        >> List.filter (.text >> stringContainsIgnoringCase "mining hold")
+        >> List.head
+
+
+itemHangarFromInventoryWindow :
+    EveOnline.ParseUserInterface.InventoryWindow
+    -> Maybe EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry
 itemHangarFromInventoryWindow =
     .leftTreeEntries
         >> List.filter (.text >> stringContainsIgnoringCase "item hangar")
         >> List.head
-        >> Maybe.map .uiNode
 
 
 shipManeuverIsApproaching : ReadingFromGameClient -> Bool
@@ -1193,3 +1216,21 @@ shipManeuverIsApproaching =
 uiNodeIsLargeEnoughForClicking : UITreeNodeWithDisplayRegion -> Bool
 uiNodeIsLargeEnoughForClicking node =
     3 < node.totalDisplayRegionVisible.width && 3 < node.totalDisplayRegionVisible.height
+
+
+containsSelectionIndicatorPhotonUI : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion -> Bool
+containsSelectionIndicatorPhotonUI =
+    EveOnline.ParseUserInterface.listDescendantsWithDisplayRegion
+        >> List.any
+            (.uiNode
+                >> (\uiNode ->
+                        (uiNode.pythonObjectTypeName
+                            |> String.startsWith "SelectionIndicator"
+                        )
+                            && (uiNode
+                                    |> EveOnline.ParseUserInterface.getColorPercentFromDictEntries
+                                    |> Maybe.map (.a >> (<) 10)
+                                    |> Maybe.withDefault False
+                               )
+                   )
+            )

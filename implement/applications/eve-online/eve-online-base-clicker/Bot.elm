@@ -94,7 +94,7 @@ baseClickerBotDecisionRoot context =
 
                     Just overviewEntry ->
                         describeBranch
-                            "I do not see the overview window in the game client. Open the overview window manually"
+                            "I see an entry in the overview and click on it."
                             (decideActionForCurrentStep
                                 (clickOnUIElement MouseButtonLeft overviewEntry.uiNode)
                             )

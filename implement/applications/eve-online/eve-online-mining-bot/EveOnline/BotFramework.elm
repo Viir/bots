@@ -27,7 +27,6 @@ import EveOnline.ParseUserInterface exposing (Location2d, centerFromDisplayRegio
 import EveOnline.VolatileProcessInterface as VolatileProcessInterface
 import Json.Decode
 import List.Extra
-import Result.Extra
 import String.Extra
 
 
@@ -1267,28 +1266,6 @@ statusReportFromState state =
                 Just error ->
                     [ "Failed to acquire input focus: " ++ error ]
 
-        lastResultFromVolatileProcess =
-            "Last result from volatile process is: "
-                ++ (state.setup.lastRequestToVolatileProcessResult
-                        |> Maybe.map requestToVolatileProcessResultDisplayString
-                        |> Maybe.map
-                            (\resultDisplayInfo ->
-                                let
-                                    ( prefix, lengthLimit ) =
-                                        if Result.Extra.isErr resultDisplayInfo then
-                                            ( "Error", 640 )
-
-                                        else
-                                            ( "Success", 140 )
-                                in
-                                (prefix ++ ": " ++ Result.Extra.merge resultDisplayInfo)
-                                    |> stringEllipsis
-                                        lengthLimit
-                                        "...."
-                            )
-                        |> Maybe.withDefault "Nothing"
-                   )
-
         {-
            memoryReadingDurations =
                state.setup.memoryReadingDurations
@@ -1334,7 +1311,6 @@ statusReportFromState state =
 
     --, [ runtimeExpensesReport ]
     , [ "Last reading from game client: " ++ describeLastReadingFromGame ]
-    , [ lastResultFromVolatileProcess ]
     , inputFocusLines
     ]
         |> List.concat

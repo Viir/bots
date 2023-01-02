@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2022-12-12
+{- EVE Online combat anomaly bot version 2023-01-02
 
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
@@ -722,11 +722,11 @@ launchAndEngageDrones context =
     context.readingFromGameClient.dronesWindow
         |> Maybe.andThen
             (\dronesWindow ->
-                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
-                    ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
+                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInSpace ) of
+                    ( Just droneGroupInBay, Just droneGroupInSpace ) ->
                         let
                             idlingDrones =
-                                droneGroupInLocalSpace
+                                droneGroupInSpace
                                     |> EveOnline.ParseUserInterface.enumerateAllDronesFromDronesGroup
                                     |> List.filter
                                         (.uiNode
@@ -736,22 +736,31 @@ launchAndEngageDrones context =
                                         )
 
                             dronesInBayQuantity =
-                                droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
+                                droneGroupInBay.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
 
-                            dronesInLocalSpaceQuantity =
-                                droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
+                            dronesInSpaceQuantityCurrent =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
+
+                            dronesInSpaceQuantityLimit =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.andThen .maximum
+                                    |> Maybe.withDefault 2
                         in
                         if 0 < (idlingDrones |> List.length) then
                             Just
                                 (describeBranch "Engage idling drone(s)"
                                     (useContextMenuCascade
-                                        ( "drones group", droneGroupInLocalSpace.header.uiNode )
+                                        ( "drones group", droneGroupInSpace.header.uiNode )
                                         (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
                                         context
                                     )
                                 )
 
-                        else if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
+                        else if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
                             Just
                                 (describeBranch "Launch drones"
                                     (useContextMenuCascade
@@ -772,15 +781,21 @@ launchAndEngageDrones context =
 returnDronesToBay : BotDecisionContext -> Maybe DecisionPathNode
 returnDronesToBay context =
     context.readingFromGameClient.dronesWindow
-        |> Maybe.andThen .droneGroupInLocalSpace
+        |> Maybe.andThen .droneGroupInSpace
         |> Maybe.andThen
             (\droneGroupInLocalSpace ->
-                if (droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0) < 1 then
+                if
+                    (droneGroupInLocalSpace.header.quantityFromTitle
+                        |> Maybe.map .current
+                        |> Maybe.withDefault 0
+                    )
+                        < 1
+                then
                     Nothing
 
                 else
                     Just
-                        (describeBranch "I see there are drones in local space. Return those to bay."
+                        (describeBranch "I see there are drones in space. Return those to bay."
                             (useContextMenuCascade
                                 ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                 (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
@@ -889,9 +904,17 @@ statusTextFromState context =
 
                                 Just dronesWindow ->
                                     "I see the drones window: In bay: "
-                                        ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
-                                        ++ ", in local space: "
-                                        ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                                        ++ (dronesWindow.droneGroupInBay
+                                                |> Maybe.andThen (.header >> .quantityFromTitle)
+                                                |> Maybe.map (.current >> String.fromInt)
+                                                |> Maybe.withDefault "Unknown"
+                                           )
+                                        ++ ", in space: "
+                                        ++ (dronesWindow.droneGroupInSpace
+                                                |> Maybe.andThen (.header >> .quantityFromTitle)
+                                                |> Maybe.map (.current >> String.fromInt)
+                                                |> Maybe.withDefault "Unknown"
+                                           )
                                         ++ "."
 
                         namesOfOtherPilotsInOverview =

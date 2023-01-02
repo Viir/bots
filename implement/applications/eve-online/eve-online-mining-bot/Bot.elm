@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-01-01
+{- EVE Online mining bot version 2023-01-02
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -816,16 +816,25 @@ launchDrones context =
     context.readingFromGameClient.dronesWindow
         |> Maybe.andThen
             (\dronesWindow ->
-                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
-                    ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
+                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInSpace ) of
+                    ( Just droneGroupInBay, Just droneGroupInSpace ) ->
                         let
                             dronesInBayQuantity =
-                                droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
+                                droneGroupInBay.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
 
-                            dronesInLocalSpaceQuantity =
-                                droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
+                            dronesInSpaceQuantityCurrent =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
+
+                            dronesInSpaceQuantityLimit =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.andThen .maximum
+                                    |> Maybe.withDefault 2
                         in
-                        if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 4 then
+                        if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
                             Just
                                 (describeBranch "Launch drones"
                                     (useContextMenuCascade
@@ -846,15 +855,21 @@ launchDrones context =
 returnDronesToBay : BotDecisionContext -> Maybe DecisionPathNode
 returnDronesToBay context =
     context.readingFromGameClient.dronesWindow
-        |> Maybe.andThen .droneGroupInLocalSpace
+        |> Maybe.andThen .droneGroupInSpace
         |> Maybe.andThen
             (\droneGroupInLocalSpace ->
-                if (droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0) < 1 then
+                if
+                    (droneGroupInLocalSpace.header.quantityFromTitle
+                        |> Maybe.map .current
+                        |> Maybe.withDefault 0
+                    )
+                        < 1
+                then
                     Nothing
 
                 else
                     Just
-                        (describeBranch "I see there are drones in local space. Return those to bay."
+                        (describeBranch "I see there are drones in space. Return those to bay."
                             (useContextMenuCascade
                                 ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                 (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
@@ -993,9 +1008,17 @@ statusTextFromDecisionContext context =
 
                 Just dronesWindow ->
                     "I see the drones window: In bay: "
-                        ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
-                        ++ ", in local space: "
-                        ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                        ++ (dronesWindow.droneGroupInBay
+                                |> Maybe.andThen (.header >> .quantityFromTitle)
+                                |> Maybe.map (.current >> String.fromInt)
+                                |> Maybe.withDefault "Unknown"
+                           )
+                        ++ ", in space: "
+                        ++ (dronesWindow.droneGroupInSpace
+                                |> Maybe.andThen (.header >> .quantityFromTitle)
+                                |> Maybe.map (.current >> String.fromInt)
+                                |> Maybe.withDefault "Unknown"
+                           )
                         ++ "."
 
         describeMiningHold =

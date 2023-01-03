@@ -1165,6 +1165,7 @@ clickableAsteroidsFromOverviewWindow : ReadingFromGameClient -> List OverviewWin
 clickableAsteroidsFromOverviewWindow =
     overviewWindowEntriesRepresentingAsteroids
         >> List.filter (.uiNode >> uiNodeIsLargeEnoughForClicking)
+        >> List.filter (.opacityPercent >> Maybe.map ((<=) 50) >> Maybe.withDefault True)
         >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
 
 

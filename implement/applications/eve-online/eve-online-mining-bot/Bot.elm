@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-01-04
+{- EVE Online mining bot version 2023-01-05
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -56,11 +56,11 @@ import EveOnline.BotFramework
         , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
-        , clickOnUIElement
         , doEffectsClickModuleButton
         , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
+        , mouseClickOnUIElement
         , shipUIIndicatesShipIsWarpingOrJumping
         , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
@@ -350,7 +350,7 @@ closeMessageBox readingFromGameClient =
                             describeBranch
                                 ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
                                 (decideActionForCurrentStep
-                                    (clickOnUIElement MouseButtonLeft buttonToUse.uiNode)
+                                    (mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode)
                                 )
                     )
             )
@@ -407,7 +407,7 @@ undockUsingStationWindow context =
                 Just undockButton ->
                     describeBranch "Click on the button to undock."
                         (decideActionForCurrentStep
-                            (clickOnUIElement MouseButtonLeft undockButton)
+                            (mouseClickOnUIElement MouseButtonLeft undockButton)
                         )
 
 
@@ -612,14 +612,14 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
                                                 Just toggleBtn ->
                                                     describeBranch "Click the toggle button to expand."
                                                         (decideActionForCurrentStep
-                                                            (clickOnUIElement MouseButtonLeft toggleBtn)
+                                                            (mouseClickOnUIElement MouseButtonLeft toggleBtn)
                                                         )
                                             )
 
                                     Just miningHoldTreeEntry ->
                                         describeBranch "Click the tree entry representing the mining hold."
                                             (decideActionForCurrentStep
-                                                (clickOnUIElement MouseButtonLeft miningHoldTreeEntry.uiNode)
+                                                (mouseClickOnUIElement MouseButtonLeft miningHoldTreeEntry.uiNode)
                                             )
                         )
 
@@ -1137,7 +1137,7 @@ clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
     else
         describeBranch "Click on this module button."
             (decideActionForCurrentStep
-                (clickOnUIElement MouseButtonLeft moduleButton.uiNode)
+                (mouseClickOnUIElement MouseButtonLeft moduleButton.uiNode)
             )
 
 

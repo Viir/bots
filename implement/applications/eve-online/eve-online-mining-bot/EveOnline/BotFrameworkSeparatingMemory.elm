@@ -27,11 +27,11 @@ import EveOnline.BotFramework
         , ShipModulesMemory
         , UIElement
         , UseContextMenuCascadeNode
-        , clickOnUIElement
         , cornersFromDisplayRegion
         , doesPointIntersectRegion
         , getModuleButtonTooltipFromModuleButton
         , growRegionOnAllSides
+        , mouseClickOnUIElement
         , unpackContextMenuTreeToListOfActionsDependingOnReadings
         )
 import EveOnline.ParseUserInterface
@@ -391,7 +391,7 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
                             Common.DecisionPath.describeBranch
                                 "Click on the icon to enable the info panel."
                                 (iconLocationInfoPanel
-                                    |> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft
+                                    |> mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft
                                     |> decideActionForCurrentStep
                                 )
                     )
@@ -475,9 +475,7 @@ readShipUIModuleButtonTooltipWhereNotYetInMemory context =
             (\moduleButtonWithoutMemoryOfTooltip ->
                 Common.DecisionPath.describeBranch "Read tooltip for module button"
                     (decideActionForCurrentStep
-                        [ Common.EffectOnWindow.MouseMoveTo
-                            (moduleButtonWithoutMemoryOfTooltip.uiNode.totalDisplayRegion |> centerFromDisplayRegion)
-                        ]
+                        (EveOnline.BotFramework.mouseMoveToUIElement moduleButtonWithoutMemoryOfTooltip.uiNode)
                     )
             )
 

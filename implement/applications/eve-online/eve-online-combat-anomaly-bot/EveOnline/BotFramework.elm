@@ -1318,20 +1318,30 @@ statusReportFromState state =
 
 
 {-| This works only while the context menu model does not support branching. In this special case, we can unpack the tree into a list.
+
+With the switch to the new 'Photon UI' in the game client, the effects used to expand menu entries change: Before, the player used a click on the menu entry to expand its children, but now expanding it requires hovering the mouse over the menu entry.
+
 -}
 unpackContextMenuTreeToListOfActionsDependingOnReadings :
     UseContextMenuCascadeNode
     -> List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
 unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
     let
-        actionFromChoice ( describeChoice, chooseEntry ) =
-            ( "Click menu entry " ++ describeChoice ++ "."
-            , chooseEntry
-                >> Maybe.map (.uiNode >> clickOnUIElement Common.EffectOnWindow.MouseButtonLeft)
-            )
+        actionFromChoice { isLastElement } ( describeChoice, chooseEntry ) =
+            if isLastElement then
+                ( "Click menu entry " ++ describeChoice ++ "."
+                , chooseEntry
+                    >> Maybe.map (.uiNode >> mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft)
+                )
+
+            else
+                ( "Hover menu entry " ++ describeChoice ++ "."
+                , chooseEntry >> Maybe.map (.uiNode >> mouseMoveToUIElement)
+                )
 
         listFromNextChoiceAndFollowingNodes nextChoice following =
-            (nextChoice |> actionFromChoice) :: (following |> unpackContextMenuTreeToListOfActionsDependingOnReadings)
+            (nextChoice |> actionFromChoice { isLastElement = following == MenuCascadeCompleted })
+                :: (following |> unpackContextMenuTreeToListOfActionsDependingOnReadings)
     in
     case treeNode of
         MenuCascadeCompleted ->
@@ -1387,23 +1397,20 @@ getEntropyIntFromReadingFromGameClient readingFromGameClient =
     (fromMenus ++ fromOverview ++ fromProbeScanner) |> List.sum
 
 
-stringEllipsis : Int -> String -> String -> String
-stringEllipsis howLong append string =
-    if String.length string <= howLong then
-        string
-
-    else
-        String.left (howLong - String.length append) string ++ append
-
-
 secondsToSessionEnd : BotEventContext a -> Maybe Int
 secondsToSessionEnd botEventContext =
     botEventContext.sessionTimeLimitInMilliseconds
         |> Maybe.map (\sessionTimeLimitInMilliseconds -> (sessionTimeLimitInMilliseconds - botEventContext.timeInMilliseconds) // 1000)
 
 
-clickOnUIElement : Common.EffectOnWindow.MouseButton -> UIElement -> List Common.EffectOnWindow.EffectOnWindowStructure
-clickOnUIElement mouseButton uiElement =
+mouseMoveToUIElement : UIElement -> List Common.EffectOnWindow.EffectOnWindowStructure
+mouseMoveToUIElement uiElement =
+    Common.EffectOnWindow.effectsMouseMoveToLocation
+        (uiElement.totalDisplayRegionVisible |> centerFromDisplayRegion)
+
+
+mouseClickOnUIElement : Common.EffectOnWindow.MouseButton -> UIElement -> List Common.EffectOnWindow.EffectOnWindowStructure
+mouseClickOnUIElement mouseButton uiElement =
     Common.EffectOnWindow.effectsMouseClickAtLocation
         mouseButton
         (uiElement.totalDisplayRegionVisible |> centerFromDisplayRegion)

@@ -823,7 +823,14 @@ dockToUnloadOre context =
                         context
 
                 Nothing ->
-                    describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
+                    case context.memory.lastDockedStationNameFromInfoPanel of
+                        Just unloadStationName ->
+                            dockToStationOrStructureWithMatchingName
+                                { prioritizeStructures = False, nameFromSettingOrInfoPanel = unloadStationName }
+                                context
+
+                        Nothing ->
+                            describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
 
 
 dockToRandomStationOrStructure : BotDecisionContext -> DecisionPathNode

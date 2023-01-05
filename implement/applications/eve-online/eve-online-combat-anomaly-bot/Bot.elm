@@ -59,11 +59,11 @@ import EveOnline.BotFramework
         , SeeUndockingComplete
         , ShipModulesMemory
         , UseContextMenuCascadeNode(..)
-        , clickOnUIElement
         , doEffectsClickModuleButton
         , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
+        , mouseClickOnUIElement
         , pickEntryFromLastContextMenuInCascade
         , shipUIIndicatesShipIsWarpingOrJumping
         , useMenuEntryWithTextContaining
@@ -358,7 +358,7 @@ closeMessageBox readingFromGameClient =
                         Just buttonToUse ->
                             describeBranch ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
                                 (decideActionForCurrentStep
-                                    (clickOnUIElement MouseButtonLeft buttonToUse.uiNode)
+                                    (mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode)
                                 )
                     )
             )
@@ -540,7 +540,7 @@ undockUsingStationWindow context =
                 Just undockButton ->
                     describeBranch "Click on the button to undock."
                         (decideActionForCurrentStep
-                            (clickOnUIElement MouseButtonLeft undockButton)
+                            (mouseClickOnUIElement MouseButtonLeft undockButton)
                         )
 
 
@@ -708,7 +708,7 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
             (describeBranch "Press the 'W' key and click on the overview entry."
                 (decideActionForCurrentStep
                     ([ [ EffectOnWindow.KeyDown EffectOnWindow.vkey_W ]
-                     , overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
+                     , overviewEntryToOrbit.uiNode |> mouseClickOnUIElement MouseButtonLeft
                      , [ EffectOnWindow.KeyUp EffectOnWindow.vkey_W ]
                      ]
                         |> List.concat
@@ -959,7 +959,7 @@ clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
     else
         describeBranch "Click on this module button."
             (decideActionForCurrentStep
-                (clickOnUIElement MouseButtonLeft moduleButton.uiNode)
+                (mouseClickOnUIElement MouseButtonLeft moduleButton.uiNode)
             )
 
 

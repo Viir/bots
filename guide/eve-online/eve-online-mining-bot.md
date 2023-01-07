@@ -27,7 +27,7 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from <https://catalog.botlab.org/3c371ca951f822a6> and then run it.
+To start the mining bot, download the script from <https://catalog.botlab.org/08cb939b4a072999> and then run it.
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
 
@@ -54,7 +54,7 @@ All settings are optional; you only need them in case the defaults don't fit you
 
 + `unload-station-name` : Name of a station to dock to when the mining hold is full.
 + `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
-+ `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
++ `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
 + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
 
 When using more than one setting, start a new line for each setting in the text input field.
@@ -62,8 +62,8 @@ Here is an example of a complete settings string:
 
 ```
 unload-station-name = Noghere VII - Moon 15
-module-to-activate-always = shield hardener
-module-to-activate-always = afterburner
+activate-module-always = shield hardener
+activate-module-always = afterburner
 ```
 
 ## Running Multiple Instances

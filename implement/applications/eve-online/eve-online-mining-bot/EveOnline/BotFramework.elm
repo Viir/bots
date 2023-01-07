@@ -1324,20 +1324,32 @@ With the switch to the new 'Photon UI' in the game client, the effects used to e
 -}
 unpackContextMenuTreeToListOfActionsDependingOnReadings :
     UseContextMenuCascadeNode
-    -> List ( String, ReadingFromGameClient -> Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) )
+    -> List (ReadingFromGameClient -> ( String, Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) ))
 unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
     let
         actionFromChoice { isLastElement } ( describeChoice, chooseEntry ) =
-            if isLastElement then
-                ( "Click menu entry " ++ describeChoice ++ "."
-                , chooseEntry
-                    >> Maybe.map (.uiNode >> mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft)
-                )
+            chooseEntry
+                >> Maybe.map
+                    (\menuEntry ->
+                        let
+                            useClick =
+                                isLastElement
+                                    || (String.toLower (String.trim menuEntry.text) == "dock")
+                        in
+                        if useClick then
+                            ( "Click menu entry " ++ describeChoice ++ "."
+                            , menuEntry.uiNode |> mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft |> Just
+                            )
 
-            else
-                ( "Hover menu entry " ++ describeChoice ++ "."
-                , chooseEntry >> Maybe.map (.uiNode >> mouseMoveToUIElement)
-                )
+                        else
+                            ( "Hover menu entry " ++ describeChoice ++ "."
+                            , menuEntry.uiNode |> mouseMoveToUIElement |> Just
+                            )
+                    )
+                >> Maybe.withDefault
+                    ( "Search menu entry " ++ describeChoice ++ "."
+                    , Nothing
+                    )
 
         listFromNextChoiceAndFollowingNodes nextChoice following =
             (nextChoice |> actionFromChoice { isLastElement = following == MenuCascadeCompleted })

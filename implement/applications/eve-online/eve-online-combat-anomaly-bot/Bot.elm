@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2023-01-05
+{- EVE Online combat anomaly bot version 2023-01-07
 
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
@@ -428,12 +428,18 @@ dockAtRandomStationOrStructure context =
             , chooseEntry =
                 pickEntryFromLastContextMenuInCascade
                     (\menuEntries ->
+                        let
+                            suitableMenuEntries =
+                                List.filter menuEntryIsSuitable menuEntries
+                        in
                         [ withTextContainingIgnoringCase "dock"
-                        , List.filter menuEntryIsSuitable
+                        , List.filter (.text >> stringContainsIgnoringCase "station")
                             >> Common.Basics.listElementAtWrappedIndex
                                 (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
+                        , Common.Basics.listElementAtWrappedIndex
+                            (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
                         ]
-                            |> List.filterMap (\priority -> menuEntries |> priority)
+                            |> List.filterMap (\priority -> suitableMenuEntries |> priority)
                             |> List.head
                     )
             }

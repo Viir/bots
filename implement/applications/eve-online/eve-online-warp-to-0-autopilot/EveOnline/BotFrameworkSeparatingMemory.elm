@@ -366,9 +366,13 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
                             Nothing ->
                                 beginCascade
 
-                            Just ( stepDescription, actionFromReading ) ->
+                            Just descriptionAndEffectsFromReading ->
+                                let
+                                    ( stepDescription, maybeEffectsToGameClient ) =
+                                        descriptionAndEffectsFromReading context.readingFromGameClient
+                                in
                                 Common.DecisionPath.describeBranch stepDescription
-                                    (case actionFromReading context.readingFromGameClient of
+                                    (case maybeEffectsToGameClient of
                                         Nothing ->
                                             beginCascade
 

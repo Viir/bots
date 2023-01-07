@@ -18,8 +18,8 @@
 
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
    + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
-   + `rat-to-avoid` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
-   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
+   + `avoid-rat` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
+   + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
    + `anomaly-wait-time`: Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid.
 
    When using more than one setting, start a new line for each setting in the text input field.
@@ -29,8 +29,8 @@
    anomaly-name = Drone Patrol
    anomaly-name = Drone Horde
    hide-when-neutral-in-local = yes
-   rat-to-avoid = Infested Carrier
-   module-to-activate-always = shield hardener
+   avoid-rat = Infested Carrier
+   activate-module-always = shield hardener
    ```
 
    To learn more about the anomaly bot, see <https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot>
@@ -97,8 +97,8 @@ defaultBotSettings : BotSettings
 defaultBotSettings =
     { hideWhenNeutralInLocal = AppSettings.No
     , anomalyNames = []
-    , ratsToAvoid = []
-    , modulesToActivateAlways = []
+    , avoidRats = []
+    , activateModulesAlways = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1400
     , anomalyWaitTimeSeconds = 15
@@ -119,14 +119,14 @@ parseBotSettings =
                     \settings -> { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
                 )
            )
-         , ( "rat-to-avoid"
+         , ( "avoid-rat"
            , AppSettings.valueTypeString
                 (\ratToAvoid ->
-                    \settings -> { settings | ratsToAvoid = String.trim ratToAvoid :: settings.ratsToAvoid }
+                    \settings -> { settings | avoidRats = String.trim ratToAvoid :: settings.avoidRats }
                 )
            )
-         , ( "module-to-activate-always"
-           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
+         , ( "activate-module-always"
+           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways })
            )
          , ( "anomaly-wait-time"
            , AppSettings.valueTypeInteger
@@ -154,8 +154,8 @@ goodStandingPatterns =
 type alias BotSettings =
     { hideWhenNeutralInLocal : AppSettings.YesOrNo
     , anomalyNames : List String
-    , ratsToAvoid : List String
-    , modulesToActivateAlways : List String
+    , avoidRats : List String
+    , activateModulesAlways : List String
     , maxTargetCount : Int
     , anomalyWaitTimeSeconds : Int
     , botStepDelayMilliseconds : Int
@@ -282,7 +282,7 @@ getRatsToAvoidSeenInAnomaly settings =
 
 shouldAvoidRatAccordingToSettings : BotSettings -> String -> Bool
 shouldAvoidRatAccordingToSettings settings ratName =
-    settings.ratsToAvoid |> List.map String.toLower |> List.member (ratName |> String.toLower)
+    settings.avoidRats |> List.map String.toLower |> List.member (ratName |> String.toLower)
 
 
 memoryOfAnomalyWithID : String -> BotMemory -> Maybe MemoryOfAnomaly
@@ -847,7 +847,7 @@ tooltipLooksLikeModuleToActivateAlways context =
         >> getAllContainedDisplayTexts
         >> List.filterMap
             (\tooltipText ->
-                context.eventContext.botSettings.modulesToActivateAlways
+                context.eventContext.botSettings.activateModulesAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
                             if tooltipText |> stringContainsIgnoringCase moduleToActivateAlways then

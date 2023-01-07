@@ -18,7 +18,7 @@
 
    + `unload-station-name` : Name of a station to dock to when the mining hold is full.
    + `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
-   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
+   + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
    + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
 
    When using more than one setting, start a new line for each setting in the text input field.
@@ -26,8 +26,8 @@
 
    ```
    unload-station-name = Noghere VII - Moon 15
-   module-to-activate-always = shield hardener
-   module-to-activate-always = afterburner
+   activate-module-always = shield hardener
+   activate-module-always = afterburner
    ```
 
    To learn more about the mining bot, see <https://to.botlab.org/guide/app/eve-online-mining-bot>
@@ -102,13 +102,13 @@ defaultBotSettings =
     , unloadStationName = Nothing
     , unloadStructureName = Nothing
     , unloadMiningHoldPercent = 99
-    , modulesToActivateAlways = []
+    , activateModulesAlways = []
     , hideWhenNeutralInLocal = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 1300
     , selectInstancePilotName = Nothing
-    , asteroidIncludePatterns = []
+    , includeAsteroidPatterns = []
     }
 
 
@@ -127,8 +127,8 @@ parseBotSettings =
          , ( "unload-mining-hold-percent"
            , AppSettings.valueTypeInteger (\percent settings -> { settings | unloadMiningHoldPercent = percent })
            )
-         , ( "module-to-activate-always"
-           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
+         , ( "activate-module-always"
+           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways })
            )
          , ( "hide-when-neutral-in-local"
            , AppSettings.valueTypeYesOrNo
@@ -146,10 +146,10 @@ parseBotSettings =
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
            )
-         , ( "asteroid-include-pattern"
+         , ( "include-asteroid-pattern"
            , AppSettings.valueTypeString
                 (\pattern settings ->
-                    { settings | asteroidIncludePatterns = pattern :: settings.asteroidIncludePatterns }
+                    { settings | includeAsteroidPatterns = pattern :: settings.includeAsteroidPatterns }
                 )
            )
          ]
@@ -168,13 +168,13 @@ type alias BotSettings =
     , unloadStationName : Maybe String
     , unloadStructureName : Maybe String
     , unloadMiningHoldPercent : Int
-    , modulesToActivateAlways : List String
+    , activateModulesAlways : List String
     , hideWhenNeutralInLocal : Maybe AppSettings.YesOrNo
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
     , selectInstancePilotName : Maybe String
-    , asteroidIncludePatterns : List String
+    , includeAsteroidPatterns : List String
     }
 
 
@@ -958,7 +958,7 @@ tooltipLooksLikeModuleToActivateAlways context =
         >> getAllContainedDisplayTexts
         >> List.filterMap
             (\tooltipText ->
-                context.eventContext.botSettings.modulesToActivateAlways
+                context.eventContext.botSettings.activateModulesAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
                             if tooltipText |> stringContainsIgnoringCase moduleToActivateAlways then
@@ -1180,8 +1180,8 @@ asteroidOverviewEntryMatchesSettings : BotSettings -> OverviewWindowEntry -> Boo
 asteroidOverviewEntryMatchesSettings settings overviewEntry =
     let
         textMatchesPattern text =
-            (settings.asteroidIncludePatterns == [])
-                || (settings.asteroidIncludePatterns
+            (settings.includeAsteroidPatterns == [])
+                || (settings.includeAsteroidPatterns
                         |> List.any (\pattern -> String.contains (String.toLower pattern) (String.toLower text))
                    )
     in

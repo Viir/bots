@@ -12,7 +12,7 @@
 
    All settings are optional; you only need them in case the defaults don't fit your use-case.
 
-   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "cloaking device".
+   + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "cloaking device".
 
    To learn more about the autopilot, see <https://to.botlab.org/guide/app/eve-online-autopilot-bot>
 
@@ -63,14 +63,14 @@ import EveOnline.ParseUserInterface exposing (centerFromDisplayRegion, getAllCon
 
 defaultBotSettings : BotSettings
 defaultBotSettings =
-    { modulesToActivateAlways = [] }
+    { activateModulesAlways = [] }
 
 
 parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
     AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
-        ([ ( "module-to-activate-always"
-           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
+        ([ ( "activate-module-always"
+           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways })
            )
          ]
             |> Dict.fromList
@@ -79,7 +79,7 @@ parseBotSettings =
 
 
 type alias BotSettings =
-    { modulesToActivateAlways : List String
+    { activateModulesAlways : List String
     }
 
 
@@ -117,7 +117,7 @@ statusTextFromDecisionContext context =
             [ [ "current solar system: "
                     ++ (currentSolarSystemNameFromReading context.readingFromGameClient |> Maybe.withDefault "Unknown")
               ]
-            , if List.isEmpty context.eventContext.botSettings.modulesToActivateAlways then
+            , if List.isEmpty context.eventContext.botSettings.activateModulesAlways then
                 []
 
               else
@@ -239,7 +239,7 @@ tooltipLooksLikeModuleToActivateAlways context =
         >> getAllContainedDisplayTexts
         >> List.filterMap
             (\tooltipText ->
-                context.eventContext.botSettings.modulesToActivateAlways
+                context.eventContext.botSettings.activateModulesAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
                             if tooltipText |> stringContainsIgnoringCase moduleToActivateAlways then

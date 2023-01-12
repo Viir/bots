@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-01-07
+{- EVE Online mining bot version 2023-01-11
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -674,9 +674,13 @@ dockToStationOrStructureWithMatchingName :
     -> DecisionPathNode
 dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSettingOrInfoPanel } context =
     let
+        {-
+           2023-01-11 Observation by Dean: Text in surroundings context menu entry sometimes wraps station name in XML tags:
+           <color=#FF58A7BF>Niyabainen IV - M1 - Caldari Navy Assembly Plant</color>
+        -}
         displayTextRepresentsMatchingStation =
             simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
-                >> String.startsWith (nameFromSettingOrInfoPanel |> simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry)
+                >> String.contains (nameFromSettingOrInfoPanel |> simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry)
 
         matchingOverviewEntry =
             context.readingFromGameClient.overviewWindow

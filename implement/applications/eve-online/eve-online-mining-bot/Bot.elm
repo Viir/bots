@@ -371,7 +371,15 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
                                 describeBranch "Stay docked." waitForProgressInGame
                             }
                             context
-                            |> Maybe.withDefault (undockUsingStationWindow context)
+                            |> Maybe.withDefault
+                                (undockUsingStationWindow context
+                                    { ifCannotReachButton =
+                                        describeBranch "Undock using context menu"
+                                            (undockUsingContextMenu context
+                                                { inventoryWindowWithMiningHoldSelected = inventoryWindowWithMiningHoldSelected }
+                                            )
+                                    }
+                                )
                         )
 
                 Just itemInInventory ->
@@ -388,18 +396,21 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
                         )
 
 
-undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
-undockUsingStationWindow context =
+undockUsingStationWindow :
+    BotDecisionContext
+    -> { ifCannotReachButton : DecisionPathNode }
+    -> DecisionPathNode
+undockUsingStationWindow context { ifCannotReachButton } =
     case context.readingFromGameClient.stationWindow of
         Nothing ->
-            describeBranch "I do not see the station window." askForHelpToGetUnstuck
+            describeBranch "I do not see the station window." ifCannotReachButton
 
         Just stationWindow ->
             case stationWindow.undockButton of
                 Nothing ->
                     case stationWindow.abortUndockButton of
                         Nothing ->
-                            describeBranch "I do not see the undock button." askForHelpToGetUnstuck
+                            describeBranch "I do not see the undock button." ifCannotReachButton
 
                         Just _ ->
                             describeBranch "I see we are already undocking." waitForProgressInGame
@@ -409,6 +420,22 @@ undockUsingStationWindow context =
                         (decideActionForCurrentStep
                             (mouseClickOnUIElement MouseButtonLeft undockButton)
                         )
+
+
+undockUsingContextMenu :
+    BotDecisionContext
+    -> { inventoryWindowWithMiningHoldSelected : EveOnline.ParseUserInterface.InventoryWindow }
+    -> DecisionPathNode
+undockUsingContextMenu context { inventoryWindowWithMiningHoldSelected } =
+    case inventoryWindowWithMiningHoldSelected |> activeShipTreeEntryFromInventoryWindow of
+        Nothing ->
+            describeBranch "I do not see the active ship in the inventory window." askForHelpToGetUnstuck
+
+        Just activeShipEntry ->
+            useContextMenuCascade
+                ( "active ship", activeShipEntry.uiNode )
+                (useMenuEntryWithTextContainingFirstOf [ "undock from station" ] menuCascadeCompleted)
+                context
 
 
 inSpaceWithMiningHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode

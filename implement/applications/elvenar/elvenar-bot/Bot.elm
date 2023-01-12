@@ -1,4 +1,4 @@
-{- Elvenar Bot v2022-12-03
+{- Elvenar Bot v2023-01-12
 
    This bot collects coins in the Elvenar game client window.
 
@@ -217,7 +217,7 @@ simpleProcessEvent _ event stateBeforeUpdateTime =
         notifyWhenArrivedAtTime =
             { timeInMilliseconds = state.timeInMilliseconds + 1000 }
 
-        statusDescriptionText =
+        statusText =
             [ activityDescription
             , lastReadingDescription state
             ]
@@ -226,7 +226,7 @@ simpleProcessEvent _ event stateBeforeUpdateTime =
     ( state
     , SimpleBotFramework.ContinueSession
         { startTasks = startTasks
-        , statusText = statusDescriptionText
+        , statusText = statusText
         , notifyWhenArrivedAtTime = Just notifyWhenArrivedAtTime
         }
     )

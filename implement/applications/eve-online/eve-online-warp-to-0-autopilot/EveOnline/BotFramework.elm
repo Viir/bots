@@ -62,7 +62,7 @@ type alias ContinueSessionStructure =
     { effects : List Common.EffectOnWindow.EffectOnWindowStructure
     , millisecondsToNextReadingFromGame : Int
     , screenshotRegionsToRead : ReadingFromGameClient -> { rects1x1 : List Rect2dStructure }
-    , statusDescriptionText : String
+    , statusText : String
     }
 
 
@@ -1254,7 +1254,7 @@ statusReportFromState state =
                                 finishSession.statusText
 
                             ContinueSession continueSession ->
-                                continueSession.statusDescriptionText
+                                continueSession.statusText
                     )
                 |> Maybe.withDefault ""
 

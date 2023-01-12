@@ -271,7 +271,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                         { effects = effectsOnGameClientWindow
                         , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
                         , screenshotRegionsToRead = config.screenshotRegionsToRead
-                        , statusDescriptionText = statusText
+                        , statusText = statusText
                         }
 
                 FinishSession ->

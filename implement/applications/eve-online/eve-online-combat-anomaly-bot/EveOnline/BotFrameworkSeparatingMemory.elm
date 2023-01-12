@@ -39,6 +39,7 @@ import EveOnline.ParseUserInterface
         ( centerFromDisplayRegion
         , subtractRegionsFromRegion
         )
+import List.Extra
 
 
 type EndDecisionPathStructure
@@ -70,7 +71,8 @@ type alias StepDecisionContext botSettings botMemory =
     , readingFromGameClientImage : ReadingFromGameClientImage
     , memory : botMemory
     , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
-    , previousReadingFromGameClient : Maybe ReadingFromGameClient
+    , previousReadingsFromGameClient : List ReadingFromGameClient
+    , contextMenuCascadeLevel : Int
     }
 
 
@@ -81,7 +83,7 @@ type alias StateIncludingFramework botSettings botMemory =
 type alias BotState botMemory =
     { botMemory : botMemory
     , lastStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
-    , lastReadingFromGameClient : Maybe ReadingFromGameClient
+    , lastReadingsFromGameClient : List ReadingFromGameClient
     }
 
 
@@ -131,7 +133,7 @@ initStateInBaseFramework : botMemory -> BotState botMemory
 initStateInBaseFramework botMemory =
     { botMemory = botMemory
     , lastStepEffects = []
-    , lastReadingFromGameClient = Nothing
+    , lastReadingsFromGameClient = []
     }
 
 
@@ -194,13 +196,35 @@ processEventInBaseFramework config eventContext event stateBefore =
                     stateBefore.botMemory
                         |> config.updateMemoryForNewReadingFromGame updateMemoryContext
 
+                lastReadingFromGameClientContextMenus =
+                    stateBefore.lastReadingsFromGameClient
+                        |> List.head
+                        |> Maybe.map .contextMenus
+                        |> Maybe.withDefault []
+
+                contextMenuCascadeLevelAlreadyInPreviousReading =
+                    List.map2
+                        Tuple.pair
+                        (List.reverse readingFromGameClient.contextMenus)
+                        (List.reverse lastReadingFromGameClientContextMenus)
+                        |> List.Extra.takeWhile
+                            (\( inCurrent, inPrev ) ->
+                                identifyingInfoFromContextMenu inCurrent == identifyingInfoFromContextMenu inPrev
+                            )
+                        |> List.length
+
+                contextMenuCascadeLevel =
+                    min (contextMenuCascadeLevelAlreadyInPreviousReading + 1)
+                        (List.length readingFromGameClient.contextMenus)
+
                 decisionContext =
                     { eventContext = eventContext
                     , memory = botMemory
                     , readingFromGameClient = readingFromGameClient
                     , readingFromGameClientImage = readingFromGameClientImage
                     , previousStepEffects = stateBefore.lastStepEffects
-                    , previousReadingFromGameClient = stateBefore.lastReadingFromGameClient
+                    , previousReadingsFromGameClient = stateBefore.lastReadingsFromGameClient
+                    , contextMenuCascadeLevel = contextMenuCascadeLevel
                     }
 
                 ( decisionStagesDescriptions, decisionLeaf ) =
@@ -221,13 +245,16 @@ processEventInBaseFramework config eventContext event stateBefore =
                             (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
                         |> String.join "\n"
 
-                statusMessage =
-                    [ config.statusTextFromDecisionContext decisionContext, describeActivity ]
+                statusText =
+                    [ config.statusTextFromDecisionContext decisionContext
+                    , describeActivity
+                    ]
                         |> String.join "\n"
             in
             ( { botMemory = botMemory
               , lastStepEffects = effectsOnGameClientWindow
-              , lastReadingFromGameClient = Just readingFromGameClient
+              , lastReadingsFromGameClient =
+                    List.take 3 (readingFromGameClient :: stateBefore.lastReadingsFromGameClient)
               }
             , case decisionLeaf of
                 ContinueSession continueSession ->
@@ -244,11 +271,11 @@ processEventInBaseFramework config eventContext event stateBefore =
                         { effects = effectsOnGameClientWindow
                         , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
                         , screenshotRegionsToRead = config.screenshotRegionsToRead
-                        , statusDescriptionText = statusMessage
+                        , statusDescriptionText = statusText
                         }
 
                 FinishSession ->
-                    EveOnline.BotFramework.FinishSession { statusText = statusMessage }
+                    EveOnline.BotFramework.FinishSession { statusText = statusText }
             )
 
 
@@ -326,7 +353,7 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
                             |> decideActionForCurrentStep
                         )
     in
-    case context.previousReadingFromGameClient of
+    case context.previousReadingsFromGameClient |> List.take 3 |> List.reverse |> List.head of
         Nothing ->
             beginCascade
 
@@ -346,21 +373,29 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
                                     )
                     in
                     if not cascadeFirstElementIsCloseToInitialUIElement then
-                        beginCascade
+                        Common.DecisionPath.describeBranch "Existing cascade is too far away"
+                            beginCascade
 
                     else if
-                        (0 < List.length cascadeFollowingElements)
-                            && (List.length context.readingFromGameClient.contextMenus
-                                    <= List.length previousReadingFromGameClient.contextMenus
-                               )
+                        (context.readingFromGameClient.contextMenus |> List.map identifyingInfoFromContextMenu)
+                            == (previousReadingFromGameClient.contextMenus |> List.map identifyingInfoFromContextMenu)
                     then
-                        beginCascade
+                        Common.DecisionPath.describeBranch "Made no progress in existing cascade"
+                            beginCascade
 
                     else
                         case
                             useContextMenu
                                 |> unpackContextMenuTreeToListOfActionsDependingOnReadings
-                                |> List.drop (List.length cascadeFollowingElements)
+                                {-
+                                   2023-01-12 Adapt to behavior of menu from surroundings button:
+                                   When opening that menu, the game client opens not only the first level but sometimes also expands the 'stations' entry so that we immediately also have the second level on screen.
+                                -}
+                                |> List.drop
+                                    (min
+                                        (List.length cascadeFollowingElements)
+                                        (context.contextMenuCascadeLevel - 1)
+                                    )
                                 |> List.head
                         of
                             Nothing ->
@@ -368,8 +403,17 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
 
                             Just descriptionAndEffectsFromReading ->
                                 let
+                                    readingFromGameClientForSelectingMenuEntry =
+                                        { readingFromGameClient
+                                            | contextMenus =
+                                                readingFromGameClient.contextMenus
+                                                    |> List.reverse
+                                                    |> List.take context.contextMenuCascadeLevel
+                                                    |> List.reverse
+                                        }
+
                                     ( stepDescription, maybeEffectsToGameClient ) =
-                                        descriptionAndEffectsFromReading context.readingFromGameClient
+                                        descriptionAndEffectsFromReading readingFromGameClientForSelectingMenuEntry
                                 in
                                 Common.DecisionPath.describeBranch stepDescription
                                     (case maybeEffectsToGameClient of
@@ -379,6 +423,11 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
                                         Just effectsToGameClient ->
                                             decideActionForCurrentStep effectsToGameClient
                                     )
+
+
+identifyingInfoFromContextMenu : { a | uiNode : { b | totalDisplayRegion : c } } -> c
+identifyingInfoFromContextMenu =
+    .uiNode >> .totalDisplayRegion
 
 
 ensureInfoPanelLocationInfoIsExpanded : ReadingFromGameClient -> Maybe DecisionPathNode

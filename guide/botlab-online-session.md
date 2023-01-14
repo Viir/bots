@@ -14,7 +14,7 @@ Below is a screenshot of the website to view your online sessions and monitor yo
 Online sessions cost 2000 credits per hour. When you log in to your account for the first time, you automatically get 1000 credits. Using these initial credits balance, you can test the online session feature without paying anything (Creating an account is free).
 When you have used up the credits on your account, you can add more following the instructions at <https://reactor.botlab.org/billing/add-credits>
 
-For more about purchasing and using credits, see the guide at https://forum.botlab.org/t/purchasing-and-using-botlab-credits-frequently-asked-questions-faq/837
+For more about purchasing and using credits, see the guide at <https://forum.botlab.org/t/purchasing-and-using-botlab-credits-frequently-asked-questions-faq/837>
 
 ### Starting an Online Session
 

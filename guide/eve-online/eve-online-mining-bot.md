@@ -68,10 +68,10 @@ activate-module-always = afterburner
 
 ## Running Multiple Instances
 
-This bot supports running multiple instances on the same desktop. In such a scenario, the individual bot instances take turns sending input and coordinate to avoid interfering with each other's input. To learn more about multi-instance setup, see https://to.botlab.org/guide/running-bots-on-multiple-game-clients
+This bot supports running multiple instances on the same desktop. In such a scenario, the individual bot instances take turns sending input and coordinate to avoid interfering with each other's input. To learn more about multi-instance setup, see <https://to.botlab.org/guide/running-bots-on-multiple-game-clients>
 
 ----
 
-If you want to learn how this bot or other apps for EVE Online are developed, have a look at the directory of development guides at https://to.botlab.org/guide/overview
+If you want to learn how this bot or other apps for EVE Online are developed, have a look at the directory of development guides at <https://to.botlab.org/guide/overview>
 
 In case I forgot to add something here or you have any questions, don't hesitate to ask on the [BotLab forum](https://forum.botlab.org/).

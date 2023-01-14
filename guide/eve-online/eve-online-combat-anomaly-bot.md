@@ -60,13 +60,13 @@ In case I forgot to add something here or you have any questions, don't hesitate
 
 ## Pricing and Online Sessions
 
-You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online session as explained at [https://to.botlab.org/guide/online-session](https://to.botlab.org/guide/online-session)
+You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online session as explained at <https://to.botlab.org/guide/online-session>
 
-Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at https://reactor.botlab.org/billing/add-credits
+Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at <https://reactor.botlab.org/billing/add-credits>
 
-For more about purchasing and using credits, see the guide at https://forum.botlab.org/t/purchasing-and-using-botlab-credits-frequently-asked-questions-faq/837
+For more about purchasing and using credits, see the guide at <https://forum.botlab.org/t/purchasing-and-using-botlab-credits-frequently-asked-questions-faq/837>
 
 ## Running Multiple Instances
 
-This bot supports running multiple instances on the same desktop. In such a scenario, the individual bot instances take turns sending input and coordinate to avoid interfering with each other's input. To learn more about multi-instance setup, see https://to.botlab.org/guide/running-bots-on-multiple-game-clients
+This bot supports running multiple instances on the same desktop. In such a scenario, the individual bot instances take turns sending input and coordinate to avoid interfering with each other's input. To learn more about multi-instance setup, see <https://to.botlab.org/guide/running-bots-on-multiple-game-clients>
 

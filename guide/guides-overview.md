@@ -46,19 +46,19 @@ Wondering what outcome you can expect from following the guides? Below is a list
 
 + EVE Online warp-to-0 autopilot
   + User guide: <https://to.botlab.org/guide/app/eve-online-autopilot-bot>
-  + Program code: <https://github.com/Viir/bots/implement/applications/eve-online/eve-online-warp-to-0-autopilot>
+  + Program code: <https://github.com/Viir/bots/tree/main/implement/applications/eve-online/eve-online-warp-to-0-autopilot>
 
 + EVE Online mining bot
   + User guide: <https://to.botlab.org/guide/app/eve-online-mining-bot>
-  + Program code: <https://github.com/Viir/bots/implement/applications/eve-online/eve-online-mining-bot>
+  + Program code: <https://github.com/Viir/bots/tree/main/implement/applications/eve-online/eve-online-mining-bot>
 
 + EVE Online combat anomaly bot
   + User guide: <https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot>
-  + Program code: <https://github.com/Viir/bots/implement/applications/eve-online/eve-online-combat-anomaly-bot>
+  + Program code: <https://github.com/Viir/bots/tree/main/implement/applications/eve-online/eve-online-combat-anomaly-bot>
 
 + Tribal Wars 2 farmbot
   + User guide: <https://to.botlab.org/guide/app/tribal-wars-2-farmbot>
-  + Program code: <https://github.com/Viir/bots/implement/applications/tribal-wars-2/tribal-wars-2-farmbot>
+  + Program code: <https://github.com/Viir/bots/tree/main/implement/applications/tribal-wars-2/tribal-wars-2-farmbot>
 
 ## Related Guides
 

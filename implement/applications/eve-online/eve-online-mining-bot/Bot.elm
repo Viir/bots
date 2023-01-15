@@ -18,7 +18,6 @@
 
    + `unload-station-name` : Name of a station to dock to when the mining hold is full.
    + `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
-   + `unload-fleet-hangar-percent` : A Quantidade que ele vai tentar descarregar o minerio na fleet-hangar. Valot default e 70%.
    + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
    + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
 
@@ -102,7 +101,7 @@ defaultBotSettings =
     { runAwayShieldHitpointsThresholdPercent = 70
     , unloadStationName = Nothing
     , unloadStructureName = Nothing
-    , unloadFleetHangarPercent = 70
+    , unloadFleetHangarPercent = 65
     , unloadMiningHoldPercent = 99
     , activateModulesAlways = []
     , hideWhenNeutralInLocal = Nothing
@@ -406,8 +405,7 @@ inSpaceWithMiningHoldSelectedWithFleetHangar : BotDecisionContext -> EveOnline.P
 inSpaceWithMiningHoldSelectedWithFleetHangar context inventoryWindowWithMiningHoldSelected =
     case inventoryWindowWithMiningHoldSelected |> fleetHangarFromInventoryWindow |> Maybe.map .uiNode of
         Nothing ->
-            describeBranch "I do not see the fleet hangar in the inventory. . Check if we should the open fleet hangar."
-                waitForProgressInGame
+            Nothing
 
         Just fleetHangar ->
             case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of

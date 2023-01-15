@@ -396,6 +396,28 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
                         )
 
 
+InSpaceWithMiningHoldSelectedWithFleetHangar : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
+InSpaceWithMiningHoldSelectedWithFleetHangar context inventoryWindowWithMiningHoldSelected =
+    case inventoryWindowWithMiningHoldSelected |> fleetHangarFromInventoryWindow |> Maybe.map .uiNode of
+        Just fleetHangar ->
+            case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
+                Nothing ->
+                    describeBranch "I see no item in the mining hold. Get more Ore." waitForProgressInGame
+
+                Just itemInInventory ->
+                    describeBranch "I see at least one item in the mining hold. Move this to the fleet hangar."
+                        (describeBranch "Drag and drop."
+                            (decideActionForCurrentStep
+                                (EffectOnWindow.effectsForDragAndDrop
+                                    { startLocation = itemInInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
+                                    , endLocation = fleetHangar.totalDisplayRegionVisible |> centerFromDisplayRegion
+                                    , mouseButton = MouseButtonLeft
+                                    }
+                                )
+                            )
+                        )
+
+
 undockUsingStationWindow :
     BotDecisionContext
     -> { ifCannotReachButton : DecisionPathNode }
@@ -471,9 +493,7 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                         in
                         if context.eventContext.botSettings.unloadMiningHoldPercent <= fillPercent then
                             describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
-                                (returnDronesToBay context
-                                    |> Maybe.withDefault (dockToUnloadOre context)
-                                )
+                                (UnloadOre context)
 
                         else
                             describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
@@ -836,6 +856,20 @@ warpToMiningSite =
 runAway : BotDecisionContext -> DecisionPathNode
 runAway =
     dockToRandomStationOrStructure
+
+
+UnloadOre : BotDecisionContext -> DecisionPathNode
+UnloadOre context =
+    case inventoryWindowWithMiningHoldSelected |> fleetHangarFromInventoryWindow |> Maybe.map .uiNode of
+        Nothing ->
+            describeBranch "I do not see the fleet hangar in the inventory. Docking to Unload Ore."
+                (returnDronesToBay context
+                    |> Maybe.withDefault (dockToUnloadOre context)
+                )
+
+        Just unloadfleetHangar ->
+            InSpaceWithMiningHoldSelectedWithFleetHangar
+                context
 
 
 dockToUnloadOre : BotDecisionContext -> DecisionPathNode
@@ -1300,6 +1334,15 @@ itemHangarFromInventoryWindow :
 itemHangarFromInventoryWindow =
     .leftTreeEntries
         >> List.filter (.text >> stringContainsIgnoringCase "item hangar")
+        >> List.head
+
+
+fleetHangarFromInventoryWindow :
+    EveOnline.ParseUserInterface.InventoryWindow
+    -> Maybe EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry
+fleetHangarFromInventoryWindow =
+    .leftTreeEntries
+        >> List.filter (.text >> stringContainsIgnoringCase "fleet hangar")
         >> List.head
 
 

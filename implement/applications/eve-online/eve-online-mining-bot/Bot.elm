@@ -496,6 +496,9 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                             describeThresholdToUnload =
                                 (context.eventContext.botSettings.unloadMiningHoldPercent |> String.fromInt) ++ "%"
 
+                            describeThresholdToUnloadFleetHangar =
+                                (context.eventContext.botSettings.unloadFleetHangarPercent |> String.fromInt) ++ "%"
+
                             knownMiningModules =
                                 knownMiningModulesFromContext context
                         in
@@ -507,7 +510,7 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
 
                         else
                             if context.eventContext.botSettings.unloadFleetHangarPercent <= fillPercent then
-                                describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore on fleet hangar.")
+                                describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnloadFleetHangar ++ ". Unload the ore on fleet hangar.")
                                     (ensureMiningHoldIsSelectedInInventoryWindow
                                         context.readingFromGameClient
                                         (inSpaceWithMiningHoldSelectedWithFleetHangar context)

@@ -405,12 +405,15 @@ inSpaceWithMiningHoldSelectedWithFleetHangar : BotDecisionContext -> EveOnline.P
 inSpaceWithMiningHoldSelectedWithFleetHangar context inventoryWindowWithMiningHoldSelected =
     case inventoryWindowWithMiningHoldSelected |> fleetHangarFromInventoryWindow |> Maybe.map .uiNode of
         Nothing ->
-            Nothing
+            waitForProgressInGame
 
         Just fleetHangar ->
             case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
-                    describeBranch "I see no item in the mining hold. Get more Ore." waitForProgressInGame
+                    describeBranch "I see no item in the mining hold. Click the tree entry representing the fleet Hangar."
+                        (decideActionForCurrentStep
+                            (mouseClickOnUIElement MouseButtonLeft fleetHangar)
+                        )
 
                 Just itemInInventory ->
                     describeBranch "I see at least one item in the mining hold. Move this to the fleet hangar."

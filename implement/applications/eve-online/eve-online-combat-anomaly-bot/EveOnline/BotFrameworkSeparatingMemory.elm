@@ -15,7 +15,7 @@ To learn more about developing for EVE Online, see the guide at <https://to.botl
 
 -}
 
-import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_01_17 as InterfaceToHost
 import Common.DecisionPath
 import Common.EffectOnWindow
 import Dict
@@ -107,7 +107,8 @@ type alias BotConfigurationWithImageProcessing botSettings botMemory =
 
 
 type alias ReadingFromGameClientImage =
-    { pixels1x1 : Dict.Dict ( Int, Int ) PixelValueRGB
+    { pixels_1x1 : Dict.Dict ( Int, Int ) PixelValueRGB
+    , pixels_2x2 : Dict.Dict ( Int, Int ) PixelValueRGB
     }
 
 

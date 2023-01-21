@@ -1,4 +1,4 @@
-{- EVE Online warp-to-0 auto-pilot version 2023-01-12
+{- EVE Online warp-to-0 auto-pilot version 2023-01-21
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
@@ -28,7 +28,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_01_17 as InterfaceToHost
 import BotLab.NotificationsShim
 import Color
 import Common.AppSettings as AppSettings
@@ -364,6 +364,9 @@ describeShipModuleButtons context =
                                     |> List.indexedMap
                                         (\columnIndex moduleButton ->
                                             let
+                                                displayRegionCenter =
+                                                    moduleButton.uiNode.totalDisplayRegion |> centerFromDisplayRegion
+
                                                 maybeGreennessText =
                                                     moduleButtonImageProcessing context moduleButton
                                                         |> Maybe.map describeGreenessOfPixelValue
@@ -372,7 +375,11 @@ describeShipModuleButtons context =
                                                 ++ String.fromInt rowIndex
                                                 ++ ","
                                                 ++ String.fromInt columnIndex
-                                                ++ "]: "
+                                                ++ " ( "
+                                                ++ String.fromInt displayRegionCenter.x
+                                                ++ ", "
+                                                ++ String.fromInt displayRegionCenter.y
+                                                ++ " )]: "
                                                 ++ (maybeGreennessText |> Maybe.withDefault "??")
                                         )
                                     |> String.join ", "
@@ -413,7 +420,7 @@ moduleButtonImageProcessing context moduleButton =
         measurementLocation =
             locationToMeasureGlowFromModuleButton moduleButton
     in
-    context.readingFromGameClientImage.pixels1x1
+    context.readingFromGameClientImage.pixels_1x1
         |> Dict.get ( measurementLocation.x, measurementLocation.y )
         |> Maybe.map
             (\pixelValue ->

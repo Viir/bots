@@ -364,9 +364,6 @@ describeShipModuleButtons context =
                                     |> List.indexedMap
                                         (\columnIndex moduleButton ->
                                             let
-                                                displayRegionCenter =
-                                                    moduleButton.uiNode.totalDisplayRegion |> centerFromDisplayRegion
-
                                                 maybeGreennessText =
                                                     moduleButtonImageProcessing context moduleButton
                                                         |> Maybe.map describeGreenessOfPixelValue
@@ -375,11 +372,7 @@ describeShipModuleButtons context =
                                                 ++ String.fromInt rowIndex
                                                 ++ ","
                                                 ++ String.fromInt columnIndex
-                                                ++ " ( "
-                                                ++ String.fromInt displayRegionCenter.x
-                                                ++ ", "
-                                                ++ String.fromInt displayRegionCenter.y
-                                                ++ " )]: "
+                                                ++ "]: "
                                                 ++ (maybeGreennessText |> Maybe.withDefault "??")
                                         )
                                     |> String.join ", "

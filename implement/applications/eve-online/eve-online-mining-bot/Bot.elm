@@ -21,6 +21,7 @@
    + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
    + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
    + `unload-fleet-hangar-percent` : This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
+   + `dock-when-without-drones` : This will make the bot dock when it's out of drones. However, he kept leaving and entering the station. The only supported values are `no` and `yes`.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -106,6 +107,7 @@ defaultBotSettings =
     , unloadMiningHoldPercent = 99
     , activateModulesAlways = []
     , hideWhenNeutralInLocal = Nothing
+    , dockWhenWithoutDrones = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 1300
@@ -138,6 +140,10 @@ parseBotSettings =
          , ( "hide-when-neutral-in-local"
            , AppSettings.valueTypeYesOrNo
                 (\hide -> \settings -> { settings | hideWhenNeutralInLocal = Just hide })
+           )
+         , ( "dock-when-without-drones"
+           , AppSettings.valueTypeYesOrNo
+                (\without -> \settings -> { settings | dockWhenWithoutDrones = Just without })
            )
          , ( "targeting-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | targetingRange = range })
@@ -176,6 +182,7 @@ type alias BotSettings =
     , unloadMiningHoldPercent : Int
     , activateModulesAlways : List String
     , hideWhenNeutralInLocal : Maybe AppSettings.YesOrNo
+    , dockWhenWithoutDrones : Maybe AppSettings.YesOrNo
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
@@ -221,7 +228,7 @@ miningBotDecisionRootBeforeApplyingSettings context =
                         context.readingFromGameClient
                         (dockedWithMiningHoldSelected context)
                 , ifSeeShipUI =
-                    returnDronesAndRunAwayIfHitpointsAreTooLow context
+                    returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones context
                 , ifUndockingComplete =
                     \seeUndockingComplete ->
                         continueIfShouldHide
@@ -297,9 +304,21 @@ shouldHideWhenNeutralInLocal context =
             )
                 < 50
 
+shouldDockWhenWithoutDrones : BotDecisionContext -> Bool
+shouldDockWhenWithoutDrones context =
+    case context.eventContext.botSettings.dockWhenWithoutDrones of
+        Just AppSettings.No ->
+            False
 
-returnDronesAndRunAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
-returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
+        Just AppSettings.Yes ->
+            True
+
+        Nothing ->
+            False
+
+
+returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
+returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones context shipUI =
     let
         returnDronesShieldHitpointsThresholdPercent =
             context.eventContext.botSettings.runAwayShieldHitpointsThresholdPercent + 5
@@ -322,7 +341,15 @@ returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
             |> Just
 
     else
-        Nothing
+        case context.readingFromGameClient.dronesWindow of
+            Nothing ->
+                if (context |> shouldDockWhenWithoutDrones) then
+                    Just
+                        (describeBranch "I don't see the drone window, are we out of drones? configured to run away when without a drone. Run to the station!" (dockToUnloadOre context))
+                else
+                    Nothing
+            _ ->                
+                Nothing
 
 
 generalSetupInUserInterface : ReadingFromGameClient -> Maybe DecisionPathNode

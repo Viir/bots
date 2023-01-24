@@ -1842,7 +1842,7 @@ parseUserInterface original readingFromImage =
 
                 colorFromRelativeLocation_binned ( fromCenterX, fromCenterY ) =
                     readingFromImage.pixels_2x2
-                        |> Dict.get ( buttonCenter.x // 2 - fromCenterX, buttonCenter.y // 2 - fromCenterY )
+                        |> Dict.get ( buttonCenter.x // 2 + fromCenterX, buttonCenter.y // 2 + fromCenterY )
                         |> Maybe.withDefault { red = 0, green = 0, blue = 0 }
 
                 ( darkestOffsetX, darkestOffsetY ) =
@@ -1854,25 +1854,28 @@ parseUserInterface original readingFromImage =
                 edgeThreshold =
                     20
 
-                edges =
+                colorsAndEdges =
                     List.range -3 2
                         |> List.map
                             (\index ->
                                 let
-                                    leftSum =
-                                        colorSum
-                                            (colorFromRelativeLocation_binned
-                                                ( darkestOffsetX + index, darkestOffsetY )
-                                            )
+                                    leftColor =
+                                        colorFromRelativeLocation_binned
+                                            ( darkestOffsetX + index, darkestOffsetY )
 
-                                    rightSum =
-                                        colorSum
-                                            (colorFromRelativeLocation_binned
-                                                ( darkestOffsetX + index + 1, darkestOffsetY )
-                                            )
+                                    rightColor =
+                                        colorFromRelativeLocation_binned
+                                            ( darkestOffsetX + index + 1, darkestOffsetY )
                                 in
-                                (rightSum - leftSum) // edgeThreshold |> min 1 |> max -1
+                                ( leftColor
+                                , ((colorSum rightColor - colorSum leftColor) // edgeThreshold)
+                                    |> min 1
+                                    |> max -1
+                                )
                             )
+
+                edges =
+                    colorsAndEdges |> List.map Tuple.second
             in
             (List.drop 1 edges == [ 1, -1, 1, -1, 1 ])
                 || (List.take 5 edges == [ 1, 1, -1, 1, 1 ])

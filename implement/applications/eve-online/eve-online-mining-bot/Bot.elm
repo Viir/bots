@@ -197,6 +197,7 @@ type alias BotMemory =
     , volumeUnloadedCubicMeters : Int
     , lastUsedCapacityInMiningHold : Maybe Int
     , shipModules : ShipModulesMemory
+    , dronesWindowWasVisibleInSpace : Maybe Bool
     }
 
 
@@ -341,18 +342,15 @@ returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones context shipUI =
             |> Maybe.withDefault runAwayWithDescription
             |> Just
 
+    else if
+        (context |> shouldDockWhenWithoutDrones)
+            && (context.memory.dronesWindowWasVisibleInSpace == Just False)
+    then
+        Just
+            (describeBranch "I don't see the drone window, are we out of drones? configured to run away when without a drone. Run to the station!" (dockToUnloadOre context))
+
     else
-        case context.readingFromGameClient.dronesWindow of
-            Nothing ->
-                if context |> shouldDockWhenWithoutDrones then
-                    Just
-                        (describeBranch "I don't see the drone window, are we out of drones? configured to run away when without a drone. Run to the station!" (dockToUnloadOre context))
-
-                else
-                    Nothing
-
-            _ ->
-                Nothing
+        Nothing
 
 
 generalSetupInUserInterface : ReadingFromGameClient -> Maybe DecisionPathNode
@@ -402,20 +400,28 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
             case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
                     describeBranch "I see no item in the mining hold. Check if we should undock."
-                        (continueIfShouldHide
-                            { ifShouldHide =
-                                describeBranch "Stay docked." waitForProgressInGame
-                            }
-                            context
-                            |> Maybe.withDefault
-                                (undockUsingStationWindow context
-                                    { ifCannotReachButton =
-                                        describeBranch "Undock using context menu"
-                                            (undockUsingContextMenu context
-                                                { inventoryWindowWithMiningHoldSelected = inventoryWindowWithMiningHoldSelected }
-                                            )
-                                    }
-                                )
+                        (if
+                            shouldDockWhenWithoutDrones context
+                                && (context.memory.dronesWindowWasVisibleInSpace == Just False)
+                         then
+                            describeBranch "Stay docked because I didn't see the drone window. Are we out of drones?"
+                                askForHelpToGetUnstuck
+
+                         else
+                            continueIfShouldHide
+                                { ifShouldHide =
+                                    describeBranch "Stay docked because we should hide." waitForProgressInGame
+                                }
+                                context
+                                |> Maybe.withDefault
+                                    (undockUsingStationWindow context
+                                        { ifCannotReachButton =
+                                            describeBranch "Undock using context menu"
+                                                (undockUsingContextMenu context
+                                                    { inventoryWindowWithMiningHoldSelected = inventoryWindowWithMiningHoldSelected }
+                                                )
+                                        }
+                                    )
                         )
 
                 Just itemInInventory ->
@@ -1103,6 +1109,7 @@ initBotMemory =
     , volumeUnloadedCubicMeters = 0
     , lastUsedCapacityInMiningHold = Nothing
     , shipModules = EveOnline.BotFramework.initShipModulesMemory
+    , dronesWindowWasVisibleInSpace = Nothing
     }
 
 
@@ -1229,6 +1236,13 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
 
         volumeUnloadedCubicMeters =
             botMemoryBefore.volumeUnloadedCubicMeters + volumeUnloadedSincePreviousReading
+
+        dronesWindowWasVisibleInSpace =
+            if context.readingFromGameClient.shipUI == Nothing then
+                botMemoryBefore.dronesWindowWasVisibleInSpace
+
+            else
+                Just (context.readingFromGameClient.dronesWindow /= Nothing)
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
@@ -1240,6 +1254,7 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
     , shipModules =
         botMemoryBefore.shipModules
             |> EveOnline.BotFramework.integrateCurrentReadingsIntoShipModulesMemory context.readingFromGameClient
+    , dronesWindowWasVisibleInSpace = dronesWindowWasVisibleInSpace
     }
 
 

@@ -55,9 +55,14 @@ type InternalBotEventResponse
 
 type alias InternalContinueSessionStructure =
     { statusText : String
-    , startTasks : List { areaId : String, taskDescription : String, task : InterfaceToHost.Task }
+    , startTasks : List { areaId : String, taskType : Maybe TaskType, task : InterfaceToHost.Task }
     , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
     }
+
+
+type TaskType
+    = StartsReadingTaskType
+    | SetupTaskType { description : String }
 
 
 type alias ContinueSessionStructure =
@@ -88,7 +93,8 @@ type alias StateIncludingFramework botSettings botState =
     , botState : BotAndLastEventState botState
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
-    , tasksInProgress : Dict.Dict String { startTimeInMilliseconds : Int, taskDescription : String }
+    , startedReading : Maybe { timeInMilliseconds : Int }
+    , waitingForSetupTasks : List { taskId : String, description : String }
     , botSettings : Maybe botSettings
     , sessionTimeLimitInMilliseconds : Maybe Int
     }
@@ -96,7 +102,12 @@ type alias StateIncludingFramework botSettings botState =
 
 type alias BotAndLastEventState botState =
     { botState : botState
-    , lastEvent : Maybe { timeInMilliseconds : Int, eventResult : ( botState, BotEventResponse ) }
+    , lastEvent :
+        Maybe
+            { readingTimeInMilliseconds : Int
+            , timeInMilliseconds : Int
+            , eventResult : ( botState, BotEventResponse )
+            }
     }
 
 
@@ -113,7 +124,10 @@ type alias SetupState =
 
 
 type alias ReadingFromGameClientAggregateState =
-    { initialReading : VolatileProcessInterface.ReadFromWindowResultStructure
+    { initialReading :
+        { timeInMilliseconds : Int
+        , fromVolatileProcess : VolatileProcessInterface.ReadFromWindowResultStructure
+        }
     , imageDataFromReadingResults : List GetImageDataFromReadingResultStructure
     , lastReadingFromWindow : Maybe InterfaceToHost.ReadFromWindowCompleteStruct
     }
@@ -174,7 +188,8 @@ type alias GetImageDataFromReadingStructure =
 
 
 type alias ReadingFromGameClientStructure =
-    { parsedMemoryReading : EveOnline.ParseUserInterface.ParsedUserInterface
+    { timeInMilliseconds : Int
+    , parsedMemoryReading : EveOnline.ParseUserInterface.ParsedUserInterface
     , lastReadingFromWindow : Maybe InterfaceToHost.ReadFromWindowCompleteStruct
     , imageDataFromReadingResults : List GetImageDataFromReadingResultStructure
     }
@@ -292,7 +307,8 @@ initState botState =
         }
     , timeInMilliseconds = 0
     , lastTaskIndex = 0
-    , tasksInProgress = Dict.empty
+    , startedReading = Nothing
+    , waitingForSetupTasks = []
     , botSettings = Nothing
     , sessionTimeLimitInMilliseconds = Nothing
     }
@@ -314,7 +330,7 @@ processEvent botConfiguration fromHostEvent stateBefore =
 
         InternalContinueSession continueSession ->
             let
-                startTasksWithDescription =
+                startTasksWithOrigin =
                     continueSession.startTasks
                         |> List.indexedMap
                             (\startTaskIndex startTask ->
@@ -324,33 +340,39 @@ processEvent botConfiguration fromHostEvent stateBefore =
                                 in
                                 { taskId = taskIdString
                                 , task = startTask.task
-                                , taskDescription = startTask.taskDescription
+                                , taskType = startTask.taskType
                                 }
                             )
 
-                newTasksInProgress =
-                    startTasksWithDescription
-                        |> List.map
-                            (\startTask ->
-                                ( startTask.taskId
-                                , { startTimeInMilliseconds = state.timeInMilliseconds
-                                  , taskDescription = startTask.taskDescription
-                                  }
-                                )
-                            )
-                        |> Dict.fromList
+                startedReading =
+                    if List.any (.taskType >> (==) (Just StartsReadingTaskType)) continueSession.startTasks then
+                        Just { timeInMilliseconds = state.timeInMilliseconds }
 
-                tasksInProgress =
-                    state.tasksInProgress
-                        |> Dict.union newTasksInProgress
+                    else
+                        state.startedReading
+
+                waitingForSetupTasks =
+                    (startTasksWithOrigin
+                        |> List.filterMap
+                            (\startTask ->
+                                case startTask.taskType of
+                                    Just (SetupTaskType setupTask) ->
+                                        Just { taskId = startTask.taskId, description = setupTask.description }
+
+                                    _ ->
+                                        Nothing
+                            )
+                    )
+                        ++ state.waitingForSetupTasks
 
                 startTasks =
-                    startTasksWithDescription
+                    startTasksWithOrigin
                         |> List.map (\startTask -> { taskId = startTask.taskId, task = startTask.task })
             in
             ( { state
                 | lastTaskIndex = state.lastTaskIndex + List.length startTasks
-                , tasksInProgress = tasksInProgress
+                , startedReading = startedReading
+                , waitingForSetupTasks = waitingForSetupTasks
               }
             , InterfaceToHost.ContinueSession
                 { statusText = continueSession.statusText
@@ -379,6 +401,10 @@ processEventLessMappingTasks botConfiguration fromHostEvent stateBeforeUpdateTim
 
         InterfaceToHost.TaskCompletedEvent taskComplete ->
             let
+                waitingForSetupTasks =
+                    stateBefore.waitingForSetupTasks
+                        |> List.filter (.taskId >> (/=) taskComplete.taskId)
+
                 ( setupState, maybeReadingFromGameClient ) =
                     stateBefore.setup
                         |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
@@ -387,7 +413,7 @@ processEventLessMappingTasks botConfiguration fromHostEvent stateBeforeUpdateTim
                 maybeReadingFromGameClient
                 { stateBefore
                     | setup = setupState
-                    , tasksInProgress = stateBefore.tasksInProgress |> Dict.remove taskComplete.taskId
+                    , waitingForSetupTasks = waitingForSetupTasks
                 }
 
         InterfaceToHost.BotSettingsChangedEvent botSettings ->
@@ -421,39 +447,24 @@ processEventAfterIntegrateEvent :
 processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stateBefore =
     let
         ( stateBeforeCountingRequests, responseBeforeAddingStatusMessage ) =
-            case stateBefore.tasksInProgress |> Dict.toList |> List.head of
+            case stateBefore.botSettings of
                 Nothing ->
-                    case stateBefore.botSettings of
-                        Nothing ->
-                            ( stateBefore
-                            , InternalFinishSession
-                                { statusText =
-                                    "Unexpected order of events: I did not receive any bot-settings changed event."
-                                }
-                            )
-
-                        Just botSettings ->
-                            processEventNotWaitingForTaskCompletion
-                                botConfiguration
-                                { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                , botSettings = botSettings
-                                , sessionTimeLimitInMilliseconds = stateBefore.sessionTimeLimitInMilliseconds
-                                }
-                                maybeReadingFromGameClient
-                                stateBefore
-
-                Just ( taskInProgressId, taskInProgress ) ->
                     ( stateBefore
-                    , InternalContinueSession
+                    , InternalFinishSession
                         { statusText =
-                            "Waiting for completion of task '"
-                                ++ taskInProgressId
-                                ++ "': "
-                                ++ taskInProgress.taskDescription
-                        , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
-                        , startTasks = []
+                            "Unexpected order of events: I did not receive any bot-settings changed event."
                         }
                     )
+
+                Just botSettings ->
+                    processEventNotWaitingForTaskCompletion
+                        botConfiguration
+                        { timeInMilliseconds = stateBefore.timeInMilliseconds
+                        , botSettings = botSettings
+                        , sessionTimeLimitInMilliseconds = stateBefore.sessionTimeLimitInMilliseconds
+                        }
+                        maybeReadingFromGameClient
+                        stateBefore
 
         newRequestsToVolatileProcessCount =
             case responseBeforeAddingStatusMessage of
@@ -524,18 +535,29 @@ processEventNotWaitingForTaskCompletion :
 processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeReadingFromGameClient stateBefore =
     case stateBefore.setup |> getNextSetupTask botConfiguration stateBefore.botSettings of
         ContinueSetup setupState setupTask setupTaskDescription ->
-            ( { stateBefore | setup = setupState }
-            , { startTasks =
-                    [ { areaId = "setup"
-                      , task = setupTask
-                      , taskDescription = "Setup: " ++ setupTaskDescription
+            case List.head stateBefore.waitingForSetupTasks of
+                Nothing ->
+                    ( { stateBefore | setup = setupState }
+                    , { startTasks =
+                            [ { areaId = "setup"
+                              , task = setupTask
+                              , taskType = Just (SetupTaskType { description = setupTaskDescription })
+                              }
+                            ]
+                      , statusText = "Continue setup: " ++ setupTaskDescription
+                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
                       }
-                    ]
-              , statusText = "Continue setup: " ++ setupTaskDescription
-              , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
-              }
-                |> InternalContinueSession
-            )
+                        |> InternalContinueSession
+                    )
+
+                Just waitingForSetupTask ->
+                    ( stateBefore
+                    , { startTasks = []
+                      , statusText = "Continue setup: Wait for completion: " ++ waitingForSetupTask.description
+                      , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
+                      }
+                        |> InternalContinueSession
+                    )
 
         OperateBot operateBot ->
             if volatileProcessRecycleInterval < stateBefore.setup.requestsToVolatileProcessCount then
@@ -556,7 +578,7 @@ processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeRe
                 , { startTasks =
                         [ { areaId = taskAreaIdString
                           , task = operateBot.releaseVolatileProcessTask
-                          , taskDescription = setupTaskDescription
+                          , taskType = Just (SetupTaskType { description = setupTaskDescription })
                           }
                         ]
                   , statusText = "Continue setup: " ++ setupTaskDescription
@@ -588,18 +610,30 @@ operateBotExceptRenewingVolatileProcess :
     -> ( StateIncludingFramework botSettings botState, InternalBotEventResponse )
 operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeNewReadingFromGameClient stateBefore operateBot =
     let
-        continueWithNamedTasksToWaitOn { taskDescription, taskAreaId } tasks =
+        continueWithNamedTasksToWaitOn { startsReading, taskAreaId } tasks =
             ( stateBefore
             , { startTasks =
                     tasks
                         |> List.map
                             (\task ->
                                 { areaId = taskAreaId
-                                , taskDescription = taskDescription
+                                , taskType =
+                                    if startsReading then
+                                        Just StartsReadingTaskType
+
+                                    else
+                                        Nothing
                                 , task = task
                                 }
                             )
-              , statusText = "Operate bot - " ++ taskDescription
+              , statusText =
+                    "Operate bot"
+                        ++ (if startsReading then
+                                " - start reading"
+
+                            else
+                                ""
+                           )
               , notifyWhenArrivedAtTime = Nothing
               }
                 |> InternalContinueSession
@@ -607,7 +641,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeNe
 
         continueWithReadingFromGameClient =
             continueWithNamedTasksToWaitOn
-                { taskDescription = "Reading from game"
+                { startsReading = True
                 , taskAreaId = "read-from-game"
                 }
                 (operateBot.readFromWindowTasks { screenshotCrops_1x1 = [], screenshotCrops_2x2 = [] })
@@ -732,16 +766,33 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeNe
                     { screenshotCrops_1x1 = newCrops_1x1_WithMargins
                     , screenshotCrops_2x2 = newCrops_2x2_WithMargins
                     }
+
+                currentReadingAlreadyProcessed =
+                    case stateBefore.botState.lastEvent of
+                        Nothing ->
+                            False
+
+                        Just lastEvent ->
+                            readingFromGameClient.timeInMilliseconds <= lastEvent.readingTimeInMilliseconds
             in
             if
                 (getImageData /= { screenshotCrops_1x1 = [], screenshotCrops_2x2 = [] })
                     && (List.length readingFromGameClient.imageDataFromReadingResults < getImageDataFromReadingRequestLimit)
             then
                 continueWithNamedTasksToWaitOn
-                    { taskDescription = "Get image data from reading"
+                    { startsReading = False
                     , taskAreaId = "get-image-data-from-reading"
                     }
                     [ operateBot.getImageDataFromReadingTask getImageData ]
+
+            else if currentReadingAlreadyProcessed then
+                ( stateBefore
+                , { startTasks = []
+                  , statusText = "Operate bot"
+                  , notifyWhenArrivedAtTime = Nothing
+                  }
+                    |> InternalContinueSession
+                )
 
             else
                 let
@@ -756,7 +807,8 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeNe
                             |> botConfiguration.processEvent botEventContext botEvent
 
                     lastEvent =
-                        { timeInMilliseconds = stateBefore.timeInMilliseconds
+                        { readingTimeInMilliseconds = readingFromGameClient.timeInMilliseconds
+                        , timeInMilliseconds = stateBefore.timeInMilliseconds
                         , eventResult = ( newBotState, botEventResponse )
                         }
 
@@ -779,7 +831,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeNe
 
                                             effects ->
                                                 [ { areaId = "send-effects"
-                                                  , taskDescription = "Send effects to game client"
+                                                  , taskType = Nothing
                                                   , task = operateBot.buildTaskFromEffectSequence effects
                                                   }
                                                 ]
@@ -831,8 +883,31 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeNe
                             )
                         |> Maybe.withDefault 0
 
+                nextReadingLowerBoundByLast =
+                    case stateBefore.startedReading of
+                        Nothing ->
+                            0
+
+                        Just startedReading ->
+                            let
+                                lastReadingCompleted =
+                                    case stateBefore.setup.lastReadingFromGame of
+                                        Nothing ->
+                                            False
+
+                                        Just lastReadingFromGame ->
+                                            startedReading.timeInMilliseconds < lastReadingFromGame.timeInMilliseconds
+                            in
+                            if lastReadingCompleted then
+                                0
+
+                            else
+                                startedReading.timeInMilliseconds + 3000
+
                 timeForNextReadingFromGame =
-                    min timeForNextReadingFromGameGeneral timeForNextReadingFromGameFromBot
+                    timeForNextReadingFromGameFromBot
+                        |> min timeForNextReadingFromGameGeneral
+                        |> max nextReadingLowerBoundByLast
 
                 remainingTimeToNextReadingFromGame =
                     timeForNextReadingFromGame - stateBefore.timeInMilliseconds
@@ -976,7 +1051,10 @@ integrateResponseFromVolatileProcess { timeInMilliseconds, responseFromVolatileP
                 lastReadingFromGame =
                     { timeInMilliseconds = timeInMilliseconds
                     , aggregate =
-                        { initialReading = readFromWindowResult
+                        { initialReading =
+                            { timeInMilliseconds = timeInMilliseconds
+                            , fromVolatileProcess = readFromWindowResult
+                            }
                         , imageDataFromReadingResults = []
                         , lastReadingFromWindow = Nothing
                         }
@@ -1114,7 +1192,7 @@ parseReadingFromGameClient :
     ReadingFromGameClientAggregateState
     -> Result String ReadingFromGameClientStructure
 parseReadingFromGameClient readingAggregate =
-    case readingAggregate.initialReading of
+    case readingAggregate.initialReading.fromVolatileProcess of
         VolatileProcessInterface.ProcessNotFound ->
             Err "Initial reading failed with 'Process Not Found'"
 
@@ -1130,7 +1208,8 @@ parseReadingFromGameClient readingAggregate =
                         |> Result.map (EveOnline.ParseUserInterface.parseUITreeWithDisplayRegionFromUITree >> EveOnline.ParseUserInterface.parseUserInterfaceFromUITree)
                         |> Result.map
                             (\parsedMemoryReading ->
-                                { parsedMemoryReading = parsedMemoryReading
+                                { timeInMilliseconds = readingAggregate.initialReading.timeInMilliseconds
+                                , parsedMemoryReading = parsedMemoryReading
                                 , lastReadingFromWindow = Nothing
                                 , imageDataFromReadingResults = readingAggregate.imageDataFromReadingResults
                                 }
@@ -1253,7 +1332,7 @@ getSetupTaskWhenVolatileProcessSetupCompleted botConfiguration botSettings state
                                                     "Get the first memory reading from the EVE Online client process. This can take several seconds."
 
                                             Just lastMemoryReading ->
-                                                case lastMemoryReading.aggregate.initialReading of
+                                                case lastMemoryReading.aggregate.initialReading.fromVolatileProcess of
                                                     VolatileProcessInterface.ProcessNotFound ->
                                                         FrameworkStopSession "The EVE Online client process disappeared."
 

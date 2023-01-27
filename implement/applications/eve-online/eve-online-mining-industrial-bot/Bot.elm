@@ -1,6 +1,6 @@
-{- EVE Online mining bot version 2023-01-21
+{- EVE Online mining bot for industrial ship version 2023-01-26
 
-   The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
+   The bot warps to an asteroid belt, mines there using the mining drones until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
 
    Setup instructions for the EVE Online client:
@@ -11,6 +11,7 @@
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + Open one inventory window.
    + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
+   + If you want to use mining drones, you must have at least one in the drone bay, set mining-using-drones=yes and open the 'Drones' window.
 
    ## Configuration Settings
 
@@ -22,6 +23,7 @@
    + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
    + `unload-fleet-hangar-percent` : This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
    + `dock-when-without-drones` : This will make the bot dock when it's out of drones. However, he kept leaving and entering the station. The only supported values are `no` and `yes`.
+   + `mining-using-drones` : This will make the bot lock an asteroid and send the drone them to mine. The only supported values are `no` and `yes`.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -36,8 +38,16 @@
 
 -}
 {-
-   catalog-tags:eve-online,mining
+   catalog-tags:eve-online,mining,orca,rorqual,industrial
    authors-forum-usernames:viir
+-}
+{-
+   TODO:
+   - Using drones mining to mining in asteroid belt with the bot-setting; (in progress)
+   - Move ore from fleet hangar to mining hold when reaching 70% cap (create parameter?);
+   - warp to a fleet member using a watchlist;
+   - Enable the compression module and then compress the ores that are in the mining basement when reaching the limit informed in the compression parameter;
+   - Study a way that the bot can detect the types of drones (attack or mine). If he detects the rats, return the mining drones to the drone bay and launch attack drones to kill the rats, then launch mine drones to return to mining.
 -}
 
 
@@ -108,6 +118,7 @@ defaultBotSettings =
     , activateModulesAlways = []
     , hideWhenNeutralInLocal = Nothing
     , dockWhenWithoutDrones = Nothing
+    , miningUsingDrones = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 1300
@@ -144,6 +155,10 @@ parseBotSettings =
          , ( "dock-when-without-drones"
            , AppSettings.valueTypeYesOrNo
                 (\without -> \settings -> { settings | dockWhenWithoutDrones = Just without })
+           )
+         , ( "mining-using-drones"
+           , AppSettings.valueTypeYesOrNo
+                (\mining -> \settings -> { settings | miningUsingDrones = Just mining })
            )
          , ( "targeting-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | targetingRange = range })
@@ -183,6 +198,7 @@ type alias BotSettings =
     , activateModulesAlways : List String
     , hideWhenNeutralInLocal : Maybe AppSettings.YesOrNo
     , dockWhenWithoutDrones : Maybe AppSettings.YesOrNo
+    , miningUsingDrones : Maybe AppSettings.YesOrNo
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
@@ -304,9 +320,23 @@ shouldHideWhenNeutralInLocal context =
             )
                 < 50
 
+
 shouldDockWhenWithoutDrones : BotDecisionContext -> Bool
 shouldDockWhenWithoutDrones context =
     case context.eventContext.botSettings.dockWhenWithoutDrones of
+        Just AppSettings.No ->
+            False
+
+        Just AppSettings.Yes ->
+            True
+
+        Nothing ->
+            False
+
+
+shouldMiningUsingDrones : BotDecisionContext -> Bool
+shouldMiningUsingDrones context =
+    case context.eventContext.botSettings.miningUsingDrones of
         Just AppSettings.No ->
             False
 
@@ -343,12 +373,14 @@ returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones context shipUI =
     else
         case context.readingFromGameClient.dronesWindow of
             Nothing ->
-                if (context |> shouldDockWhenWithoutDrones) then
+                if context |> shouldDockWhenWithoutDrones then
                     Just
                         (describeBranch "I don't see the drone window, are we out of drones? configured to run away when without a drone. Run to the station!" (dockToUnloadOre context))
+
                 else
                     Nothing
-            _ ->                
+
+            _ ->
                 Nothing
 
 
@@ -432,30 +464,31 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
 inSpaceWithMiningHoldSelectedWithFleetHangar : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
 inSpaceWithMiningHoldSelectedWithFleetHangar context inventoryWindowWithMiningHoldSelected =
     case
-        inventoryWindowWithMiningHoldSelected |> fleetHangarFromInventoryWindow |> Maybe.map .uiNode  of
-            Nothing ->
-                describeBranch "I do not see the fleet hangar in the inventory." askForHelpToGetUnstuck
-            
-            Just fleetHangarFromInventory ->
-                case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
-                    Nothing ->
-                        describeBranch "I see no item in the mining hold. Click the tree entry representing the fleet Hangar."
-                            (decideActionForCurrentStep
-                                (mouseClickOnUIElement MouseButtonLeft fleetHangarFromInventory)
-                            )
+        inventoryWindowWithMiningHoldSelected |> fleetHangarFromInventoryWindow |> Maybe.map .uiNode
+    of
+        Nothing ->
+            describeBranch "I do not see the fleet hangar in the inventory." askForHelpToGetUnstuck
 
-                    Just itemInInventory ->
-                        describeBranch "I see at least one item in the mining hold. Move this to the fleet hangar."
-                            (describeBranch "Drag and drop."
-                                (decideActionForCurrentStep
-                                    (EffectOnWindow.effectsForDragAndDrop
-                                        { startLocation = itemInInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
-                                        , endLocation = fleetHangarFromInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
-                                        , mouseButton = MouseButtonLeft
-                                        }
-                                    )
+        Just fleetHangarFromInventory ->
+            case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
+                Nothing ->
+                    describeBranch "I see no item in the mining hold. Click the tree entry representing the fleet Hangar."
+                        (decideActionForCurrentStep
+                            (mouseClickOnUIElement MouseButtonLeft fleetHangarFromInventory)
+                        )
+
+                Just itemInInventory ->
+                    describeBranch "I see at least one item in the mining hold. Move this to the fleet hangar."
+                        (describeBranch "Drag and drop."
+                            (decideActionForCurrentStep
+                                (EffectOnWindow.effectsForDragAndDrop
+                                    { startLocation = itemInInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
+                                    , endLocation = fleetHangarFromInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
+                                    , mouseButton = MouseButtonLeft
+                                    }
                                 )
                             )
+                        )
 
 
 undockUsingStationWindow :
@@ -541,44 +574,35 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                                 )
 
                         else if context.eventContext.botSettings.unloadFleetHangarPercent > 0 && context.eventContext.botSettings.unloadFleetHangarPercent <= fillPercent then
-                                    describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnloadFleetHangar ++ ". Unload the ore on fleet hangar.")
-                                        (ensureMiningHoldIsSelectedInInventoryWindow
-                                            context.readingFromGameClient
-                                            (inSpaceWithMiningHoldSelectedWithFleetHangar context)
-                                        )
-                            else
-                                describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
-                                    (case context.readingFromGameClient.targets |> List.head of
-                                        Nothing ->
-                                            describeBranch "I see no locked target."
-                                                (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
+                            describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnloadFleetHangar ++ ". Unload the ore on fleet hangar.")
+                                (ensureMiningHoldIsSelectedInInventoryWindow
+                                    context.readingFromGameClient
+                                    (inSpaceWithMiningHoldSelectedWithFleetHangar context)
+                                )
 
-                                        Just _ ->
-                                            {- Depending on the UI configuration, the game client might automatically target rats.
-                                            To avoid these targets interfering with mining, unlock them here.
-                                            -}
-                                            unlockTargetsNotForMining context
-                                                |> Maybe.withDefault
-                                                    (describeBranch "I see a locked target."
-                                                        (case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                                            Nothing ->
-                                                                describeBranch
-                                                                    (if knownMiningModules == [] then
-                                                                        "Found no mining modules so far."
+                        else
+                            describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
+                                (case context.readingFromGameClient.targets |> List.head of
+                                    Nothing ->
+                                        describeBranch "I see no locked target."
+                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
 
-                                                                    else
-                                                                        "All known mining modules found so far are active."
-                                                                    )
-                                                                    (readShipUIModuleButtonTooltips context
-                                                                        |> Maybe.withDefault waitForProgressInGame
-                                                                    )
-
-                                                            Just inactiveModule ->
-                                                                describeBranch "I see an inactive mining module. Activate it."
-                                                                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                                    Just _ ->
+                                        {- Depending on the UI configuration, the game client might automatically target rats.
+                                           To avoid these targets interfering with mining, unlock them here.
+                                        -}
+                                        unlockTargetsNotForMining context
+                                            |> Maybe.withDefault
+                                                (launchProperDrones context
+                                                    |> Maybe.withDefault
+                                                        (describeBranch
+                                                            "I see a locked target."
+                                                            (readShipUIModuleButtonTooltips context
+                                                                |> Maybe.withDefault waitForProgressInGame
+                                                            )
                                                         )
-                                                    )
-                                    )
+                                                )
+                                )
 
 
 unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode
@@ -636,7 +660,7 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
                     describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
                         (warpToOverviewEntryIfFarEnough context asteroidInOverview
                             |> Maybe.withDefault
-                                (launchDrones context
+                                (launchProperDrones context
                                     |> Maybe.withDefault
                                         (lockTargetFromOverviewEntryAndEnsureIsInRange
                                             context
@@ -945,6 +969,20 @@ dockToRandomStationOrStructure context =
         context
 
 
+launchProperDrones : BotDecisionContext -> Maybe DecisionPathNode
+launchProperDrones context =
+    case context.readingFromGameClient.targets |> List.head of
+        Nothing ->
+            launchDrones context
+
+        _ ->
+            if context |> shouldMiningUsingDrones then
+                launchAndMineDrones context
+
+            else
+                launchDrones context
+
+
 launchDrones : BotDecisionContext -> Maybe DecisionPathNode
 launchDrones context =
     context.readingFromGameClient.dronesWindow
@@ -969,6 +1007,128 @@ launchDrones context =
                                     |> Maybe.withDefault 2
                         in
                         if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
+                            Just
+                                (describeBranch "Launch drones"
+                                    (useContextMenuCascade
+                                        ( "drones group", droneGroupInBay.header.uiNode )
+                                        (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
+                                        context
+                                    )
+                                )
+
+                        else
+                            Nothing
+
+                    _ ->
+                        Nothing
+            )
+
+
+launchAndEngageDrones : BotDecisionContext -> Maybe DecisionPathNode
+launchAndEngageDrones context =
+    context.readingFromGameClient.dronesWindow
+        |> Maybe.andThen
+            (\dronesWindow ->
+                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInSpace ) of
+                    ( Just droneGroupInBay, Just droneGroupInSpace ) ->
+                        let
+                            idlingDrones =
+                                droneGroupInSpace
+                                    |> EveOnline.ParseUserInterface.enumerateAllDronesFromDronesGroup
+                                    |> List.filter
+                                        (.uiNode
+                                            >> .uiNode
+                                            >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts
+                                            >> List.any (stringContainsIgnoringCase "idle")
+                                        )
+
+                            dronesInBayQuantity =
+                                droneGroupInBay.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
+
+                            dronesInSpaceQuantityCurrent =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
+
+                            dronesInSpaceQuantityLimit =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.andThen .maximum
+                                    |> Maybe.withDefault 2
+                        in
+                        if 0 < (idlingDrones |> List.length) then
+                            Just
+                                (describeBranch "Engage idling drone(s)"
+                                    (useContextMenuCascade
+                                        ( "drones group", droneGroupInSpace.header.uiNode )
+                                        (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
+                                        context
+                                    )
+                                )
+
+                        else if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
+                            Just
+                                (describeBranch "Launch drones"
+                                    (useContextMenuCascade
+                                        ( "drones group", droneGroupInBay.header.uiNode )
+                                        (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
+                                        context
+                                    )
+                                )
+
+                        else
+                            Nothing
+
+                    _ ->
+                        Nothing
+            )
+
+
+launchAndMineDrones : BotDecisionContext -> Maybe DecisionPathNode
+launchAndMineDrones context =
+    context.readingFromGameClient.dronesWindow
+        |> Maybe.andThen
+            (\dronesWindow ->
+                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInSpace ) of
+                    ( Just droneGroupInBay, Just droneGroupInSpace ) ->
+                        let
+                            idlingDrones =
+                                droneGroupInSpace
+                                    |> EveOnline.ParseUserInterface.enumerateAllDronesFromDronesGroup
+                                    |> List.filter
+                                        (.uiNode
+                                            >> .uiNode
+                                            >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts
+                                            >> List.any (stringContainsIgnoringCase "idle")
+                                        )
+
+                            dronesInBayQuantity =
+                                droneGroupInBay.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
+
+                            dronesInSpaceQuantityCurrent =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
+
+                            dronesInSpaceQuantityLimit =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.andThen .maximum
+                                    |> Maybe.withDefault 2
+                        in
+                        if 0 < (idlingDrones |> List.length) then
+                            Just
+                                (describeBranch "Mine idling drone(s)"
+                                    (useContextMenuCascade
+                                        ( "drones group", droneGroupInSpace.header.uiNode )
+                                        (useMenuEntryWithTextContaining "mine" menuCascadeCompleted)
+                                        context
+                                    )
+                                )
+
+                        else if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
                             Just
                                 (describeBranch "Launch drones"
                                     (useContextMenuCascade
@@ -1165,8 +1325,18 @@ statusTextFromDecisionContext context =
                    )
                 ++ "%."
 
+        describeFleetHangar =
+            "fleet hangar filled "
+                ++ (readingFromGameClient
+                        |> inventoryWindowWithFleetHangarSelectedFromGameClient
+                        |> Maybe.andThen capacityGaugeUsedPercent
+                        |> Maybe.map String.fromInt
+                        |> Maybe.withDefault "Unknown"
+                   )
+                ++ "%."
+
         describeCurrentReading =
-            [ describeMiningHold, describeShip, describeDrones ] |> String.join " "
+            [ describeMiningHold, describeFleetHangar, describeShip, describeDrones ] |> String.join " "
     in
     [ "Session performance: " ++ describeSessionPerformance
     , "---"
@@ -1337,6 +1507,31 @@ inventoryWindowSelectedContainerIsMiningHold_PhotonUI =
 inventoryWindowSelectedContainerIsMiningHold_pre_PhotonUI : EveOnline.ParseUserInterface.InventoryWindow -> Bool
 inventoryWindowSelectedContainerIsMiningHold_pre_PhotonUI =
     .subCaptionLabelText >> Maybe.map (stringContainsIgnoringCase "mining hold") >> Maybe.withDefault False
+
+
+inventoryWindowWithFleetHangarSelectedFromGameClient : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.InventoryWindow
+inventoryWindowWithFleetHangarSelectedFromGameClient =
+    .inventoryWindows
+        >> List.filter inventoryWindowSelectedContainerIsFleetHangar
+        >> List.head
+
+
+inventoryWindowSelectedContainerIsFleetHangar : EveOnline.ParseUserInterface.InventoryWindow -> Bool
+inventoryWindowSelectedContainerIsFleetHangar inventoryWindow =
+    inventoryWindowSelectedContainerIsFleetHangar_PhotonUI inventoryWindow
+        || inventoryWindowSelectedContainerIsFleetHangar_pre_PhotonUI inventoryWindow
+
+
+inventoryWindowSelectedContainerIsFleetHangar_PhotonUI : EveOnline.ParseUserInterface.InventoryWindow -> Bool
+inventoryWindowSelectedContainerIsFleetHangar_PhotonUI =
+    fleetHangarFromInventoryWindow
+        >> Maybe.map (.uiNode >> containsSelectionIndicatorPhotonUI)
+        >> Maybe.withDefault False
+
+
+inventoryWindowSelectedContainerIsFleetHangar_pre_PhotonUI : EveOnline.ParseUserInterface.InventoryWindow -> Bool
+inventoryWindowSelectedContainerIsFleetHangar_pre_PhotonUI =
+    .subCaptionLabelText >> Maybe.map (stringContainsIgnoringCase "fleet hangar") >> Maybe.withDefault False
 
 
 selectedContainerFirstItemFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe UIElement

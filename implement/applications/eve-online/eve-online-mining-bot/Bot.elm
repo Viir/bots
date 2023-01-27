@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-01-21
+{- EVE Online mining bot version 2023-01-26
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -432,30 +432,31 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
 inSpaceWithMiningHoldSelectedWithFleetHangar : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
 inSpaceWithMiningHoldSelectedWithFleetHangar context inventoryWindowWithMiningHoldSelected =
     case
-        inventoryWindowWithMiningHoldSelected |> fleetHangarFromInventoryWindow |> Maybe.map .uiNode  of
-            Nothing ->
-                describeBranch "I do not see the fleet hangar in the inventory." askForHelpToGetUnstuck
-            
-            Just fleetHangarFromInventory ->
-                case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
-                    Nothing ->
-                        describeBranch "I see no item in the mining hold. Click the tree entry representing the fleet Hangar."
-                            (decideActionForCurrentStep
-                                (mouseClickOnUIElement MouseButtonLeft fleetHangarFromInventory)
-                            )
+        inventoryWindowWithMiningHoldSelected |> fleetHangarFromInventoryWindow |> Maybe.map .uiNode
+    of
+        Nothing ->
+            describeBranch "I do not see the fleet hangar in the inventory." askForHelpToGetUnstuck
 
-                    Just itemInInventory ->
-                        describeBranch "I see at least one item in the mining hold. Move this to the fleet hangar."
-                            (describeBranch "Drag and drop."
-                                (decideActionForCurrentStep
-                                    (EffectOnWindow.effectsForDragAndDrop
-                                        { startLocation = itemInInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
-                                        , endLocation = fleetHangarFromInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
-                                        , mouseButton = MouseButtonLeft
-                                        }
-                                    )
+        Just fleetHangarFromInventory ->
+            case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
+                Nothing ->
+                    describeBranch "I see no item in the mining hold. Click the tree entry representing the fleet Hangar."
+                        (decideActionForCurrentStep
+                            (mouseClickOnUIElement MouseButtonLeft fleetHangarFromInventory)
+                        )
+
+                Just itemInInventory ->
+                    describeBranch "I see at least one item in the mining hold. Move this to the fleet hangar."
+                        (describeBranch "Drag and drop."
+                            (decideActionForCurrentStep
+                                (EffectOnWindow.effectsForDragAndDrop
+                                    { startLocation = itemInInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
+                                    , endLocation = fleetHangarFromInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
+                                    , mouseButton = MouseButtonLeft
+                                    }
                                 )
                             )
+                        )
 
 
 undockUsingStationWindow :
@@ -541,44 +542,45 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                                 )
 
                         else if context.eventContext.botSettings.unloadFleetHangarPercent > 0 && context.eventContext.botSettings.unloadFleetHangarPercent <= fillPercent then
-                                    describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnloadFleetHangar ++ ". Unload the ore on fleet hangar.")
-                                        (ensureMiningHoldIsSelectedInInventoryWindow
-                                            context.readingFromGameClient
-                                            (inSpaceWithMiningHoldSelectedWithFleetHangar context)
-                                        )
-                            else
-                                describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
-                                    (case context.readingFromGameClient.targets |> List.head of
-                                        Nothing ->
-                                            describeBranch "I see no locked target."
-                                                (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
+                            describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnloadFleetHangar ++ ". Unload the ore on fleet hangar.")
+                                (ensureMiningHoldIsSelectedInInventoryWindow
+                                    context.readingFromGameClient
+                                    (inSpaceWithMiningHoldSelectedWithFleetHangar context)
+                                )
 
-                                        Just _ ->
-                                            {- Depending on the UI configuration, the game client might automatically target rats.
-                                            To avoid these targets interfering with mining, unlock them here.
-                                            -}
-                                            unlockTargetsNotForMining context
-                                                |> Maybe.withDefault
-                                                    (describeBranch "I see a locked target."
-                                                        (case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                                            Nothing ->
-                                                                describeBranch
-                                                                    (if knownMiningModules == [] then
-                                                                        "Found no mining modules so far."
+                        else
+                            describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
+                                (case context.readingFromGameClient.targets |> List.head of
+                                    Nothing ->
+                                        describeBranch "I see no locked target."
+                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
 
-                                                                    else
-                                                                        "All known mining modules found so far are active."
-                                                                    )
-                                                                    (readShipUIModuleButtonTooltips context
-                                                                        |> Maybe.withDefault waitForProgressInGame
-                                                                    )
+                                    Just _ ->
+                                        {- Depending on the UI configuration, the game client might automatically target rats.
+                                           To avoid these targets interfering with mining, unlock them here.
+                                        -}
+                                        unlockTargetsNotForMining context
+                                            |> Maybe.withDefault
+                                                (describeBranch "I see a locked target."
+                                                    (case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                        Nothing ->
+                                                            describeBranch
+                                                                (if knownMiningModules == [] then
+                                                                    "Found no mining modules so far."
 
-                                                            Just inactiveModule ->
-                                                                describeBranch "I see an inactive mining module. Activate it."
-                                                                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
-                                                        )
+                                                                 else
+                                                                    "All known mining modules found so far are active."
+                                                                )
+                                                                (readShipUIModuleButtonTooltips context
+                                                                    |> Maybe.withDefault waitForProgressInGame
+                                                                )
+
+                                                        Just inactiveModule ->
+                                                            describeBranch "I see an inactive mining module. Activate it."
+                                                                (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                                                     )
-                                    )
+                                                )
+                                )
 
 
 unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode

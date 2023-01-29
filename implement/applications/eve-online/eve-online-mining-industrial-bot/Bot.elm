@@ -1,4 +1,4 @@
-{- EVE Online mining bot for industrial ship version 2023-01-27
+{- EVE Online mining bot for industrial ship version 2023-01-28
 
    The bot warps to an asteroid belt, mines there using the mining drones until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -133,10 +133,10 @@ parseBotSettings =
            , AppSettings.valueTypeInteger (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
            )
          , ( "unload-station-name"
-           , AppSettings.valueTypeString (\stationName -> \settings -> { settings | unloadStationName = Just stationName })
+           , AppSettings.valueTypeString (\stationName settings -> { settings | unloadStationName = Just stationName })
            )
          , ( "unload-structure-name"
-           , AppSettings.valueTypeString (\structureName -> \settings -> { settings | unloadStructureName = Just structureName })
+           , AppSettings.valueTypeString (\structureName settings -> { settings | unloadStructureName = Just structureName })
            )
          , ( "unload-fleet-hangar-percent"
            , AppSettings.valueTypeInteger (\fleetHangarPercent settings -> { settings | unloadFleetHangarPercent = fleetHangarPercent })
@@ -145,19 +145,19 @@ parseBotSettings =
            , AppSettings.valueTypeInteger (\percent settings -> { settings | unloadMiningHoldPercent = percent })
            )
          , ( "activate-module-always"
-           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways })
+           , AppSettings.valueTypeString (\moduleName settings -> { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways })
            )
          , ( "hide-when-neutral-in-local"
            , AppSettings.valueTypeYesOrNo
-                (\hide -> \settings -> { settings | hideWhenNeutralInLocal = Just hide })
+                (\hide settings -> { settings | hideWhenNeutralInLocal = Just hide })
            )
          , ( "dock-when-without-drones"
            , AppSettings.valueTypeYesOrNo
-                (\without -> \settings -> { settings | dockWhenWithoutDrones = Just without })
+                (\without settings -> { settings | dockWhenWithoutDrones = Just without })
            )
          , ( "mining-using-drones"
            , AppSettings.valueTypeYesOrNo
-                (\mining -> \settings -> { settings | miningUsingDrones = Just mining })
+                (\mining settings -> { settings | miningUsingDrones = Just mining })
            )
          , ( "targeting-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | targetingRange = range })
@@ -166,7 +166,7 @@ parseBotSettings =
            , AppSettings.valueTypeInteger (\range settings -> { settings | miningModuleRange = range })
            )
          , ( "select-instance-pilot-name"
-           , AppSettings.valueTypeString (\pilotName -> \settings -> { settings | selectInstancePilotName = Just pilotName })
+           , AppSettings.valueTypeString (\pilotName settings -> { settings | selectInstancePilotName = Just pilotName })
            )
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })

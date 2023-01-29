@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2023-01-26
+{- EVE Online combat anomaly bot version 2023-01-28
 
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
@@ -111,22 +111,25 @@ parseBotSettings =
     AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "hide-when-neutral-in-local"
            , AppSettings.valueTypeYesOrNo
-                (\hide -> \settings -> { settings | hideWhenNeutralInLocal = hide })
+                (\hide settings -> { settings | hideWhenNeutralInLocal = hide })
            )
          , ( "anomaly-name"
            , AppSettings.valueTypeString
-                (\anomalyName ->
-                    \settings -> { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
+                (\anomalyName settings ->
+                    { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
                 )
            )
          , ( "avoid-rat"
            , AppSettings.valueTypeString
-                (\ratToAvoid ->
-                    \settings -> { settings | avoidRats = String.trim ratToAvoid :: settings.avoidRats }
+                (\ratToAvoid settings ->
+                    { settings | avoidRats = String.trim ratToAvoid :: settings.avoidRats }
                 )
            )
          , ( "activate-module-always"
-           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways })
+           , AppSettings.valueTypeString
+                (\moduleName settings ->
+                    { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways }
+                )
            )
          , ( "anomaly-wait-time"
            , AppSettings.valueTypeInteger
@@ -135,10 +138,16 @@ parseBotSettings =
                 )
            )
          , ( "orbit-in-combat"
-           , AppSettings.valueTypeYesOrNo (\orbitInCombat settings -> { settings | orbitInCombat = orbitInCombat })
+           , AppSettings.valueTypeYesOrNo
+                (\orbitInCombat settings ->
+                    { settings | orbitInCombat = orbitInCombat }
+                )
            )
          , ( "bot-step-delay"
-           , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
+           , AppSettings.valueTypeInteger
+                (\delay settings ->
+                    { settings | botStepDelayMilliseconds = delay }
+                )
            )
          ]
             |> Dict.fromList

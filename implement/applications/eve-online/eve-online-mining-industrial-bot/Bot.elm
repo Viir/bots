@@ -1,6 +1,6 @@
 {- EVE Online mining bot for industrial ship version 2023-01-28
 
-   The bot warps to an asteroid belt, mines there using the mining drones until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
+   The bot warps to an asteroid belt or a pilot of your fleet, mines there using the mining drones until the fleet hangar is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
 
    Setup instructions for the EVE Online client:
@@ -39,7 +39,7 @@
 
 -}
 {-
-   catalog-tags:eve-online,mining,orca,rorqual,industrial
+   catalog-tags:eve-online,mining,orca,porpoise,industrial
    authors-forum-usernames:viir
 -}
 {-
@@ -585,20 +585,20 @@ inSpaceWithFleetHangarSelected context seeUndockingComplete inventoryWindowWithF
                                 (context.eventContext.botSettings.unloadFleetHangarPercent |> String.fromInt) ++ "%"
                         in
                         if context.eventContext.botSettings.unloadMiningHoldPercent <= fillPercent then
-                            describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
+                            describeBranch ("The fleet hangar is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
                                 (returnDronesToBay context
                                     |> Maybe.withDefault (dockToUnloadOre context)
                                 )
 
                         else if context.eventContext.botSettings.unloadFleetHangarPercent > 0 && context.eventContext.botSettings.unloadFleetHangarPercent <= fillPercent then
-                            describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnloadFleetHangar ++ ". Unload the ore on fleet hangar.")
+                            describeBranch ("The fleet hangar is filled at least " ++ describeThresholdToUnloadFleetHangar ++ ". Unload the ore on mining hold.")
                                 (ensureFleetHangarIsSelectedInInventoryWindow
                                     context.readingFromGameClient
                                     (inSpaceWithFleetHangarSelectedWithFleetHangar context)
                                 )
 
                         else
-                            describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
+                            describeBranch ("The fleet hangar is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
                                 (case context.readingFromGameClient.targets |> List.head of
                                     Nothing ->
                                         describeBranch "I see no locked target."
@@ -776,7 +776,7 @@ ensureFleetHangarIsSelectedInInventoryWindow readingFromGameClient continueWithI
 
                 Just inventoryWindow ->
                     describeBranch
-                        "mining hold is not selected. Select the mining hold."
+                        "fleet hangar is not selected. Select the fleet hangar."
                         (case inventoryWindow |> activeShipTreeEntryFromInventoryWindow of
                             Nothing ->
                                 describeBranch "I do not see the active ship in the inventory." askForHelpToGetUnstuck
@@ -1012,28 +1012,34 @@ runAway =
 
 dockToUnloadOre : BotDecisionContext -> DecisionPathNode
 dockToUnloadOre context =
-    case context.eventContext.botSettings.unloadStationName of
-        Just unloadStationName ->
-            dockToStationOrStructureWithMatchingName
-                { prioritizeStructures = False, nameFromSettingOrInfoPanel = unloadStationName }
-                context
+    case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> .isActive >> Maybe.withDefault False) |> List.head of
+        Just ( activeModuleMatchingText, activeModule ) ->
+            describeBranch ("I see active module '" ++ activeModuleMatchingText ++ "' to activate always. Inactivate it before docking.")
+                (clickModuleButtonButWaitIfClickedInPreviousStep context activeModule)
 
         Nothing ->
-            case context.eventContext.botSettings.unloadStructureName of
-                Just unloadStructureName ->
+            case context.eventContext.botSettings.unloadStationName of
+                Just unloadStationName ->
                     dockToStationOrStructureWithMatchingName
-                        { prioritizeStructures = True, nameFromSettingOrInfoPanel = unloadStructureName }
+                        { prioritizeStructures = False, nameFromSettingOrInfoPanel = unloadStationName }
                         context
 
                 Nothing ->
-                    case context.memory.lastDockedStationNameFromInfoPanel of
-                        Just unloadStationName ->
+                    case context.eventContext.botSettings.unloadStructureName of
+                        Just unloadStructureName ->
                             dockToStationOrStructureWithMatchingName
-                                { prioritizeStructures = False, nameFromSettingOrInfoPanel = unloadStationName }
+                                { prioritizeStructures = True, nameFromSettingOrInfoPanel = unloadStructureName }
                                 context
 
                         Nothing ->
-                            describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
+                            case context.memory.lastDockedStationNameFromInfoPanel of
+                                Just unloadStationName ->
+                                    dockToStationOrStructureWithMatchingName
+                                        { prioritizeStructures = False, nameFromSettingOrInfoPanel = unloadStationName }
+                                        context
+
+                                Nothing ->
+                                    describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
 
 
 dockToRandomStationOrStructure : BotDecisionContext -> DecisionPathNode

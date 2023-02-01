@@ -29,6 +29,7 @@ import EveOnline.VolatileProcessInterface as VolatileProcessInterface
 import Json.Decode
 import Json.Encode
 import List.Extra
+import Maybe.Extra
 import String.Extra
 
 
@@ -161,7 +162,7 @@ type alias GameClientProcessSummary =
 
 type alias ShipModulesMemory =
     { tooltipFromModuleButton : Dict.Dict String EveOnline.ParseUserInterface.ModuleButtonTooltip
-    , lastReadingTooltip : Maybe EveOnline.ParseUserInterface.ModuleButtonTooltip
+    , previousReadingTooltip : Maybe EveOnline.ParseUserInterface.ModuleButtonTooltip
     }
 
 
@@ -219,7 +220,7 @@ getImageDataFromReadingRequestLimit =
 initShipModulesMemory : ShipModulesMemory
 initShipModulesMemory =
     { tooltipFromModuleButton = Dict.empty
-    , lastReadingTooltip = Nothing
+    , previousReadingTooltip = Nothing
     }
 
 
@@ -231,9 +232,9 @@ integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
                 |> EveOnline.ParseUserInterface.getAllContainedDisplayTextsWithRegion
                 |> List.map (Tuple.mapSecond .totalDisplayRegion)
 
-        {- To ensure robustness, we store a new tooltip only when the display texts match in two consecutive readings from the game client. -}
+        {- To ensure robustness, we store a new tooltip only when the display texts match in two readings from the game client. -}
         tooltipAvailableToStore =
-            case ( memoryBefore.lastReadingTooltip, currentReading.moduleButtonTooltip ) of
+            case ( memoryBefore.previousReadingTooltip, currentReading.moduleButtonTooltip ) of
                 ( Just previousTooltip, Just currentTooltip ) ->
                     if getTooltipDataForEqualityComparison previousTooltip == getTooltipDataForEqualityComparison currentTooltip then
                         Just currentTooltip
@@ -271,7 +272,9 @@ integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
                 |> Dict.filter (\moduleButtonId _ -> visibleModuleButtonsIds |> List.member moduleButtonId)
     in
     { tooltipFromModuleButton = tooltipFromModuleButton
-    , lastReadingTooltip = currentReading.moduleButtonTooltip
+    , previousReadingTooltip =
+        currentReading.moduleButtonTooltip
+            |> Maybe.Extra.orElse memoryBefore.previousReadingTooltip
     }
 
 

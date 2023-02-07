@@ -15,18 +15,19 @@ To learn more about developing for EVE Online, see the guide at <https://to.botl
 
 -}
 
-import BotLab.BotInterface_To_Host_2023_01_17 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.DecisionPath
 import Common.EffectOnWindow
-import Dict
 import EveOnline.BotFramework
     exposing
-        ( PixelValueRGB
-        , ReadingFromGameClient
+        ( ReadingFromGameClient
+        , ReadingFromGameClientImage
+        , ReadingFromGameClientMemory
         , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
         , UseContextMenuCascadeNode
+        , asReadingFromGameClientMemory
         , cornersFromDisplayRegion
         , doesPointIntersectRegion
         , getModuleButtonTooltipFromModuleButton
@@ -71,7 +72,7 @@ type alias StepDecisionContext botSettings botMemory =
     , readingFromGameClientImage : ReadingFromGameClientImage
     , memory : botMemory
     , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
-    , previousReadingsFromGameClient : List ReadingFromGameClient
+    , previousReadingsFromGameClient : List ReadingFromGameClientMemory
     , contextMenuCascadeLevel : Int
     }
 
@@ -83,7 +84,7 @@ type alias StateIncludingFramework botSettings botMemory =
 type alias BotState botMemory =
     { botMemory : botMemory
     , lastStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
-    , lastReadingsFromGameClient : List ReadingFromGameClient
+    , lastReadingsFromGameClient : List ReadingFromGameClientMemory
     }
 
 
@@ -93,22 +94,6 @@ type alias BotConfiguration botSettings botMemory =
     , updateMemoryForNewReadingFromGame : UpdateMemoryContext -> botMemory -> botMemory
     , statusTextFromDecisionContext : StepDecisionContext botSettings botMemory -> String
     , decideNextStep : StepDecisionContext botSettings botMemory -> DecisionPathNode
-    }
-
-
-type alias BotConfigurationWithImageProcessing botSettings botMemory =
-    { parseBotSettings : String -> Result String botSettings
-    , selectGameClientInstance : Maybe botSettings -> List EveOnline.BotFramework.GameClientProcessSummary -> Result String { selectedProcess : EveOnline.BotFramework.GameClientProcessSummary, report : List String }
-    , screenshotRegionsToRead : ReadingFromGameClient -> { rects1x1 : List Rect2dStructure }
-    , updateMemoryForNewReadingFromGame : UpdateMemoryContext -> botMemory -> botMemory
-    , statusTextFromDecisionContext : StepDecisionContext botSettings botMemory -> String
-    , decideNextStep : StepDecisionContext botSettings botMemory -> DecisionPathNode
-    }
-
-
-type alias ReadingFromGameClientImage =
-    { pixels_1x1 : Dict.Dict ( Int, Int ) PixelValueRGB
-    , pixels_2x2 : Dict.Dict ( Int, Int ) PixelValueRGB
     }
 
 
@@ -144,22 +129,6 @@ processEvent :
     -> EveOnline.BotFramework.StateIncludingFramework botSettings (BotState botMemory)
     -> ( EveOnline.BotFramework.StateIncludingFramework botSettings (BotState botMemory), InterfaceToHost.BotEventResponse )
 processEvent botConfiguration =
-    processEventWithImageProcessing
-        { parseBotSettings = botConfiguration.parseBotSettings
-        , selectGameClientInstance = botConfiguration.selectGameClientInstance
-        , screenshotRegionsToRead = always { rects1x1 = [] }
-        , updateMemoryForNewReadingFromGame = botConfiguration.updateMemoryForNewReadingFromGame
-        , statusTextFromDecisionContext = botConfiguration.statusTextFromDecisionContext
-        , decideNextStep = botConfiguration.decideNextStep
-        }
-
-
-processEventWithImageProcessing :
-    BotConfigurationWithImageProcessing botSettings botMemory
-    -> InterfaceToHost.BotEvent
-    -> EveOnline.BotFramework.StateIncludingFramework botSettings (BotState botMemory)
-    -> ( EveOnline.BotFramework.StateIncludingFramework botSettings (BotState botMemory), InterfaceToHost.BotEventResponse )
-processEventWithImageProcessing botConfiguration =
     EveOnline.BotFramework.processEvent
         { parseBotSettings = botConfiguration.parseBotSettings
         , selectGameClientInstance = botConfiguration.selectGameClientInstance
@@ -168,7 +137,6 @@ processEventWithImageProcessing botConfiguration =
                 { updateMemoryForNewReadingFromGame = botConfiguration.updateMemoryForNewReadingFromGame
                 , statusTextFromDecisionContext = botConfiguration.statusTextFromDecisionContext
                 , decideNextStep = botConfiguration.decideNextStep
-                , screenshotRegionsToRead = botConfiguration.screenshotRegionsToRead
                 }
         }
 
@@ -177,7 +145,6 @@ processEventInBaseFramework :
     { updateMemoryForNewReadingFromGame : UpdateMemoryContext -> botMemory -> botMemory
     , statusTextFromDecisionContext : StepDecisionContext botSettings botMemory -> String
     , decideNextStep : StepDecisionContext botSettings botMemory -> DecisionPathNode
-    , screenshotRegionsToRead : ReadingFromGameClient -> { rects1x1 : List Rect2dStructure }
     }
     -> EveOnline.BotFramework.BotEventContext botSettings
     -> EveOnline.BotFramework.BotEvent
@@ -251,11 +218,16 @@ processEventInBaseFramework config eventContext event stateBefore =
                     , describeActivity
                     ]
                         |> String.join "\n"
+
+                readingFromGameClientMemory =
+                    asReadingFromGameClientMemory readingFromGameClient
             in
             ( { botMemory = botMemory
               , lastStepEffects = effectsOnGameClientWindow
               , lastReadingsFromGameClient =
-                    List.take 3 (readingFromGameClient :: stateBefore.lastReadingsFromGameClient)
+                    readingFromGameClientMemory
+                        :: stateBefore.lastReadingsFromGameClient
+                        |> List.take 3
               }
             , case decisionLeaf of
                 ContinueSession continueSession ->
@@ -271,7 +243,6 @@ processEventInBaseFramework config eventContext event stateBefore =
                     EveOnline.BotFramework.ContinueSession
                         { effects = effectsOnGameClientWindow
                         , millisecondsToNextReadingFromGame = millisecondsToNextReadingFromGame
-                        , screenshotRegionsToRead = config.screenshotRegionsToRead
                         , statusText = statusText
                         }
 

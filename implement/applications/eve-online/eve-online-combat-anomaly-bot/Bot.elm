@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2023-01-30
+{- EVE Online combat anomaly bot version 2023-02-06
 
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
@@ -47,7 +47,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_2023_01_17 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
@@ -55,7 +55,8 @@ import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.BotFramework
     exposing
-        ( ReadingFromGameClient
+        ( ModuleButtonTooltipMemory
+        , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
         , UseContextMenuCascadeNode(..)
@@ -88,7 +89,6 @@ import EveOnline.ParseUserInterface
         ( OverviewWindowEntry
         , ShipUI
         , ShipUIModuleButton
-        , getAllContainedDisplayTexts
         )
 import Set
 
@@ -849,13 +849,11 @@ knownModulesToActivateAlways context =
             )
 
 
-tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> EveOnline.ParseUserInterface.ModuleButtonTooltip -> Maybe String
+tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> ModuleButtonTooltipMemory -> Maybe String
 tooltipLooksLikeModuleToActivateAlways context =
-    .uiNode
-        >> .uiNode
-        >> getAllContainedDisplayTexts
+    .allContainedDisplayTextsWithRegion
         >> List.filterMap
-            (\tooltipText ->
+            (\( tooltipText, _ ) ->
                 context.eventContext.botSettings.activateModulesAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->

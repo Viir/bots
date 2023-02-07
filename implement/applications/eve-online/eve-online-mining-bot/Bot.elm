@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-01-30
+{- EVE Online mining bot version 2023-02-06
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -46,7 +46,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_2023_01_17 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
@@ -54,7 +54,8 @@ import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.BotFramework
     exposing
-        ( ReadingFromGameClient
+        ( ModuleButtonTooltipMemory
+        , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
@@ -88,7 +89,6 @@ import EveOnline.ParseUserInterface
         ( OverviewWindowEntry
         , UITreeNodeWithDisplayRegion
         , centerFromDisplayRegion
-        , getAllContainedDisplayTexts
         )
 import Regex
 
@@ -444,7 +444,7 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
 
 
 inSpaceWithMiningHoldSelectedWithFleetHangar : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
-inSpaceWithMiningHoldSelectedWithFleetHangar context inventoryWindowWithMiningHoldSelected =
+inSpaceWithMiningHoldSelectedWithFleetHangar _ inventoryWindowWithMiningHoldSelected =
     case
         inventoryWindowWithMiningHoldSelected |> fleetHangarFromInventoryWindow |> Maybe.map .uiNode
     of
@@ -1060,20 +1060,18 @@ knownModulesToActivateAlways context =
             )
 
 
-tooltipLooksLikeMiningModule : EveOnline.ParseUserInterface.ModuleButtonTooltip -> Bool
+tooltipLooksLikeMiningModule : ModuleButtonTooltipMemory -> Bool
 tooltipLooksLikeMiningModule =
-    .uiNode
-        >> .uiNode
-        >> getAllContainedDisplayTexts
+    .allContainedDisplayTextsWithRegion
+        >> List.map Tuple.first
         >> List.any
             (Regex.fromString "\\d\\s*m3\\s*\\/\\s*s" |> Maybe.map Regex.contains |> Maybe.withDefault (always False))
 
 
-tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> EveOnline.ParseUserInterface.ModuleButtonTooltip -> Maybe String
+tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> ModuleButtonTooltipMemory -> Maybe String
 tooltipLooksLikeModuleToActivateAlways context =
-    .uiNode
-        >> .uiNode
-        >> getAllContainedDisplayTexts
+    .allContainedDisplayTextsWithRegion
+        >> List.map Tuple.first
         >> List.filterMap
             (\tooltipText ->
                 context.eventContext.botSettings.activateModulesAlways

@@ -12,7 +12,7 @@ The framework derives the notifications from your bot's status text, according t
 
 -}
 
-import BotLab.BotInterface_To_Host_2023_01_17 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import BotLab.NotificationsShim.VolatileProcessInterface as VolatileProcessInterface
 import CompilationInterface.SourceFiles
 

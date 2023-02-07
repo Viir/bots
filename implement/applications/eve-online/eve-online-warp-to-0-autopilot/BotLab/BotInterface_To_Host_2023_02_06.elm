@@ -1,4 +1,4 @@
-module BotLab.BotInterface_To_Host_2023_01_17 exposing (..)
+module BotLab.BotInterface_To_Host_2023_02_06 exposing (..)
 
 {-| This module contains types for the interface between a bot and the botlab client.
 The structures in these types reflect the standard interface for player agents to observe their environment and act in their environment.
@@ -106,7 +106,7 @@ type Task
 type MethodOnWindow
     = CloseWindowMethod
     | ChromeDevToolsProtocolRuntimeEvaluateMethod ChromeDevToolsProtocolRuntimeEvaluateParams
-    | ReadFromWindowMethod ReadFromWindowMethodStruct
+    | ReadFromWindowMethod
 
 
 type InvokeMethodOnWindowError
@@ -135,37 +135,21 @@ type alias ReadFromWindowCompleteStruct =
 
     -- https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-clienttoscreen
     , clientRectLeftUpperToScreen : WinApiPointStruct
-    , imageData : GetImageDataFromReadingCompleteStruct
+    , imageData : ImageDataFromReadingCompleteStruct
     }
 
 
-type alias ReadFromWindowMethodStruct =
-    { reuseLastReading : Bool
-    , imageData : GetImageDataFromReadingStruct
-    }
-
-
-type alias GetImageDataFromReadingStruct =
-    { screenshotCrops : List ImageCropRequest
-    }
-
-
-type alias GetImageDataFromReadingCompleteStruct =
-    { screenshotCrops : List ImageCrop
-    }
-
-
-type alias ImageCropRequest =
-    { offset : WinApiPointStruct
-    , binning : WinApiPointStruct
-    , binnedWidth : Int
-    , binnedHeight : Int
+type alias ImageDataFromReadingCompleteStruct =
+    { screenshotCrops_original : List ImageCrop
+    , screenshotCrops_binned_2x2 : List ImageCrop
+    , screenshotCrops_binned_4x4 : List ImageCrop
     }
 
 
 type alias ImageCrop =
-    { origin : ImageCropRequest
-    , pixels : List (List Int)
+    { offset : WinApiPointStruct
+    , widthPixels : Int
+    , pixelsString : String
     }
 
 

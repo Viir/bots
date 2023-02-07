@@ -4,24 +4,26 @@ This bot uses the probe scanner to warp to combat anomalies and kills rats using
 
 ## Features
 
-+ **safe**: does not inject into or write to the EVE Online client. That is why using it with EVE Online is not detectable.
-+ **accurate & robust**: This bot uses Sanderling memory reading to get information about the game state and user interface.
++ Automatically detects if another pilot is in an anomaly on arrival and switches to another anomaly if necessary.
++ Filtering for specific anomalies using bot settings.
++ Avoiding dangerous or too-powerful rats using bot settings.
++ Remembers observed properties of anomalies, like other pilots or dangerous rats, to inform the selection of anomalies in the future.
 
 ## Setting up the Game Client
 
-Despite being quite robust, this bot is far from being as smart as a human. For example, its perception is more limited than ours, so we need to set up the game to make sure that the bot can see everything it needs to. Following is the list of setup instructions for the EVE Online client:
+Despite being quite robust, this bot is less intelligent than a human. For example, its perception is more limited than ours, so we need to set up the game to ensure that the bot can see everything it needs. Following is the list of setup instructions for the EVE Online client:
 
 + Set the UI language to English.
 + Undock, open probe scanner, overview window and drones window.
 + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
 + In the ship UI, arrange the modules:
-  + Place to use in combat (to activate on targets) in the top row.
+  + Place the modules to use in combat (to activate on targets) in the top row.
   + Hide passive modules by disabling the check-box `Display Passive Modules`.
 + Configure the keyboard key 'W' to make the ship orbit.
 
 ## Starting the Bot
 
-To start the bot, download the script from <https://catalog.botlab.org/3c06e88feb09dcaf> and then run it.
+To start the bot, download the script from <https://catalog.botlab.org/8409eb3fa0f7748e> and then run it.
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
 

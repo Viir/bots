@@ -27,7 +27,7 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from <https://catalog.botlab.org/7aec4c539ebd95dc> and then run it.
+To start the mining bot, download the script from <https://catalog.botlab.org/57e101909df1a02c> and then run it.
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
 
@@ -56,6 +56,8 @@ All settings are optional; you only need them in case the defaults don't fit you
 + `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
 + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
 + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
++ `unload-fleet-hangar-percent` : This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
++ `dock-when-without-drones` : This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`.
 
 When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of a complete settings string:

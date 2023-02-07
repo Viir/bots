@@ -6,11 +6,17 @@ Fortunately, this process can be automated using a bot. The bot we are using her
 
 ## Starting the Autopilot Bot
 
-To start the bot, download the script from <https://catalog.botlab.org/7c11ebcee2b347ef> and then run it.
+To start the bot, download the script from <https://catalog.botlab.org/2268c76e80d06d28> and then run it.
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
 
 After completing the installation, run the script again to start the bot.
+
+Before starting the bot, set up the game client as follows:
+
++ Set the UI language to English.
++ Set the in-game autopilot route.
++ Make sure the autopilot info panel is expanded, so that the route is visible.
 
 The bot needs a few seconds to start and find the EVE Online client process. It also shows status messages to inform what it is doing at the moment and when the startup is complete.
 
@@ -27,7 +33,11 @@ Also, this bot does not undock, so we need to undock our ship manually for the b
 
 As soon as we undock, the bot will start to send mouse clicks to the game client to initiate warp and jump maneuvers.
 
-The bot only works when the UI language is set to English. The bot reads the text in menu entries to decide where to click, and it only knows the English translations.
+## Configuration Settings
+
+Settings are optional; you only need them in case the defaults don't fit your use-case.
+
++ `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "cloaking device".
 
 Alright, I think that is all there is to know about the basic autopilot bot. If you have questions about this bot or are searching for other bots, don't hesitate to ask on the [BotLab forum](https://forum.botlab.org/).
 

@@ -861,29 +861,6 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                 )
 
 
-pixelDictionaryFromCrops : List VolatileProcessInterface.ImageCrop -> Dict.Dict ( Int, Int ) PixelValueRGB
-pixelDictionaryFromCrops crops =
-    crops
-        |> List.concatMap
-            (\imageCrop ->
-                imageCrop.pixels
-                    |> List.indexedMap
-                        (\rowIndexInCrop rowPixels ->
-                            rowPixels
-                                |> List.indexedMap
-                                    (\columnIndexInCrop pixelValue ->
-                                        ( ( columnIndexInCrop + imageCrop.offset.x
-                                          , rowIndexInCrop + imageCrop.offset.y
-                                          )
-                                        , pixelValue
-                                        )
-                                    )
-                        )
-                    |> List.concat
-            )
-        |> Dict.fromList
-
-
 pixelFromCrops : List ImageCrop -> ( Int, Int ) -> Maybe PixelValueRGB
 pixelFromCrops crops ( pixelX, pixelY ) =
     crops
@@ -973,10 +950,7 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
 
                 Just responseFromVolatileProcessOk ->
                     setupStateWithScriptRunResult
-                        |> integrateResponseFromVolatileProcess
-                            { responseFromVolatileProcess = responseFromVolatileProcessOk
-                            , runInVolatileProcessDurationInMs = requestResult.durationInMilliseconds
-                            }
+                        |> integrateResponseFromVolatileProcess responseFromVolatileProcessOk
 
         InterfaceToHost.OpenWindowResponse _ ->
             setupStateBefore
@@ -1000,10 +974,10 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
 
 
 integrateResponseFromVolatileProcess :
-    { responseFromVolatileProcess : VolatileProcessInterface.ResponseFromVolatileHost, runInVolatileProcessDurationInMs : Int }
+    VolatileProcessInterface.ResponseFromVolatileHost
     -> SetupState
     -> SetupState
-integrateResponseFromVolatileProcess { responseFromVolatileProcess, runInVolatileProcessDurationInMs } stateBefore =
+integrateResponseFromVolatileProcess responseFromVolatileProcess stateBefore =
     case responseFromVolatileProcess of
         VolatileProcessInterface.ListGameClientProcessesResponse gameClientProcesses ->
             { stateBefore | gameClientProcesses = Just gameClientProcesses }
@@ -1043,12 +1017,6 @@ integrateResponseFromVolatileProcess { responseFromVolatileProcess, runInVolatil
                             in
                             state
 
-        {-
-           TODO: Remove VolatileProcessInterface.GetImageDataFromReadingResult
-        -}
-        VolatileProcessInterface.GetImageDataFromReadingResult getImageDataFromReadingResult ->
-            stateBefore
-
         VolatileProcessInterface.FailedToBringWindowToFront error ->
             { stateBefore | lastEffectFailedToAcquireInputFocus = Just error }
 
@@ -1080,7 +1048,7 @@ integrateReadFromWindowComplete { readFromWindowComplete } stateBefore =
                     }
 
 
-colorFromInt_R8G8B8 : Int -> VolatileProcessInterface.PixelValueRGB
+colorFromInt_R8G8B8 : Int -> PixelValueRGB
 colorFromInt_R8G8B8 combined =
     { red = combined |> Bitwise.shiftRightZfBy 16 |> Bitwise.and 0xFF
     , green = combined |> Bitwise.shiftRightZfBy 8 |> Bitwise.and 0xFF
@@ -1222,7 +1190,6 @@ getSetupTaskWhenVolatileProcessSetupCompleted botConfiguration botSettings state
                                                 VolatileProcessInterface.ReadFromWindow
                                                     { windowId = gameClientSelection.selectedProcess.mainWindowId
                                                     , uiRootAddress = uiRootAddress
-                                                    , getImageData = { screenshot1x1Rects = [] }
                                                     }
                                         in
                                         let

@@ -2,7 +2,6 @@ module EveOnline.VolatileProcessInterface exposing (..)
 
 import Common.EffectOnWindow exposing (MouseButton(..), VirtualKeyCode(..), virtualKeyCodeAsInteger)
 import Json.Decode
-import Json.Decode.Extra
 import Json.Encode
 import Maybe.Extra
 
@@ -367,7 +366,7 @@ decodeSearchUIRootAddressResult : Json.Decode.Decoder SearchUIRootAddressResultS
 decodeSearchUIRootAddressResult =
     Json.Decode.map2 SearchUIRootAddressResultStructure
         (Json.Decode.field "processId" Json.Decode.int)
-        (Json.Decode.Extra.optionalField "uiRootAddress" (Json.Decode.nullable Json.Decode.string) |> Json.Decode.map Maybe.Extra.join)
+        (jsonDecode_optionalField "uiRootAddress" (Json.Decode.nullable Json.Decode.string) |> Json.Decode.map Maybe.Extra.join)
 
 
 decodeReadFromWindowResult : Json.Decode.Decoder ReadFromWindowResultStructure
@@ -383,7 +382,7 @@ decodeMemoryReadingCompleted =
     Json.Decode.map5 MemoryReadingCompletedStructure
         (Json.Decode.field "processId" Json.Decode.int)
         (Json.Decode.field "readingId" Json.Decode.string)
-        (Json.Decode.Extra.optionalField "memoryReadingSerialRepresentationJson" Json.Decode.string)
+        (jsonDecode_optionalField "memoryReadingSerialRepresentationJson" Json.Decode.string)
         (Json.Decode.field "windowClientRectOffset" jsonDecodeLocation2d)
         (Json.Decode.field "imageData" jsonDecodeGetImageDataFromReadingResult)
 
@@ -391,7 +390,7 @@ decodeMemoryReadingCompleted =
 jsonDecodeGetImageDataFromReadingResult : Json.Decode.Decoder GetImageDataFromReadingResultStructure
 jsonDecodeGetImageDataFromReadingResult =
     Json.Decode.map GetImageDataFromReadingResultStructure
-        (Json.Decode.Extra.optionalField "screenshot1x1Rects" (Json.Decode.nullable (Json.Decode.list jsonDecodeImageCrop))
+        (jsonDecode_optionalField "screenshot1x1Rects" (Json.Decode.nullable (Json.Decode.list jsonDecodeImageCrop))
             |> Json.Decode.map (Maybe.Extra.join >> Maybe.withDefault [])
         )
 
@@ -451,3 +450,20 @@ jsonDecodeSucceedWhenNotNull valueIfNotNull =
                 else
                     Json.Decode.succeed valueIfNotNull
             )
+
+
+jsonDecode_optionalField : String -> Json.Decode.Decoder a -> Json.Decode.Decoder (Maybe a)
+jsonDecode_optionalField fieldName decoder =
+    let
+        finishDecoding json =
+            case Json.Decode.decodeValue (Json.Decode.field fieldName Json.Decode.value) json of
+                Ok val ->
+                    -- The field is present, so run the decoder on it.
+                    Json.Decode.map Just (Json.Decode.field fieldName decoder)
+
+                Err _ ->
+                    -- The field was missing, which is fine!
+                    Json.Decode.succeed Nothing
+    in
+    Json.Decode.value
+        |> Json.Decode.andThen finishDecoding

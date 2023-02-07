@@ -887,7 +887,7 @@ pixelDictionaryFromCrops crops =
 pixelFromCrops : List ImageCrop -> ( Int, Int ) -> Maybe PixelValueRGB
 pixelFromCrops crops ( pixelX, pixelY ) =
     crops
-        |> listFindMap
+        |> List.Extra.findMap
             (\imageCrop ->
                 let
                     inCropX =
@@ -923,21 +923,6 @@ parseImageCropPixelsArrayFromPixelsString =
     Json.Decode.decodeString
         (Json.Decode.array Json.Decode.int)
         >> Result.mapError Json.Decode.errorToString
-
-
-listFindMap : (a -> Maybe b) -> List a -> Maybe b
-listFindMap f list =
-    case list of
-        [] ->
-            Nothing
-
-        a :: tail ->
-            case f a of
-                Just b ->
-                    Just b
-
-                Nothing ->
-                    listFindMap f tail
 
 
 integrateTaskResult :

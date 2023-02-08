@@ -21,8 +21,8 @@ import Common.EffectOnWindow
 import EveOnline.BotFramework
     exposing
         ( ReadingFromGameClient
-        , ReadingFromGameClientImage
         , ReadingFromGameClientMemory
+        , ReadingFromGameClientScreenshot
         , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
@@ -62,14 +62,14 @@ type alias DecisionPathNode =
 type alias UpdateMemoryContext =
     { timeInMilliseconds : Int
     , readingFromGameClient : ReadingFromGameClient
-    , readingFromGameClientImage : ReadingFromGameClientImage
+    , screenshot : ReadingFromGameClientScreenshot
     }
 
 
 type alias StepDecisionContext botSettings botMemory =
     { eventContext : EveOnline.BotFramework.BotEventContext botSettings
     , readingFromGameClient : ReadingFromGameClient
-    , readingFromGameClientImage : ReadingFromGameClientImage
+    , screenshot : ReadingFromGameClientScreenshot
     , memory : botMemory
     , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
     , previousReadingsFromGameClient : List ReadingFromGameClientMemory
@@ -152,12 +152,12 @@ processEventInBaseFramework :
     -> ( BotState botMemory, EveOnline.BotFramework.BotEventResponse )
 processEventInBaseFramework config eventContext event stateBefore =
     case event of
-        EveOnline.BotFramework.ReadingFromGameClientCompleted readingFromGameClient readingFromGameClientImage ->
+        EveOnline.BotFramework.ReadingFromGameClientCompleted readingFromGameClient screenshot ->
             let
                 updateMemoryContext =
                     { timeInMilliseconds = eventContext.timeInMilliseconds
                     , readingFromGameClient = readingFromGameClient
-                    , readingFromGameClientImage = readingFromGameClientImage
+                    , screenshot = screenshot
                     }
 
                 botMemory =
@@ -189,7 +189,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                     { eventContext = eventContext
                     , memory = botMemory
                     , readingFromGameClient = readingFromGameClient
-                    , readingFromGameClientImage = readingFromGameClientImage
+                    , screenshot = screenshot
                     , previousStepEffects = stateBefore.lastStepEffects
                     , previousReadingsFromGameClient = stateBefore.lastReadingsFromGameClient
                     , contextMenuCascadeLevel = contextMenuCascadeLevel

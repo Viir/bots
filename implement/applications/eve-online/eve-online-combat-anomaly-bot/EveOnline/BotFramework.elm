@@ -25,12 +25,13 @@ import Common.FNV
 import CompilationInterface.SourceFiles
 import Dict
 import EveOnline.MemoryReading
-import EveOnline.ParseUserInterface exposing (DisplayRegion, Location2d, centerFromDisplayRegion, getAllContainedDisplayTextsWithRegion)
+import EveOnline.ParseUserInterface exposing (DisplayRegion, centerFromDisplayRegion, getAllContainedDisplayTextsWithRegion)
 import EveOnline.VolatileProcessInterface as VolatileProcessInterface
 import Json.Decode
 import Json.Encode
 import List.Extra
 import Maybe.Extra
+import Result.Extra
 import String.Extra
 
 
@@ -42,7 +43,7 @@ type alias BotConfiguration botSettings botState =
 
 
 type BotEvent
-    = ReadingFromGameClientCompleted EveOnline.ParseUserInterface.ParsedUserInterface ReadingFromGameClientImage
+    = ReadingFromGameClientCompleted EveOnline.ParseUserInterface.ParsedUserInterface ReadingFromGameClientScreenshot
 
 
 type BotEventResponse
@@ -200,7 +201,7 @@ type alias SeeUndockingComplete =
     }
 
 
-type alias ReadingFromGameClientImage =
+type alias ReadingFromGameClientScreenshot =
     { pixels_1x1 : ( Int, Int ) -> Maybe PixelValueRGB
     , pixels_2x2 : ( Int, Int ) -> Maybe PixelValueRGB
     }
@@ -710,20 +711,26 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                         |> List.map parseImageCropFromInterface
                         |> List.filterMap Result.toMaybe
 
-                image =
+                screenshot =
                     { pixels_1x1 = screenshotCrops_original |> pixelFromCropsInClientArea 1
                     , pixels_2x2 = screenshotCrops_binned_2x2 |> pixelFromCropsInClientArea 2
                     }
 
-                parsedUserInterface =
-                    parseUserInterface readingFromGameClient.parsedMemoryReading image
-            in
-            let
+                ( parsedUserInterface, statusTextAdditionFromParseFromScreenshot ) =
+                    case parseUserInterfaceFromScreenshot screenshot readingFromGameClient.parsedMemoryReading of
+                        Ok parsed ->
+                            ( parsed, [] )
+
+                        Err parseErr ->
+                            ( readingFromGameClient.parsedMemoryReading
+                            , [ "Failed to parse user interface: " ++ parseErr ]
+                            )
+
                 botStateBefore =
                     stateBefore.botState
 
                 botEvent =
-                    ReadingFromGameClientCompleted parsedUserInterface image
+                    ReadingFromGameClientCompleted parsedUserInterface screenshot
 
                 ( newBotState, botEventResponse ) =
                     botStateBefore.botState
@@ -734,11 +741,18 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                     , eventResult = ( newBotState, botEventResponse )
                     }
 
+                sharedStatusTextAddition =
+                    statusTextAdditionFromParseFromScreenshot
+
                 response =
                     case botEventResponse of
                         FinishSession _ ->
                             InternalFinishSession
-                                { statusText = "The bot finished the session." }
+                                { statusText =
+                                    "The bot finished the session."
+                                        :: sharedStatusTextAddition
+                                        |> String.join "\n"
+                                }
 
                         ContinueSession continueSession ->
                             let
@@ -759,7 +773,10 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                                             ]
                             in
                             { startTasks = startTasks
-                            , statusText = "Operate bot"
+                            , statusText =
+                                "Operate bot"
+                                    :: sharedStatusTextAddition
+                                    |> String.join "\n"
                             , notifyWhenArrivedAtTime =
                                 if startTasks == [] then
                                     Just { timeInMilliseconds = timeForNextReadingFromGame }
@@ -1694,27 +1711,41 @@ growRegionOnAllSides growthAmount region =
     }
 
 
-offsetRect : Location2d -> Rect2dStructure -> Rect2dStructure
-offsetRect offset rect =
-    { rect | x = rect.x + offset.x, y = rect.y + offset.y }
-
-
-parseUserInterface :
-    EveOnline.ParseUserInterface.ParsedUserInterface
-    -> ReadingFromGameClientImage
+parseUserInterfaceFromScreenshot :
+    ReadingFromGameClientScreenshot
     -> EveOnline.ParseUserInterface.ParsedUserInterface
-parseUserInterface original readingFromImage =
+    -> Result String EveOnline.ParseUserInterface.ParsedUserInterface
+parseUserInterfaceFromScreenshot screenshot original =
+    original.messageBoxes
+        |> List.map (parseUserInterfaceFromScreenshotMessageBox screenshot)
+        |> Result.Extra.combine
+        |> Result.map (\messageBoxes -> { original | messageBoxes = messageBoxes })
+
+
+parseUserInterfaceFromScreenshotMessageBox :
+    ReadingFromGameClientScreenshot
+    -> EveOnline.ParseUserInterface.MessageBox
+    -> Result String EveOnline.ParseUserInterface.MessageBox
+parseUserInterfaceFromScreenshotMessageBox screenshot messageBox =
     let
+        colorSum color =
+            color.red + color.green + color.blue
+
+        colorDifferenceSum colorA colorB =
+            [ colorA.red - colorB.red
+            , colorA.green - colorB.green
+            , colorA.blue - colorB.blue
+            ]
+                |> List.map abs
+                |> List.sum
+
         {- Based on this sample:
            data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAUCAYAAACXtf2DAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsIAAA7CARUoSoAAAANWSURBVEhL1VVbb0xRFP7OHL3QzqheZjQtdUsZqhfNSAdhVKlrxJSIS0hFJEiQeJWI+AU8STzwIBGijRDSoiEpIcSgrom4PajeVAztGMwZa619zpnpqL77zux99uX71tpn773WaOXLG+IQxOkZHho9jI6WJmkozUj8RO2QmhBnCReDhFyow31l5W9T1rDNT9Iks8kBDdKTnjYKR/ftwv5tG+GvmIWDjZvhzMzAod07YJA4WcZ8/q1cOA97NjXg8N6dmODJR8PSADbU18JX5hUWw/6C8fm5ePT8JZpabsBDbV7NptX1OHXhInETxi2wE++0STh2+gzCAwMwYjEUe9woGDcW90JPbJbtQEGtTCY0Byq8pRiMRKhHz3BOeMjk83yFdzoi0ai0re2yHfyI/kKh241xOS7ZknjcwJHjJ7Bl7SqTMRR88D+iP1Fc6IEzKwuaQ8Pltlu01WmYMqHYZIkDdUe6P/fj2eu3NFmE9gch3Al1oLO3Dw+fvyIDY4ihbgVDWlQ1tbbBP6cS19vvIvx9AC/evMO5K9dQQFts8c1rSiumDq+abwN3eEUyGqcFUJufp63NoipfHpTdEV2MNNTiCRnTqEUNh0NtDtWKytBoUqMJTecPozadgzLOSPCGgPlszHwrG5a7f2j+KwxJFf+G2qTUVDEylEadBIHpUlhqyq1i1amQeaqG1yiIA3VbgICvGmvrFiLX5aR0UQbjdwy1NT5TkCzjOKHoz8vDuqWL4K8sgytrNLyTS1DkLkBpyUThMOxb5M7NwcypJXjz7gPmV88m0WxUzyxF3lgnXV1DOBZYwSW4LIDb90NY4vfBOToTMyZPxPZ1q9DV02NaTUoVmRnp+NTTiy/hb5Qm1P5tC67B2UtXxZqKlGTESZOBj93d+D4YgUExtCKwAKFnL9D/NaxWQJXtwDoUyw77eExRvFi2SDykwOQL4tJ7SZmgpqocOsUDa3gbbQddff2omuXF+pV16Or9LPZOnm/GYv9cM1UkwMbEIKWGA41b4crOliB739mJKzfbEaxfYrqnoLNTBbkzjJiEvprjVRgSzRz2/E5NFXw2nKZlqfTJPMaRzNB1nXuJQ2YCG3LQH49jFBcdOr8dRBSRyUsCpwTmCZ8M6tymt2gEwB+SX2kpOjZ/ywAAAABJRU5ErkJggg==
         -}
         matchesButtonTextOk buttonCenter =
             let
-                colorSum color =
-                    color.red + color.green + color.blue
-
                 colorFromRelativeLocation_binned ( fromCenterX, fromCenterY ) =
-                    readingFromImage.pixels_2x2 ( buttonCenter.x // 2 + fromCenterX, buttonCenter.y // 2 + fromCenterY )
+                    screenshot.pixels_2x2 ( buttonCenter.x // 2 + fromCenterX, buttonCenter.y // 2 + fromCenterY )
                         |> Maybe.withDefault { red = 0, green = 0, blue = 0 }
 
                 ( darkestOffsetX, darkestOffsetY ) =
@@ -1757,55 +1788,52 @@ parseUserInterface original readingFromImage =
             ]
                 |> List.Extra.find (Tuple.first >> (|>) buttonCenter)
                 |> Maybe.map Tuple.second
+    in
+    case messageBox.buttonGroup of
+        Nothing ->
+            Ok messageBox
 
-        mapMessageBox messageBox =
-            case messageBox.buttonGroup of
+        Just buttonGroup ->
+            let
+                measureButtonEdgesY =
+                    buttonGroup.totalDisplayRegion.y + 6
+
+                measureButtonEdgesLeft_2 =
+                    buttonGroup.totalDisplayRegion.x // 2 - 1
+
+                measureButtonEdgesRight_2 =
+                    (measureButtonEdgesLeft_2 + buttonGroup.totalDisplayRegion.width // 2) + 1
+
+                getEdgeLinePixel x =
+                    screenshot.pixels_2x2 ( x, measureButtonEdgesY // 2 )
+            in
+            case
+                List.range measureButtonEdgesLeft_2 measureButtonEdgesRight_2
+                    |> List.map
+                        (\x ->
+                            case ( getEdgeLinePixel (x - 1), getEdgeLinePixel (x + 1) ) of
+                                ( Just leftPixel, Just rightPixel ) ->
+                                    Just (20 < colorDifferenceSum leftPixel rightPixel)
+
+                                _ ->
+                                    Nothing
+                        )
+                    |> Maybe.Extra.combine
+            of
                 Nothing ->
-                    { messageBox = messageBox
-                    , crops_2x2 = []
-                    }
+                    Err
+                        ("Missing pixel data for button group at "
+                            ++ String.fromInt
+                                (buttonGroup.totalDisplayRegion.x + buttonGroup.totalDisplayRegion.width // 2)
+                            ++ ","
+                            ++ String.fromInt
+                                (buttonGroup.totalDisplayRegion.y + buttonGroup.totalDisplayRegion.height // 2)
+                        )
 
-                Just buttonGroup ->
+                Just buttonEdgesBools_2 ->
                     let
-                        cropRegionCenterY =
-                            buttonGroup.totalDisplayRegion.y
-                                + (buttonGroup.totalDisplayRegion.height // 2)
-
-                        measureButtonEdgesY =
-                            buttonGroup.totalDisplayRegion.y + 6
-
-                        measureButtonEdgesLeft_2 =
-                            buttonGroup.totalDisplayRegion.x // 2 - 1
-
-                        measureButtonEdgesRight_2 =
-                            (measureButtonEdgesLeft_2 + buttonGroup.totalDisplayRegion.width // 2) + 1
-
-                        getEdgeLinePixel x =
-                            readingFromImage.pixels_2x2 ( x, measureButtonEdgesY // 2 )
-
-                        colorDifferenceSum colorA colorB =
-                            [ colorA.red - colorB.red
-                            , colorA.green - colorB.green
-                            , colorA.blue - colorB.blue
-                            ]
-                                |> List.map abs
-                                |> List.sum
-
-                        buttonEdgesBools_2 =
-                            List.range measureButtonEdgesLeft_2 measureButtonEdgesRight_2
-                                |> List.map
-                                    (\x ->
-                                        case ( getEdgeLinePixel (x - 1), getEdgeLinePixel (x + 1) ) of
-                                            ( Just leftPixel, Just rightPixel ) ->
-                                                Just (20 < colorDifferenceSum leftPixel rightPixel)
-
-                                            _ ->
-                                                Nothing
-                                    )
-
                         fromImageButtonsRegions =
                             buttonEdgesBools_2
-                                |> List.map (Maybe.withDefault False)
                                 |> centersOfTrueSequences
                                 |> List.map ((+) measureButtonEdgesLeft_2)
                                 |> pairsFromList
@@ -1860,25 +1888,11 @@ parseUserInterface original readingFromImage =
                                                 , mainText = mainText
                                                 }
                                     )
-
-                        cropRegion =
-                            { x = buttonGroup.totalDisplayRegion.x - 6
-                            , y = measureButtonEdgesY - 2
-                            , width = buttonGroup.totalDisplayRegion.width + 12
-                            , height = cropRegionCenterY - measureButtonEdgesY + 14
-                            }
                     in
-                    { messageBox =
+                    Ok
                         { messageBox
                             | buttons = messageBox.buttons ++ fromImageButtons
                         }
-                    , crops_2x2 = [ cropRegion ]
-                    }
-
-        mappedMessageBoxes =
-            original.messageBoxes |> List.map mapMessageBox
-    in
-    { original | messageBoxes = mappedMessageBoxes |> List.map .messageBox }
 
 
 centersOfTrueSequences : List Bool -> List Int

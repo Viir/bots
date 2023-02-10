@@ -73,12 +73,12 @@ buildTestsFromScenario pattern scenario =
 
 deriveImageRepresentationFromNestedListOfPixelsAndOffset :
     Location2d
-    -> List (List BotLab.SimpleBotFramework.PixelValue)
-    -> BotLab.SimpleBotFramework.ImageStructure
+    -> List (List BotLab.SimpleBotFramework.PixelValueRGB)
+    -> BotLab.SimpleBotFramework.ReadingFromGameClientScreenshot
 deriveImageRepresentationFromNestedListOfPixelsAndOffset offset =
     List.map ((++) (List.repeat offset.x { red = 0, green = 0, blue = 0 }))
         >> (++) (List.repeat offset.y [])
-        >> BotLab.SimpleBotFramework.deriveImageRepresentationFromNestedListOfPixels
+        >> deriveImageRepresentationFromNestedListOfPixels
 
 
 buildExpectationFromLocations :
@@ -130,6 +130,53 @@ buildExpectationFromLocations originalLocations =
                                 recursive { expected = remainingExpected, found = nextRemainingFound }
     in
     recursive originalLocations
+
+
+deriveImageRepresentationFromNestedListOfPixels :
+    List (List BotLab.SimpleBotFramework.PixelValueRGB)
+    -> BotLab.SimpleBotFramework.ReadingFromGameClientScreenshot
+deriveImageRepresentationFromNestedListOfPixels pixelsRows =
+    let
+        pixels_1x1 ( x, y ) =
+            pixelsRows
+                |> List.drop y
+                |> List.head
+                |> Maybe.andThen (List.drop x >> List.head)
+
+        pixels_2x2 ( x, y ) =
+            let
+                originalPixels =
+                    [ ( 0, 0 )
+                    , ( 0, 1 )
+                    , ( 1, 0 )
+                    , ( 1, 1 )
+                    ]
+                        |> List.filterMap (\( offsetX, offsetY ) -> pixels_1x1 ( x * 2 + offsetX, y * 2 + offsetY ))
+
+                componentAverage component =
+                    List.sum (List.map component originalPixels) // List.length originalPixels
+            in
+            if List.length originalPixels < 1 then
+                Nothing
+
+            else
+                Just { red = componentAverage .red, green = componentAverage .green, blue = componentAverage .blue }
+
+        width =
+            pixelsRows
+                |> List.map List.length
+                |> List.maximum
+                |> Maybe.withDefault 0
+    in
+    { pixels_1x1 = pixels_1x1
+    , pixels_2x2 = pixels_2x2
+    , bounds =
+        { left = 0
+        , top = 0
+        , right = width
+        , bottom = List.length pixelsRows
+        }
+    }
 
 
 describeLocation : Location2d -> String

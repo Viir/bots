@@ -3,7 +3,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import CompilationInterface.SourceFiles
 
 

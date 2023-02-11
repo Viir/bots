@@ -1,4 +1,4 @@
-module BotLab.BotInterface_To_Host_2022_12_03 exposing (..)
+module BotLab.BotInterface_To_Host_2023_02_06 exposing (..)
 
 {-| This module contains types for the interface between a bot and the botlab client.
 The structures in these types reflect the standard interface for player agents to observe their environment and act in their environment.
@@ -42,9 +42,10 @@ type alias CompletedTaskStructure =
 type TaskResultStructure
     = CreateVolatileProcessResponse (Result CreateVolatileProcessErrorStructure CreateVolatileProcessComplete)
     | RequestToVolatileProcessResponse (Result RequestToVolatileProcessError RequestToVolatileProcessComplete)
-    | CompleteWithoutResult
     | OpenWindowResponse (Result String OpenWindowSuccess)
-    | InvokeMethodOnWindowResponse (Result InvokeMethodOnWindowError InvokeMethodOnWindowResult)
+    | InvokeMethodOnWindowResponse String (Result InvokeMethodOnWindowError InvokeMethodOnWindowResult)
+    | RandomBytesResponse (List Int)
+    | CompleteWithoutResult
 
 
 type alias CreateVolatileProcessErrorStructure =
@@ -99,21 +100,57 @@ type Task
     | ReleaseVolatileProcess ReleaseVolatileProcessStructure
     | OpenWindowRequest OpenWindowRequestStruct
     | InvokeMethodOnWindowRequest String MethodOnWindow
-
-
-type InvokeMethodOnWindowError
-    = WindowNotFoundError { windowsIds : List String }
-    | MethodNotAvailableError
-
-
-type InvokeMethodOnWindowResult
-    = ChromeDevToolsProtocolRuntimeEvaluateMethodResult (Result String ChromeDevToolsProtocolRuntimeEvaluateMethodSuccess)
-    | InvokeMethodOnWindowResultWithoutValue
+    | RandomBytesRequest Int
 
 
 type MethodOnWindow
     = CloseWindowMethod
     | ChromeDevToolsProtocolRuntimeEvaluateMethod ChromeDevToolsProtocolRuntimeEvaluateParams
+    | ReadFromWindowMethod
+
+
+type InvokeMethodOnWindowError
+    = WindowNotFoundError { windowsIds : List String }
+    | MethodNotAvailableError
+    | ReadFromWindowError String
+
+
+type InvokeMethodOnWindowResult
+    = ChromeDevToolsProtocolRuntimeEvaluateMethodResult (Result String ChromeDevToolsProtocolRuntimeEvaluateMethodSuccess)
+    | ReadFromWindowMethodResult ReadFromWindowCompleteStruct
+    | InvokeMethodOnWindowResultWithoutValue
+
+
+type alias ReadFromWindowCompleteStruct =
+    { readingId : String
+
+    -- https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowtexta
+    , windowText : String
+
+    -- https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowrect
+    , windowRect : WinApiRectStruct
+
+    -- https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclientrect
+    , clientRect : WinApiRectStruct
+
+    -- https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-clienttoscreen
+    , clientRectLeftUpperToScreen : WinApiPointStruct
+    , imageData : ImageDataFromReadingCompleteStruct
+    }
+
+
+type alias ImageDataFromReadingCompleteStruct =
+    { screenshotCrops_original : List ImageCrop
+    , screenshotCrops_binned_2x2 : List ImageCrop
+    , screenshotCrops_binned_4x4 : List ImageCrop
+    }
+
+
+type alias ImageCrop =
+    { offset : WinApiPointStruct
+    , widthPixels : Int
+    , pixelsString : String
+    }
 
 
 type alias ChromeDevToolsProtocolRuntimeEvaluateParams =
@@ -183,4 +220,22 @@ type alias RequestToVolatileProcessStructure =
 
 type alias AcquireInputFocusStructure =
     { maximumDelayMilliseconds : Int
+    }
+
+
+{-| <https://learn.microsoft.com/en-us/windows/win32/api/windef/ns-windef-rect>
+-}
+type alias WinApiRectStruct =
+    { left : Int
+    , top : Int
+    , right : Int
+    , bottom : Int
+    }
+
+
+{-| <https://learn.microsoft.com/en-us/windows/win32/api/windef/ns-windef-point>
+-}
+type alias WinApiPointStruct =
+    { x : Int
+    , y : Int
     }

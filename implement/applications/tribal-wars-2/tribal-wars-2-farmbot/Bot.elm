@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2023-02-07
+{- Tribal Wars 2 farmbot version 2023-02-11
 
    I search for barbarian villages around your villages and then attack them.
 
@@ -43,7 +43,7 @@
    break-duration = 20 - 40
    ```
 
-   To learn about the farmbot, see <https://to.botlab.org/guide/app/tribal-wars-2-farmbot>
+   To learn more about the farmbot, see <https://to.botlab.org/guide/app/tribal-wars-2-farmbot>
 
 -}
 {-
@@ -57,7 +57,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (stringContainsIgnoringCase)
 import Common.DecisionTree

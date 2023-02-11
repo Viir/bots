@@ -63,10 +63,6 @@ type alias BotSettings =
     {}
 
 
-type alias PixelValue =
-    SimpleBotFramework.PixelValueRGB
-
-
 botMain : InterfaceToHost.BotConfig State
 botMain =
     SimpleBotFramework.composeSimpleBotMain

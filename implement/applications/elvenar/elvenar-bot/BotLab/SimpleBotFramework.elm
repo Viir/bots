@@ -75,6 +75,7 @@ type alias ReadFromWindowResultStruct =
 type alias ReadingFromGameClientScreenshot =
     { pixels_1x1 : ( Int, Int ) -> Maybe PixelValueRGB
     , pixels_2x2 : ( Int, Int ) -> Maybe PixelValueRGB
+    , pixels_4x4 : ( Int, Int ) -> Maybe PixelValueRGB
     , bounds : InterfaceToHost.WinApiRectStruct
     }
 
@@ -166,8 +167,9 @@ type alias OperateSimpleBotStruct =
 
 
 type LocatePatternInImageApproach
-    = TestPerPixelWithBroadPhase2x2
-        { testOnBinned2x2 : ({ x : Int, y : Int } -> Maybe PixelValueRGB) -> Bool
+    = TestPerPixelWithBroadPhase4x4
+        { testOnBinned4x4 : ({ x : Int, y : Int } -> Maybe PixelValueRGB) -> Bool
+        , testOnBinned2x2 : ({ x : Int, y : Int } -> Maybe PixelValueRGB) -> Bool
         , testOnOriginalResolution : ({ x : Int, y : Int } -> Maybe PixelValueRGB) -> Bool
         }
 
@@ -772,9 +774,15 @@ deriveImageRepresentation readingFromGameClient =
             readingFromGameClient.imageData.screenshotCrops_binned_2x2
                 |> List.map parseImageCropFromInterface
                 |> List.filterMap Result.toMaybe
+
+        screenshotCrops_binned_4x4 =
+            readingFromGameClient.imageData.screenshotCrops_binned_4x4
+                |> List.map parseImageCropFromInterface
+                |> List.filterMap Result.toMaybe
     in
     { pixels_1x1 = screenshotCrops_original |> pixelFromCropsInClientArea 1
     , pixels_2x2 = screenshotCrops_binned_2x2 |> pixelFromCropsInClientArea 2
+    , pixels_4x4 = screenshotCrops_binned_4x4 |> pixelFromCropsInClientArea 4
     , bounds =
         { left = clientRectLeftUpperToScreen.x - readingFromGameClient.windowRect.left
         , top = clientRectLeftUpperToScreen.y - readingFromGameClient.windowRect.top
@@ -836,36 +844,51 @@ colorFromInt_R8G8B8 combined =
 locatePatternInImage : LocatePatternInImageApproach -> ImageSearchRegion -> ReadingFromGameClientScreenshot -> List Location2d
 locatePatternInImage searchPattern searchRegion image =
     case searchPattern of
-        TestPerPixelWithBroadPhase2x2 { testOnBinned2x2, testOnOriginalResolution } ->
+        TestPerPixelWithBroadPhase4x4 patternConfig ->
             let
-                binnedSearchLocations =
+                searchLocations_4x4 =
                     case searchRegion of
                         SearchEverywhere ->
-                            List.range (image.bounds.left // 2) (image.bounds.right // 2)
+                            List.range (image.bounds.left // 4) (image.bounds.right // 4)
                                 |> List.concatMap
                                     (\x ->
-                                        List.range (image.bounds.top // 2) (image.bounds.bottom // 2)
+                                        List.range (image.bounds.top // 4) (image.bounds.bottom // 4)
                                             |> List.map (\y -> { x = x, y = y })
                                     )
 
-                matchLocationsOnBinned2x2 =
-                    image.pixels_2x2
-                        |> getMatchesLocationsFromImage testOnBinned2x2 binnedSearchLocations
+                matchLocations_4x4 =
+                    image.pixels_4x4
+                        |> getMatchesLocationsFromImage patternConfig.testOnBinned4x4 searchLocations_4x4
 
-                originalResolutionSearchLocations =
-                    matchLocationsOnBinned2x2
+                searchLocations_2x2 =
+                    matchLocations_4x4
                         |> List.concatMap
                             (\binnedLocation ->
-                                [ { x = binnedLocation.x * 2, y = binnedLocation.y * 2 }
+                                [ { x = binnedLocation.x * 2 + 0, y = binnedLocation.y * 2 }
                                 , { x = binnedLocation.x * 2 + 1, y = binnedLocation.y * 2 }
-                                , { x = binnedLocation.x * 2, y = binnedLocation.y * 2 + 1 }
+                                , { x = binnedLocation.x * 2 + 0, y = binnedLocation.y * 2 + 1 }
+                                , { x = binnedLocation.x * 2 + 1, y = binnedLocation.y * 2 + 1 }
+                                ]
+                            )
+
+                matchLocations_2x2 =
+                    image.pixels_2x2
+                        |> getMatchesLocationsFromImage patternConfig.testOnBinned2x2 searchLocations_2x2
+
+                searchLocations_original =
+                    matchLocations_2x2
+                        |> List.concatMap
+                            (\binnedLocation ->
+                                [ { x = binnedLocation.x * 2 + 0, y = binnedLocation.y * 2 }
+                                , { x = binnedLocation.x * 2 + 1, y = binnedLocation.y * 2 }
+                                , { x = binnedLocation.x * 2 + 0, y = binnedLocation.y * 2 + 1 }
                                 , { x = binnedLocation.x * 2 + 1, y = binnedLocation.y * 2 + 1 }
                                 ]
                             )
 
                 matchLocations =
                     image.pixels_1x1
-                        |> getMatchesLocationsFromImage testOnOriginalResolution originalResolutionSearchLocations
+                        |> getMatchesLocationsFromImage patternConfig.testOnOriginalResolution searchLocations_original
             in
             matchLocations
 

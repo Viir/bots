@@ -1,45 +1,45 @@
 # How to Run a Bot
 
-## Comparing Live Run and Simulated Run
+We can find countless bot program codes on the internet, on code hosting sites like GitHub and other websites. But how to run such a bot program? Following is a detailed walkthrough on how to run a bot program using the BotLab client.
 
-Running a bot can serve various goals. We categorize those goals broadly into two groups as follows:
+## Prerequisites - Installing the BotLab client on Windows
 
-1. **To achieve an effect in some other system or software, like a game client.** In this case, we want the bot to interact with the world around it. The bot reads information from and sends inputs to another software. We call this a 'live' or 'productive' run.
+Before running any bot for the first time, we install the BotLab client on Windows. If you are not sure you have done this on your system already, check the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
 
-2. **To understand how the bot works or to test if it works as expected.** In this case, we isolate the bot in a simulation, which means it cannot send any inputs and not affect any other software. We call this a 'simulated' or 'test' run.
+## Running a Bot
 
-Every time we start running a bot, we choose one of these two modes, depending on whether we want it to work in a live environment or test it. There is no difference between a live run and a simulated run from the bot's perspective. The bot does not know if it is running in a simulation.
+Here is a video showing how to start a live run of a bot, also covering the initial download and installation: https://to.botlab.org/guide/video/how-to-run-a-bot
 
-## Prerequisites - Installing and Registering the `botlab` Command
+After following the installation guide, our Windows system is ready to run bots. When we open the BotLab client that we installed in the previous step, we see this screen:
 
-Before running any bot for the first time, we install the BotLab client on Windows and register the `botlab` command. If you are not sure you have done this for your system, check the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
+![The first view visible in the BotLab client after installing](./image/2022-12-10-botlab-client-main-menu.png)
 
-## Running a Bot Live
+The most common way to run a bot is to use this graphical interface. For expert users and developers, a command-line interface offers another route to run a bot, but this guide only covers the graphical interface.
 
-Here is a video showing how to start a live run of a bot, also covering the initial download and installation: https://to.botlab.org/guide/video/how-to-run-a-bot-live
+After clicking on the 'Run Bot' button, we land on this screen where we can select which bot we want to run:
 
-After following the installation guide, our Windows system is ready to run bots.
+![The view to select a bot in the BotLab client](./image/2022-12-10-botlab-client-select-bot.png)
 
-A common way to run a bot is to use a script file downloaded from the [catalog website](https://catalog.botlab.org/)
+The BotLab client supports running bot programs from many different sources. The 'Select Bot' screen contains a single text input field to name the bot we want to use. Here we enter a bot's name or a path to a file or directory containing a bot program.
+A path can point, for example, to a directory on our computer, such as `C:\my-bot-programs\awesome-bot`
+It can also point to a public git repository on git hosting services like [GitHub](https://github.com) and [GitLab](https://gitlab.com).
+If a developer has sent us a zip archive containing a bot program, we can also enter the path to the zip archive directly, like `C:\Users\John\Downloads\bot-program.zip`. The BotLab client will do the extraction automatically in the background, so we don't need to unpack the archive manually.
+We can also enter any bot ID or short name, as seen on the BotLab catalog at <https://catalog.botlab.org>
 
-Besides running a `.bat` script file, an alternative way to run a bot live is entering a command like the following:
+![The view to select a bot in the BotLab client - after entering a path to a bot](./image/2022-12-10-botlab-client-select-bot-entered-catalog-url.png)
 
-```cmd
-botlab  play  https://github.com/Viir/bots/tree/e1eac00ab6a818e722fd64d552a2615d78f9628b/implement/templates/remember-bot-settings
-```
+By pressing the 'Load Bot' button, we advance into the 'Configure Session' view.
 
-You can enter this command in the Windows app called ['Command Prompt' (cmd.exe)](https://en.wikipedia.org/wiki/Cmd.exe) or in [PowerShell](https://en.wikipedia.org/wiki/PowerShell). Both 'Command Prompt' and PowerShell are included in any Windows 10 installation by default.
+![The view to configure a session](./image/2022-12-10-botlab-client-configure-session-bot-description.png)
 
-The engine then loads the bot program from the specified location and runs it until you stop it or the bot stops itself.
+Here we can configure various aspects of the new bot session. At the top of the 'Configure Session' view, we see the description of the bot we selected in the previous step. In some cases, we will refer to this description to better understand which activities the selected bot can carry out for us.
 
-### The `program-source` Parameter
+In some cases, the description will help us understand that the selected bot is not a good match for the in-game activity we want to automate. In this case, we can go back to the bot selection stage using the 'back' button in the upper left corner.
 
-The `program-source` parameter at the end of the command tells the engine where to load the program code from. It can point to different kinds of sources:
+The various configurations offered further down are optional. The fastest way to run the bot is to skip changing them and scroll past them down to the bottom. Here we find the 'Start Play Session' button to start running the bot.
 
-+ A directory on the local file system. Example: `C:\directory-containing-program-code`.
-+ A directory in a repository on [Github](https://github.com). Example: `https://github.com/Viir/bots/tree/e1eac00ab6a818e722fd64d552a2615d78f9628b/implement/templates/remember-bot-settings`
+![Start the play session](./tribal-wars-2/image/2022-12-01-tw2-farmbot-configure-session-start-marked.png)
 
-Developers use Github to collaborate and share code. Using the local file system as the source can be more convenient when you make changes to the program code which you only want to test yourself.
 
 ### Operating the Bot
 
@@ -60,56 +60,15 @@ current solar system: Kemerk
 
 You can pause the bot by pressing the `SHIFT` + `CTRL` + `ALT` keys. To let the bot continue, focus the console window and press the enter key. The key combination `CTRL` + `C` stops the bot and the BotLab client process.
 
-### Configuring the Bot
-
-Some bots offer customization using settings. When starting a bot from the command line, you can use the `--bot-settings` parameter to apply settings. The complete command line can then look as follows:
-
-```cmd
-botlab  play  --bot-settings="My bot settings"  https://github.com/Viir/bots/tree/e1eac00ab6a818e722fd64d552a2615d78f9628b/implement/templates/remember-bot-settings
-```
-
-The supported settings depend entirely on the bot that you chose. To learn which settings are supported in your case, read the description for the bot or contact its author.
-
-## Viewing Bot Description
-
-Authors often include a human-readable description with the program code, for example, in this bot: https://github.com/Viir/bots/tree/e1eac00ab6a818e722fd64d552a2615d78f9628b/implement/templates/remember-bot-settings/Bot.elm
-
-You can display this description using the `botlab  describe` command:
-
-```cmd
-botlab  describe  https://github.com/Viir/bots/tree/e1eac00ab6a818e722fd64d552a2615d78f9628b/implement/templates/remember-bot-settings
-```
-
-The `describe` command works with any program source that is supported by the `play` command.
-
-The information you get this way includes the description given by the author of the bot. This description often contains a guide on how to use the bot.
-
-Here is the output we get when running this command in PowerShell:
-
-```txt
-This path looks like a URL into a remote git repository. Trying to load from there...
-This path points to commit e1eac00ab6a818e722fd64d552a2615d78f9628b
-The first parent commit with same tree is https://github.com/Viir/bots/tree/d8c31635334631840766c890ba2a544487816a23/implement/templates/remember-bot-settings
-Participants from commit d8c31635334631840766c890ba2a544487816a23:
-Author: Michael Rätzel <viir@viir.de>
-Committer: Michael Rätzel <viir@viir.de>
-Loaded composition  5b2552b4d02650a10015e3708bebba089c8ba5f1bb3776b43c582969d787e8da
-I found 5 files in this artifact.
-Checking if this composition is a bot program...
-
-Composition 5b2552b4d02650a10015e3708bebba089c8ba5f1bb3776b43c582969d787e8da has the structure of a bot program code.
-Description of bot 5b2552b4d02650a10015e3708bebba089c8ba5f1bb3776b43c582969d787e8da:
-framework ID: b6a18fc059369ffc093e20fb0bda8ade6687fee3dd8fc3cbb0ef15fb2835b68c
-I found the following description in the program code:
-{- This program demonstrates how to remember the bot-settings string.
-
-   It takes any settings string received from the user and stores it in the bot state.
-   This bot also updates the status message to show the last received settings string, so you can check that a method (e.g., via command line) of applying the settings works.
--}
-catalog-tags: template, bot-settings, demo-interface-to-host
-authors forum usernames: viir
-```
 
 ## Running a Bot in a Simulated Environment
+
+Running a bot can serve various goals. We categorize those goals broadly into two groups as follows:
+
+1. **To achieve an effect in some other system or software, like a game client.** In this case, we want the bot to interact with the world around it. The bot reads information from and sends inputs to another software. We call this a 'live' or 'productive' run.
+
+2. **To understand how the bot works or to test if it works as expected.** In this case, we isolate the bot in a simulation, which means it cannot send any inputs and not affect any other software. We call this a 'simulated' or 'test' run.
+
+Every time we start running a bot, we choose one of these two modes, depending on whether we want it to work in a live environment or test it. There is no difference between a live run and a simulated run from the bot's perspective. The bot does not know if it is running in a simulation.
 
 To learn about testing a bot using simulated environments, see the dedicated guide at https://to.botlab.org/guide/testing-a-bot-using-simulated-environments

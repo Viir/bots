@@ -6,32 +6,34 @@ When starting a play session with a bot, you can choose to start an online sessi
 + Organize and keep track of your operations and experiments: Easily see which bots you already tested and when you used them the last time.
 + Longer running time: Run a bot continuously in one session for up to 72 hours.
 
-To see a list of your most recent online sessions, log in at https://reactor.botlab.org
+To see a list of your most recent online sessions, log in at <https://reactor.botlab.org>
 
 Below is a screenshot of the website to view your online sessions and monitor your bots:
 ![viewing details of an online play session with a bot](./image/2021-11-30-botlab-reactor-online-session-detail.png)
 
 Online sessions cost 2000 credits per hour. When you log in to your account for the first time, you automatically get 1000 credits. Using these initial credits balance, you can test the online session feature without paying anything (Creating an account is free).
-When you have used up the credits on your account, you can add more following the instructions at [https://reactor.botlab.org/billing/add-credits](https://reactor.botlab.org/billing/add-credits)
+When you have used up the credits on your account, you can add more following the instructions at <https://reactor.botlab.org/billing/add-credits>
 
-For more about purchasing and using credits, see the guide at https://forum.botlab.org/t/purchasing-and-using-botlab-credits-frequently-asked-questions-faq/837
+For more about purchasing and using credits, see the guide at <https://forum.botlab.org/t/purchasing-and-using-botlab-credits-frequently-asked-questions-faq/837>
 
 ### Starting an Online Session
 
-To start a bot in an online session, use the configuration interface on the bots' catalog entry.
-Enable the checkbox labeled `Start bot in online session` as shown in this screenshot:
+Follow these steps to start a bot in an online session:
 
-![configure script for online session](./image/2021-11-30-botlab-catalog-configure-online-session.png)
++ Load a bot in the BotLab client to get to the 'Configure Session' view.
++ Scroll down to the 'Online Session' section.
++ Click on the checkbox at 'Connect to the BotLab Reactor and start an online session'.
++ Continue with other configurations (bot settings, pause keys) as usual, and start the play session.
 
-Then use the button "Download script with this command line to run the bot". The script file you get here starts the bot in an online session.
+![configure session to start online session](./image/2022-12-02-botlab-client-configure-session-online-session-marked.png)
 
-When you start a configuration for an online session, you might get this prompt from the botlab client:
+The first time you start an online session, the client will ask you to enter your online session key from your Reactor account:
 
-![botlab client prompt for online session key](./image/2021-11-30-botlab-client-enter-online-session-key.png)
+![botlab client prompt for online session key](./image/2022-12-02-botlab-client-confirm-online-session.png)
 
 Here you need to enter your online session key to continue.
 
-To get your key, go to https://reactor.botlab.org and log in to your account. After logging in, you see a section titled `Online play session keys`. In this section, there is an entry for a key, containing a button labeled `Show key`. Clicking this button reveals your key. Please don't share this key with anyone, and don't post it on the forum.
+To get the key to enter here, go to <https://reactor.botlab.org> and log in to your account. After logging in, you see a section titled `Online play session keys`. In this section, there is an entry for a key, containing a button labeled `Show key`. Clicking this button reveals your key. Please don't share this key with anyone, and don't post it on the forum.
 
 ![Web UI displaying online session key](./image/2021-11-30-botlab-reactor-show-online-session-key.png)
 
@@ -39,7 +41,7 @@ Copy the key from the web page and paste it into the botlab console window. Pres
 
 The BotLab client also stores the entered key in the Windows user account, so you don't have to enter it the next time you start an online session.
 
-After starting an online session, you can also see it at https://reactor.botlab.org under `Most recent play sessions`:
+After starting an online session, you can also see it at <https://reactor.botlab.org> under `Most recent play sessions`:
 
 ![List of most recent online sessions](./image/2021-11-30-botlab-reactor-dashboard-recent-sessions.png)
 

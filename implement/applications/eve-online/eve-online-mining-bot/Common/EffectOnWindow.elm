@@ -29,6 +29,12 @@ type MouseButton
     | MouseButtonRight
 
 
+effectsMouseMoveToLocation : Location2d -> List EffectOnWindowStructure
+effectsMouseMoveToLocation location =
+    [ MouseMoveTo location
+    ]
+
+
 effectsMouseClickAtLocation : MouseButton -> Location2d -> List EffectOnWindowStructure
 effectsMouseClickAtLocation mouseButton location =
     [ MouseMoveTo location

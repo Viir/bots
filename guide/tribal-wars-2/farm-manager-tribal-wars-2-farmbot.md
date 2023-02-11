@@ -32,28 +32,45 @@ This video shows the process of starting the farmbot and setting up your Tribal 
 
 https://youtu.be/yzkernqechE
 
-Following are the first steps shown in the video, using a dedicated Windows program to run the farmbot:
+Following are the first steps shown in the video:
 
-+ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/tribal-wars-2-farmbot-2022-03-11.zip
++ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/2022-12-02-tribal-wars-2-farmbot.zip
 + Extract the downloaded zip archive. The extraction will give you a file named `tribal-wars-2-farmbot.exe`.
 + Run the `tribal-wars-2-farmbot.exe` program.
++ Click on 'Continue without Installing'
++ Click on 'Run Bot'
 
-The first time you start the bot, it will download a web browser component. This can take some time, depending on your internet connection.
+Then we land on this screen where we can select the Tribal Wars 2 farmbot:
 
-![Tribal Wars 2 Farmbot Starting](./image/2021-12-02-tribal-wars-2-farmbot-before-login.png)
+![Screen to select the Tribal Wars 2 Farmbot](./image/2022-11-15-tribal-wars-2-farmbot-pick-bot-bundled-bot-with-marker.png)
 
-When the browser download is finished, the bot opens a 'chromium' web browser window, which is a variant of googles chrome web browser. In the Windows taskbar, it appears with an icon that is a blueish version of the google chrome logo:
++ Here click on the 'Tribal Wars 2 farmbot' under 'Bundled Bot'
++ On the next screen, scroll down and click the button 'Start Play Session'
 
-![Chromium Window Appears](./image/2020-01-25.tribal-wars-2-farmbot-chromium-taskbar.png)
+![Start the play session](./image/2022-12-01-tw2-farmbot-configure-session-start-marked.png)
 
-In the browser window opened by the bot, navigate to the Tribal Wars 2 website and log in to your world so that you see your villages.
-Then the browsers address bar will probably show an URL like [https://es.tribalwars2.com/game.php?world=es77&character_id=12345](https://es.tribalwars2.com/game.php?world=es77&character_id=12345)
+Then the bot starts and we see a screen like this:
 
-Now the bot will probably display a message like this:
+![Tribal Wars 2 farmbot session started](./image/2022-12-02-tribal-wars-2-farmbot-started.png)
+
+In the left pane, we see information about the play session and controls to pause and continue the bot. The left pane also shows a status report from the bot under 'Status text from bot'.
+
+Here the bot also informs us about any setup we need to complete manually.
+When we have just started the session, the bot also shows this text:
+
+> I did not yet read game root information. Please log in to the game so that you see your villages.
+
+In the right pane, the bot opens a web browser tab. The web browser tab is initially empty, but there is an address bar at the top where we can enter a new web page to load, just as in other web browsers.
+Here we enter the address of the Tribal Wars 2 game world we want to enter with the bot. Since the browser by the bot is completely separate from other web browsers and has a separate user profile, we need to log in to the game to be able to enter the game world.
+After logging in and selecting the game world, this new browser tab shoulds the game as any other web browser:
+
+![Tribal Wars 2 farmbot session started](./image/2022-12-02-tribal-wars-2-farmbot-game-entered.jpg)
+
+Then the bot displays a message like this:
 
 > Found no army presets matching the filter 'farm'.
 
-Or, in case your account has no army presets configured at all, it shows this message:
+Or, in case our Tribal Wars 2 account has no army presets configured at all, it shows this message:
 
 > Did not find any army presets. Maybe loading is not completed yet.
 
@@ -78,7 +95,7 @@ You can use the in-game user interface to configure an army preset and enable it
 Besides the army presets, no configuration is required.
 The bot searches for barbarian villages and then attacks them using the matching presets. You can also see it jumping to the barbarian villages on the map.
 
-In the console window, you can read about the number of sent attacks and what the bot is currently doing:
+Under 'Status text from bot', you can read about the number of sent attacks and what the bot is currently doing:
 
 ```text
 Session performance: attacks sent: 129, coordinates read: 1478, completed farm cycles: 1
@@ -112,32 +129,26 @@ Following is a list of available settings:
 + `farm-player`: Name of a player/character to farm. By default, the bot only farms barbarians, but this setting allows you to also farm players.
 + `farm-army-preset-pattern`: Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text.
 + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45 - 48`. The bot then picks a random value in this range for each village.
-+ `close-game-client-during-break`: Set this to 'yes' to make the bot close the game client/web browser during breaks.
++ `restart-game-client-after-break`: Set this to 'yes' to make the bot restart the game client/web browser after each break.
 + `open-website-on-start`: Website to open when starting the web browser.
 
-To configure settings, open the configuration page at [https://catalog.botlab.org/600654cba5345f30](https://catalog.botlab.org/600654cba5345f30) in a web browser.
+You can enter any combination of settings before starting the bot. When in the 'Configure Session' view, scroll to the 'Bot Settings' section and click on 'Edit'.
 
-On this page, scroll down to the button `Configure bot`.
+![Button to enter configuration](./image/2022-12-01-tw2-farmbot-configure-session-section-bot-settings-marked-edit.png)
 
-![Button to enter configuration](./image/2021-12-02-catalog-tribal-wars-2-farmbot-configure-bot-button.png)
+This opens a popup where you can enter a settings text:
 
-Click this button to enter the configuration interface:
-
-![Input fields for configuration](./image/2021-12-02-catalog-tribal-wars-2-farmbot-configure-bot-form.png)
-
-Here we have multiple input fields, but to use any of the bot settings mentioned above, we only need the text box right of the `--bot-settings` label.
+![Text input to enter bot settings](./image/2022-12-01-tw2-farmbot-configure-session-section-bot-settings-edited-crop.png)
 
 When using more than one setting, start a new line for each setting in the text input field.
-Here is an example of `bot-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
+Here is an example for three farm cycles with breaks of 20 to 40 minutes in between:
 
 ```text
 number-of-farm-cycles = 3
 break-duration = 20 - 40
 ```
 
-![Input fields for configuration with bot-settings](./image/2021-12-02-catalog-tribal-wars-2-farmbot-configure-bot-form-filled-crop.png)
-
-Use the button `Download script with this command line to run the bot` to download a script to run the bot with the entered settings.
+After entering the settings, use the 'Save' button to apply these to the new session.
 
 When you have applied settings for multiple farm cycles, the bot displays this message during the breaks between farm cycles:
 
@@ -145,11 +156,11 @@ When you have applied settings for multiple farm cycles, the bot displays this m
 
 ## Pricing and Online Sessions
 
-You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online session as explained at [https://to.botlab.org/guide/online-session](https://to.botlab.org/guide/online-session)
+You can test the bot for free. When you want the bot to run more than 15 minutes per session, use an online session as explained at <https://to.botlab.org/guide/online-session>
 
-Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at [https://reactor.botlab.org/billing/add-credits](https://reactor.botlab.org/billing/add-credits)
+Online sessions cost 2000 credits per hour. To add credits to your account, follow the instructions at <https://reactor.botlab.org/billing/add-credits>
 
-For more about purchasing and using credits, see the guide at https://forum.botlab.org/t/purchasing-and-using-botlab-credits-frequently-asked-questions-faq/837
+For more about purchasing and using credits, see the guide at <https://forum.botlab.org/t/purchasing-and-using-botlab-credits-frequently-asked-questions-faq/837>
 
 ## Frequently Asked Questions
 
@@ -163,32 +174,39 @@ Sending one attack takes less than four seconds. The bot can cover 800 farms per
 
 ### How can I farm (multiple) inactive players?
 
-To select multiple player characters for farming, use the `character-to-farm` setting name multiple times. Here is an example of a complete bot-settings string with multiple `character-to-farm`:
+To select multiple players for farming, use the `farm-player` setting name multiple times. Here is an example of a complete bot-settings string with multiple `farm-player`:
 
 ```text
-number-of-farm-cycles = 36
-break-duration = 30 - 60
-character-to-farm = player character one
-character-to-farm = player character two
-character-to-farm = player character three
+number-of-farm-cycles = 3
+farm-player = player one
+farm-player = player two
+farm-player = player three
 ```
 
-There is no limit to the number of characters here, you can add as many `character-to-farm` as you want.
+There is no limit to the number of players here, you can add as many `farm-player` as you want.
 
 ### How to use it with multiple accounts at the same time?
 
 Start a new instance of the bot for each account. This separation also means the instance configurations are separate. For example, you could assign each instance another break duration.
 
-To use multiple instances simultaneously, you need to expand the bot-settings in the configuration of each instance. When the bot starts, it opens a new browser window and will also close other browser windows. To avoid it closing the browser window of another instance, we need to assign it a scope of browser instances in bot-settings explicitly.
+The challenge with using multiple Tribal Wars 2 accounts simultaneously is that the game website does not support logging into two accounts simultaneously.
+This constraint of the game client applies to a whole browser user profile. With most common browsers, like Chrome, Firefox, and Safari, all browser windows/tabs we open on the same machine share the same user profile. When logging into the Tribal Wars account in one browser window, the other browser windows share the same session by default.
+To prevent this sharing of game session state between multiple bot instances, we set up our bot to use a separate browser user profile for each instance.
+Currently, the only way to do this is to copy the 'BotLab.exe' file into a separate directory. This works because the bot's user profile is located under the executable file's directory.
 
-To configure this scope, use the new `web-browser-user-profile-id` bot-setting like this:
+TODO: Engineering: Expand API to support the bot specifying a separate browser user profile. Future versions should support this way:
 
-```
-web-browser-user-profile-id = profile-beta
-```
-
-While running, the bot displays the profile ID, so you can check that each running instance has a unique value:
-![bot displays the web-browser-user-profile-id setting](./image/2021-12-02-tribal-wars-2-farmbot-browser-profile-id.png)
+> To use multiple instances simultaneously, you need to expand the bot-settings in the configuration of each instance. When the bot starts, it opens a new browser window and will also close other browser windows. To avoid it closing the browser window of another instance, we need to assign it a scope of browser instances in bot-settings explicitly.
+> 
+> To configure this scope, use the new `web-browser-user-profile-id` bot-setting like this:
+> 
+> ```
+> web-browser-user-profile-id = profile-beta
+> ```
+> 
+> While running, the bot displays the profile ID, so you can check that each running instance has a unique value:
+> ![bot displays the web-browser-user-profile-id setting](./image/2021-12-02-tribal-wars-2-farmbot-browser-profile-id.png)
+> 
 
 Note that browser state like bookmarks and cookies belong to that web browser profile. That means you need to log in to the game for each new profile that you create.
 
@@ -199,4 +217,4 @@ If you have any questions, the [BotLab forum](https://forum.botlab.org) is a goo
 When asking for help with the bot, include one of these two artifacts to help us see what happened on your setup:
 
 + The summary from the `Report Problem or Share Session` dialog in the play session interface. Either upload the saved JSON file or copy the text in that file. To reach this dialog, use the buttons labeled `Get Help With This Bot Session` and then `Report Problem or Share Session`.
-+ The play session recording archive from the session view in Devtools.
++ The play session recording archive from the session view in DevTools.

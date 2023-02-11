@@ -30,7 +30,7 @@ First, let's look at one of the EVE Online bots in the example projects. Run thi
 botlab  play  https://github.com/Viir/bots/tree/a534c1caca09c06fef23c0b2da1f41e9acbda66c/implement/applications/eve-online/eve-online-warp-to-0-autopilot
 ```
 
-In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command
+In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client
 
 The `botlab  play` command loads the program code code from the given address to run it on your system. Before running this bot, you need to start an EVE Online client, no need to go beyond character selection.
 

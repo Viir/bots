@@ -14,7 +14,9 @@
 
 module BotLab.SimpleBotFramework exposing (..)
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import Array
+import Bitwise
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.EffectOnWindow exposing (MouseButton(..))
 import CompilationInterface.SourceFiles
 import Dict
@@ -31,9 +33,19 @@ type alias BotEvent =
 
 type BotEventAtTime
     = TimeArrivedEvent
-    | BotSettingsChangedEvent String
     | SessionDurationPlannedEvent { timeInMilliseconds : Int }
     | TaskCompletedEvent CompletedTaskStructure
+
+
+type EventMainBranch
+    = ReturnToHostBranch (Result String String)
+    | ContinueToBotBranch InternalEvent
+
+
+type InternalEvent
+    = TimeArrivedInternal
+    | SessionDurationPlannedInternal { timeInMilliseconds : Int }
+    | TaskCompletedInternal InterfaceToHost.CompletedTaskStructure
 
 
 type BotResponse
@@ -49,7 +61,8 @@ type alias CompletedTaskStructure =
 
 type TaskResultStructure
     = NoResultValue
-    | ReadFromWindowResult ReadFromWindowResultStruct ImageStructure
+      -- Note: The screenshot pixels use the window rect for coordinates, not the client area.
+    | ReadFromWindowResult ReadFromWindowResultStruct ReadingFromGameClientScreenshot
 
 
 type alias ReadFromWindowResultStruct =
@@ -59,32 +72,33 @@ type alias ReadFromWindowResultStruct =
     }
 
 
-type alias ImageStructure =
-    { imageAsDict : Dict.Dict ( Int, Int ) PixelValue
-    , imageBinned2x2AsDict : Dict.Dict ( Int, Int ) PixelValue
+type alias ReadingFromGameClientScreenshot =
+    { pixels_1x1 : ( Int, Int ) -> Maybe PixelValueRGB
+    , pixels_2x2 : ( Int, Int ) -> Maybe PixelValueRGB
+    , bounds : InterfaceToHost.WinApiRectStruct
     }
 
 
-type alias ImageCropStructure =
-    { imageWidth : Int
-    , imageHeight : Int
-    , imageAsDict : Dict.Dict ( Int, Int ) PixelValue
+type alias ImageCrop =
+    { offset : InterfaceToHost.WinApiPointStruct
+    , widthPixels : Int
+    , pixels : Array.Array Int
     }
 
 
-type alias PixelValue =
+type alias PixelValueRGB =
     { red : Int, green : Int, blue : Int }
 
 
 type alias BotResponseContinueSession =
-    { statusDescriptionText : String
+    { statusText : String
     , startTasks : List StartTaskStructure
     , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
     }
 
 
 type alias BotResponseFinishSession =
-    { statusDescriptionText : String
+    { statusText : String
     }
 
 
@@ -104,25 +118,30 @@ type alias Location2d =
 
 type Task
     = BringWindowToForeground
-    | ReadFromWindow GetImageDataFromReadingStructure
-    | GetImageDataFromReading GetImageDataFromReadingStructure
+    | ReadFromWindow
     | EffectSequenceOnWindowTask (List VolatileProcessInterface.EffectSequenceOnWindowElement)
 
 
-type alias State simpleBotState =
+type alias BotConfig botSettings botState =
+    { init : botState
+    , parseBotSettings : String -> Result String botSettings
+    , processEvent : botSettings -> BotEvent -> botState -> ( botState, BotResponse )
+    }
+
+
+type alias State botSettings botState =
     { timeInMilliseconds : Int
-    , createVolatileProcessResult :
-        Maybe (Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete)
-    , targetWindow : Maybe { windowId : String, windowTitle : String }
-    , lastReadFromWindowResult :
+    , createVolatileProcessResponse :
         Maybe
-            { readFromWindowComplete : VolatileProcessInterface.ReadFromWindowCompleteStruct
-            , aggregateImage : ImageStructure
+            { timeInMilliseconds : Int
+            , result : Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete
             }
+    , targetWindow : Maybe { windowId : String, windowTitle : String }
     , tasksInProgress : Dict.Dict String TaskInProgress
     , lastTaskIndex : Int
     , error : Maybe String
-    , simpleBot : simpleBotState
+    , botSettings : Maybe botSettings
+    , simpleBot : botState
     , simpleBotAggregateQueueResponse : Maybe BotResponse
     }
 
@@ -136,16 +155,20 @@ type alias TaskInProgress =
 type FrameworkSetupStepActivity
     = StopWithResult { resultDescription : String }
     | ContinueSetupWithTask { task : InterfaceToHost.StartTaskStructure, taskDescription : String }
-    | OperateSimpleBot
-        { windowId : String
-        , buildHostTaskFromRequest : VolatileProcessInterface.RequestToVolatileProcess -> InterfaceToHost.Task
-        }
+    | OperateSimpleBot OperateSimpleBotStruct
+
+
+type alias OperateSimpleBotStruct =
+    { windowId : String
+    , buildHostTaskFromRequest : VolatileProcessInterface.RequestToVolatileProcess -> InterfaceToHost.Task
+    , buildHostTaskToReadFromWindow : InterfaceToHost.Task
+    }
 
 
 type LocatePatternInImageApproach
     = TestPerPixelWithBroadPhase2x2
-        { testOnBinned2x2 : ({ x : Int, y : Int } -> Maybe PixelValue) -> Bool
-        , testOnOriginalResolution : ({ x : Int, y : Int } -> Maybe PixelValue) -> Bool
+        { testOnBinned2x2 : ({ x : Int, y : Int } -> Maybe PixelValueRGB) -> Bool
+        , testOnOriginalResolution : ({ x : Int, y : Int } -> Maybe PixelValueRGB) -> Bool
         }
 
 
@@ -164,58 +187,80 @@ type InternalBotEventResponse
 
 
 type alias InternalContinueSessionStructure =
-    { statusDescriptionText : String
+    { statusText : String
     , startTasks : List InternalStartTaskStructure
     , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
     }
 
 
 type alias InternalStartTaskStructure =
-    { taskId : InterfaceToHost.TaskId
+    { taskId : String
     , task : InterfaceToHost.Task
     , taskOrigin : TaskToHostOrigin
     }
 
 
-type alias GetImageDataFromReadingStructure =
-    VolatileProcessInterface.GetImageDataFromReadingStructure
+composeSimpleBotMain : BotConfig botSettings botState -> InterfaceToHost.BotConfig (State botSettings botState)
+composeSimpleBotMain botConfig =
+    { init = initState botConfig.init
+    , processEvent = processEvent botConfig
+    }
 
 
-initState : simpleBotState -> State simpleBotState
+initState : botState -> State botSettings botState
 initState simpleBotInitState =
     { timeInMilliseconds = 0
-    , createVolatileProcessResult = Nothing
+    , createVolatileProcessResponse = Nothing
     , targetWindow = Nothing
-    , lastReadFromWindowResult = Nothing
     , tasksInProgress = Dict.empty
     , lastTaskIndex = 0
     , error = Nothing
+    , botSettings = Nothing
     , simpleBot = simpleBotInitState
     , simpleBotAggregateQueueResponse = Nothing
     }
 
 
 processEvent :
-    (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
+    BotConfig botSettings botState
     -> InterfaceToHost.BotEvent
-    -> State simpleBotState
-    -> ( State simpleBotState, InterfaceToHost.BotEventResponse )
-processEvent simpleBotProcessEvent event stateBeforeUpdateTime =
+    -> State botSettings botState
+    -> ( State botSettings botState, InterfaceToHost.BotEventResponse )
+processEvent botConfig event stateBeforeUpdateTime =
     let
-        stateBefore =
+        ( stateBefore, responseClass ) =
             { stateBeforeUpdateTime | timeInMilliseconds = event.timeInMilliseconds }
+                |> integrateEvent botConfig event.eventAtTime
     in
-    stateBefore
-        |> integrateEvent event
-        |> processEventTrackingTasksInProgress simpleBotProcessEvent event
-        |> processEventAddStatusDescription
+    case responseClass of
+        ReturnToHostBranch (Ok continueSessionStatusText) ->
+            ( stateBefore
+            , InterfaceToHost.ContinueSession
+                { statusText = continueSessionStatusText
+                , startTasks = []
+                , notifyWhenArrivedAtTime = Just { timeInMilliseconds = 0 }
+                }
+            )
+
+        ReturnToHostBranch (Err finishSessionStatusText) ->
+            ( stateBefore
+            , InterfaceToHost.FinishSession
+                { statusText = finishSessionStatusText }
+            )
+
+        ContinueToBotBranch internalEvent ->
+            stateBefore
+                |> processEventTrackingTasksInProgress botConfig internalEvent
+                |> processEventAddStatusText
 
 
-processEventAddStatusDescription : ( State simpleBotState, InterfaceToHost.BotEventResponse ) -> ( State simpleBotState, InterfaceToHost.BotEventResponse )
-processEventAddStatusDescription ( state, responseBeforeAddStatusDesc ) =
+processEventAddStatusText :
+    ( State botSettings botState, InterfaceToHost.BotEventResponse )
+    -> ( State botSettings botState, InterfaceToHost.BotEventResponse )
+processEventAddStatusText ( state, responseBeforeAddStatusText ) =
     let
-        frameworkStatusDescription =
-            (state |> statusDescriptionFromState) ++ "\n"
+        frameworkStatusText =
+            (state |> statusTextFromState) ++ "\n"
 
         botStatusText =
             state.simpleBotAggregateQueueResponse
@@ -223,66 +268,64 @@ processEventAddStatusDescription ( state, responseBeforeAddStatusDesc ) =
                     (\simpleBotLastResponse ->
                         case simpleBotLastResponse of
                             ContinueSession continueSession ->
-                                continueSession.statusDescriptionText
+                                continueSession.statusText
 
                             FinishSession finishSession ->
-                                finishSession.statusDescriptionText
+                                finishSession.statusText
                     )
                 |> Maybe.withDefault ""
 
-        generalStatusDescription =
+        generalStatusText =
             [ botStatusText
             , "--- Framework ---"
-            , frameworkStatusDescription
+            , frameworkStatusText
             ]
                 |> String.join "\n"
 
         response =
-            case responseBeforeAddStatusDesc of
+            case responseBeforeAddStatusText of
                 InterfaceToHost.FinishSession finishSession ->
                     InterfaceToHost.FinishSession
                         { finishSession
-                            | statusDescriptionText = generalStatusDescription ++ finishSession.statusDescriptionText
+                            | statusText = generalStatusText ++ finishSession.statusText
                         }
 
                 InterfaceToHost.ContinueSession continueSession ->
                     InterfaceToHost.ContinueSession
                         { continueSession
-                            | statusDescriptionText = generalStatusDescription ++ continueSession.statusDescriptionText
+                            | statusText = generalStatusText ++ continueSession.statusText
                         }
     in
     ( state, response )
 
 
 processEventTrackingTasksInProgress :
-    (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
-    -> InterfaceToHost.BotEvent
-    -> State simpleBotState
-    -> ( State simpleBotState, InterfaceToHost.BotEventResponse )
-processEventTrackingTasksInProgress simpleBotProcessEvent event stateBefore =
+    BotConfig botSettings botState
+    -> InternalEvent
+    -> State botSettings botState
+    -> ( State botSettings botState, InterfaceToHost.BotEventResponse )
+processEventTrackingTasksInProgress botConfig event stateBefore =
     let
         ( tasksInProgressAfterTaskCompleted, maybeCompletedBotTask ) =
-            case event.eventAtTime of
-                InterfaceToHost.TaskCompletedEvent taskCompletedEvent ->
-                    case taskCompletedEvent.taskId of
-                        InterfaceToHost.TaskIdFromString taskIdString ->
-                            let
-                                maybeTaskFromBot =
-                                    case stateBefore.tasksInProgress |> Dict.get taskIdString of
-                                        Nothing ->
+            case event of
+                TaskCompletedInternal taskCompletedEvent ->
+                    let
+                        maybeTaskFromBot =
+                            case stateBefore.tasksInProgress |> Dict.get taskCompletedEvent.taskId of
+                                Nothing ->
+                                    Nothing
+
+                                Just taskInProgress ->
+                                    case taskInProgress.origin of
+                                        BotOrigin taskIdFromBot taskFromBot ->
+                                            Just ( taskIdFromBot, taskFromBot )
+
+                                        FrameworkOrigin ->
                                             Nothing
-
-                                        Just taskInProgress ->
-                                            case taskInProgress.origin of
-                                                BotOrigin taskIdFromBot taskFromBot ->
-                                                    Just ( taskIdFromBot, taskFromBot )
-
-                                                FrameworkOrigin ->
-                                                    Nothing
-                            in
-                            ( stateBefore.tasksInProgress |> Dict.remove taskIdString
-                            , maybeTaskFromBot
-                            )
+                    in
+                    ( stateBefore.tasksInProgress |> Dict.remove taskCompletedEvent.taskId
+                    , maybeTaskFromBot
+                    )
 
                 _ ->
                     ( stateBefore.tasksInProgress, Nothing )
@@ -292,7 +335,7 @@ processEventTrackingTasksInProgress simpleBotProcessEvent event stateBefore =
 
         ( state, response ) =
             processEventLessTrackingTasks
-                simpleBotProcessEvent
+                botConfig
                 event
                 maybeCompletedBotTask
                 { stateBefore
@@ -309,20 +352,16 @@ processEventTrackingTasksInProgress simpleBotProcessEvent event stateBefore =
                     continueSession.startTasks
                         |> List.indexedMap
                             (\startTaskIndex startTask ->
-                                case startTask.taskId of
-                                    InterfaceToHost.TaskIdFromString taskIdString ->
-                                        { startTask
-                                            | taskId =
-                                                InterfaceToHost.TaskIdFromString
-                                                    (taskIdString
-                                                        ++ "-"
-                                                        ++ String.fromInt
-                                                            (stateBefore.lastTaskIndex
-                                                                + 1
-                                                                + startTaskIndex
-                                                            )
-                                                    )
-                                        }
+                                { startTask
+                                    | taskId =
+                                        startTask.taskId
+                                            ++ "-"
+                                            ++ String.fromInt
+                                                (stateBefore.lastTaskIndex
+                                                    + 1
+                                                    + startTaskIndex
+                                                )
+                                }
                             )
 
                 lastTaskIndex =
@@ -332,13 +371,11 @@ processEventTrackingTasksInProgress simpleBotProcessEvent event stateBefore =
                     startTasks
                         |> List.map
                             (\startTask ->
-                                case startTask.taskId of
-                                    InterfaceToHost.TaskIdFromString taskIdString ->
-                                        ( taskIdString
-                                        , { startTimeInMilliseconds = state.timeInMilliseconds
-                                          , origin = startTask.taskOrigin
-                                          }
-                                        )
+                                ( startTask.taskId
+                                , { startTimeInMilliseconds = state.timeInMilliseconds
+                                  , origin = startTask.taskOrigin
+                                  }
+                                )
                             )
                         |> Dict.fromList
 
@@ -356,7 +393,7 @@ processEventTrackingTasksInProgress simpleBotProcessEvent event stateBefore =
                 , tasksInProgress = tasksInProgress |> Dict.union newTasksInProgress
               }
             , InterfaceToHost.ContinueSession
-                { statusDescriptionText = continueSession.statusDescriptionText
+                { statusText = continueSession.statusText
                 , startTasks = startTasksForHost
                 , notifyWhenArrivedAtTime = continueSession.notifyWhenArrivedAtTime
                 }
@@ -364,20 +401,20 @@ processEventTrackingTasksInProgress simpleBotProcessEvent event stateBefore =
 
 
 processEventLessTrackingTasks :
-    (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
-    -> InterfaceToHost.BotEvent
+    BotConfig botSettings botState
+    -> InternalEvent
     -> Maybe ( TaskId, Task )
-    -> State simpleBotState
-    -> ( State simpleBotState, InternalBotEventResponse )
-processEventLessTrackingTasks simpleBotProcessEvent event maybeCompletedBotTask stateBefore =
+    -> State botSettings botState
+    -> ( State botSettings botState, InternalBotEventResponse )
+processEventLessTrackingTasks botConfig event maybeCompletedBotTask stateBefore =
     case stateBefore.error of
         Just error ->
             ( stateBefore
-            , InternalFinishSession { statusDescriptionText = "Error: " ++ error }
+            , InternalFinishSession { statusText = "Error: " ++ error }
             )
 
         Nothing ->
-            processEventIgnoringLastError simpleBotProcessEvent event maybeCompletedBotTask stateBefore
+            processEventIgnoringLastError botConfig event maybeCompletedBotTask stateBefore
 
 
 {-| On the relation between tasks from the bot and tasks from the framework:
@@ -390,24 +427,24 @@ Therefore we queue tasks from the bot to forward them when we have completed the
 
 -}
 processEventIgnoringLastError :
-    (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
-    -> InterfaceToHost.BotEvent
+    BotConfig botSettings botState
+    -> InternalEvent
     -> Maybe ( TaskId, Task )
-    -> State simpleBotState
-    -> ( State simpleBotState, InternalBotEventResponse )
-processEventIgnoringLastError simpleBotProcessEvent event maybeCompletedBotTask stateBefore =
+    -> State botSettings botState
+    -> ( State botSettings botState, InternalBotEventResponse )
+processEventIgnoringLastError botConfig event maybeCompletedBotTask stateBefore =
     stateBefore
-        |> processEventIntegrateBotEvents simpleBotProcessEvent event maybeCompletedBotTask
+        |> processEventIntegrateBotEvents botConfig event maybeCompletedBotTask
         |> deriveTasksAfterIntegrateBotEvents
 
 
 processEventIntegrateBotEvents :
-    (BotEvent -> simpleBotState -> ( simpleBotState, BotResponse ))
-    -> InterfaceToHost.BotEvent
+    BotConfig botSettings botState
+    -> InternalEvent
     -> Maybe ( TaskId, Task )
-    -> State simpleBotState
-    -> State simpleBotState
-processEventIntegrateBotEvents simpleBotProcessEvent event maybeCompletedBotTask stateBefore =
+    -> State botSettings botState
+    -> State botSettings botState
+processEventIntegrateBotEvents botConfig event maybeCompletedBotTask stateBefore =
     case simpleBotEventsFromHostEvent event maybeCompletedBotTask stateBefore of
         Err _ ->
             stateBefore
@@ -417,29 +454,41 @@ processEventIntegrateBotEvents simpleBotProcessEvent event maybeCompletedBotTask
 
         Ok ( state, firstBotEvent :: otherBotEvents ) ->
             let
-                ( simpleBotState, simpleBotAggregateQueueResponse ) =
-                    state.simpleBot
-                        |> processSequenceOfSimpleBotEventsAndCombineResponses
-                            simpleBotProcessEvent
-                            state.simpleBotAggregateQueueResponse
-                            firstBotEvent
-                            otherBotEvents
+                botSettingsResult =
+                    stateBefore.botSettings
+                        |> Maybe.map Ok
+                        |> Maybe.withDefault (botConfig.parseBotSettings "")
             in
-            { state
-                | simpleBot = simpleBotState
-                , simpleBotAggregateQueueResponse = Just simpleBotAggregateQueueResponse
-            }
+            case botSettingsResult of
+                Err _ ->
+                    -- TODO: Handle bot settings parse error
+                    stateBefore
+
+                Ok botSettings ->
+                    let
+                        ( simpleBotState, simpleBotAggregateQueueResponse ) =
+                            state.simpleBot
+                                |> processSequenceOfSimpleBotEventsAndCombineResponses
+                                    (botConfig.processEvent botSettings)
+                                    state.simpleBotAggregateQueueResponse
+                                    firstBotEvent
+                                    otherBotEvents
+                    in
+                    { state
+                        | simpleBot = simpleBotState
+                        , simpleBotAggregateQueueResponse = Just simpleBotAggregateQueueResponse
+                    }
 
 
 deriveTasksAfterIntegrateBotEvents :
-    State simpleBotState
-    -> ( State simpleBotState, InternalBotEventResponse )
+    State botSettings simpleBotState
+    -> ( State botSettings simpleBotState, InternalBotEventResponse )
 deriveTasksAfterIntegrateBotEvents stateBefore =
     if not (Dict.isEmpty stateBefore.tasksInProgress) then
         ( stateBefore
         , InternalContinueSession
             { startTasks = []
-            , statusDescriptionText = "Waiting for all tasks to complete..."
+            , statusText = "Waiting for all tasks to complete..."
             , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
             }
         )
@@ -449,7 +498,7 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
             StopWithResult { resultDescription } ->
                 ( stateBefore
                 , InternalFinishSession
-                    { statusDescriptionText = "Stopped with result: " ++ resultDescription
+                    { statusText = "Stopped with result: " ++ resultDescription
                     }
                 )
 
@@ -462,7 +511,7 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
                           , taskOrigin = FrameworkOrigin
                           }
                         ]
-                    , statusDescriptionText = "I continue to set up the framework: Current step: " ++ continue.taskDescription
+                    , statusText = "I continue to set up the framework: Current step: " ++ continue.taskDescription
                     , notifyWhenArrivedAtTime = Nothing
                     }
                 )
@@ -472,7 +521,7 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
                     Nothing ->
                         ( stateBefore
                         , InternalContinueSession
-                            { statusDescriptionText = "Bot not started yet."
+                            { statusText = "Bot not started yet."
                             , startTasks = []
                             , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 1000 }
                             }
@@ -481,7 +530,7 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
                     Just (FinishSession finishSession) ->
                         ( stateBefore
                         , InternalFinishSession
-                            { statusDescriptionText = "Bot finished the session: " ++ finishSession.statusDescriptionText }
+                            { statusText = "Bot finished the session: " ++ finishSession.statusText }
                         )
 
                     Just (ContinueSession continueSession) ->
@@ -493,9 +542,7 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
                                         (\simpleBotTaskWithId ->
                                             ( { taskId = simpleBotTaskWithId.taskId |> taskIdFromSimpleBotTaskId
                                               , task =
-                                                    simpleBotTaskWithId.task
-                                                        |> taskOnWindowFromSimpleBotTask { windowId = operateSimpleBot.windowId } stateBefore
-                                                        |> operateSimpleBot.buildHostTaskFromRequest
+                                                    taskOnWindowFromSimpleBotTask operateSimpleBot simpleBotTaskWithId.task
                                               , taskOrigin = BotOrigin simpleBotTaskWithId.taskId simpleBotTaskWithId.task
                                               }
                                             , simpleBotTaskWithId
@@ -517,7 +564,7 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
                             | simpleBotAggregateQueueResponse = Just simpleBotAggregateQueueResponse
                           }
                         , InternalContinueSession
-                            { statusDescriptionText = "Operate bot"
+                            { statusText = "Operate bot"
                             , notifyWhenArrivedAtTime = Just notifyWhenArrivedAtTime
                             , startTasks = startTasks |> List.map Tuple.first
                             }
@@ -529,23 +576,10 @@ consolidateBotTasks =
     let
         tryMerge taskA taskB =
             case ( taskA.task, taskB.task ) of
-                ( ReadFromWindow readFromWindowTaskA, ReadFromWindow readFromWindowTaskB ) ->
+                ( ReadFromWindow, ReadFromWindow ) ->
                     Just
                         { taskId = taskB.taskId
-                        , task =
-                            {-
-                               TODO: Also remove crops which are completely covered by other crop.
-                            -}
-                            ReadFromWindow
-                                { crops_1x1_r8g8b8 =
-                                    readFromWindowTaskA.crops_1x1_r8g8b8
-                                        ++ readFromWindowTaskB.crops_1x1_r8g8b8
-                                        |> List.Extra.unique
-                                , crops_2x2_r8g8b8 =
-                                    readFromWindowTaskA.crops_2x2_r8g8b8
-                                        ++ readFromWindowTaskB.crops_2x2_r8g8b8
-                                        |> List.Extra.unique
-                                }
+                        , task = ReadFromWindow
                         }
 
                 _ ->
@@ -569,48 +603,39 @@ consolidateBotTasks =
 
 
 simpleBotEventsFromHostEvent :
-    InterfaceToHost.BotEvent
+    InternalEvent
     -> Maybe ( TaskId, Task )
-    -> State simpleBotState
-    -> Result String ( State simpleBotState, List BotEvent )
+    -> State botSettings botState
+    -> Result String ( State botSettings botState, List BotEvent )
 simpleBotEventsFromHostEvent event maybeCompletedBotTask stateBefore =
-    simpleBotEventsFromHostEventAtTime event.eventAtTime maybeCompletedBotTask stateBefore
+    simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore
         |> Result.map
             (Tuple.mapSecond
                 (List.map
                     (\eventAtTime ->
-                        { timeInMilliseconds = event.timeInMilliseconds, eventAtTime = eventAtTime }
+                        { timeInMilliseconds = stateBefore.timeInMilliseconds, eventAtTime = eventAtTime }
                     )
                 )
             )
 
 
 simpleBotEventsFromHostEventAtTime :
-    InterfaceToHost.BotEventAtTime
+    InternalEvent
     -> Maybe ( TaskId, Task )
-    -> State simpleBotState
-    -> Result String ( State simpleBotState, List BotEventAtTime )
+    -> State botSettings botState
+    -> Result String ( State botSettings botState, List BotEventAtTime )
 simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
     case event of
-        InterfaceToHost.TimeArrivedEvent ->
+        TimeArrivedInternal ->
             Ok ( stateBefore, [ TimeArrivedEvent ] )
 
-        InterfaceToHost.BotSettingsChangedEvent settingsString ->
-            Ok ( stateBefore, [ BotSettingsChangedEvent settingsString ] )
-
-        InterfaceToHost.SessionDurationPlannedEvent sessionDurationPlannedEvent ->
+        SessionDurationPlannedInternal sessionDurationPlannedEvent ->
             Ok ( stateBefore, [ SessionDurationPlannedEvent sessionDurationPlannedEvent ] )
 
-        InterfaceToHost.TaskCompletedEvent completedTask ->
-            let
-                taskIdString =
-                    case completedTask.taskId of
-                        InterfaceToHost.TaskIdFromString taskIdStringHost ->
-                            taskIdStringHost
-            in
+        TaskCompletedInternal completedTask ->
             case maybeCompletedBotTask of
                 Nothing ->
-                    Err ("Did not find a bot task for task with ID " ++ taskIdString)
+                    Err ("Did not find a bot task for task with ID " ++ completedTask.taskId)
 
                 Just ( simpleBotTaskId, simpleBotTask ) ->
                     let
@@ -618,6 +643,46 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                             case completedTask.taskResult of
                                 InterfaceToHost.CreateVolatileProcessResponse _ ->
                                     Err "CreateVolatileProcessResponse"
+
+                                InterfaceToHost.OpenWindowResponse _ ->
+                                    Err "OpenWindowResponse"
+
+                                InterfaceToHost.InvokeMethodOnWindowResponse _ invokeMethodResult ->
+                                    case invokeMethodResult of
+                                        Err err ->
+                                            Err ("Failed invoke method on window: " ++ describeInvokeMethodOnWindowError err)
+
+                                        Ok invokeMethodOk ->
+                                            case invokeMethodOk of
+                                                InterfaceToHost.ReadFromWindowMethodResult readFromWindowComplete ->
+                                                    let
+                                                        image =
+                                                            deriveImageRepresentation readFromWindowComplete
+                                                    in
+                                                    Ok
+                                                        ( stateBefore
+                                                        , ReadFromWindowResult
+                                                            { windowSize =
+                                                                { x = readFromWindowComplete.windowRect.right - readFromWindowComplete.windowRect.left
+                                                                , y = readFromWindowComplete.windowRect.bottom - readFromWindowComplete.windowRect.top
+                                                                }
+                                                            , windowClientRectOffset = readFromWindowComplete.clientRectLeftUpperToScreen
+                                                            , windowClientAreaSize =
+                                                                { x = readFromWindowComplete.clientRect.right - readFromWindowComplete.clientRect.left
+                                                                , y = readFromWindowComplete.clientRect.bottom - readFromWindowComplete.clientRect.top
+                                                                }
+                                                            }
+                                                            image
+                                                        )
+
+                                                InterfaceToHost.InvokeMethodOnWindowResultWithoutValue ->
+                                                    Err "InvokeMethodOnWindowResultWithoutValue"
+
+                                                InterfaceToHost.ChromeDevToolsProtocolRuntimeEvaluateMethodResult _ ->
+                                                    Err "Unexpetced: ChromeDevToolsProtocolRuntimeEvaluateMethodResult"
+
+                                InterfaceToHost.RandomBytesResponse _ ->
+                                    Err "RandomBytesResponse"
 
                                 InterfaceToHost.CompleteWithoutResult ->
                                     Err "CompleteWithoutResult"
@@ -644,73 +709,10 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                             let
                                                                 continueForReadFromWindowOrGetImageData =
                                                                     case parsedResponse of
-                                                                        VolatileProcessInterface.ReadingNotFound ->
-                                                                            Err "ReadingNotFound"
-
                                                                         VolatileProcessInterface.TaskOnWindowResponse taskOnWindowResponse ->
                                                                             case taskOnWindowResponse.result of
                                                                                 VolatileProcessInterface.WindowNotFound ->
                                                                                     Err "WindowNotFound"
-
-                                                                                VolatileProcessInterface.ReadFromWindowComplete readFromWindowComplete ->
-                                                                                    let
-                                                                                        aggregateImage =
-                                                                                            deriveImageRepresentation
-                                                                                                readFromWindowComplete.imageData
-
-                                                                                        lastReadFromWindowResult =
-                                                                                            { readFromWindowComplete = readFromWindowComplete
-                                                                                            , aggregateImage = aggregateImage
-                                                                                            }
-                                                                                    in
-                                                                                    Ok
-                                                                                        ( { stateBefore
-                                                                                            | lastReadFromWindowResult = Just lastReadFromWindowResult
-                                                                                          }
-                                                                                        , ReadFromWindowResult
-                                                                                            { windowSize = readFromWindowComplete.windowSize
-                                                                                            , windowClientRectOffset = readFromWindowComplete.windowClientRectOffset
-                                                                                            , windowClientAreaSize = readFromWindowComplete.windowClientAreaSize
-                                                                                            }
-                                                                                            aggregateImage
-                                                                                        )
-
-                                                                        VolatileProcessInterface.GetImageDataFromReadingComplete getImageDataFromReadingComplete ->
-                                                                            case stateBefore.lastReadFromWindowResult of
-                                                                                Nothing ->
-                                                                                    Err "No lastReadFromWindowResult"
-
-                                                                                Just lastReadFromWindowResultBefore ->
-                                                                                    if lastReadFromWindowResultBefore.readFromWindowComplete.readingId /= getImageDataFromReadingComplete.readingId then
-                                                                                        Err "readingId mismatch"
-
-                                                                                    else
-                                                                                        let
-                                                                                            newImage =
-                                                                                                deriveImageRepresentation
-                                                                                                    getImageDataFromReadingComplete.imageData
-
-                                                                                            aggregateImage =
-                                                                                                mergeImageRepresentation
-                                                                                                    lastReadFromWindowResultBefore.aggregateImage
-                                                                                                    newImage
-
-                                                                                            lastReadFromWindowResult =
-                                                                                                { lastReadFromWindowResultBefore
-                                                                                                    | aggregateImage = aggregateImage
-                                                                                                }
-                                                                                        in
-                                                                                        Ok
-                                                                                            ( { stateBefore
-                                                                                                | lastReadFromWindowResult = Just lastReadFromWindowResult
-                                                                                              }
-                                                                                            , ReadFromWindowResult
-                                                                                                { windowSize = lastReadFromWindowResult.readFromWindowComplete.windowSize
-                                                                                                , windowClientRectOffset = lastReadFromWindowResult.readFromWindowComplete.windowClientRectOffset
-                                                                                                , windowClientAreaSize = lastReadFromWindowResult.readFromWindowComplete.windowClientAreaSize
-                                                                                                }
-                                                                                                aggregateImage
-                                                                                            )
 
                                                                         _ ->
                                                                             Err ("Unexpected return value from volatile process: " ++ (volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault ""))
@@ -722,10 +724,7 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                                 EffectSequenceOnWindowTask _ ->
                                                                     Ok ( stateBefore, NoResultValue )
 
-                                                                ReadFromWindow _ ->
-                                                                    continueForReadFromWindowOrGetImageData
-
-                                                                GetImageDataFromReading _ ->
+                                                                ReadFromWindow ->
                                                                     continueForReadFromWindowOrGetImageData
                     in
                     case taskResultResult of
@@ -739,114 +738,102 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                 )
 
 
-mergeImageRepresentation : ImageStructure -> ImageStructure -> ImageStructure
-mergeImageRepresentation imageA imageB =
-    { imageAsDict = Dict.union imageA.imageAsDict imageB.imageAsDict
-    , imageBinned2x2AsDict = Dict.union imageA.imageBinned2x2AsDict imageB.imageBinned2x2AsDict
-    }
+describeInvokeMethodOnWindowError : InterfaceToHost.InvokeMethodOnWindowError -> String
+describeInvokeMethodOnWindowError err =
+    case err of
+        InterfaceToHost.WindowNotFoundError _ ->
+            "window not found"
+
+        InterfaceToHost.MethodNotAvailableError ->
+            "window not found"
+
+        InterfaceToHost.ReadFromWindowError readFromWindowErr ->
+            "read from window error: " ++ readFromWindowErr
 
 
-deriveImageRepresentation : VolatileProcessInterface.GetImageDataFromReadingResultStructure -> ImageStructure
-deriveImageRepresentation imageData =
+deriveImageRepresentation : InterfaceToHost.ReadFromWindowCompleteStruct -> ReadingFromGameClientScreenshot
+deriveImageRepresentation readingFromGameClient =
     let
-        crops_1x1_r8g8b8_Derivations =
-            imageData.crops_1x1_r8g8b8 |> List.map deriveImageCropRepresentation
+        clientRectLeftUpperToScreen =
+            readingFromGameClient.clientRectLeftUpperToScreen
 
-        crops_2x2_r8g8b8_Derivations =
-            imageData.crops_2x2_r8g8b8
-                |> List.map (\crop -> { crop | offset = { x = crop.offset.x // 2, y = crop.offset.y // 2 } })
-                |> List.map deriveImageCropRepresentation
+        pixelFromCropsInClientArea binningFactor crops ( pixelX, pixelY ) =
+            pixelFromCrops crops
+                ( pixelX + (readingFromGameClient.windowRect.left // binningFactor)
+                , pixelY + (readingFromGameClient.windowRect.top // binningFactor)
+                )
 
-        imageAsDict =
-            crops_1x1_r8g8b8_Derivations
-                |> List.map .imageAsDict
-                |> List.foldl Dict.union Dict.empty
+        screenshotCrops_original =
+            readingFromGameClient.imageData.screenshotCrops_original
+                |> List.map parseImageCropFromInterface
+                |> List.filterMap Result.toMaybe
 
-        imageBinned2x2AsDict =
-            crops_2x2_r8g8b8_Derivations
-                |> List.map .imageAsDict
-                |> List.foldl Dict.union Dict.empty
+        screenshotCrops_binned_2x2 =
+            readingFromGameClient.imageData.screenshotCrops_binned_2x2
+                |> List.map parseImageCropFromInterface
+                |> List.filterMap Result.toMaybe
     in
-    { imageAsDict = imageAsDict
-    , imageBinned2x2AsDict = imageBinned2x2AsDict
+    { pixels_1x1 = screenshotCrops_original |> pixelFromCropsInClientArea 1
+    , pixels_2x2 = screenshotCrops_binned_2x2 |> pixelFromCropsInClientArea 2
+    , bounds =
+        { left = clientRectLeftUpperToScreen.x - readingFromGameClient.windowRect.left
+        , top = clientRectLeftUpperToScreen.y - readingFromGameClient.windowRect.top
+        , right = clientRectLeftUpperToScreen.x + (readingFromGameClient.clientRect.right - readingFromGameClient.clientRect.left)
+        , bottom = clientRectLeftUpperToScreen.y + (readingFromGameClient.clientRect.bottom - readingFromGameClient.clientRect.top)
+        }
     }
 
 
-deriveImageRepresentationFromNestedListOfPixels : List (List PixelValue) -> ImageStructure
-deriveImageRepresentationFromNestedListOfPixels imageAsNestedList =
-    let
-        imageAsDict =
-            imageAsNestedList |> dictWithTupleKeyFromIndicesInNestedList
+pixelFromCrops : List ImageCrop -> ( Int, Int ) -> Maybe PixelValueRGB
+pixelFromCrops crops ( pixelX, pixelY ) =
+    crops
+        |> List.Extra.findMap
+            (\imageCrop ->
+                let
+                    inCropX =
+                        pixelX - imageCrop.offset.x
 
-        imageBinned2x2AsDict =
-            List.range 0 (((imageAsNestedList |> List.length) - 1) // 2)
-                |> List.map
-                    (\binnedRowIndex ->
-                        let
-                            rowWidth =
-                                imageAsNestedList
-                                    |> List.drop (binnedRowIndex * 2)
-                                    |> List.take 2
-                                    |> List.map List.length
-                                    |> List.maximum
-                                    |> Maybe.withDefault 0
+                    inCropY =
+                        pixelY - imageCrop.offset.y
+                in
+                if inCropX < 0 || inCropY < 0 || imageCrop.widthPixels <= inCropX then
+                    Nothing
 
-                            rowBinnedWidth =
-                                (rowWidth - 1) // 2 + 1
-                        in
-                        List.range 0 (rowBinnedWidth - 1)
-                            |> List.map
-                                (\binnedColumnIndex ->
-                                    let
-                                        sourcePixelsValues =
-                                            [ ( 0, 0 ), ( 1, 0 ), ( 0, 1 ), ( 1, 1 ) ]
-                                                |> List.filterMap (\( relX, relY ) -> imageAsDict |> Dict.get ( binnedColumnIndex * 2 + relX, binnedRowIndex * 2 + relY ))
+                else
+                    Array.get (inCropY * imageCrop.widthPixels + inCropX) imageCrop.pixels
+                        |> Maybe.map colorFromInt_R8G8B8
+            )
 
-                                        pixelValueSum =
-                                            sourcePixelsValues
-                                                |> List.foldl (\pixel sum -> { red = sum.red + pixel.red, green = sum.green + pixel.green, blue = sum.blue + pixel.blue }) { red = 0, green = 0, blue = 0 }
 
-                                        sourcePixelsValuesCount =
-                                            sourcePixelsValues |> List.length
+parseImageCropFromInterface : InterfaceToHost.ImageCrop -> Result String ImageCrop
+parseImageCropFromInterface imageCrop =
+    imageCrop.pixelsString
+        |> parseImageCropPixelsArrayFromPixelsString
+        |> Result.map
+            (\pixels ->
+                { offset = imageCrop.offset
+                , widthPixels = imageCrop.widthPixels
+                , pixels = pixels
+                }
+            )
 
-                                        pixelValue =
-                                            { red = pixelValueSum.red // sourcePixelsValuesCount
-                                            , green = pixelValueSum.green // sourcePixelsValuesCount
-                                            , blue = pixelValueSum.blue // sourcePixelsValuesCount
-                                            }
-                                    in
-                                    pixelValue
-                                )
-                    )
-                |> dictWithTupleKeyFromIndicesInNestedList
-    in
-    { imageAsDict = imageAsDict
-    , imageBinned2x2AsDict = imageBinned2x2AsDict
+
+parseImageCropPixelsArrayFromPixelsString : String -> Result String (Array.Array Int)
+parseImageCropPixelsArrayFromPixelsString =
+    Json.Decode.decodeString
+        (Json.Decode.array Json.Decode.int)
+        >> Result.mapError Json.Decode.errorToString
+
+
+colorFromInt_R8G8B8 : Int -> PixelValueRGB
+colorFromInt_R8G8B8 combined =
+    { red = combined |> Bitwise.shiftRightZfBy 16 |> Bitwise.and 0xFF
+    , green = combined |> Bitwise.shiftRightZfBy 8 |> Bitwise.and 0xFF
+    , blue = combined |> Bitwise.and 0xFF
     }
 
 
-deriveImageCropRepresentation : VolatileProcessInterface.ImageCropRGB -> ImageCropStructure
-deriveImageCropRepresentation crop =
-    let
-        imageWidths =
-            crop.pixels |> List.map List.length
-
-        imageWidth =
-            imageWidths |> List.maximum |> Maybe.withDefault 0
-
-        imageHeight =
-            imageWidths |> List.length
-
-        imageAsDict =
-            crop.pixels |> dictWithTupleKeyFromIndicesInNestedListWithOffset crop.offset
-    in
-    { imageWidth = imageWidth
-    , imageHeight = imageHeight
-    , imageAsDict = imageAsDict
-    }
-
-
-locatePatternInImage : LocatePatternInImageApproach -> ImageSearchRegion -> ImageStructure -> List Location2d
+locatePatternInImage : LocatePatternInImageApproach -> ImageSearchRegion -> ReadingFromGameClientScreenshot -> List Location2d
 locatePatternInImage searchPattern searchRegion image =
     case searchPattern of
         TestPerPixelWithBroadPhase2x2 { testOnBinned2x2, testOnOriginalResolution } ->
@@ -854,10 +841,15 @@ locatePatternInImage searchPattern searchRegion image =
                 binnedSearchLocations =
                     case searchRegion of
                         SearchEverywhere ->
-                            image.imageBinned2x2AsDict |> Dict.keys |> List.map (\( x, y ) -> { x = x, y = y })
+                            List.range (image.bounds.left // 2) (image.bounds.right // 2)
+                                |> List.concatMap
+                                    (\x ->
+                                        List.range (image.bounds.top // 2) (image.bounds.bottom // 2)
+                                            |> List.map (\y -> { x = x, y = y })
+                                    )
 
                 matchLocationsOnBinned2x2 =
-                    image.imageBinned2x2AsDict
+                    image.pixels_2x2
                         |> getMatchesLocationsFromImage testOnBinned2x2 binnedSearchLocations
 
                 originalResolutionSearchLocations =
@@ -872,36 +864,35 @@ locatePatternInImage searchPattern searchRegion image =
                             )
 
                 matchLocations =
-                    image.imageAsDict
+                    image.pixels_1x1
                         |> getMatchesLocationsFromImage testOnOriginalResolution originalResolutionSearchLocations
             in
             matchLocations
 
 
 getMatchesLocationsFromImage :
-    (({ x : Int, y : Int } -> Maybe PixelValue) -> Bool)
+    (({ x : Int, y : Int } -> Maybe PixelValueRGB) -> Bool)
     -> List { x : Int, y : Int }
-    -> Dict.Dict ( Int, Int ) PixelValue
+    -> (( Int, Int ) -> Maybe PixelValueRGB)
     -> List { x : Int, y : Int }
 getMatchesLocationsFromImage imageMatchesPatternAtOrigin locationsToSearchAt image =
     locationsToSearchAt
         |> List.filter
             (\searchOrigin ->
                 imageMatchesPatternAtOrigin
-                    (\relativeLocation -> image |> Dict.get ( relativeLocation.x + searchOrigin.x, relativeLocation.y + searchOrigin.y ))
+                    (\relativeLocation ->
+                        image ( relativeLocation.x + searchOrigin.x, relativeLocation.y + searchOrigin.y )
+                    )
             )
 
 
 processSequenceOfSimpleBotEventsAndCombineResponses :
-    (BotEvent
-     -> simpleBotState
-     -> ( simpleBotState, BotResponse )
-    )
+    (BotEvent -> botState -> ( botState, BotResponse ))
     -> Maybe BotResponse
     -> BotEvent
     -> List BotEvent
-    -> simpleBotState
-    -> ( simpleBotState, BotResponse )
+    -> botState
+    -> ( botState, BotResponse )
 processSequenceOfSimpleBotEventsAndCombineResponses simpleBotProcessEvent maybeLastBotResponse nextEvent followingEvents botStateBefore =
     let
         integrateLastBotResponse =
@@ -957,46 +948,31 @@ combineBotResponse firstResponse secondResponse =
                         }
 
 
-taskIdFromSimpleBotTaskId : TaskId -> InterfaceToHost.TaskId
+taskIdFromSimpleBotTaskId : TaskId -> String
 taskIdFromSimpleBotTaskId simpleBotTaskId =
     case simpleBotTaskId of
         TaskIdFromString asString ->
-            InterfaceToHost.taskIdFromString ("bot-" ++ asString)
+            "bot-" ++ asString
 
 
 taskOnWindowFromSimpleBotTask :
-    { windowId : String }
-    -> State simpleBotState
+    OperateSimpleBotStruct
     -> Task
-    -> VolatileProcessInterface.RequestToVolatileProcess
-taskOnWindowFromSimpleBotTask config state simpleBotTask =
+    -> InterfaceToHost.Task
+taskOnWindowFromSimpleBotTask config simpleBotTask =
     let
         continueWithTaskOnWindow taskOnWindow =
             { windowId = config.windowId, task = taskOnWindow }
                 |> VolatileProcessInterface.TaskOnWindowRequest
+                |> config.buildHostTaskFromRequest
     in
     case simpleBotTask of
         BringWindowToForeground ->
             VolatileProcessInterface.BringWindowToForeground
                 |> continueWithTaskOnWindow
 
-        ReadFromWindow readFromWindowTask ->
-            { getImageData = readFromWindowTask }
-                |> VolatileProcessInterface.ReadFromWindowRequest
-                |> continueWithTaskOnWindow
-
-        GetImageDataFromReading getImageDataFromReadingTask ->
-            case state.lastReadFromWindowResult of
-                Nothing ->
-                    { getImageData = getImageDataFromReadingTask }
-                        |> VolatileProcessInterface.ReadFromWindowRequest
-                        |> continueWithTaskOnWindow
-
-                Just lastReadFromWindowResult ->
-                    { readingId = lastReadFromWindowResult.readFromWindowComplete.readingId
-                    , getImageData = getImageDataFromReadingTask
-                    }
-                        |> VolatileProcessInterface.GetImageDataFromReadingRequest
+        ReadFromWindow ->
+            config.buildHostTaskToReadFromWindow
 
         EffectSequenceOnWindowTask effectSequence ->
             effectSequence
@@ -1004,27 +980,57 @@ taskOnWindowFromSimpleBotTask config state simpleBotTask =
                 |> continueWithTaskOnWindow
 
 
-integrateEvent : InterfaceToHost.BotEvent -> State simpleBotState -> State simpleBotState
-integrateEvent event stateBefore =
-    case event.eventAtTime of
+integrateEvent :
+    BotConfig botSettings botState
+    -> InterfaceToHost.BotEventAtTime
+    -> State botSettings botState
+    -> ( State botSettings botState, EventMainBranch )
+integrateEvent botConfig eventAtTime stateBefore =
+    case eventAtTime of
         InterfaceToHost.TimeArrivedEvent ->
-            stateBefore
+            ( stateBefore
+            , ContinueToBotBranch TimeArrivedInternal
+            )
 
-        InterfaceToHost.BotSettingsChangedEvent _ ->
-            stateBefore
+        InterfaceToHost.BotSettingsChangedEvent botSettingsString ->
+            case botConfig.parseBotSettings botSettingsString of
+                Err err ->
+                    ( stateBefore
+                    , ReturnToHostBranch
+                        (Err ("Failed to parse these bot settings:" ++ err))
+                    )
 
-        InterfaceToHost.TaskCompletedEvent { taskId, taskResult } ->
-            integrateEventTaskComplete taskId taskResult stateBefore
+                Ok ok ->
+                    ( { stateBefore | botSettings = Just ok }
+                    , ReturnToHostBranch (Ok "Succeeded parsing these bot-settings.")
+                    )
 
-        InterfaceToHost.SessionDurationPlannedEvent _ ->
-            stateBefore
+        InterfaceToHost.TaskCompletedEvent taskCompleted ->
+            ( integrateEventTaskComplete taskCompleted.taskId taskCompleted.taskResult stateBefore
+            , ContinueToBotBranch (TaskCompletedInternal taskCompleted)
+            )
+
+        InterfaceToHost.SessionDurationPlannedEvent durationPlanned ->
+            ( stateBefore
+            , ContinueToBotBranch (SessionDurationPlannedInternal durationPlanned)
+            )
 
 
-integrateEventTaskComplete : InterfaceToHost.TaskId -> InterfaceToHost.TaskResultStructure -> State simpleBotState -> State simpleBotState
-integrateEventTaskComplete taskId taskResult stateBefore =
+integrateEventTaskComplete :
+    String
+    -> InterfaceToHost.TaskResultStructure
+    -> State botSettings botState
+    -> State botSettings botState
+integrateEventTaskComplete _ taskResult stateBefore =
     case taskResult of
         InterfaceToHost.CreateVolatileProcessResponse createVolatileProcessResult ->
-            { stateBefore | createVolatileProcessResult = Just createVolatileProcessResult }
+            { stateBefore
+                | createVolatileProcessResponse =
+                    Just
+                        { timeInMilliseconds = stateBefore.timeInMilliseconds
+                        , result = createVolatileProcessResult
+                        }
+            }
 
         InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileProcessResponse ->
             case requestToVolatileProcessResponse of
@@ -1032,7 +1038,7 @@ integrateEventTaskComplete taskId taskResult stateBefore =
                     { stateBefore | error = Just "Error running script in volatile process: ProcessNotFound" }
 
                 Err InterfaceToHost.FailedToAcquireInputFocus ->
-                    { stateBefore | error = Just "Error running script in volatile process: FailedToAcquireInputFocus" }
+                    stateBefore
 
                 Ok runInVolatileProcessComplete ->
                     case runInVolatileProcessComplete.returnValueToString of
@@ -1040,14 +1046,14 @@ integrateEventTaskComplete taskId taskResult stateBefore =
                             { stateBefore | error = Just ("Error in volatile process: " ++ (runInVolatileProcessComplete.exceptionToString |> Maybe.withDefault "")) }
 
                         Just returnValueToString ->
-                            case stateBefore.createVolatileProcessResult of
+                            case stateBefore.createVolatileProcessResponse |> Maybe.map .result of
                                 Nothing ->
                                     { stateBefore | error = Just ("Unexpected response from volatile process: " ++ returnValueToString) }
 
                                 Just (Err createVolatileProcessError) ->
                                     { stateBefore | error = Just ("Failed to create volatile process: " ++ createVolatileProcessError.exceptionToString) }
 
-                                Just (Ok createVolatileProcessCompleted) ->
+                                Just (Ok _) ->
                                     case returnValueToString |> VolatileProcessInterface.deserializeResponseFromVolatileProcess of
                                         Err error ->
                                             { stateBefore | error = Just ("Failed to parse response from volatile process: " ++ (error |> Json.Decode.errorToString)) }
@@ -1076,12 +1082,21 @@ integrateEventTaskComplete taskId taskResult stateBefore =
                                                 Just _ ->
                                                     stateBefore
 
+        InterfaceToHost.OpenWindowResponse _ ->
+            stateBefore
+
+        InterfaceToHost.InvokeMethodOnWindowResponse _ _ ->
+            stateBefore
+
+        InterfaceToHost.RandomBytesResponse _ ->
+            stateBefore
+
         InterfaceToHost.CompleteWithoutResult ->
             stateBefore
 
 
-statusDescriptionFromState : State simpleBotState -> String
-statusDescriptionFromState state =
+statusTextFromState : State botSettings botState -> String
+statusTextFromState state =
     let
         portionWindow =
             case state.targetWindow of
@@ -1116,79 +1131,77 @@ statusDescriptionFromState state =
         |> String.join "\n"
 
 
-getNextSetupStepWithDescriptionFromState : State simpleBotState -> FrameworkSetupStepActivity
+getNextSetupStepWithDescriptionFromState : State botSettings botState -> FrameworkSetupStepActivity
 getNextSetupStepWithDescriptionFromState state =
-    case state.createVolatileProcessResult of
+    case state.createVolatileProcessResponse of
         Nothing ->
             { task =
-                { taskId = InterfaceToHost.taskIdFromString "create_volatile_process"
+                { taskId = "create_volatile_process"
                 , task = InterfaceToHost.CreateVolatileProcess { programCode = CompilationInterface.SourceFiles.file____Windows_VolatileProcess_csx.utf8 }
                 }
             , taskDescription = "Set up the volatile process. This can take several seconds, especially when assemblies are not cached yet."
             }
                 |> ContinueSetupWithTask
 
-        Just (Err createVolatileProcessError) ->
-            StopWithResult { resultDescription = "Failed to create volatile process: " ++ createVolatileProcessError.exceptionToString }
+        Just createVolatileProcessResponse ->
+            case createVolatileProcessResponse.result of
+                Err createVolatileProcessError ->
+                    StopWithResult { resultDescription = "Failed to create volatile process: " ++ createVolatileProcessError.exceptionToString }
 
-        Just (Ok createVolatileProcessCompleted) ->
-            case state.targetWindow of
-                Nothing ->
+                Ok createVolatileProcessCompleted ->
                     let
-                        task =
+                        listWindowsTask =
                             InterfaceToHost.RequestToVolatileProcess
-                                (InterfaceToHost.RequestNotRequiringInputFocus
-                                    { processId = createVolatileProcessCompleted.processId
+                                (InterfaceToHost.RequestRequiringInputFocus
+                                    {-
+                                       Use RequestRequiringInputFocus in setup to ensure that infra is initialized before handing over to the bot.
+                                    -}
+                                    { acquireInputFocus = { maximumDelayMilliseconds = 500 }
                                     , request =
-                                        VolatileProcessInterface.ListWindowsRequest
-                                            |> VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
-                                    }
-                                )
-                    in
-                    { task = { taskId = InterfaceToHost.taskIdFromString "list_windows", task = task }
-                    , taskDescription = "List windows"
-                    }
-                        |> ContinueSetupWithTask
-
-                Just targetWindow ->
-                    OperateSimpleBot
-                        { windowId = targetWindow.windowId
-                        , buildHostTaskFromRequest =
-                            \request ->
-                                InterfaceToHost.RequestToVolatileProcess
-                                    (InterfaceToHost.RequestNotRequiringInputFocus
                                         { processId = createVolatileProcessCompleted.processId
                                         , request =
-                                            request
+                                            VolatileProcessInterface.ListWindowsRequest
                                                 |> VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
                                         }
-                                    )
-                        }
+                                    }
+                                )
+
+                        continueWithListWindows =
+                            { task = { taskId = "list_windows", task = listWindowsTask }
+                            , taskDescription = "List windows"
+                            }
+                                |> ContinueSetupWithTask
+                    in
+                    case state.targetWindow of
+                        Nothing ->
+                            continueWithListWindows
+
+                        Just targetWindow ->
+                            OperateSimpleBot
+                                { windowId = targetWindow.windowId
+                                , buildHostTaskFromRequest =
+                                    \request ->
+                                        InterfaceToHost.RequestToVolatileProcess
+                                            (InterfaceToHost.RequestRequiringInputFocus
+                                                { acquireInputFocus = { maximumDelayMilliseconds = 500 }
+                                                , request =
+                                                    { processId = createVolatileProcessCompleted.processId
+                                                    , request =
+                                                        request
+                                                            |> VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
+                                                    }
+                                                }
+                                            )
+                                , buildHostTaskToReadFromWindow =
+                                    InterfaceToHost.InvokeMethodOnWindowRequest
+                                        ("winapi-" ++ targetWindow.windowId)
+                                        InterfaceToHost.ReadFromWindowMethod
+                                }
 
 
 taskIdFromString : String -> TaskId
 taskIdFromString =
     TaskIdFromString
-
-
-dictWithTupleKeyFromIndicesInNestedList : List (List element) -> Dict.Dict ( Int, Int ) element
-dictWithTupleKeyFromIndicesInNestedList =
-    dictWithTupleKeyFromIndicesInNestedListWithOffset { x = 0, y = 0 }
-
-
-dictWithTupleKeyFromIndicesInNestedListWithOffset : Location2d -> List (List element) -> Dict.Dict ( Int, Int ) element
-dictWithTupleKeyFromIndicesInNestedListWithOffset offset nestedList =
-    nestedList
-        |> List.indexedMap
-            (\rowIndex list ->
-                list
-                    |> List.indexedMap
-                        (\columnIndex element ->
-                            ( ( columnIndex + offset.x, rowIndex + offset.y ), element )
-                        )
-            )
-        |> List.concat
-        |> Dict.fromList
 
 
 bringWindowToForeground : Task
@@ -1238,140 +1251,6 @@ effectSequenceTask config effects =
         |> EffectSequenceOnWindowTask
 
 
-readFromWindow : GetImageDataFromReadingStructure -> Task
-readFromWindow getImageData =
-    getImageData
-        |> sanitizeGetImageDataFromReading
-        |> ReadFromWindow
-
-
-getImageDataFromReading : GetImageDataFromReadingStructure -> Task
-getImageDataFromReading getImageData =
-    getImageData
-        |> sanitizeGetImageDataFromReading
-        |> GetImageDataFromReading
-
-
-sanitizeGetImageDataFromReading : GetImageDataFromReadingStructure -> GetImageDataFromReadingStructure
-sanitizeGetImageDataFromReading getImageData =
-    let
-        sanitizeAndOptimizeCrops =
-            sanitizeGetImageDataFromReadingCrops
-                >> optimizeGetImageDataFromReadingCrops
-    in
-    { crops_1x1_r8g8b8 = sanitizeAndOptimizeCrops getImageData.crops_1x1_r8g8b8
-    , crops_2x2_r8g8b8 = sanitizeAndOptimizeCrops getImageData.crops_2x2_r8g8b8
-    }
-
-
-sanitizeGetImageDataFromReadingCrops :
-    List VolatileProcessInterface.Rect2dStructure
-    -> List VolatileProcessInterface.Rect2dStructure
-sanitizeGetImageDataFromReadingCrops =
-    List.map (rectIntersection { x = 0, y = 0, width = 9999, height = 9999 })
-        >> List.filter (\rect -> 0 < rect.width && 0 < rect.height)
-
-
-optimizeGetImageDataFromReadingCrops :
-    List VolatileProcessInterface.Rect2dStructure
-    -> List VolatileProcessInterface.Rect2dStructure
-optimizeGetImageDataFromReadingCrops =
-    optimizeGetImageDataFromReadingCropsRecursive
-
-
-optimizeGetImageDataFromReadingCropsRecursive :
-    List VolatileProcessInterface.Rect2dStructure
-    -> List VolatileProcessInterface.Rect2dStructure
-optimizeGetImageDataFromReadingCropsRecursive crops =
-    let
-        rectIntersectEnoughToConsolidate a b =
-            let
-                intersection =
-                    rectIntersection a b
-            in
-            (max 0 intersection.width * max 0 intersection.height * 4)
-                > min (a.width * a.height) (b.width * b.height)
-
-        groupedCrops =
-            List.Extra.gatherWith rectIntersectEnoughToConsolidate crops
-
-        boundingBoxes =
-            groupedCrops
-                |> List.map
-                    (\( firstCrop, otherCrops ) ->
-                        otherCrops |> List.foldl rectBoundingBox firstCrop
-                    )
-    in
-    if crops == boundingBoxes then
-        boundingBoxes
-
-    else
-        optimizeGetImageDataFromReadingCropsRecursive boundingBoxes
-
-
-rectIntersection : VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure
-rectIntersection a b =
-    let
-        a_right =
-            a.x + a.width
-
-        b_right =
-            b.x + b.width
-
-        a_bottom =
-            a.y + a.height
-
-        b_bottom =
-            b.y + b.height
-
-        x =
-            max a.x b.x
-
-        y =
-            max a.y b.y
-
-        right =
-            min a_right b_right
-
-        bottom =
-            min a_bottom b_bottom
-    in
-    { x = x
-    , y = y
-    , width = right - x
-    , height = bottom - y
-    }
-
-
-rectBoundingBox : VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure
-rectBoundingBox a b =
-    let
-        a_right =
-            a.x + a.width
-
-        b_right =
-            b.x + b.width
-
-        a_bottom =
-            a.y + a.height
-
-        b_bottom =
-            b.y + b.height
-
-        x =
-            min a.x b.x
-
-        y =
-            min a.y b.y
-
-        right =
-            max a_right b_right
-
-        bottom =
-            max a_bottom b_bottom
-    in
-    { x = x
-    , y = y
-    , width = right - x
-    , height = bottom - y
-    }
+readFromWindow : Task
+readFromWindow =
+    ReadFromWindow

@@ -12,7 +12,7 @@ The framework derives the notifications from your bot's status text, according t
 
 -}
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import BotLab.NotificationsShim.VolatileProcessInterface as VolatileProcessInterface
 import CompilationInterface.SourceFiles
 
@@ -74,13 +74,13 @@ init : InterfaceToHost.BotConfig botState -> StateWithNotifications botState
 init wrappedBot =
     { wrappedBot =
         ( wrappedBot.init
-        , InterfaceToHost.FinishSession { statusDescriptionText = "This value will never be used" }
+        , InterfaceToHost.FinishSession { statusText = "This value will never be used" }
         )
     , notifications =
         ( { volatileProcess = Nothing
           , notificationsCount = 0
           }
-        , { startTasks = [], statusDescriptionText = "", notifyWhenArrivedAtTime = Nothing }
+        , { startTasks = [], statusText = "", notifyWhenArrivedAtTime = Nothing }
         )
     }
 
@@ -91,13 +91,11 @@ switchEvent :
 switchEvent event =
     case event.eventAtTime of
         InterfaceToHost.TaskCompletedEvent taskCompleted ->
-            case taskCompleted.taskId of
-                InterfaceToHost.TaskIdFromString taskCompletedId ->
-                    if String.startsWith taskIdPrefix taskCompletedId then
-                        { toNotifications = Just event, toWrappedBot = Nothing }
+            if String.startsWith taskIdPrefix taskCompleted.taskId then
+                { toNotifications = Just event, toWrappedBot = Nothing }
 
-                    else
-                        { toNotifications = Nothing, toWrappedBot = Just event }
+            else
+                { toNotifications = Nothing, toWrappedBot = Just event }
 
         _ ->
             { toNotifications = Just event, toWrappedBot = Just event }
@@ -121,13 +119,11 @@ processEventNotificationsSetup event stateBefore =
                     []
 
                 InterfaceToHost.TaskCompletedEvent taskCompleted ->
-                    case taskCompleted.taskId of
-                        InterfaceToHost.TaskIdFromString taskCompletedId ->
-                            if String.startsWith taskIdPrefix taskCompletedId then
-                                [ taskCompleted.taskResult ]
+                    if String.startsWith taskIdPrefix taskCompleted.taskId then
+                        [ taskCompleted.taskResult ]
 
-                            else
-                                []
+                    else
+                        []
 
         state =
             notificationTasksCompleted
@@ -151,7 +147,16 @@ processEventNotificationsSetup event stateBefore =
                             InterfaceToHost.RequestToVolatileProcessResponse _ ->
                                 intermediateState
 
+                            InterfaceToHost.OpenWindowResponse _ ->
+                                intermediateState
+
+                            InterfaceToHost.InvokeMethodOnWindowResponse _ _ ->
+                                intermediateState
+
                             InterfaceToHost.CompleteWithoutResult ->
+                                intermediateState
+
+                            InterfaceToHost.RandomBytesResponse _ ->
                                 intermediateState
                     )
                     stateBefore
@@ -159,9 +164,9 @@ processEventNotificationsSetup event stateBefore =
     case state.volatileProcess of
         Nothing ->
             ( { state | volatileProcess = Just CreationRequestedSetupState }
-            , { statusDescriptionText = "Creating volatile process."
+            , { statusText = "Creating volatile process."
               , startTasks =
-                    [ { taskId = InterfaceToHost.TaskIdFromString (taskIdPrefix ++ "create-volatile-process")
+                    [ { taskId = taskIdPrefix ++ "create-volatile-process"
                       , task =
                             InterfaceToHost.CreateVolatileProcess
                                 { programCode = CompilationInterface.SourceFiles.file____BotLab_NotificationsShim_VolatileProcess_csx.utf8 }
@@ -173,7 +178,7 @@ processEventNotificationsSetup event stateBefore =
 
         Just CreationRequestedSetupState ->
             ( state
-            , { statusDescriptionText = "Waiting for volatile process..."
+            , { statusText = "Waiting for volatile process..."
               , startTasks = []
               , notifyWhenArrivedAtTime = Nothing
               }
@@ -181,7 +186,7 @@ processEventNotificationsSetup event stateBefore =
 
         Just (CreationFailedSetupState failed) ->
             ( state
-            , { statusDescriptionText = "Failed to create volatile process: " ++ failed.exceptionToString
+            , { statusText = "Failed to create volatile process: " ++ failed.exceptionToString
               , startTasks = []
               , notifyWhenArrivedAtTime = Nothing
               }
@@ -189,7 +194,7 @@ processEventNotificationsSetup event stateBefore =
 
         Just (CreationCompletedState _) ->
             ( state
-            , { statusDescriptionText = ""
+            , { statusText = ""
               , startTasks = []
               , notifyWhenArrivedAtTime = Nothing
               }
@@ -248,7 +253,7 @@ processEvent wrappedBot notificationsFunction event stateBefore =
                                 Just (InterfaceToHost.ContinueSession wrappedBotNewContinueSession) ->
                                     ( wrappedBotNewContinueSession.startTasks
                                     , notificationsFunction
-                                        { statusText = wrappedBotNewContinueSession.statusDescriptionText }
+                                        { statusText = wrappedBotNewContinueSession.statusText }
                                     )
 
                         notificationsSetupTasks =
@@ -289,13 +294,13 @@ processEvent wrappedBot notificationsFunction event stateBefore =
                                                                 }
                                                             )
                                                 in
-                                                { taskId = InterfaceToHost.TaskIdFromString taskIdString
+                                                { taskId = taskIdString
                                                 , task = task
                                                 }
                                             )
 
                         statusTextNotificationsAppendix =
-                            case notificationsLastResponse.statusDescriptionText of
+                            case notificationsLastResponse.statusText of
                                 "" ->
                                     Nothing
 
@@ -303,7 +308,7 @@ processEvent wrappedBot notificationsFunction event stateBefore =
                                     Just ("Notifications shim: " ++ nonEmpty)
 
                         mergedStatusText =
-                            wrappedBotContinueSession.statusDescriptionText
+                            wrappedBotContinueSession.statusText
                                 ++ "\n"
                                 ++ Maybe.withDefault "" statusTextNotificationsAppendix
 
@@ -321,7 +326,7 @@ processEvent wrappedBot notificationsFunction event stateBefore =
                                 ++ notificationsTasks
                     in
                     ( InterfaceToHost.ContinueSession
-                        { statusDescriptionText = mergedStatusText
+                        { statusText = mergedStatusText
                         , startTasks = startTasks
                         , notifyWhenArrivedAtTime = mergedNotifyWhenArrivedAtTime
                         }

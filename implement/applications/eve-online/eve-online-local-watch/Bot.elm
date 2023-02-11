@@ -1,4 +1,4 @@
-{- EVE Online Intel Bot - Local Watch Script - 2022-09-01
+{- EVE Online Intel Bot - Local Watch Script - 2023-02-11
    This bot watches local and plays an alarm sound when a pilot with bad standing appears.
 -}
 {-
@@ -12,7 +12,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import BotLab.NotificationsShim
 import Common.AppSettings as AppSettings
 import Common.EffectOnWindow exposing (MouseButton(..))
@@ -46,10 +46,9 @@ botMain : InterfaceToHost.BotConfig State
 botMain =
     { init = EveOnline.BotFrameworkSeparatingMemory.initState {}
     , processEvent =
-        EveOnline.BotFrameworkSeparatingMemory.processEventWithImageProcessing
+        EveOnline.BotFrameworkSeparatingMemory.processEvent
             { parseBotSettings = AppSettings.parseAllowOnlyEmpty {}
             , selectGameClientInstance = always EveOnline.BotFramework.selectGameClientInstanceWithTopmostWindow
-            , screenshotRegionsToRead = always { rects1x1 = [] }
             , updateMemoryForNewReadingFromGame = always identity
             , decideNextStep =
                 always waitForProgressInGame

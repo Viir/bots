@@ -19,6 +19,7 @@ import Json.Decode
 import List.Extra
 import Maybe.Extra
 import Regex
+import Result.Extra
 import Set
 
 
@@ -47,6 +48,7 @@ type alias ParsedUserInterface =
     , watchListPanel : Maybe WatchListPanel
     , standaloneBookmarkWindow : Maybe StandaloneBookmarkWindow
     , moduleButtonTooltip : Maybe ModuleButtonTooltip
+    , heatStatusTooltip : Maybe HeatStatusTooltip
     , neocom : Maybe Neocom
     , messageBoxes : List MessageBox
     , layerAbovemain : Maybe UITreeNodeWithDisplayRegion
@@ -59,6 +61,7 @@ type alias UITreeNodeWithDisplayRegion =
     , children : Maybe (List ChildOfNodeWithDisplayRegion)
     , selfDisplayRegion : DisplayRegion
     , totalDisplayRegion : DisplayRegion
+    , totalDisplayRegionVisible : DisplayRegion
     }
 
 
@@ -108,6 +111,7 @@ type alias ShipUI =
     , squadronsUI : Maybe SquadronsUI
     , stopButton : Maybe UITreeNodeWithDisplayRegion
     , maxSpeedButton : Maybe UITreeNodeWithDisplayRegion
+    , heatGauges : Maybe ShipUIHeatGauges
     }
 
 
@@ -136,6 +140,19 @@ type alias ShipUICapacitor =
 type alias ShipUICapacitorPmark =
     { uiNode : UITreeNodeWithDisplayRegion
     , colorPercent : Maybe ColorComponents
+    }
+
+
+type alias ShipUIHeatGauges =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , gauges : List ShipUIHeatGauge
+    }
+
+
+type alias ShipUIHeatGauge =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , rotationPercent : Maybe Int
+    , heatPercent : Maybe Int
     }
 
 
@@ -260,6 +277,7 @@ type alias OverviewWindowEntry =
     , bgColorFillsPercent : List ColorComponents
     , rightAlignedIconsHints : List String
     , commonIndications : OverviewWindowEntryCommonIndications
+    , opacityPercent : Maybe Int
     }
 
 
@@ -316,7 +334,7 @@ type alias DronesWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , droneGroups : List DronesWindowEntryGroupStructure
     , droneGroupInBay : Maybe DronesWindowEntryGroupStructure
-    , droneGroupInLocalSpace : Maybe DronesWindowEntryGroupStructure
+    , droneGroupInSpace : Maybe DronesWindowEntryGroupStructure
     }
 
 
@@ -334,8 +352,13 @@ type DronesWindowEntry
 type alias DronesWindowDroneGroupHeader =
     { uiNode : UITreeNodeWithDisplayRegion
     , mainText : Maybe String
-    , expander : Expander
-    , quantityFromTitle : Maybe Int
+    , quantityFromTitle : Maybe DronesWindowDroneGroupHeaderQuantity
+    }
+
+
+type alias DronesWindowDroneGroupHeaderQuantity =
+    { current : Int
+    , maximum : Maybe Int
     }
 
 
@@ -450,6 +473,14 @@ type alias ModuleButtonTooltip =
     }
 
 
+type alias HeatStatusTooltip =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , lowPercent : Maybe Int
+    , mediumPercent : Maybe Int
+    , highPercent : Maybe Int
+    }
+
+
 type alias Neocom =
     { uiNode : UITreeNodeWithDisplayRegion
     , iconInventory : Maybe UITreeNodeWithDisplayRegion
@@ -476,15 +507,9 @@ type alias BookmarkLocationWindow =
     }
 
 
-type alias Expander =
-    { uiNode : UITreeNodeWithDisplayRegion
-    , texturePath : Maybe String
-    , isExpanded : Maybe Bool
-    }
-
-
 type alias MessageBox =
     { uiNode : UITreeNodeWithDisplayRegion
+    , buttonGroup : Maybe UITreeNodeWithDisplayRegion
     , buttons : List { uiNode : UITreeNodeWithDisplayRegion, mainText : Maybe String }
     }
 
@@ -529,6 +554,7 @@ parseUITreeWithDisplayRegionFromUITree uiTree =
         |> asUITreeNodeWithDisplayRegion
             { selfDisplayRegion = selfDisplayRegion
             , totalDisplayRegion = selfDisplayRegion
+            , occludedRegions = []
             }
 
 
@@ -548,6 +574,7 @@ parseUserInterfaceFromUITree uiTree =
     , stationWindow = parseStationWindowFromUITreeRoot uiTree
     , inventoryWindows = parseInventoryWindowsFromUITreeRoot uiTree
     , moduleButtonTooltip = parseModuleButtonTooltipFromUITreeRoot uiTree
+    , heatStatusTooltip = parseHeatStatusTooltipFromUITreeRoot uiTree
     , chatWindowStacks = parseChatWindowStacksFromUITreeRoot uiTree
     , agentConversationWindows = parseAgentConversationWindowsFromUITreeRoot uiTree
     , marketOrdersWindow = parseMarketOrdersWindowFromUITreeRoot uiTree
@@ -565,17 +592,51 @@ parseUserInterfaceFromUITree uiTree =
     }
 
 
-asUITreeNodeWithDisplayRegion : { selfDisplayRegion : DisplayRegion, totalDisplayRegion : DisplayRegion } -> EveOnline.MemoryReading.UITreeNode -> UITreeNodeWithDisplayRegion
-asUITreeNodeWithDisplayRegion { selfDisplayRegion, totalDisplayRegion } uiNode =
+asUITreeNodeWithDisplayRegion :
+    { selfDisplayRegion : DisplayRegion, totalDisplayRegion : DisplayRegion, occludedRegions : List DisplayRegion }
+    -> EveOnline.MemoryReading.UITreeNode
+    -> UITreeNodeWithDisplayRegion
+asUITreeNodeWithDisplayRegion { selfDisplayRegion, totalDisplayRegion, occludedRegions } uiNode =
     { uiNode = uiNode
-    , children = uiNode.children |> Maybe.map (List.map (EveOnline.MemoryReading.unwrapUITreeNodeChild >> asUITreeNodeWithInheritedOffset { x = totalDisplayRegion.x, y = totalDisplayRegion.y }))
+    , children =
+        uiNode.children
+            |> Maybe.map
+                (List.foldl
+                    (\currentChild mappedSiblings ->
+                        let
+                            occludingSiblingsRegions =
+                                mappedSiblings
+                                    |> List.filterMap justCaseWithDisplayRegion
+                                    |> List.filter (.uiNode >> typeOccludesFollowingSiblingNodes)
+                                    |> List.map .totalDisplayRegion
+                        in
+                        (currentChild
+                            |> EveOnline.MemoryReading.unwrapUITreeNodeChild
+                            |> asUITreeNodeWithInheritedOffset
+                                { x = totalDisplayRegion.x, y = totalDisplayRegion.y }
+                                { occludedRegions = occludedRegions ++ occludingSiblingsRegions }
+                        )
+                            :: mappedSiblings
+                    )
+                    []
+                    >> List.reverse
+                )
     , selfDisplayRegion = selfDisplayRegion
     , totalDisplayRegion = totalDisplayRegion
+    , totalDisplayRegionVisible =
+        subtractRegionsFromRegion { minuend = totalDisplayRegion, subtrahend = occludedRegions }
+            |> List.sortBy (areaFromDisplayRegion >> Maybe.withDefault -1 >> negate)
+            |> List.head
+            |> Maybe.withDefault { x = -1, y = -1, width = 0, height = 0 }
     }
 
 
-asUITreeNodeWithInheritedOffset : { x : Int, y : Int } -> EveOnline.MemoryReading.UITreeNode -> ChildOfNodeWithDisplayRegion
-asUITreeNodeWithInheritedOffset inheritedOffset rawNode =
+asUITreeNodeWithInheritedOffset :
+    { x : Int, y : Int }
+    -> { occludedRegions : List DisplayRegion }
+    -> EveOnline.MemoryReading.UITreeNode
+    -> ChildOfNodeWithDisplayRegion
+asUITreeNodeWithInheritedOffset inheritedOffset { occludedRegions } rawNode =
     case rawNode |> getDisplayRegionFromDictEntries of
         Nothing ->
             ChildWithoutRegion rawNode
@@ -586,6 +647,7 @@ asUITreeNodeWithInheritedOffset inheritedOffset rawNode =
                     { selfDisplayRegion = selfRegion
                     , totalDisplayRegion =
                         { selfRegion | x = inheritedOffset.x + selfRegion.x, y = inheritedOffset.y + selfRegion.y }
+                    , occludedRegions = occludedRegions
                     }
                     rawNode
                 )
@@ -954,6 +1016,13 @@ parseShipUIFromUITreeRoot uiTreeRoot =
                                 |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "SquadronsUI")
                                 |> List.head
                                 |> Maybe.map parseSquadronsUI
+
+                        heatGauges =
+                            shipUINode
+                                |> listDescendantsWithDisplayRegion
+                                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "HeatGauges")
+                                |> List.head
+                                |> Maybe.map parseShipUIHeatGaugesFromUINode
                     in
                     maybeHitpointsPercent
                         |> Maybe.map
@@ -968,6 +1037,7 @@ parseShipUIFromUITreeRoot uiTreeRoot =
                                 , squadronsUI = squadronsUI
                                 , stopButton = descendantNodesFromPythonObjectTypeNameEqual "StopButton" |> List.head
                                 , maxSpeedButton = descendantNodesFromPythonObjectTypeNameEqual "MaxSpeedButton" |> List.head
+                                , heatGauges = heatGauges
                                 }
                             )
 
@@ -1047,6 +1117,48 @@ parseShipUICapacitorFromUINode capacitorUINode =
     { uiNode = capacitorUINode
     , pmarks = pmarks
     , levelFromPmarksPercent = levelFromPmarksPercent
+    }
+
+
+parseShipUIHeatGaugesFromUINode : UITreeNodeWithDisplayRegion -> ShipUIHeatGauges
+parseShipUIHeatGaugesFromUINode gaugesUINode =
+    let
+        heatGaugesRotationZeroValues =
+            [ -213, -108, -3 ]
+
+        heatValuePercentFromRotationPercent rotationPercent =
+            heatGaugesRotationZeroValues
+                |> List.map
+                    (\gaugeRotationZero ->
+                        if rotationPercent <= gaugeRotationZero && gaugeRotationZero - 100 <= rotationPercent then
+                            Just -(rotationPercent - gaugeRotationZero)
+
+                        else
+                            Nothing
+                    )
+                |> List.filterMap identity
+                |> List.head
+
+        gauges =
+            gaugesUINode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> Maybe.map ((==) "heatGauge") >> Maybe.withDefault False)
+                |> List.map
+                    (\gaugeUiNode ->
+                        let
+                            rotationPercent =
+                                gaugeUiNode.uiNode
+                                    |> getRotationFloatFromDictEntries
+                                    |> Maybe.map ((*) 100 >> round)
+                        in
+                        { uiNode = gaugeUiNode
+                        , rotationPercent = rotationPercent
+                        , heatPercent = rotationPercent |> Maybe.andThen heatValuePercentFromRotationPercent
+                        }
+                    )
+    in
+    { uiNode = gaugesUINode
+    , gauges = gauges
     }
 
 
@@ -1209,7 +1321,11 @@ parseOverviewWindowFromUITreeRoot uiTreeRoot =
     case
         uiTreeRoot
             |> listDescendantsWithDisplayRegion
-            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "OverView")
+            |> List.filter
+                (.uiNode
+                    >> .pythonObjectTypeName
+                    >> (List.member >> (|>) [ "OverView", "OverviewWindow", "OverviewWindowOld" ])
+                )
             |> List.head
     of
         Nothing ->
@@ -1346,6 +1462,11 @@ parseOverviewWindowEntry entriesHeaders overviewEntryNode =
             , isJammingMe = rightAlignedIconsHintsContainsTextIgnoringCase "is jamming me"
             , isWarpDisruptingMe = rightAlignedIconsHintsContainsTextIgnoringCase "is warp disrupting me"
             }
+
+        opacityPercent =
+            overviewEntryNode.uiNode
+                |> getOpacityFloatFromDictEntries
+                |> Maybe.map ((*) 100 >> round)
     in
     { uiNode = overviewEntryNode
     , textsLeftToRight = textsLeftToRight
@@ -1360,6 +1481,7 @@ parseOverviewWindowEntry entriesHeaders overviewEntryNode =
     , bgColorFillsPercent = bgColorFillsPercent
     , rightAlignedIconsHints = rightAlignedIconsHints
     , commonIndications = commonIndications
+    , opacityPercent = opacityPercent
     }
 
 
@@ -1432,7 +1554,11 @@ parseDronesWindowFromUITreeRoot uiTreeRoot =
     case
         uiTreeRoot
             |> listDescendantsWithDisplayRegion
-            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "DroneView")
+            |> List.filter
+                (.uiNode
+                    >> .pythonObjectTypeName
+                    >> (List.member >> (|>) [ "DroneView", "DronesWindow" ])
+                )
             |> List.head
     of
         Nothing ->
@@ -1450,13 +1576,23 @@ parseDronesWindowFromUITreeRoot uiTreeRoot =
                 droneGroupHeaders =
                     windowNode
                         |> listDescendantsWithDisplayRegion
-                        |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "Group")
+                        |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "DroneGroupHeader")
                         |> List.filterMap parseDronesWindowDroneGroupHeader
 
                 droneEntries =
                     windowNode
                         |> listDescendantsWithDisplayRegion
-                        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "DroneEntry")
+                        |> List.filter
+                            (.uiNode
+                                >> .pythonObjectTypeName
+                                >> (\pythonTypeName ->
+                                        {-
+                                           2023-01-02 Observed: 'DroneInBayEntry'
+                                        -}
+                                        String.startsWith "Drone" pythonTypeName
+                                            && String.endsWith "Entry" pythonTypeName
+                                   )
+                            )
                         |> List.map parseDronesWindowDroneEntry
 
                 droneGroups =
@@ -1477,8 +1613,8 @@ parseDronesWindowFromUITreeRoot uiTreeRoot =
             Just
                 { uiNode = windowNode
                 , droneGroups = droneGroups
-                , droneGroupInBay = droneGroupFromHeaderTextPart "in Bay"
-                , droneGroupInLocalSpace = droneGroupFromHeaderTextPart "in local space"
+                , droneGroupInBay = droneGroupFromHeaderTextPart "in bay"
+                , droneGroupInSpace = droneGroupFromHeaderTextPart "in space"
                 }
 
 
@@ -1524,8 +1660,8 @@ dronesGroupTreesFromFlatListOfEntries entriesBeforeOrdering =
                                             True
 
                                         DronesWindowEntryGroup group ->
-                                            topmostGroupEntry.header.expander.uiNode.totalDisplayRegion.x
-                                                < (group.header.expander.uiNode.totalDisplayRegion.x - 3)
+                                            topmostGroupEntry.header.uiNode.totalDisplayRegion.x
+                                                < (group.header.uiNode.totalDisplayRegion.x - 3)
                                 )
 
                     childGroupTrees =
@@ -1600,49 +1736,65 @@ parseDronesWindowDroneGroupHeader : UITreeNodeWithDisplayRegion -> Maybe DronesW
 parseDronesWindowDroneGroupHeader groupHeaderUiNode =
     case
         groupHeaderUiNode
-            |> listDescendantsWithDisplayRegion
-            |> List.filter
-                (.uiNode
-                    >> getNameFromDictEntries
-                    >> (Maybe.map (String.toLower >> String.contains "expander") >> Maybe.withDefault False)
-                )
+            |> getAllContainedDisplayTextsWithRegion
+            |> List.sortBy (Tuple.second >> .totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
+            |> List.map Tuple.first
+            |> List.head
     of
-        [ expanderNode ] ->
-            let
-                mainText =
-                    groupHeaderUiNode
-                        |> getAllContainedDisplayTextsWithRegion
-                        |> List.sortBy (Tuple.second >> .totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
-                        |> List.map Tuple.first
-                        |> List.head
+        Nothing ->
+            Nothing
 
+        Just mainText ->
+            let
                 quantityFromTitle =
-                    mainText |> Maybe.andThen (parseQuantityFromDroneGroupTitleText >> Result.withDefault Nothing)
+                    mainText
+                        |> parseQuantityFromDroneGroupTitleText
+                        |> Result.withDefault Nothing
             in
             Just
                 { uiNode = groupHeaderUiNode
-                , mainText = mainText
-                , expander = expanderNode |> parseExpander
+                , mainText = Just mainText
                 , quantityFromTitle = quantityFromTitle
                 }
 
-        _ ->
-            Nothing
 
-
-parseQuantityFromDroneGroupTitleText : String -> Result String (Maybe Int)
+parseQuantityFromDroneGroupTitleText : String -> Result String (Maybe DronesWindowDroneGroupHeaderQuantity)
 parseQuantityFromDroneGroupTitleText droneGroupTitleText =
     case droneGroupTitleText |> String.split "(" |> List.drop 1 of
         [] ->
             Ok Nothing
 
         [ textAfterOpeningParenthesis ] ->
-            textAfterOpeningParenthesis
-                |> String.split ")"
-                |> List.head
-                |> Maybe.andThen (String.trim >> String.toInt)
-                |> Result.fromMaybe ("Failed to parse to integer from '" ++ textAfterOpeningParenthesis ++ "'")
-                |> Result.map Just
+            case textAfterOpeningParenthesis |> String.split ")" |> List.head of
+                Nothing ->
+                    Err "Missing closing parens"
+
+                Just textInParens ->
+                    case
+                        textInParens
+                            |> String.split "/"
+                            |> List.map String.trim
+                            |> List.map
+                                (\numberText ->
+                                    numberText
+                                        |> String.toInt
+                                        |> Result.fromMaybe ("Failed to parse to integer from '" ++ numberText ++ "'")
+                                )
+                            |> Result.Extra.combine
+                    of
+                        Err err ->
+                            Err ("Failed to parse numbers in parentheses: " ++ err)
+
+                        Ok integersInParens ->
+                            case integersInParens of
+                                [ singleNumber ] ->
+                                    Ok (Just { current = singleNumber, maximum = Nothing })
+
+                                [ firstNumber, secondNumber ] ->
+                                    Ok (Just { current = firstNumber, maximum = Just secondNumber })
+
+                                _ ->
+                                    Err "Found unexpected number of numbers in parentheses."
 
         _ ->
             Err "Found unexpected number of parentheses."
@@ -1736,10 +1888,6 @@ parseProbeScannerWindowFromUITreeRoot uiTreeRoot =
 
                 headersContainerNode =
                     scrollNode
-                        |> Maybe.map listDescendantsWithDisplayRegion
-                        |> Maybe.withDefault []
-                        |> List.filter (.uiNode >> .pythonObjectTypeName >> String.toLower >> String.contains "header")
-                        |> List.head
 
                 entriesHeaders =
                     headersContainerNode
@@ -1849,11 +1997,6 @@ parseStationWindowFromUITreeRoot uiTreeRoot =
 
         Just windowNode ->
             let
-                buttons =
-                    windowNode
-                        |> listDescendantsWithDisplayRegion
-                        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Button")
-
                 buttonFromDisplayText textToSearch =
                     let
                         textToSearchLowercase =
@@ -1862,9 +2005,9 @@ parseStationWindowFromUITreeRoot uiTreeRoot =
                         textMatches text =
                             text == textToSearchLowercase || (text |> String.contains (">" ++ textToSearchLowercase ++ "<"))
                     in
-                    buttons
-                        |> List.filter (.uiNode >> getAllContainedDisplayTexts >> List.map (String.toLower >> String.trim) >> List.any textMatches)
-                        |> List.head
+                    findButtonInDescendantsByDisplayTextsPredicate
+                        (List.any (String.toLower >> textMatches))
+                        windowNode
             in
             Just
                 { uiNode = windowNode
@@ -2202,6 +2345,42 @@ parseModuleButtonTooltipShortcut shortcutText =
         |> Result.map List.reverse
 
 
+parseHeatStatusTooltipFromUITreeRoot : UITreeNodeWithDisplayRegion -> Maybe HeatStatusTooltip
+parseHeatStatusTooltipFromUITreeRoot uiTreeRoot =
+    uiTreeRoot
+        |> listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "TooltipPanel")
+        |> List.filter
+            (getAllContainedDisplayTextsWithRegion
+                >> List.sortBy (Tuple.second >> .totalDisplayRegion >> .y)
+                >> List.head
+                >> Maybe.map (Tuple.first >> String.contains "Heat Status")
+                >> Maybe.withDefault False
+            )
+        |> List.head
+        |> Maybe.map parseHeatStatusTooltip
+
+
+parseHeatStatusTooltip : UITreeNodeWithDisplayRegion -> HeatStatusTooltip
+parseHeatStatusTooltip tooltipNode =
+    let
+        parsePercentFromPrefix prefix =
+            tooltipNode.uiNode
+                |> getAllContainedDisplayTexts
+                |> List.map String.trim
+                |> List.filter (String.toLower >> String.startsWith prefix)
+                |> List.head
+                |> Maybe.map (String.split " " >> List.filter (String.isEmpty >> not) >> List.drop 1 >> String.join "")
+                |> Maybe.andThen (String.split "%" >> List.head)
+                |> Maybe.andThen String.toInt
+    in
+    { uiNode = tooltipNode
+    , lowPercent = parsePercentFromPrefix "low"
+    , mediumPercent = parsePercentFromPrefix "medium"
+    , highPercent = parsePercentFromPrefix "high"
+    }
+
+
 parseKeyShortcutText : String -> Maybe Common.EffectOnWindow.VirtualKeyCode
 parseKeyShortcutText keyText =
     [ ( "CTRL", Common.EffectOnWindow.vkey_LCONTROL )
@@ -2382,18 +2561,9 @@ parseBookmarkLocationWindowFromUITreeRoot uiTreeRoot =
 
 parseBookmarkLocationWindow : UITreeNodeWithDisplayRegion -> BookmarkLocationWindow
 parseBookmarkLocationWindow windowUINode =
-    let
-        buttonFromLabelText labelText =
-            windowUINode
-                |> listDescendantsWithDisplayRegion
-                |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "Button")
-                |> List.filter (.uiNode >> getAllContainedDisplayTexts >> List.map (String.trim >> String.toLower) >> List.member (labelText |> String.toLower))
-                |> List.sortBy (.totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
-                |> List.head
-    in
     { uiNode = windowUINode
-    , submitButton = buttonFromLabelText "submit"
-    , cancelButton = buttonFromLabelText "cancel"
+    , submitButton = findButtonInDescendantsContainingDisplayText "submit" windowUINode
+    , cancelButton = findButtonInDescendantsContainingDisplayText "cancel" windowUINode
     }
 
 
@@ -2611,28 +2781,6 @@ parseKeyActivationWindow windowUiNode =
     }
 
 
-parseExpander : UITreeNodeWithDisplayRegion -> Expander
-parseExpander uiNode =
-    let
-        maybeTexturePath =
-            getTexturePathFromDictEntries uiNode.uiNode
-
-        isExpanded =
-            maybeTexturePath
-                |> Maybe.andThen
-                    (\texturePath ->
-                        [ ( "38_16_228.png", False ), ( "38_16_229.png", True ) ]
-                            |> List.filter (\( pathEnd, _ ) -> texturePath |> String.endsWith pathEnd)
-                            |> List.map Tuple.second
-                            |> List.head
-                    )
-    in
-    { uiNode = uiNode
-    , texturePath = maybeTexturePath
-    , isExpanded = isExpanded
-    }
-
-
 parseMessageBoxesFromUITreeRoot : UITreeNodeWithDisplayRegion -> List MessageBox
 parseMessageBoxesFromUITreeRoot uiTreeRoot =
     uiTreeRoot
@@ -2644,10 +2792,17 @@ parseMessageBoxesFromUITreeRoot uiTreeRoot =
 parseMessageBox : UITreeNodeWithDisplayRegion -> MessageBox
 parseMessageBox uiNode =
     let
+        buttonGroup =
+            uiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "ButtonGroup")
+                |> List.head
+
         buttons =
             uiNode
                 |> listDescendantsWithDisplayRegion
-                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Button")
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "Button")
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "ButtonGroup" >> not)
                 |> List.map
                     (\buttonNode ->
                         { uiNode = buttonNode
@@ -2660,9 +2815,28 @@ parseMessageBox uiNode =
                         }
                     )
     in
-    { buttons = buttons
+    { buttonGroup = buttonGroup
+    , buttons = buttons
     , uiNode = uiNode
     }
+
+
+findButtonInDescendantsContainingDisplayText : String -> UITreeNodeWithDisplayRegion -> Maybe UITreeNodeWithDisplayRegion
+findButtonInDescendantsContainingDisplayText displayText =
+    findButtonInDescendantsByDisplayTextsPredicate
+        (List.any (String.toLower >> String.contains (String.toLower displayText)))
+
+
+findButtonInDescendantsByDisplayTextsPredicate : (List String -> Bool) -> UITreeNodeWithDisplayRegion -> Maybe UITreeNodeWithDisplayRegion
+findButtonInDescendantsByDisplayTextsPredicate displayTextsPredicate =
+    listDescendantsWithDisplayRegion
+        {-
+           2023-01-12 discovered name: UndockButton
+        -}
+        >> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "Button")
+        >> List.filter (.uiNode >> getAllContainedDisplayTexts >> displayTextsPredicate)
+        >> List.sortBy (.totalDisplayRegion >> areaFromDisplayRegion >> Maybe.withDefault 0)
+        >> List.head
 
 
 parseScrollControls : UITreeNodeWithDisplayRegion -> ScrollControls
@@ -2817,6 +2991,13 @@ getRotationFloatFromDictEntries =
         >> Maybe.andThen (Json.Decode.decodeValue Json.Decode.float >> Result.toMaybe)
 
 
+getOpacityFloatFromDictEntries : EveOnline.MemoryReading.UITreeNode -> Maybe Float
+getOpacityFloatFromDictEntries =
+    .dictEntriesOfInterest
+        >> Dict.get "_opacity"
+        >> Maybe.andThen (Json.Decode.decodeValue Json.Decode.float >> Result.toMaybe)
+
+
 jsonDecodeIntFromIntOrString : Json.Decode.Decoder Int
 jsonDecodeIntFromIntOrString =
     Json.Decode.oneOf
@@ -2888,12 +3069,128 @@ listChildrenWithDisplayRegion : UITreeNodeWithDisplayRegion -> List UITreeNodeWi
 listChildrenWithDisplayRegion parent =
     parent.children
         |> Maybe.withDefault []
-        |> List.filterMap
-            (\child ->
-                case child of
-                    ChildWithoutRegion _ ->
-                        Nothing
+        |> List.filterMap justCaseWithDisplayRegion
 
-                    ChildWithRegion childWithRegion ->
-                        Just childWithRegion
+
+justCaseWithDisplayRegion : ChildOfNodeWithDisplayRegion -> Maybe UITreeNodeWithDisplayRegion
+justCaseWithDisplayRegion child =
+    case child of
+        ChildWithoutRegion _ ->
+            Nothing
+
+        ChildWithRegion childWithRegion ->
+            Just childWithRegion
+
+
+typeOccludesFollowingSiblingNodes : EveOnline.MemoryReading.UITreeNode -> Bool
+typeOccludesFollowingSiblingNodes node =
+    -- session-recording-2022-12-09T12-32-56.zip: In Overview window: "SortHeaders"
+    node.pythonObjectTypeName == "SortHeaders"
+
+
+subtractRegionsFromRegion :
+    { minuend : DisplayRegion
+    , subtrahend : List DisplayRegion
+    }
+    -> List DisplayRegion
+subtractRegionsFromRegion { minuend, subtrahend } =
+    subtrahend
+        |> List.foldl
+            (\subtrahendPart previousResults ->
+                previousResults
+                    |> List.concatMap
+                        (\minuendPart ->
+                            subtractRegionFromRegion { subtrahend = subtrahendPart, minuend = minuendPart }
+                        )
             )
+            [ minuend ]
+
+
+subtractRegionFromRegion :
+    { minuend : DisplayRegion
+    , subtrahend : DisplayRegion
+    }
+    -> List DisplayRegion
+subtractRegionFromRegion { minuend, subtrahend } =
+    let
+        minuendRight =
+            minuend.x + minuend.width
+
+        minuendBottom =
+            minuend.y + minuend.height
+
+        subtrahendRight =
+            subtrahend.x + subtrahend.width
+
+        subtrahendBottom =
+            subtrahend.y + subtrahend.height
+    in
+    {-
+       Similar to approach from https://stackoverflow.com/questions/3765283/how-to-subtract-a-rectangle-from-another/15228510#15228510
+       We want to support finding the largest rectangle, so we let them overlap here.
+
+       ----------------------------
+       |  A  |       A      |  A  |
+       |  B  |              |  C  |
+       |--------------------------|
+       |  B  |  subtrahend  |  C  |
+       |--------------------------|
+       |  B  |              |  C  |
+       |  D  |      D       |  D  |
+       ----------------------------
+    -}
+    [ { left = minuend.x
+      , top = minuend.y
+      , right = minuendRight
+      , bottom = minuendBottom |> min subtrahend.y
+      }
+    , { left = minuend.x
+      , top = minuend.y
+      , right = minuendRight |> min subtrahend.x
+      , bottom = minuendBottom
+      }
+    , { left = minuend.x |> max subtrahendRight
+      , top = minuend.y
+      , right = minuendRight
+      , bottom = minuendBottom
+      }
+    , { left = minuend.x
+      , top = minuend.y |> max subtrahendBottom
+      , right = minuendRight
+      , bottom = minuendBottom
+      }
+    ]
+        |> List.map
+            (\rect ->
+                { x = rect.left
+                , y = rect.top
+                , width = rect.right - rect.left
+                , height = rect.bottom - rect.top
+                }
+            )
+        |> List.filter (\rect -> 0 < rect.width && 0 < rect.height)
+        |> listUnique
+
+
+regionsOverlap : DisplayRegion -> DisplayRegion -> Bool
+regionsOverlap regionA regionB =
+    subtractRegionFromRegion
+        { minuend = regionA
+        , subtrahend = regionB
+        }
+        /= [ regionA ]
+
+
+{-| Remove duplicate values, keeping the first instance of each element which appears more than once.
+-}
+listUnique : List element -> List element
+listUnique =
+    List.foldr
+        (\nextElement elements ->
+            if elements |> List.member nextElement then
+                elements
+
+            else
+                nextElement :: elements
+        )
+        []

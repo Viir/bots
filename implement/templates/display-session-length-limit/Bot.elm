@@ -15,7 +15,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
 
 
 type alias State =
@@ -39,7 +39,7 @@ processEvent event stateBefore =
     in
     ( state
     , InterfaceToHost.ContinueSession
-        { statusDescriptionText = state |> statusTextFromState
+        { statusText = state |> statusTextFromState
         , startTasks = []
         , notifyWhenArrivedAtTime = Just { timeInMilliseconds = state.timeInMilliseconds + 1000 }
         }

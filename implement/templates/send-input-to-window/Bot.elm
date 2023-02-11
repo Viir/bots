@@ -14,7 +14,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework
     exposing
         ( bringWindowToForeground
@@ -24,7 +24,12 @@ import BotLab.SimpleBotFramework as SimpleBotFramework
         , mouseButtonUpEffect
         , setMouseCursorPositionEffect
         )
+import Common.AppSettings as AppSettings
 import Common.EffectOnWindow exposing (MouseButton(..))
+
+
+type alias BotSettings =
+    {}
 
 
 type alias SimpleState =
@@ -35,14 +40,16 @@ type alias SimpleState =
 
 
 type alias State =
-    SimpleBotFramework.State SimpleState
+    SimpleBotFramework.State BotSettings SimpleState
 
 
 botMain : InterfaceToHost.BotConfig State
 botMain =
-    { init = SimpleBotFramework.initState initState
-    , processEvent = SimpleBotFramework.processEvent simpleProcessEvent
-    }
+    SimpleBotFramework.composeSimpleBotMain
+        { parseBotSettings = AppSettings.parseAllowOnlyEmpty {}
+        , init = initState
+        , processEvent = simpleProcessEvent
+        }
 
 
 initState : SimpleState
@@ -70,8 +77,12 @@ initState =
     }
 
 
-simpleProcessEvent : SimpleBotFramework.BotEvent -> SimpleState -> ( SimpleState, SimpleBotFramework.BotResponse )
-simpleProcessEvent event stateBeforeIntegratingEvent =
+simpleProcessEvent :
+    BotSettings
+    -> SimpleBotFramework.BotEvent
+    -> SimpleState
+    -> ( SimpleState, SimpleBotFramework.BotResponse )
+simpleProcessEvent _ event stateBeforeIntegratingEvent =
     let
         stateBefore =
             stateBeforeIntegratingEvent |> integrateEvent event
@@ -80,7 +91,7 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
     if stateBefore.waitingForTaskToComplete /= Nothing then
         ( stateBefore
         , SimpleBotFramework.ContinueSession
-            { statusDescriptionText = "Waiting for task to complete."
+            { statusText = "Waiting for task to complete."
             , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 100 }
             , startTasks = []
             }
@@ -120,7 +131,7 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
                 in
                 ( state
                 , SimpleBotFramework.ContinueSession
-                    { statusDescriptionText = statusDescription
+                    { statusText = statusDescription
                     , notifyWhenArrivedAtTime = Just { timeInMilliseconds = notifyWhenArrivedAtTime }
                     , startTasks = startTasks
                     }
@@ -128,7 +139,7 @@ simpleProcessEvent event stateBeforeIntegratingEvent =
 
             [] ->
                 ( stateBefore
-                , SimpleBotFramework.FinishSession { statusDescriptionText = "Completed sending inputs." }
+                , SimpleBotFramework.FinishSession { statusText = "Completed sending inputs." }
                 )
 
 
@@ -140,9 +151,6 @@ integrateEvent event stateBeforeUpdateTime =
     in
     case event.eventAtTime of
         SimpleBotFramework.TimeArrivedEvent ->
-            stateBefore
-
-        SimpleBotFramework.BotSettingsChangedEvent _ ->
             stateBefore
 
         SimpleBotFramework.SessionDurationPlannedEvent _ ->

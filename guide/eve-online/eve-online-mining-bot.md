@@ -27,9 +27,9 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from <https://catalog.botlab.org/999f03ff3e728e68> and then run it.
+To start the mining bot, download the script from <https://catalog.botlab.org/57e101909df1a02c> and then run it.
 
-In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client-and-register-the-botlab-command>
+In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
 
 After completing the installation, run the script again to start the mining bot.
 
@@ -54,24 +54,26 @@ All settings are optional; you only need them in case the defaults don't fit you
 
 + `unload-station-name` : Name of a station to dock to when the mining hold is full.
 + `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
-+ `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
++ `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
 + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
++ `unload-fleet-hangar-percent` : This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
++ `dock-when-without-drones` : This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`.
 
 When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of a complete settings string:
 
 ```
 unload-station-name = Noghere VII - Moon 15
-module-to-activate-always = shield hardener
-module-to-activate-always = afterburner
+activate-module-always = shield hardener
+activate-module-always = afterburner
 ```
 
 ## Running Multiple Instances
 
-This bot supports running multiple instances on the same desktop. In such a scenario, the individual bot instances take turns sending input and coordinate to avoid interfering with each other's input. To learn more about multi-instance setup, see https://to.botlab.org/guide/running-bots-on-multiple-game-clients
+This bot supports running multiple instances on the same desktop. In such a scenario, the individual bot instances take turns sending input and coordinate to avoid interfering with each other's input. To learn more about multi-instance setup, see <https://to.botlab.org/guide/running-bots-on-multiple-game-clients>
 
 ----
 
-If you want to learn how this bot or other apps for EVE Online are developed, have a look at the directory of development guides at https://to.botlab.org/guide/overview
+If you want to learn how this bot or other apps for EVE Online are developed, have a look at the directory of development guides at <https://to.botlab.org/guide/overview>
 
 In case I forgot to add something here or you have any questions, don't hesitate to ask on the [BotLab forum](https://forum.botlab.org/).

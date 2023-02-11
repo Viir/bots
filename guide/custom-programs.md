@@ -107,8 +107,8 @@ https://github.com/Viir/bots/commit/828e5b23a892b050f34680e006543af4df823221
 
 Original discussion:
 
-+ https://forum.botlab.org/t/farm-manager-tribal-wars-2-farmbot/3038/222
-+ https://forum.botlab.org/t/farm-manager-tribal-wars-2-farmbot/3038/314
++ <https://forum.botlab.org/t/farm-manager-tribal-wars-2-farmbot/3038/222>
++ <https://forum.botlab.org/t/farm-manager-tribal-wars-2-farmbot/3038/314>
 
 2021-09-22 the catalog entry for [d5a06db64f](https://botcatalog.org/d5a06db64fd579fbcf695ef99162cd1cd069b7c9eddc19e6e5abee5d7be21c43) shows:
 
@@ -122,13 +122,13 @@ Original discussion:
 
 Original discussion:
 
-+ https://forum.botlab.org/t/bot-not-working-with-new-engine/4142
++ <https://forum.botlab.org/t/bot-not-working-with-new-engine/4142>
 
 > EVE Online Intel Bot - Local Watch Script - 2021-09-21
 > This bot watches local and plays an alarm sound when a pilot with bad standing appears.
 
-+ https://github.com/Viir/bots/tree/0bce0d7f3cd6e560d5a625e9f8a8068610950901/implement/applications/eve-online/eve-online-local-watch
-+ https://reactor.botlab.org/catalog/b590279a1fbac9b39a76512df2d5dae3ef92ece4863f307ad4faea03a193ce4d
++ <https://github.com/Viir/bots/tree/0bce0d7f3cd6e560d5a625e9f8a8068610950901/implement/applications/eve-online/eve-online-local-watch>
++ <https://reactor.botlab.org/catalog/b590279a1fbac9b39a76512df2d5dae3ef92ece4863f307ad4faea03a193ce4d>
 
 2021-10-05 the catalog entry shows:
 
@@ -137,4 +137,28 @@ Original discussion:
 2022-04-15 the catalog entry shows:
 
 > Total running time in hours: 1442
+
+
+## 2022-09-01 - Maunzinator - EVE Online Intel Bot - Local Watch Bot
+
+Discussion:
+
++ <https://forum.botlab.org/t/local-watch-bot/4112/3>
+
++ <https://catalog.botlab.org/413d1319fc4d45a8>
++ <https://github.com/Viir/bots/tree/1067c27ab4e56a91f6d7b00c2f45926dd76b8a3a/implement/applications/eve-online/eve-online-local-watch>
+
+
+## 2022-09-19 - opticcanadian and Drklord - Tribal Wars 2 - avoid targets based on outgoing commands
+
++ <https://github.com/Viir/bots/commit/96b22107183d708ec1c44f6e0d2bd6d322d33ba4>
++ <https://catalog.botlab.org/ab0771677670681c>
+
+Original discussion:
+
++ <https://forum.botlab.org/t/update-upgrade-to-recent-tribal-wars-2-bot/4443>
+
+2022-10-17 the catalog entry <https://catalog.botlab.org/ab0771677670681c> shows:
+
+> Total running time in hours: 1293
 

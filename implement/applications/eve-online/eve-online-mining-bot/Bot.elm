@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2022-08-25
+{- EVE Online mining bot version 2023-02-08
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -18,19 +18,21 @@
 
    + `unload-station-name` : Name of a station to dock to when the mining hold is full.
    + `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
-   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
+   + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
    + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
+   + `unload-fleet-hangar-percent` : This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
+   + `dock-when-without-drones` : This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
 
    ```
    unload-station-name = Noghere VII - Moon 15
-   module-to-activate-always = shield hardener
-   module-to-activate-always = afterburner
+   activate-module-always = shield hardener
+   activate-module-always = afterburner
    ```
 
-   To learn about the mining bot, see <https://to.botlab.org/guide/app/eve-online-mining-bot>
+   To learn more about the mining bot, see <https://to.botlab.org/guide/app/eve-online-mining-bot>
 
 -}
 {-
@@ -44,7 +46,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
@@ -52,15 +54,16 @@ import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.BotFramework
     exposing
-        ( ReadingFromGameClient
+        ( ModuleButtonTooltipMemory
+        , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
-        , clickOnUIElement
         , doEffectsClickModuleButton
         , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
+        , mouseClickOnUIElement
         , shipUIIndicatesShipIsWarpingOrJumping
         , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
@@ -84,8 +87,8 @@ import EveOnline.BotFrameworkSeparatingMemory
 import EveOnline.ParseUserInterface
     exposing
         ( OverviewWindowEntry
+        , UITreeNodeWithDisplayRegion
         , centerFromDisplayRegion
-        , getAllContainedDisplayTexts
         )
 import Regex
 
@@ -100,13 +103,16 @@ defaultBotSettings =
     { runAwayShieldHitpointsThresholdPercent = 70
     , unloadStationName = Nothing
     , unloadStructureName = Nothing
-    , modulesToActivateAlways = []
+    , unloadFleetHangarPercent = -1
+    , unloadMiningHoldPercent = 99
+    , activateModulesAlways = []
     , hideWhenNeutralInLocal = Nothing
+    , dockWhenWithoutDrones = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 1300
-    , miningHoldMaxPercent = 99
     , selectInstancePilotName = Nothing
+    , includeAsteroidPatterns = []
     }
 
 
@@ -117,17 +123,27 @@ parseBotSettings =
            , AppSettings.valueTypeInteger (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
            )
          , ( "unload-station-name"
-           , AppSettings.valueTypeString (\stationName -> \settings -> { settings | unloadStationName = Just stationName })
+           , AppSettings.valueTypeString (\stationName settings -> { settings | unloadStationName = Just stationName })
            )
          , ( "unload-structure-name"
-           , AppSettings.valueTypeString (\structureName -> \settings -> { settings | unloadStructureName = Just structureName })
+           , AppSettings.valueTypeString (\structureName settings -> { settings | unloadStructureName = Just structureName })
            )
-         , ( "module-to-activate-always"
-           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
+         , ( "unload-fleet-hangar-percent"
+           , AppSettings.valueTypeInteger (\fleetHangarPercent settings -> { settings | unloadFleetHangarPercent = fleetHangarPercent })
+           )
+         , ( "unload-mining-hold-percent"
+           , AppSettings.valueTypeInteger (\percent settings -> { settings | unloadMiningHoldPercent = percent })
+           )
+         , ( "activate-module-always"
+           , AppSettings.valueTypeString (\moduleName settings -> { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways })
            )
          , ( "hide-when-neutral-in-local"
            , AppSettings.valueTypeYesOrNo
-                (\hide -> \settings -> { settings | hideWhenNeutralInLocal = Just hide })
+                (\hide settings -> { settings | hideWhenNeutralInLocal = Just hide })
+           )
+         , ( "dock-when-without-drones"
+           , AppSettings.valueTypeYesOrNo
+                (\without settings -> { settings | dockWhenWithoutDrones = Just without })
            )
          , ( "targeting-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | targetingRange = range })
@@ -135,14 +151,17 @@ parseBotSettings =
          , ( "mining-module-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | miningModuleRange = range })
            )
-         , ( "ore-hold-max-percent"
-           , AppSettings.valueTypeInteger (\percent settings -> { settings | miningHoldMaxPercent = percent })
-           )
          , ( "select-instance-pilot-name"
-           , AppSettings.valueTypeString (\pilotName -> \settings -> { settings | selectInstancePilotName = Just pilotName })
+           , AppSettings.valueTypeString (\pilotName settings -> { settings | selectInstancePilotName = Just pilotName })
            )
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
+           )
+         , ( "include-asteroid-pattern"
+           , AppSettings.valueTypeString
+                (\pattern settings ->
+                    { settings | includeAsteroidPatterns = pattern :: settings.includeAsteroidPatterns }
+                )
            )
          ]
             |> Dict.fromList
@@ -155,17 +174,25 @@ goodStandingPatterns =
     [ "good standing", "excellent standing", "is in your" ]
 
 
+dockWhenDroneWindowInvisibleCount : Int
+dockWhenDroneWindowInvisibleCount =
+    4
+
+
 type alias BotSettings =
     { runAwayShieldHitpointsThresholdPercent : Int
     , unloadStationName : Maybe String
     , unloadStructureName : Maybe String
-    , modulesToActivateAlways : List String
+    , unloadFleetHangarPercent : Int
+    , unloadMiningHoldPercent : Int
+    , activateModulesAlways : List String
     , hideWhenNeutralInLocal : Maybe AppSettings.YesOrNo
+    , dockWhenWithoutDrones : Maybe AppSettings.YesOrNo
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
-    , miningHoldMaxPercent : Int
     , selectInstancePilotName : Maybe String
+    , includeAsteroidPatterns : List String
     }
 
 
@@ -175,6 +202,7 @@ type alias BotMemory =
     , volumeUnloadedCubicMeters : Int
     , lastUsedCapacityInMiningHold : Maybe Int
     , shipModules : ShipModulesMemory
+    , lastReadingsInSpaceDronesWindowWasVisible : List Bool
     }
 
 
@@ -206,7 +234,7 @@ miningBotDecisionRootBeforeApplyingSettings context =
                         context.readingFromGameClient
                         (dockedWithMiningHoldSelected context)
                 , ifSeeShipUI =
-                    returnDronesAndRunAwayIfHitpointsAreTooLow context
+                    returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones context
                 , ifUndockingComplete =
                     \seeUndockingComplete ->
                         continueIfShouldHide
@@ -283,8 +311,21 @@ shouldHideWhenNeutralInLocal context =
                 < 50
 
 
-returnDronesAndRunAwayIfHitpointsAreTooLow : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
-returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
+shouldDockWhenWithoutDrones : BotDecisionContext -> Bool
+shouldDockWhenWithoutDrones context =
+    case context.eventContext.botSettings.dockWhenWithoutDrones of
+        Just AppSettings.No ->
+            False
+
+        Just AppSettings.Yes ->
+            True
+
+        Nothing ->
+            False
+
+
+returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
+returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones context shipUI =
     let
         returnDronesShieldHitpointsThresholdPercent =
             context.eventContext.botSettings.runAwayShieldHitpointsThresholdPercent + 5
@@ -305,6 +346,13 @@ returnDronesAndRunAwayIfHitpointsAreTooLow context shipUI =
                 )
             |> Maybe.withDefault runAwayWithDescription
             |> Just
+
+    else if
+        (context |> shouldDockWhenWithoutDrones)
+            && shouldDockBecauseDroneWindowWasInvisibleTooLong context.memory
+    then
+        Just
+            (describeBranch "I don't see the drone window, are we out of drones? configured to run away when without a drone. Run to the station!" (dockToUnloadOre context))
 
     else
         Nothing
@@ -341,7 +389,7 @@ closeMessageBox readingFromGameClient =
                             describeBranch
                                 ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
                                 (decideActionForCurrentStep
-                                    (clickOnUIElement MouseButtonLeft buttonToUse.uiNode)
+                                    (mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode)
                                 )
                     )
             )
@@ -349,7 +397,7 @@ closeMessageBox readingFromGameClient =
 
 dockedWithMiningHoldSelected : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
 dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
-    case inventoryWindowWithMiningHoldSelected |> itemHangarFromInventoryWindow of
+    case inventoryWindowWithMiningHoldSelected |> itemHangarFromInventoryWindow |> Maybe.map .uiNode of
         Nothing ->
             describeBranch "I do not see the item hangar in the inventory." askForHelpToGetUnstuck
 
@@ -357,12 +405,28 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
             case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
                     describeBranch "I see no item in the mining hold. Check if we should undock."
-                        (continueIfShouldHide
-                            { ifShouldHide =
-                                describeBranch "Stay docked." waitForProgressInGame
-                            }
-                            context
-                            |> Maybe.withDefault (undockUsingStationWindow context)
+                        (if
+                            shouldDockWhenWithoutDrones context
+                                && shouldDockBecauseDroneWindowWasInvisibleTooLong context.memory
+                         then
+                            describeBranch "Stay docked because I didn't see the drone window. Are we out of drones?"
+                                askForHelpToGetUnstuck
+
+                         else
+                            continueIfShouldHide
+                                { ifShouldHide =
+                                    describeBranch "Stay docked because we should hide." waitForProgressInGame
+                                }
+                                context
+                                |> Maybe.withDefault
+                                    (undockUsingStationWindow context
+                                        { ifCannotReachButton =
+                                            describeBranch "Undock using context menu"
+                                                (undockUsingContextMenu context
+                                                    { inventoryWindowWithMiningHoldSelected = inventoryWindowWithMiningHoldSelected }
+                                                )
+                                        }
+                                    )
                         )
 
                 Just itemInInventory ->
@@ -370,8 +434,8 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
                         (describeBranch "Drag and drop."
                             (decideActionForCurrentStep
                                 (EffectOnWindow.effectsForDragAndDrop
-                                    { startLocation = itemInInventory.totalDisplayRegion |> centerFromDisplayRegion
-                                    , endLocation = itemHangar.totalDisplayRegion |> centerFromDisplayRegion
+                                    { startLocation = itemInInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
+                                    , endLocation = itemHangar.totalDisplayRegionVisible |> centerFromDisplayRegion
                                     , mouseButton = MouseButtonLeft
                                     }
                                 )
@@ -379,18 +443,51 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
                         )
 
 
-undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
-undockUsingStationWindow context =
+inSpaceWithMiningHoldSelectedWithFleetHangar : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
+inSpaceWithMiningHoldSelectedWithFleetHangar _ inventoryWindowWithMiningHoldSelected =
+    case
+        inventoryWindowWithMiningHoldSelected |> fleetHangarFromInventoryWindow |> Maybe.map .uiNode
+    of
+        Nothing ->
+            describeBranch "I do not see the fleet hangar in the inventory." askForHelpToGetUnstuck
+
+        Just fleetHangarFromInventory ->
+            case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
+                Nothing ->
+                    describeBranch "I see no item in the mining hold. Click the tree entry representing the fleet Hangar."
+                        (decideActionForCurrentStep
+                            (mouseClickOnUIElement MouseButtonLeft fleetHangarFromInventory)
+                        )
+
+                Just itemInInventory ->
+                    describeBranch "I see at least one item in the mining hold. Move this to the fleet hangar."
+                        (describeBranch "Drag and drop."
+                            (decideActionForCurrentStep
+                                (EffectOnWindow.effectsForDragAndDrop
+                                    { startLocation = itemInInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
+                                    , endLocation = fleetHangarFromInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
+                                    , mouseButton = MouseButtonLeft
+                                    }
+                                )
+                            )
+                        )
+
+
+undockUsingStationWindow :
+    BotDecisionContext
+    -> { ifCannotReachButton : DecisionPathNode }
+    -> DecisionPathNode
+undockUsingStationWindow context { ifCannotReachButton } =
     case context.readingFromGameClient.stationWindow of
         Nothing ->
-            describeBranch "I do not see the station window." askForHelpToGetUnstuck
+            describeBranch "I do not see the station window." ifCannotReachButton
 
         Just stationWindow ->
             case stationWindow.undockButton of
                 Nothing ->
                     case stationWindow.abortUndockButton of
                         Nothing ->
-                            describeBranch "I do not see the undock button." askForHelpToGetUnstuck
+                            describeBranch "I do not see the undock button." ifCannotReachButton
 
                         Just _ ->
                             describeBranch "I see we are already undocking." waitForProgressInGame
@@ -398,8 +495,24 @@ undockUsingStationWindow context =
                 Just undockButton ->
                     describeBranch "Click on the button to undock."
                         (decideActionForCurrentStep
-                            (clickOnUIElement MouseButtonLeft undockButton)
+                            (mouseClickOnUIElement MouseButtonLeft undockButton)
                         )
+
+
+undockUsingContextMenu :
+    BotDecisionContext
+    -> { inventoryWindowWithMiningHoldSelected : EveOnline.ParseUserInterface.InventoryWindow }
+    -> DecisionPathNode
+undockUsingContextMenu context { inventoryWindowWithMiningHoldSelected } =
+    case inventoryWindowWithMiningHoldSelected |> activeShipTreeEntryFromInventoryWindow of
+        Nothing ->
+            describeBranch "I do not see the active ship in the inventory window." askForHelpToGetUnstuck
+
+        Just activeShipEntry ->
+            useContextMenuCascade
+                ( "active ship", activeShipEntry.uiNode )
+                (useMenuEntryWithTextContainingFirstOf [ "undock from station" ] menuCascadeCompleted)
+                context
 
 
 inSpaceWithMiningHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
@@ -428,15 +541,25 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                     Just fillPercent ->
                         let
                             describeThresholdToUnload =
-                                (context.eventContext.botSettings.miningHoldMaxPercent |> String.fromInt) ++ "%"
+                                (context.eventContext.botSettings.unloadMiningHoldPercent |> String.fromInt) ++ "%"
+
+                            describeThresholdToUnloadFleetHangar =
+                                (context.eventContext.botSettings.unloadFleetHangarPercent |> String.fromInt) ++ "%"
 
                             knownMiningModules =
                                 knownMiningModulesFromContext context
                         in
-                        if context.eventContext.botSettings.miningHoldMaxPercent <= fillPercent then
+                        if context.eventContext.botSettings.unloadMiningHoldPercent <= fillPercent then
                             describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
                                 (returnDronesToBay context
                                     |> Maybe.withDefault (dockToUnloadOre context)
+                                )
+
+                        else if context.eventContext.botSettings.unloadFleetHangarPercent > 0 && context.eventContext.botSettings.unloadFleetHangarPercent <= fillPercent then
+                            describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnloadFleetHangar ++ ". Unload the ore on fleet hangar.")
+                                (ensureMiningHoldIsSelectedInInventoryWindow
+                                    context.readingFromGameClient
+                                    (inSpaceWithMiningHoldSelectedWithFleetHangar context)
                                 )
 
                         else
@@ -500,29 +623,46 @@ unlockTargetsNotForMining context =
 
 travelToMiningSiteAndLaunchDronesAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
 travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
-    case context.readingFromGameClient |> topmostAsteroidFromOverviewWindow of
-        Nothing ->
-            describeBranch "I see no asteroid in the overview. Warp to mining site."
-                (returnDronesToBay context
-                    |> Maybe.withDefault
-                        (warpToMiningSite context)
-                )
+    let
+        continueWithWarpToMiningSite =
+            returnDronesToBay context
+                |> Maybe.withDefault (warpToMiningSite context)
+    in
+    case context.readingFromGameClient |> clickableAsteroidsFromOverviewWindow of
+        [] ->
+            describeBranch "I see no clickable asteroid in the overview. Warp to mining site."
+                continueWithWarpToMiningSite
 
-        Just asteroidInOverview ->
-            describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                (warpToOverviewEntryIfFarEnough context asteroidInOverview
-                    |> Maybe.withDefault
-                        (launchDrones context
+        clickableAsteroids ->
+            case
+                clickableAsteroids
+                    |> List.filter (asteroidOverviewEntryMatchesSettings context.eventContext.botSettings)
+                    |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
+                    |> List.head
+            of
+                Nothing ->
+                    describeBranch
+                        ("I see "
+                            ++ String.fromInt (List.length clickableAsteroids)
+                            ++ "clickable asteroids in the overview. But none of these matches the filter from settings. Warp to mining site."
+                        )
+                        continueWithWarpToMiningSite
+
+                Just asteroidInOverview ->
+                    describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                        (warpToOverviewEntryIfFarEnough context asteroidInOverview
                             |> Maybe.withDefault
-                                (lockTargetFromOverviewEntryAndEnsureIsInRange
-                                    context
-                                    (min context.eventContext.botSettings.targetingRange
-                                        context.eventContext.botSettings.miningModuleRange
-                                    )
-                                    asteroidInOverview
+                                (launchDrones context
+                                    |> Maybe.withDefault
+                                        (lockTargetFromOverviewEntryAndEnsureIsInRange
+                                            context
+                                            (min context.eventContext.botSettings.targetingRange
+                                                context.eventContext.botSettings.miningModuleRange
+                                            )
+                                            asteroidInOverview
+                                        )
                                 )
                         )
-                )
 
 
 warpToOverviewEntryIfFarEnough : BotDecisionContext -> OverviewWindowEntry -> Maybe DecisionPathNode
@@ -571,13 +711,11 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
 
                             Just activeShipTreeEntry ->
                                 let
-                                    maybeminingHoldTreeEntry =
-                                        activeShipTreeEntry.children
-                                            |> List.map EveOnline.ParseUserInterface.unwrapInventoryWindowLeftTreeEntryChild
-                                            |> List.filter (.text >> stringContainsIgnoringCase "mining hold")
-                                            |> List.head
+                                    maybeMiningHoldTreeEntry =
+                                        activeShipTreeEntry
+                                            |> miningHoldFromInventoryWindowShipEntry
                                 in
-                                case maybeminingHoldTreeEntry of
+                                case maybeMiningHoldTreeEntry of
                                     Nothing ->
                                         describeBranch "I do not see the mining hold under the active ship in the inventory."
                                             (case activeShipTreeEntry.toggleBtn of
@@ -588,14 +726,14 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
                                                 Just toggleBtn ->
                                                     describeBranch "Click the toggle button to expand."
                                                         (decideActionForCurrentStep
-                                                            (clickOnUIElement MouseButtonLeft toggleBtn)
+                                                            (mouseClickOnUIElement MouseButtonLeft toggleBtn)
                                                         )
                                             )
 
                                     Just miningHoldTreeEntry ->
                                         describeBranch "Click the tree entry representing the mining hold."
                                             (decideActionForCurrentStep
-                                                (clickOnUIElement MouseButtonLeft miningHoldTreeEntry.uiNode)
+                                                (mouseClickOnUIElement MouseButtonLeft miningHoldTreeEntry.uiNode)
                                             )
                         )
 
@@ -630,7 +768,13 @@ lockTargetFromOverviewEntryAndEnsureIsInRange context rangeInMeters overviewEntr
 
 lockTargetFromOverviewEntry : OverviewWindowEntry -> BotDecisionContext -> DecisionPathNode
 lockTargetFromOverviewEntry overviewEntry context =
-    describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
+    describeBranch
+        ("Lock target from overview entry '"
+            ++ (overviewEntry.objectName |> Maybe.withDefault "")
+            ++ "' ("
+            ++ (overviewEntry.objectDistance |> Maybe.withDefault "")
+            ++ ")"
+        )
         (useContextMenuCascadeOnOverviewEntry
             (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
             overviewEntry
@@ -644,9 +788,13 @@ dockToStationOrStructureWithMatchingName :
     -> DecisionPathNode
 dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSettingOrInfoPanel } context =
     let
+        {-
+           2023-01-11 Observation by Dean: Text in surroundings context menu entry sometimes wraps station name in XML tags:
+           <color=#FF58A7BF>Niyabainen IV - M1 - Caldari Navy Assembly Plant</color>
+        -}
         displayTextRepresentsMatchingStation =
             simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
-                >> String.startsWith (nameFromSettingOrInfoPanel |> simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry)
+                >> String.contains (nameFromSettingOrInfoPanel |> simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry)
 
         matchingOverviewEntry =
             context.readingFromGameClient.overviewWindow
@@ -793,7 +941,14 @@ dockToUnloadOre context =
                         context
 
                 Nothing ->
-                    describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
+                    case context.memory.lastDockedStationNameFromInfoPanel of
+                        Just unloadStationName ->
+                            dockToStationOrStructureWithMatchingName
+                                { prioritizeStructures = False, nameFromSettingOrInfoPanel = unloadStationName }
+                                context
+
+                        Nothing ->
+                            describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
 
 
 dockToRandomStationOrStructure : BotDecisionContext -> DecisionPathNode
@@ -811,16 +966,25 @@ launchDrones context =
     context.readingFromGameClient.dronesWindow
         |> Maybe.andThen
             (\dronesWindow ->
-                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
-                    ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
+                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInSpace ) of
+                    ( Just droneGroupInBay, Just droneGroupInSpace ) ->
                         let
                             dronesInBayQuantity =
-                                droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
+                                droneGroupInBay.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
 
-                            dronesInLocalSpaceQuantity =
-                                droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
+                            dronesInSpaceQuantityCurrent =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
+
+                            dronesInSpaceQuantityLimit =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.andThen .maximum
+                                    |> Maybe.withDefault 2
                         in
-                        if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
+                        if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
                             Just
                                 (describeBranch "Launch drones"
                                     (useContextMenuCascade
@@ -841,15 +1005,21 @@ launchDrones context =
 returnDronesToBay : BotDecisionContext -> Maybe DecisionPathNode
 returnDronesToBay context =
     context.readingFromGameClient.dronesWindow
-        |> Maybe.andThen .droneGroupInLocalSpace
+        |> Maybe.andThen .droneGroupInSpace
         |> Maybe.andThen
             (\droneGroupInLocalSpace ->
-                if (droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0) < 1 then
+                if
+                    (droneGroupInLocalSpace.header.quantityFromTitle
+                        |> Maybe.map .current
+                        |> Maybe.withDefault 0
+                    )
+                        < 1
+                then
                     Nothing
 
                 else
                     Just
-                        (describeBranch "I see there are drones in local space. Return those to bay."
+                        (describeBranch "I see there are drones in space. Return those to bay."
                             (useContextMenuCascade
                                 ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                 (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
@@ -890,23 +1060,21 @@ knownModulesToActivateAlways context =
             )
 
 
-tooltipLooksLikeMiningModule : EveOnline.ParseUserInterface.ModuleButtonTooltip -> Bool
+tooltipLooksLikeMiningModule : ModuleButtonTooltipMemory -> Bool
 tooltipLooksLikeMiningModule =
-    .uiNode
-        >> .uiNode
-        >> getAllContainedDisplayTexts
+    .allContainedDisplayTextsWithRegion
+        >> List.map Tuple.first
         >> List.any
             (Regex.fromString "\\d\\s*m3\\s*\\/\\s*s" |> Maybe.map Regex.contains |> Maybe.withDefault (always False))
 
 
-tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> EveOnline.ParseUserInterface.ModuleButtonTooltip -> Maybe String
+tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> ModuleButtonTooltipMemory -> Maybe String
 tooltipLooksLikeModuleToActivateAlways context =
-    .uiNode
-        >> .uiNode
-        >> getAllContainedDisplayTexts
+    .allContainedDisplayTextsWithRegion
+        >> List.map Tuple.first
         >> List.filterMap
             (\tooltipText ->
-                context.eventContext.botSettings.modulesToActivateAlways
+                context.eventContext.botSettings.activateModulesAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
                             if tooltipText |> stringContainsIgnoringCase moduleToActivateAlways then
@@ -944,6 +1112,7 @@ initBotMemory =
     , volumeUnloadedCubicMeters = 0
     , lastUsedCapacityInMiningHold = Nothing
     , shipModules = EveOnline.BotFramework.initShipModulesMemory
+    , lastReadingsInSpaceDronesWindowWasVisible = []
     }
 
 
@@ -988,9 +1157,17 @@ statusTextFromDecisionContext context =
 
                 Just dronesWindow ->
                     "I see the drones window: In bay: "
-                        ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
-                        ++ ", in local space: "
-                        ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                        ++ (dronesWindow.droneGroupInBay
+                                |> Maybe.andThen (.header >> .quantityFromTitle)
+                                |> Maybe.map (.current >> String.fromInt)
+                                |> Maybe.withDefault "Unknown"
+                           )
+                        ++ ", in space: "
+                        ++ (dronesWindow.droneGroupInSpace
+                                |> Maybe.andThen (.header >> .quantityFromTitle)
+                                |> Maybe.map (.current >> String.fromInt)
+                                |> Maybe.withDefault "Unknown"
+                           )
                         ++ "."
 
         describeMiningHold =
@@ -1062,6 +1239,15 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
 
         volumeUnloadedCubicMeters =
             botMemoryBefore.volumeUnloadedCubicMeters + volumeUnloadedSincePreviousReading
+
+        lastReadingsInSpaceDronesWindowWasVisible =
+            if context.readingFromGameClient.shipUI == Nothing then
+                botMemoryBefore.lastReadingsInSpaceDronesWindowWasVisible
+
+            else
+                (context.readingFromGameClient.dronesWindow /= Nothing)
+                    :: botMemoryBefore.lastReadingsInSpaceDronesWindowWasVisible
+                    |> List.take dockWhenDroneWindowInvisibleCount
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
@@ -1073,7 +1259,14 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
     , shipModules =
         botMemoryBefore.shipModules
             |> EveOnline.BotFramework.integrateCurrentReadingsIntoShipModulesMemory context.readingFromGameClient
+    , lastReadingsInSpaceDronesWindowWasVisible = lastReadingsInSpaceDronesWindowWasVisible
     }
+
+
+shouldDockBecauseDroneWindowWasInvisibleTooLong : BotMemory -> Bool
+shouldDockBecauseDroneWindowWasInvisibleTooLong memory =
+    (dockWhenDroneWindowInvisibleCount <= List.length memory.lastReadingsInSpaceDronesWindowWasVisible)
+        && List.all ((==) False) memory.lastReadingsInSpaceDronesWindowWasVisible
 
 
 clickModuleButtonButWaitIfClickedInPreviousStep : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUIModuleButton -> DecisionPathNode
@@ -1084,7 +1277,7 @@ clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
     else
         describeBranch "Click on this module button."
             (decideActionForCurrentStep
-                (clickOnUIElement MouseButtonLeft moduleButton.uiNode)
+                (mouseClickOnUIElement MouseButtonLeft moduleButton.uiNode)
             )
 
 
@@ -1108,11 +1301,26 @@ activeShipTreeEntryFromInventoryWindow =
         >> List.head
 
 
-topmostAsteroidFromOverviewWindow : ReadingFromGameClient -> Maybe OverviewWindowEntry
-topmostAsteroidFromOverviewWindow =
+clickableAsteroidsFromOverviewWindow : ReadingFromGameClient -> List OverviewWindowEntry
+clickableAsteroidsFromOverviewWindow =
     overviewWindowEntriesRepresentingAsteroids
+        >> List.filter (.uiNode >> uiNodeIsLargeEnoughForClicking)
+        >> List.filter (.opacityPercent >> Maybe.map ((<=) 50) >> Maybe.withDefault True)
         >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
-        >> List.head
+
+
+asteroidOverviewEntryMatchesSettings : BotSettings -> OverviewWindowEntry -> Bool
+asteroidOverviewEntryMatchesSettings settings overviewEntry =
+    let
+        textMatchesPattern text =
+            (settings.includeAsteroidPatterns == [])
+                || (settings.includeAsteroidPatterns
+                        |> List.any (\pattern -> String.contains (String.toLower pattern) (String.toLower text))
+                   )
+    in
+    overviewEntry.cellsTexts
+        |> Dict.values
+        |> List.any textMatchesPattern
 
 
 overviewWindowEntriesRepresentingAsteroids : ReadingFromGameClient -> List OverviewWindowEntry
@@ -1144,7 +1352,21 @@ inventoryWindowWithMiningHoldSelectedFromGameClient =
 
 
 inventoryWindowSelectedContainerIsMiningHold : EveOnline.ParseUserInterface.InventoryWindow -> Bool
-inventoryWindowSelectedContainerIsMiningHold =
+inventoryWindowSelectedContainerIsMiningHold inventoryWindow =
+    inventoryWindowSelectedContainerIsMiningHold_PhotonUI inventoryWindow
+        || inventoryWindowSelectedContainerIsMiningHold_pre_PhotonUI inventoryWindow
+
+
+inventoryWindowSelectedContainerIsMiningHold_PhotonUI : EveOnline.ParseUserInterface.InventoryWindow -> Bool
+inventoryWindowSelectedContainerIsMiningHold_PhotonUI =
+    activeShipTreeEntryFromInventoryWindow
+        >> Maybe.andThen miningHoldFromInventoryWindowShipEntry
+        >> Maybe.map (.uiNode >> containsSelectionIndicatorPhotonUI)
+        >> Maybe.withDefault False
+
+
+inventoryWindowSelectedContainerIsMiningHold_pre_PhotonUI : EveOnline.ParseUserInterface.InventoryWindow -> Bool
+inventoryWindowSelectedContainerIsMiningHold_pre_PhotonUI =
     .subCaptionLabelText >> Maybe.map (stringContainsIgnoringCase "mining hold") >> Maybe.withDefault False
 
 
@@ -1164,12 +1386,32 @@ selectedContainerFirstItemFromInventoryWindow =
         >> Maybe.andThen List.head
 
 
-itemHangarFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe UIElement
+miningHoldFromInventoryWindowShipEntry :
+    EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry
+    -> Maybe EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry
+miningHoldFromInventoryWindowShipEntry =
+    .children
+        >> List.map EveOnline.ParseUserInterface.unwrapInventoryWindowLeftTreeEntryChild
+        >> List.filter (.text >> stringContainsIgnoringCase "mining hold")
+        >> List.head
+
+
+itemHangarFromInventoryWindow :
+    EveOnline.ParseUserInterface.InventoryWindow
+    -> Maybe EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry
 itemHangarFromInventoryWindow =
     .leftTreeEntries
         >> List.filter (.text >> stringContainsIgnoringCase "item hangar")
         >> List.head
-        >> Maybe.map .uiNode
+
+
+fleetHangarFromInventoryWindow :
+    EveOnline.ParseUserInterface.InventoryWindow
+    -> Maybe EveOnline.ParseUserInterface.InventoryWindowLeftTreeEntry
+fleetHangarFromInventoryWindow =
+    .leftTreeEntries
+        >> List.filter (.text >> stringContainsIgnoringCase "fleet hangar")
+        >> List.head
 
 
 shipManeuverIsApproaching : ReadingFromGameClient -> Bool
@@ -1180,3 +1422,26 @@ shipManeuverIsApproaching =
         >> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverApproach)
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
+
+
+uiNodeIsLargeEnoughForClicking : UITreeNodeWithDisplayRegion -> Bool
+uiNodeIsLargeEnoughForClicking node =
+    3 < node.totalDisplayRegionVisible.width && 3 < node.totalDisplayRegionVisible.height
+
+
+containsSelectionIndicatorPhotonUI : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion -> Bool
+containsSelectionIndicatorPhotonUI =
+    EveOnline.ParseUserInterface.listDescendantsWithDisplayRegion
+        >> List.any
+            (.uiNode
+                >> (\uiNode ->
+                        (uiNode.pythonObjectTypeName
+                            |> String.startsWith "SelectionIndicator"
+                        )
+                            && (uiNode
+                                    |> EveOnline.ParseUserInterface.getColorPercentFromDictEntries
+                                    |> Maybe.map (.a >> (<) 10)
+                                    |> Maybe.withDefault False
+                               )
+                   )
+            )

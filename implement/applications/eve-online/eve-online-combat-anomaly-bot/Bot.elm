@@ -1,14 +1,23 @@
-{- EVE Online combat anomaly bot version 2022-08-25
+{- EVE Online combat anomaly bot version 2023-02-08
 
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
-   Setup instructions for the EVE Online client:
+   ## Features
+
+   + Automatically detects if another pilot is in an anomaly on arrival and switches to another anomaly if necessary.
+   + Filtering for specific anomalies using bot settings.
+   + Avoiding dangerous or too-powerful rats using bot settings.
+   + Remembers observed properties of anomalies, like other pilots or dangerous rats, to inform the selection of anomalies in the future.
+
+   ## Setting up the Game Client
+
+   Despite being quite robust, this bot is less intelligent than a human. For example, its perception is more limited than ours, so we need to set up the game to ensure that the bot can see everything it needs. Following is the list of setup instructions for the EVE Online client:
 
    + Set the UI language to English.
    + Undock, open probe scanner, overview window and drones window.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + In the ship UI, arrange the modules:
-     + Place to use in combat (to activate on targets) in the top row.
+     + Place the modules to use in combat (to activate on targets) in the top row.
      + Hide passive modules by disabling the check-box `Display Passive Modules`.
    + Configure the keyboard key 'W' to make the ship orbit.
 
@@ -18,8 +27,9 @@
 
    + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
    + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
-   + `rat-to-avoid` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
-   + `module-to-activate-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
+   + `avoid-rat` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
+   + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
+   + `anomaly-wait-time`: Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -28,11 +38,11 @@
    anomaly-name = Drone Patrol
    anomaly-name = Drone Horde
    hide-when-neutral-in-local = yes
-   rat-to-avoid = Infested Carrier
-   module-to-activate-always = shield hardener
+   avoid-rat = Infested Carrier
+   activate-module-always = shield hardener
    ```
 
-   To learn about the anomaly bot, see <https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot>
+   To learn more about the anomaly bot, see <https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot>
 
 -}
 {-
@@ -46,7 +56,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_20210823 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
@@ -54,15 +64,16 @@ import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.BotFramework
     exposing
-        ( ReadingFromGameClient
+        ( ModuleButtonTooltipMemory
+        , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
         , UseContextMenuCascadeNode(..)
-        , clickOnUIElement
         , doEffectsClickModuleButton
         , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
+        , mouseClickOnUIElement
         , pickEntryFromLastContextMenuInCascade
         , shipUIIndicatesShipIsWarpingOrJumping
         , useMenuEntryWithTextContaining
@@ -87,7 +98,6 @@ import EveOnline.ParseUserInterface
         ( OverviewWindowEntry
         , ShipUI
         , ShipUIModuleButton
-        , getAllContainedDisplayTexts
         )
 import Set
 
@@ -96,10 +106,12 @@ defaultBotSettings : BotSettings
 defaultBotSettings =
     { hideWhenNeutralInLocal = AppSettings.No
     , anomalyNames = []
-    , ratsToAvoid = []
-    , modulesToActivateAlways = []
+    , avoidRats = []
+    , activateModulesAlways = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = 1400
+    , anomalyWaitTimeSeconds = 15
+    , orbitInCombat = AppSettings.Yes
     }
 
 
@@ -108,25 +120,43 @@ parseBotSettings =
     AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "hide-when-neutral-in-local"
            , AppSettings.valueTypeYesOrNo
-                (\hide -> \settings -> { settings | hideWhenNeutralInLocal = hide })
+                (\hide settings -> { settings | hideWhenNeutralInLocal = hide })
            )
          , ( "anomaly-name"
            , AppSettings.valueTypeString
-                (\anomalyName ->
-                    \settings -> { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
+                (\anomalyName settings ->
+                    { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
                 )
            )
-         , ( "rat-to-avoid"
+         , ( "avoid-rat"
            , AppSettings.valueTypeString
-                (\ratToAvoid ->
-                    \settings -> { settings | ratsToAvoid = String.trim ratToAvoid :: settings.ratsToAvoid }
+                (\ratToAvoid settings ->
+                    { settings | avoidRats = String.trim ratToAvoid :: settings.avoidRats }
                 )
            )
-         , ( "module-to-activate-always"
-           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | modulesToActivateAlways = moduleName :: settings.modulesToActivateAlways })
+         , ( "activate-module-always"
+           , AppSettings.valueTypeString
+                (\moduleName settings ->
+                    { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways }
+                )
+           )
+         , ( "anomaly-wait-time"
+           , AppSettings.valueTypeInteger
+                (\anomalyWaitTimeSeconds settings ->
+                    { settings | anomalyWaitTimeSeconds = anomalyWaitTimeSeconds }
+                )
+           )
+         , ( "orbit-in-combat"
+           , AppSettings.valueTypeYesOrNo
+                (\orbitInCombat settings ->
+                    { settings | orbitInCombat = orbitInCombat }
+                )
            )
          , ( "bot-step-delay"
-           , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
+           , AppSettings.valueTypeInteger
+                (\delay settings ->
+                    { settings | botStepDelayMilliseconds = delay }
+                )
            )
          ]
             |> Dict.fromList
@@ -142,10 +172,12 @@ goodStandingPatterns =
 type alias BotSettings =
     { hideWhenNeutralInLocal : AppSettings.YesOrNo
     , anomalyNames : List String
-    , ratsToAvoid : List String
-    , modulesToActivateAlways : List String
+    , avoidRats : List String
+    , activateModulesAlways : List String
     , maxTargetCount : Int
+    , anomalyWaitTimeSeconds : Int
     , botStepDelayMilliseconds : Int
+    , orbitInCombat : AppSettings.YesOrNo
     }
 
 
@@ -162,7 +194,10 @@ type alias BotMemory =
 
 
 type alias MemoryOfAnomaly =
-    { otherPilotsFoundOnArrival : List String, ratsSeen : Set.Set String }
+    { arrivalTime : { milliseconds : Int }
+    , otherPilotsFoundOnArrival : List String
+    , ratsSeen : Set.Set String
+    }
 
 
 type alias BotDecisionContext =
@@ -265,7 +300,7 @@ getRatsToAvoidSeenInAnomaly settings =
 
 shouldAvoidRatAccordingToSettings : BotSettings -> String -> Bool
 shouldAvoidRatAccordingToSettings settings ratName =
-    settings.ratsToAvoid |> List.map String.toLower |> List.member (ratName |> String.toLower)
+    settings.avoidRats |> List.map String.toLower |> List.member (ratName |> String.toLower)
 
 
 memoryOfAnomalyWithID : String -> BotMemory -> Maybe MemoryOfAnomaly
@@ -341,7 +376,7 @@ closeMessageBox readingFromGameClient =
                         Just buttonToUse ->
                             describeBranch ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
                                 (decideActionForCurrentStep
-                                    (clickOnUIElement MouseButtonLeft buttonToUse.uiNode)
+                                    (mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode)
                                 )
                     )
             )
@@ -411,12 +446,18 @@ dockAtRandomStationOrStructure context =
             , chooseEntry =
                 pickEntryFromLastContextMenuInCascade
                     (\menuEntries ->
+                        let
+                            suitableMenuEntries =
+                                List.filter menuEntryIsSuitable menuEntries
+                        in
                         [ withTextContainingIgnoringCase "dock"
-                        , List.filter menuEntryIsSuitable
+                        , List.filter (.text >> stringContainsIgnoringCase "station")
                             >> Common.Basics.listElementAtWrappedIndex
                                 (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
+                        , Common.Basics.listElementAtWrappedIndex
+                            (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
                         ]
-                            |> List.filterMap (\priority -> menuEntries |> priority)
+                            |> List.filterMap (\priority -> suitableMenuEntries |> priority)
                             |> List.head
                     )
             }
@@ -470,23 +511,38 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                         describeBranch "Looks like we are not in an anomaly." returnDronesAndEnterAnomalyOrWait
 
                     Just anomalyID ->
-                        describeBranch ("We are in anomaly '" ++ anomalyID ++ "'")
-                            (case findReasonToAvoidAnomalyFromMemory context { anomalyID = anomalyID } of
-                                Just reasonToAvoidAnomaly ->
-                                    describeBranch
-                                        ("Found a reason to avoid this anomaly: "
-                                            ++ describeReasonToAvoidAnomaly reasonToAvoidAnomaly
-                                        )
-                                        (returnDronesAndEnterAnomaly
-                                            { ifNoAcceptableAnomalyAvailable =
-                                                describeBranch "Get out of this anomaly."
-                                                    (dockAtRandomStationOrStructure context)
-                                            }
-                                        )
+                        case memoryOfAnomalyWithID anomalyID context.memory of
+                            Nothing ->
+                                describeBranch
+                                    ("Program error: Did not find memory of anomaly " ++ anomalyID)
+                                    waitForProgressInGame
 
-                                Nothing ->
-                                    combat context seeUndockingComplete returnDronesAndEnterAnomalyOrWait
-                            )
+                            Just memoryOfAnomaly ->
+                                let
+                                    arrivalInAnomalyAgeSeconds =
+                                        (context.eventContext.timeInMilliseconds - memoryOfAnomaly.arrivalTime.milliseconds) // 1000
+                                in
+                                describeBranch ("We are in anomaly '" ++ anomalyID ++ "' since " ++ String.fromInt arrivalInAnomalyAgeSeconds ++ " seconds.")
+                                    (case findReasonToAvoidAnomalyFromMemory context { anomalyID = anomalyID } of
+                                        Just reasonToAvoidAnomaly ->
+                                            describeBranch
+                                                ("Found a reason to avoid this anomaly: "
+                                                    ++ describeReasonToAvoidAnomaly reasonToAvoidAnomaly
+                                                )
+                                                (returnDronesAndEnterAnomaly
+                                                    { ifNoAcceptableAnomalyAvailable =
+                                                        describeBranch "Get out of this anomaly."
+                                                            (dockAtRandomStationOrStructure context)
+                                                    }
+                                                )
+
+                                        Nothing ->
+                                            decideActionInAnomaly
+                                                { arrivalInAnomalyAgeSeconds = arrivalInAnomalyAgeSeconds }
+                                                context
+                                                seeUndockingComplete
+                                                returnDronesAndEnterAnomalyOrWait
+                                    )
 
 
 undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
@@ -508,12 +564,17 @@ undockUsingStationWindow context =
                 Just undockButton ->
                     describeBranch "Click on the button to undock."
                         (decideActionForCurrentStep
-                            (clickOnUIElement MouseButtonLeft undockButton)
+                            (mouseClickOnUIElement MouseButtonLeft undockButton)
                         )
 
 
-combat : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode -> DecisionPathNode
-combat context seeUndockingComplete continueIfCombatComplete =
+decideActionInAnomaly :
+    { arrivalInAnomalyAgeSeconds : Int }
+    -> BotDecisionContext
+    -> SeeUndockingComplete
+    -> DecisionPathNode
+    -> DecisionPathNode
+decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplete continueIfCombatComplete =
     let
         overviewEntriesToAttack =
             seeUndockingComplete.overviewWindow.entries
@@ -536,7 +597,25 @@ combat context seeUndockingComplete continueIfCombatComplete =
                 |> List.head
                 |> Maybe.andThen (\overviewEntryToAttack -> ensureShipIsOrbiting seeUndockingComplete.shipUI overviewEntryToAttack)
 
-        decisionIfAlreadyOrbiting =
+        waitTimeRemainingSeconds =
+            context.eventContext.botSettings.anomalyWaitTimeSeconds - arrivalInAnomalyAgeSeconds
+
+        decisionIfNoEnemyToAttack =
+            if overviewEntriesToAttack |> List.isEmpty then
+                if waitTimeRemainingSeconds <= 0 then
+                    returnDronesToBay context
+                        |> Maybe.withDefault
+                            (describeBranch "No drones to return." continueIfCombatComplete)
+
+                else
+                    describeBranch
+                        ("Wait before considering the anomaly finished: " ++ String.fromInt waitTimeRemainingSeconds ++ " seconds")
+                        waitForProgressInGame
+
+            else
+                describeBranch "Wait for target locking to complete." waitForProgressInGame
+
+        decisionToKillRats =
             case targetsToUnlock |> List.head of
                 Just targetToUnlock ->
                     describeBranch "I see a target to unlock."
@@ -553,14 +632,7 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                 (case overviewEntriesToLock of
                                     [] ->
                                         describeBranch "I see no overview entry to lock."
-                                            (if overviewEntriesToAttack |> List.isEmpty then
-                                                returnDronesToBay context
-                                                    |> Maybe.withDefault
-                                                        (describeBranch "No drones to return." continueIfCombatComplete)
-
-                                             else
-                                                describeBranch "Wait for target locking to complete." waitForProgressInGame
-                                            )
+                                            decisionIfNoEnemyToAttack
 
                                     nextOverviewEntryToLock :: _ ->
                                         describeBranch "I see an overview entry to lock."
@@ -601,7 +673,11 @@ combat context seeUndockingComplete continueIfCombatComplete =
                                             (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                                 )
     in
-    ensureShipIsOrbitingDecision |> Maybe.withDefault decisionIfAlreadyOrbiting
+    if context.eventContext.botSettings.orbitInCombat == AppSettings.Yes then
+        ensureShipIsOrbitingDecision |> Maybe.withDefault decisionToKillRats
+
+    else
+        decisionToKillRats
 
 
 enterAnomaly : { ifNoAcceptableAnomalyAvailable : DecisionPathNode } -> BotDecisionContext -> DecisionPathNode
@@ -656,7 +732,7 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
             (describeBranch "Press the 'W' key and click on the overview entry."
                 (decideActionForCurrentStep
                     ([ [ EffectOnWindow.KeyDown EffectOnWindow.vkey_W ]
-                     , overviewEntryToOrbit.uiNode |> clickOnUIElement MouseButtonLeft
+                     , overviewEntryToOrbit.uiNode |> mouseClickOnUIElement MouseButtonLeft
                      , [ EffectOnWindow.KeyUp EffectOnWindow.vkey_W ]
                      ]
                         |> List.concat
@@ -670,11 +746,11 @@ launchAndEngageDrones context =
     context.readingFromGameClient.dronesWindow
         |> Maybe.andThen
             (\dronesWindow ->
-                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInLocalSpace ) of
-                    ( Just droneGroupInBay, Just droneGroupInLocalSpace ) ->
+                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInSpace ) of
+                    ( Just droneGroupInBay, Just droneGroupInSpace ) ->
                         let
                             idlingDrones =
-                                droneGroupInLocalSpace
+                                droneGroupInSpace
                                     |> EveOnline.ParseUserInterface.enumerateAllDronesFromDronesGroup
                                     |> List.filter
                                         (.uiNode
@@ -684,22 +760,31 @@ launchAndEngageDrones context =
                                         )
 
                             dronesInBayQuantity =
-                                droneGroupInBay.header.quantityFromTitle |> Maybe.withDefault 0
+                                droneGroupInBay.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
 
-                            dronesInLocalSpaceQuantity =
-                                droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0
+                            dronesInSpaceQuantityCurrent =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.map .current
+                                    |> Maybe.withDefault 0
+
+                            dronesInSpaceQuantityLimit =
+                                droneGroupInSpace.header.quantityFromTitle
+                                    |> Maybe.andThen .maximum
+                                    |> Maybe.withDefault 2
                         in
                         if 0 < (idlingDrones |> List.length) then
                             Just
                                 (describeBranch "Engage idling drone(s)"
                                     (useContextMenuCascade
-                                        ( "drones group", droneGroupInLocalSpace.header.uiNode )
+                                        ( "drones group", droneGroupInSpace.header.uiNode )
                                         (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
                                         context
                                     )
                                 )
 
-                        else if 0 < dronesInBayQuantity && dronesInLocalSpaceQuantity < 5 then
+                        else if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
                             Just
                                 (describeBranch "Launch drones"
                                     (useContextMenuCascade
@@ -720,15 +805,21 @@ launchAndEngageDrones context =
 returnDronesToBay : BotDecisionContext -> Maybe DecisionPathNode
 returnDronesToBay context =
     context.readingFromGameClient.dronesWindow
-        |> Maybe.andThen .droneGroupInLocalSpace
+        |> Maybe.andThen .droneGroupInSpace
         |> Maybe.andThen
             (\droneGroupInLocalSpace ->
-                if (droneGroupInLocalSpace.header.quantityFromTitle |> Maybe.withDefault 0) < 1 then
+                if
+                    (droneGroupInLocalSpace.header.quantityFromTitle
+                        |> Maybe.map .current
+                        |> Maybe.withDefault 0
+                    )
+                        < 1
+                then
                     Nothing
 
                 else
                     Just
-                        (describeBranch "I see there are drones in local space. Return those to bay."
+                        (describeBranch "I see there are drones in space. Return those to bay."
                             (useContextMenuCascade
                                 ( "drones group", droneGroupInLocalSpace.header.uiNode )
                                 (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
@@ -767,14 +858,12 @@ knownModulesToActivateAlways context =
             )
 
 
-tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> EveOnline.ParseUserInterface.ModuleButtonTooltip -> Maybe String
+tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> ModuleButtonTooltipMemory -> Maybe String
 tooltipLooksLikeModuleToActivateAlways context =
-    .uiNode
-        >> .uiNode
-        >> getAllContainedDisplayTexts
+    .allContainedDisplayTextsWithRegion
         >> List.filterMap
-            (\tooltipText ->
-                context.eventContext.botSettings.modulesToActivateAlways
+            (\( tooltipText, _ ) ->
+                context.eventContext.botSettings.activateModulesAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->
                             if tooltipText |> stringContainsIgnoringCase moduleToActivateAlways then
@@ -837,9 +926,17 @@ statusTextFromState context =
 
                                 Just dronesWindow ->
                                     "I see the drones window: In bay: "
-                                        ++ (dronesWindow.droneGroupInBay |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
-                                        ++ ", in local space: "
-                                        ++ (dronesWindow.droneGroupInLocalSpace |> Maybe.andThen (.header >> .quantityFromTitle) |> Maybe.map String.fromInt |> Maybe.withDefault "Unknown")
+                                        ++ (dronesWindow.droneGroupInBay
+                                                |> Maybe.andThen (.header >> .quantityFromTitle)
+                                                |> Maybe.map (.current >> String.fromInt)
+                                                |> Maybe.withDefault "Unknown"
+                                           )
+                                        ++ ", in space: "
+                                        ++ (dronesWindow.droneGroupInSpace
+                                                |> Maybe.andThen (.header >> .quantityFromTitle)
+                                                |> Maybe.map (.current >> String.fromInt)
+                                                |> Maybe.withDefault "Unknown"
+                                           )
                                         ++ "."
 
                         namesOfOtherPilotsInOverview =
@@ -884,7 +981,7 @@ clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
     else
         describeBranch "Click on this module button."
             (decideActionForCurrentStep
-                (clickOnUIElement MouseButtonLeft moduleButton.uiNode)
+                (mouseClickOnUIElement MouseButtonLeft moduleButton.uiNode)
             )
 
 
@@ -938,7 +1035,7 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
         namesOfRatsInOverview =
             getNamesOfRatsInOverview context.readingFromGameClient
 
-        weJustArrivedOnGrid =
+        weJustFinishedWarping =
             (botMemoryBefore.shipWarpingInLastReading == Just True) && (shipIsWarping == Just False)
 
         visitedAnomalies =
@@ -955,10 +1052,14 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
                             anomalyMemoryBefore =
                                 botMemoryBefore.visitedAnomalies
                                     |> Dict.get currentAnomalyID
-                                    |> Maybe.withDefault { otherPilotsFoundOnArrival = [], ratsSeen = Set.empty }
+                                    |> Maybe.withDefault
+                                        { arrivalTime = { milliseconds = context.timeInMilliseconds }
+                                        , otherPilotsFoundOnArrival = []
+                                        , ratsSeen = Set.empty
+                                        }
 
                             anomalyMemoryWithOtherPilotsOnArrival =
-                                if weJustArrivedOnGrid then
+                                if weJustFinishedWarping then
                                     { anomalyMemoryBefore
                                         | otherPilotsFoundOnArrival = getNamesOfOtherPilotsInOverview context.readingFromGameClient
                                     }

@@ -1668,25 +1668,35 @@ shipUIIndicatesShipIsWarpingOrJumping =
 
 doEffectsClickModuleButton : EveOnline.ParseUserInterface.ShipUIModuleButton -> List Common.EffectOnWindow.EffectOnWindowStructure -> Bool
 doEffectsClickModuleButton moduleButton =
-    List.Extra.tails
-        >> List.any
-            (\effects ->
-                case effects of
-                    firstEffect :: secondEffect :: _ ->
-                        case ( firstEffect, secondEffect ) of
-                            ( Common.EffectOnWindow.MouseMoveTo mouseMoveTo, Common.EffectOnWindow.KeyDown keyDown ) ->
-                                isPointInRectangle mouseMoveTo moduleButton.uiNode.totalDisplayRegion
-                                    && (keyDown == Common.EffectOnWindow.vkey_LBUTTON)
+    findMouseButtonClickLocationsInListOfEffects Common.EffectOnWindow.MouseButtonLeft
+        >> List.any (isPointInRectangle moduleButton.uiNode.totalDisplayRegion)
 
-                            _ ->
-                                False
 
-                    [ _ ] ->
-                        False
+findMouseButtonClickLocationsInListOfEffects : Common.EffectOnWindow.MouseButton -> List Common.EffectOnWindow.EffectOnWindowStructure -> List Location2d
+findMouseButtonClickLocationsInListOfEffects mouseButton =
+    List.foldl
+        (\effect ( maybeLastMouseMoveLocation, leftClickLocations ) ->
+            case effect of
+                Common.EffectOnWindow.MouseMoveTo mouseMoveTo ->
+                    ( Just mouseMoveTo, leftClickLocations )
 
-                    [] ->
-                        False
-            )
+                Common.EffectOnWindow.KeyDown keyDown ->
+                    case maybeLastMouseMoveLocation of
+                        Nothing ->
+                            ( maybeLastMouseMoveLocation, leftClickLocations )
+
+                        Just lastMouseMoveLocation ->
+                            if keyDown == Common.EffectOnWindow.virtualKeyCodeFromMouseButton mouseButton then
+                                ( maybeLastMouseMoveLocation, leftClickLocations ++ [ lastMouseMoveLocation ] )
+
+                            else
+                                ( maybeLastMouseMoveLocation, leftClickLocations )
+
+                _ ->
+                    ( maybeLastMouseMoveLocation, leftClickLocations )
+        )
+        ( Nothing, [] )
+        >> Tuple.second
 
 
 {-| Finds the closest point on the edge of an orthogonal rectangle.
@@ -1707,7 +1717,7 @@ closestPointOnRectangleEdge rectangle point =
         distToBottom =
             abs ((rectangle.y + rectangle.height) - point.y)
     in
-    if isPointInRectangle point rectangle then
+    if isPointInRectangle rectangle point then
         if min distToLeft distToRight < min distToTop distToBottom then
             if distToLeft < distToRight then
                 { x = rectangle.x, y = point.y }
@@ -1732,8 +1742,8 @@ closestPointInRectangle rectangle { x, y } =
     }
 
 
-isPointInRectangle : Location2d -> EveOnline.ParseUserInterface.DisplayRegion -> Bool
-isPointInRectangle { x, y } rectangle =
+isPointInRectangle : EveOnline.ParseUserInterface.DisplayRegion -> Location2d -> Bool
+isPointInRectangle rectangle { x, y } =
     (rectangle.x <= x)
         && (x <= rectangle.x + rectangle.width)
         && (rectangle.y <= y)

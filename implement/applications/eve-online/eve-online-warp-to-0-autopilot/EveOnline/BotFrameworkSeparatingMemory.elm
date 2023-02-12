@@ -31,6 +31,7 @@ import EveOnline.BotFramework
         , closestPointOnRectangleEdge
         , getModuleButtonTooltipFromModuleButton
         , growRegionOnAllSides
+        , isPointInRectangle
         , mouseClickOnUIElement
         , unpackContextMenuTreeToListOfActionsDependingOnReadings
         )
@@ -335,22 +336,38 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
 
                 cascadeFirstElement :: cascadeFollowingElements ->
                     let
+                        previousStepClickOnTargetLocation =
+                            context.previousStepEffects
+                                |> EveOnline.BotFramework.findMouseButtonClickLocationsInListOfEffects Common.EffectOnWindow.MouseButtonRight
+                                |> List.filter (isPointInRectangle initialUIElement.totalDisplayRegion)
+                                |> List.head
+
+                        projectedTargetClickLocation =
+                            previousStepClickOnTargetLocation
+                                |> Maybe.withDefault (centerFromDisplayRegion initialUIElement.totalDisplayRegion)
+
                         cascadeFirstElementEdgesClosestPointToTargetUIElement =
-                            initialUIElement.totalDisplayRegion
-                                |> centerFromDisplayRegion
+                            projectedTargetClickLocation
                                 |> closestPointOnRectangleEdge cascadeFirstElement.uiNode.totalDisplayRegion
 
                         cascadeFirstElementIsCloseToInitialUIElement =
                             EveOnline.BotFramework.distanceSquaredBetweenLocations
-                                (centerFromDisplayRegion initialUIElement.totalDisplayRegion)
+                                projectedTargetClickLocation
                                 cascadeFirstElementEdgesClosestPointToTargetUIElement
                                 < 400
 
                         cascadeFirstElementIsInExpectedRegion =
                             cascadeFirstElementIsCloseToInitialUIElement
+
+                        describeLocation location =
+                            String.fromInt location.x ++ ", " ++ String.fromInt location.y
                     in
                     if not cascadeFirstElementIsInExpectedRegion then
-                        Common.DecisionPath.describeBranch "Existing context menu is not in expected region"
+                        Common.DecisionPath.describeBranch
+                            ("Existing context menu is not in expected region ("
+                                ++ Maybe.withDefault "none" (Maybe.map describeLocation previousStepClickOnTargetLocation)
+                                ++ ")"
+                            )
                             beginCascade
 
                     else if

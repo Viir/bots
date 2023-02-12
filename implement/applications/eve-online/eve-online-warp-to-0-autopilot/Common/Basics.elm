@@ -1,5 +1,7 @@
 module Common.Basics exposing (..)
 
+import Bitwise
+
 
 listElementAtWrappedIndex : Int -> List element -> Maybe element
 listElementAtWrappedIndex indexToWrap list =

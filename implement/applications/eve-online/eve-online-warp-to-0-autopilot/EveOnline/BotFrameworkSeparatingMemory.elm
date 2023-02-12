@@ -28,8 +28,7 @@ import EveOnline.BotFramework
         , UIElement
         , UseContextMenuCascadeNode
         , asReadingFromGameClientMemory
-        , cornersFromDisplayRegion
-        , doesPointIntersectRegion
+        , closestPointOnRectangleEdge
         , getModuleButtonTooltipFromModuleButton
         , growRegionOnAllSides
         , mouseClickOnUIElement
@@ -336,23 +335,29 @@ useContextMenuCascade ( initialUIElementName, initialUIElement ) useContextMenu 
 
                 cascadeFirstElement :: cascadeFollowingElements ->
                     let
+                        cascadeFirstElementEdgesClosestPointToTargetUIElement =
+                            initialUIElement.totalDisplayRegion
+                                |> centerFromDisplayRegion
+                                |> closestPointOnRectangleEdge cascadeFirstElement.uiNode.totalDisplayRegion
+
                         cascadeFirstElementIsCloseToInitialUIElement =
-                            cornersFromDisplayRegion cascadeFirstElement.uiNode.totalDisplayRegion
-                                |> List.any
-                                    (\corner ->
-                                        doesPointIntersectRegion corner
-                                            (initialUIElement.totalDisplayRegion |> growRegionOnAllSides 20)
-                                    )
+                            EveOnline.BotFramework.distanceSquaredBetweenLocations
+                                (centerFromDisplayRegion initialUIElement.totalDisplayRegion)
+                                cascadeFirstElementEdgesClosestPointToTargetUIElement
+                                < 400
+
+                        cascadeFirstElementIsInExpectedRegion =
+                            cascadeFirstElementIsCloseToInitialUIElement
                     in
-                    if not cascadeFirstElementIsCloseToInitialUIElement then
-                        Common.DecisionPath.describeBranch "Existing cascade is too far away"
+                    if not cascadeFirstElementIsInExpectedRegion then
+                        Common.DecisionPath.describeBranch "Existing context menu is not in expected region"
                             beginCascade
 
                     else if
                         (context.readingFromGameClient.contextMenus |> List.map identifyingInfoFromContextMenu)
                             == (previousReadingFromGameClient.contextMenus |> List.map identifyingInfoFromContextMenu)
                     then
-                        Common.DecisionPath.describeBranch "Made no progress in existing cascade"
+                        Common.DecisionPath.describeBranch "Made no progress in existing context menu cascade"
                             beginCascade
 
                     else

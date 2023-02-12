@@ -224,6 +224,10 @@ type alias ImageCrop =
     }
 
 
+type alias Location2d =
+    EveOnline.ParseUserInterface.Location2d
+
+
 effectSequenceSpacingMilliseconds : Int
 effectSequenceSpacingMilliseconds =
     30
@@ -1671,7 +1675,7 @@ doEffectsClickModuleButton moduleButton =
                     firstEffect :: secondEffect :: _ ->
                         case ( firstEffect, secondEffect ) of
                             ( Common.EffectOnWindow.MouseMoveTo mouseMoveTo, Common.EffectOnWindow.KeyDown keyDown ) ->
-                                doesPointIntersectRegion mouseMoveTo moduleButton.uiNode.totalDisplayRegion
+                                isPointInRectangle mouseMoveTo moduleButton.uiNode.totalDisplayRegion
                                     && (keyDown == Common.EffectOnWindow.vkey_LBUTTON)
 
                             _ ->
@@ -1685,15 +1689,58 @@ doEffectsClickModuleButton moduleButton =
             )
 
 
-doesPointIntersectRegion : { x : Int, y : Int } -> EveOnline.ParseUserInterface.DisplayRegion -> Bool
-doesPointIntersectRegion { x, y } region =
-    (region.x <= x)
-        && (x <= region.x + region.width)
-        && (region.y <= y)
-        && (y <= region.y + region.height)
+{-| Finds the closest point on the edge of an orthogonal rectangle.
+<https://math.stackexchange.com/questions/356792/how-to-find-nearest-point-on-line-of-rectangle-from-anywhere/356813#356813>
+-}
+closestPointOnRectangleEdge : EveOnline.ParseUserInterface.DisplayRegion -> Location2d -> Location2d
+closestPointOnRectangleEdge rectangle point =
+    let
+        distToLeft =
+            abs (point.x - rectangle.x)
+
+        distToRight =
+            abs ((rectangle.x + rectangle.width) - point.x)
+
+        distToTop =
+            abs (point.y - rectangle.y)
+
+        distToBottom =
+            abs ((rectangle.y + rectangle.height) - point.y)
+    in
+    if isPointInRectangle point rectangle then
+        if min distToLeft distToRight < min distToTop distToBottom then
+            if distToLeft < distToRight then
+                { x = rectangle.x, y = point.y }
+
+            else
+                { x = rectangle.x + rectangle.width, y = point.y }
+
+        else if distToTop < distToBottom then
+            { x = point.x, y = rectangle.y }
+
+        else
+            { x = point.x, y = rectangle.y + rectangle.height }
+
+    else
+        closestPointInRectangle rectangle point
 
 
-cornersFromDisplayRegion : EveOnline.ParseUserInterface.DisplayRegion -> List { x : Int, y : Int }
+closestPointInRectangle : EveOnline.ParseUserInterface.DisplayRegion -> Location2d -> Location2d
+closestPointInRectangle rectangle { x, y } =
+    { x = x |> max rectangle.x |> min (rectangle.x + rectangle.width)
+    , y = y |> max rectangle.y |> min (rectangle.y + rectangle.height)
+    }
+
+
+isPointInRectangle : Location2d -> EveOnline.ParseUserInterface.DisplayRegion -> Bool
+isPointInRectangle { x, y } rectangle =
+    (rectangle.x <= x)
+        && (x <= rectangle.x + rectangle.width)
+        && (rectangle.y <= y)
+        && (y <= rectangle.y + rectangle.height)
+
+
+cornersFromDisplayRegion : EveOnline.ParseUserInterface.DisplayRegion -> List Location2d
 cornersFromDisplayRegion region =
     [ { x = region.x, y = region.y }
     , { x = region.x + region.width, y = region.y }
@@ -1980,3 +2027,15 @@ asUITreeNodeWithDisplayRegionMemory node =
     { uiNode = { pythonObjectAddress = node.uiNode.pythonObjectAddress }
     , totalDisplayRegion = node.totalDisplayRegion
     }
+
+
+distanceSquaredBetweenLocations : Location2d -> Location2d -> Int
+distanceSquaredBetweenLocations a b =
+    let
+        distanceX =
+            a.x - b.x
+
+        distanceY =
+            a.y - b.y
+    in
+    distanceX * distanceX + distanceY * distanceY

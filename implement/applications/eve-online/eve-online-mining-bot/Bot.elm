@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-02-13
+{- EVE Online mining bot version 2023-02-13 - Cerberus
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -113,6 +113,7 @@ defaultBotSettings =
     , botStepDelayMilliseconds = 1300
     , selectInstancePilotName = Nothing
     , includeAsteroidPatterns = []
+    , avoidRats = []
     }
 
 
@@ -163,6 +164,12 @@ parseBotSettings =
                     { settings | includeAsteroidPatterns = pattern :: settings.includeAsteroidPatterns }
                 )
            )
+         , ( "avoid-rat"
+           , AppSettings.valueTypeString
+                (\ratToAvoid settings ->
+                    { settings | avoidRats = String.trim ratToAvoid :: settings.avoidRats }
+                )
+           )
          ]
             |> Dict.fromList
         )
@@ -193,6 +200,7 @@ type alias BotSettings =
     , botStepDelayMilliseconds : Int
     , selectInstancePilotName : Maybe String
     , includeAsteroidPatterns : List String
+    , avoidRats : List String
     }
 
 
@@ -563,38 +571,54 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                                 )
 
                         else
-                            describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
-                                (case context.readingFromGameClient.targets |> List.head of
-                                    Nothing ->
-                                        describeBranch "I see no locked target."
-                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
+                            case
+                                seeUndockingComplete.overviewWindow.entries
+                                    |> List.filter (overviewEntryRepresentsRatToAvoid context.eventContext.botSettings)
+                                    |> List.head
+                            of
+                                Just ratOverviewEntry ->
+                                    describeBranch
+                                        ("I see rats to avoid: "
+                                            ++ Maybe.withDefault "????" ratOverviewEntry.objectName
+                                            ++ " Warp to new mining site."
+                                        )
+                                        (returnDronesToBay context
+                                            |> Maybe.withDefault (warpToMiningSite context)
+                                        )
 
-                                    Just _ ->
-                                        {- Depending on the UI configuration, the game client might automatically target rats.
-                                           To avoid these targets interfering with mining, unlock them here.
-                                        -}
-                                        unlockTargetsNotForMining context
-                                            |> Maybe.withDefault
-                                                (describeBranch "I see a locked target."
-                                                    (case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                                        Nothing ->
-                                                            describeBranch
-                                                                (if knownMiningModules == [] then
-                                                                    "Found no mining modules so far."
+                                Nothing ->
+                                    describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
+                                        (case context.readingFromGameClient.targets |> List.head of
+                                            Nothing ->
+                                                describeBranch "I see no locked target."
+                                                    (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
 
-                                                                 else
-                                                                    "All known mining modules found so far are active."
-                                                                )
-                                                                (readShipUIModuleButtonTooltips context
-                                                                    |> Maybe.withDefault waitForProgressInGame
-                                                                )
+                                            Just _ ->
+                                                {- Depending on the UI configuration, the game client might automatically target rats.
+                                                   To avoid these targets interfering with mining, unlock them here.
+                                                -}
+                                                unlockTargetsNotForMining context
+                                                    |> Maybe.withDefault
+                                                        (describeBranch "I see a locked target."
+                                                            (case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                                Nothing ->
+                                                                    describeBranch
+                                                                        (if knownMiningModules == [] then
+                                                                            "Found no mining modules so far."
 
-                                                        Just inactiveModule ->
-                                                            describeBranch "I see an inactive mining module. Activate it."
-                                                                (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
-                                                    )
-                                                )
-                                )
+                                                                         else
+                                                                            "All known mining modules found so far are active."
+                                                                        )
+                                                                        (readShipUIModuleButtonTooltips context
+                                                                            |> Maybe.withDefault waitForProgressInGame
+                                                                        )
+
+                                                                Just inactiveModule ->
+                                                                    describeBranch "I see an inactive mining module. Activate it."
+                                                                        (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                                                            )
+                                                        )
+                                        )
 
 
 unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode
@@ -1445,3 +1469,15 @@ containsSelectionIndicatorPhotonUI =
                                )
                    )
             )
+
+
+overviewEntryRepresentsRatToAvoid : BotSettings -> EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
+overviewEntryRepresentsRatToAvoid settings overviewEntry =
+    let
+        textMatchesPattern text =
+            settings.avoidRats
+                |> List.any (\pattern -> String.contains (String.toLower pattern) (String.toLower text))
+    in
+    overviewEntry.cellsTexts
+        |> Dict.values
+        |> List.any textMatchesPattern

@@ -280,10 +280,37 @@ useContextMenuCascadeOnListSurroundingsButton useContextMenu context =
             Common.DecisionPath.describeBranch "I do not see the location info panel." askForHelpToGetUnstuck
 
         Just infoPanelLocationInfo ->
-            useContextMenuCascade
-                ( "surroundings button", infoPanelLocationInfo.listSurroundingsButton )
+            useContextMenuCascadeWithCustomConfig
+                filterToDiscardContextMenuOnListSurroundingsButton
+                { targetUIElement = infoPanelLocationInfo.listSurroundingsButton
+                , targetUIElementName = "surroundings button"
+                }
                 useContextMenu
                 context
+
+
+filterToDiscardContextMenuOnListSurroundingsButton : FilterToDiscardContextMenu a b
+filterToDiscardContextMenuOnListSurroundingsButton =
+    \target context cascadeFirstElement ->
+        discardContextMenuIfTooDistantFromTargetElement { toleratedDistance = 30 } target context cascadeFirstElement
+            |> Maybe.andThen
+                (\reasonToDiscard ->
+                    if
+                        (cascadeFirstElement.uiNode.totalDisplayRegion.x < 100)
+                            && (cascadeFirstElement.uiNode.totalDisplayRegion.y < 100)
+                    then
+                        {-
+                           Adapt to game client from session-recording-2023-02-11T16-17-12, shared by Foivos Saropoulos at <https://forum.botlab.org/t/mining-bot-warping-to-a-new-asteroid-belt-if-a-spacific-npc-is-present/4571/14>
+
+                           In event 708, we see how the game client differed from the previous ones: When clicking on the surroundings button in the info panel, it placed the new context menu at the upper left corner of the game client window.
+                           In the earlier training data, the game clients always opened the context menu so that at least an edge was close to the mouse cursor.
+                           The unusual placement is why you got the 'Existing cascade is too far away' error: When seeing this inconsistency, the bot assumed the context menu belonged to another entity.
+                        -}
+                        Nothing
+
+                    else
+                        Just reasonToDiscard
+                )
 
 
 filterToDiscardContextMenuDefault : FilterToDiscardContextMenu a b

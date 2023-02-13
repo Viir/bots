@@ -357,11 +357,24 @@ useContextMenuCascadeWithCustomConfig filterToDiscardContextMenu target useConte
                     |> List.head
             of
                 Nothing ->
+                    let
+                        clickLocation =
+                            context.readingFromGameClient.neocom
+                                |> Maybe.andThen .clock
+                                |> Maybe.map
+                                    (\clock ->
+                                        { x = clock.uiNode.totalDisplayRegion.x + clock.uiNode.totalDisplayRegion.width // 2
+                                        , y = clock.uiNode.totalDisplayRegion.y - 10
+                                        }
+                                    )
+                                |> Maybe.withDefault
+                                    { x = 4, y = context.readingFromGameClient.uiTree.totalDisplayRegion.height - 30 }
+                    in
                     Common.DecisionPath.describeBranch
                         ("All of " ++ target.targetUIElementName ++ " is occluded by context menus.")
                         (Common.DecisionPath.describeBranch
                             "Click somewhere else to get rid of the occluding elements."
-                            ({ x = 4, y = 4 }
+                            (clickLocation
                                 |> Common.EffectOnWindow.effectsMouseClickAtLocation Common.EffectOnWindow.MouseButtonRight
                                 |> decideActionForCurrentStep
                             )

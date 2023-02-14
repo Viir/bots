@@ -5,7 +5,7 @@ It automatically detects barbarian villages, available troops and configured arm
 
 ## Features
 
-### Easy to Configure
+### Easy to Use
 
 + Automatically reads the required information from the game: Locations of farms, available units, army presets, current attacks per village, etc.
 + Use the in-game army presets to configure which villages should attack and which units to use.
@@ -16,8 +16,8 @@ It automatically detects barbarian villages, available troops and configured arm
 + Fast enough to send 800 attacks per hour.
 + Supports multiple army presets per village to make the best use of your troops.
 + Takes into account the limit of 50 attacks per village.
-+ Option to avoid barbarian villages under a certain amount of points.
-+ Avoid having your troops die at remaining walls: Option to avoid barbarian villages with specific coordinates.
++ Option to skip barbarian villages under a certain amount of points.
++ Avoid having your troops die at remaining walls: Option to skip barbarian villages with specific coordinates.
 + Supports running on multiple accounts simultaneously on a single PC.
 
 ### Safe
@@ -61,8 +61,8 @@ When we have just started the session, the bot also shows this text:
 > I did not yet read game root information. Please log in to the game so that you see your villages.
 
 In the right pane, the bot opens a web browser tab. The web browser tab is initially empty, but there is an address bar at the top where we can enter a new web page to load, just as in other web browsers.
-Here we enter the address of the Tribal Wars 2 game world we want to enter with the bot. Since the browser by the bot is completely separate from other web browsers and has a separate user profile, we need to log in to the game to be able to enter the game world.
-After logging in and selecting the game world, this new browser tab shoulds the game as any other web browser:
+Here we enter the address of the Tribal Wars 2 game world we want to enter with the bot. Since the browser by the bot is entirely separate from other web browsers and has a different user profile, we need to log in to the game to be able to enter the game world.
+After logging in and selecting the game world, this new browser tab shows the game as any other web browser:
 
 ![Tribal Wars 2 farmbot session started](./image/2022-12-02-tribal-wars-2-farmbot-game-entered.jpg)
 
@@ -78,9 +78,9 @@ In any case, we need to configure at least one army preset before the bot can st
 
 ### Configuring Army Presets
 
-The bot only uses an army preset if it matches the following three criteria:
+The bot only uses army presets matching the following three criteria:
 
-+ The preset name contains the string 'farm'.
++ The preset name contains the string 'farm'. ('farm' is only the default pattern, we can change it in the bot settings)
 + The preset is enabled for the currently selected village.
 + The village has enough units available for the preset.
 

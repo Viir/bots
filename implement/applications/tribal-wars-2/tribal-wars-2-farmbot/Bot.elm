@@ -1,22 +1,28 @@
-{- Tribal Wars 2 farmbot version 2023-02-11
+{- Tribal Wars 2 farmbot version 2023-02-14
 
-   I search for barbarian villages around your villages and then attack them.
+   This bot farms barbarian villages in Tribal Wars 2. It automatically detects barbarian villages, available troops and configured army presets to attack.
 
-   When starting, I first open a new web browser window. This might take longer on the first run because I need to download the web browser software.
-   When the web browser has opened, navigate to Tribal Wars 2 and log in to your account, so you see your villages.
-   Then the browsers address bar will probably show an URL like https://es.tribalwars2.com/game.php?world=es77&character_id=123456#
+   ## Getting Started
 
-   When I see the game is loaded, I start searching for barbarian villages.
-   As soon I have found one, I begin attacking it, using the army presets that you configured in the game.
-   To attack, I pick an army preset that matches the following three criteria:
+   Soon after startup, this bot opens a new web browser tab inside the BotLab client. When the web browser has opened, navigate to Tribal Wars 2 and enter a game world so that you see the map and your villages.
+   The game appears the same way as other web browsers but is being controlled by the bot.
+   The bot works invisibly in the background to automate various in-game activities.
 
-   + The preset name contains the string 'farm'.
+   The status text displayed by the bot lets us see what it is currently doing and includes statistics about its performance, like the number of attacked farms.
+
+   When the game is loaded, the bot starts searching for barbarian villages.
+   It then attacks them using the army presets configured in the game.
+
+   The bot only uses army presets matching the following three criteria:
+
+   + The preset name contains the string 'farm'. ('farm' is only the default pattern, we can change it in the bot settings)
    + The preset is enabled for the currently selected village.
    + The village has enough units available for the preset.
 
-   If multiple army presets match these criteria, I use the first one by alphabetical order.
-   If no army preset matches this filter, I activate another village which has a matching preset and enough available units.
-   If there is no village with a matching preset and enough units, I stop attacking.
+   If more than one army preset match these criteria, it uses the first one in alphabetical order.
+   If no army preset matches this filter, it activates another village with a matching preset and enough available units.
+   The bot finishes the farm cycle when there is no village with a matching preset and enough units remaining.
+   Use the bot settings to configure the number of farm cycles and duration of pauses between farm cycles.
 
    ## Configuration Settings
 

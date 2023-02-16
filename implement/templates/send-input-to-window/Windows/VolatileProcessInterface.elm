@@ -25,7 +25,6 @@ type RequestToVolatileProcess
       -- TODO: Phase out GetWindowText
     | GetWindowText WindowId
     | TaskOnWindowRequest TaskOnIdentifiedWindowRequestStruct
-    | GetImageDataFromReadingRequest GetImageDataFromReadingRequestStruct
 
 
 type ResponseFromVolatileProcess
@@ -36,8 +35,6 @@ type ResponseFromVolatileProcess
     | GetWindowTextResult String
       -- | TakeScreenshotResult ReadFromWindowResponseStructure
     | TaskOnWindowResponse TaskOnIdentifiedWindowResponseStruct
-    | ReadingNotFound
-    | GetImageDataFromReadingComplete GetImageDataFromReadingCompleteStruct
     | NoReturnValue
 
 
@@ -80,7 +77,6 @@ type alias WindowId =
 
 type TaskOnWindowRequestStruct
     = BringWindowToForeground
-    | ReadFromWindowRequest ReadFromWindowStructure
     | EffectSequenceOnWindowRequest (List EffectSequenceOnWindowElement)
 
 
@@ -91,62 +87,6 @@ type EffectSequenceOnWindowElement
 
 type TaskOnWindowResponseStruct
     = WindowNotFound
-    | ReadFromWindowComplete ReadFromWindowCompleteStruct
-
-
-type alias ReadFromWindowCompleteStruct =
-    { readingId : String
-    , windowSize : Location2d
-    , windowClientRectOffset : Location2d
-    , windowClientAreaSize : Location2d
-    , imageData : GetImageDataFromReadingResultStructure
-    }
-
-
-type alias GetImageDataFromReadingCompleteStruct =
-    { readingId : String
-    , imageData : GetImageDataFromReadingResultStructure
-    }
-
-
-type alias ReadFromWindowStructure =
-    { getImageData : GetImageDataFromReadingStructure
-    }
-
-
-type alias GetImageDataFromReadingRequestStruct =
-    { readingId : String
-    , getImageData : GetImageDataFromReadingStructure
-    }
-
-
-type alias GetImageDataFromReadingStructure =
-    { crops_1x1_r8g8b8 : List Rect2dStructure
-    , crops_2x2_r8g8b8 : List Rect2dStructure
-    }
-
-
-type alias GetImageDataFromReadingResultStructure =
-    { crops_1x1_r8g8b8 : List ImageCropRGB
-    , crops_2x2_r8g8b8 : List ImageCropRGB
-    }
-
-
-type alias ImageCropRGB =
-    ImageCrop PixelValueRGB
-
-
-type alias ImageCrop pixelFormat =
-    { offset : Location2d
-    , pixels : List (List pixelFormat)
-    }
-
-
-type alias PixelValueRGB =
-    { red : Int
-    , green : Int
-    , blue : Int
-    }
 
 
 type alias Rect2dStructure =
@@ -183,11 +123,6 @@ encodeRequestToVolatileProcess request =
 
         TaskOnWindowRequest taskOnWindowRequest ->
             ( "TaskOnWindowRequest", taskOnWindowRequest |> encodeTaskOnIdentifiedWindowRequestStruct )
-
-        GetImageDataFromReadingRequest getImageDataFromReading ->
-            ( "GetImageDataFromReadingRequest"
-            , getImageDataFromReading |> encodeGetImageDataFromReadingRequestStruct
-            )
     )
         |> List.singleton
         |> Json.Encode.object
@@ -209,10 +144,6 @@ decodeResponseFromVolatileProcess =
             |> Json.Decode.map GetWindowTextResult
         , Json.Decode.field "TaskOnWindowResponse" decodeTaskOnIdentifiedWindowResponseStruct
             |> Json.Decode.map TaskOnWindowResponse
-        , Json.Decode.field "ReadingNotFound" (jsonDecodeSucceedWhenNotNull ReadingNotFound)
-        , Json.Decode.field "GetImageDataFromReadingComplete"
-            jsonDecodeGetImageDataFromReadingCompleteStruct
-            |> Json.Decode.map GetImageDataFromReadingComplete
         , Json.Decode.field "NoReturnValue" (jsonDecodeSucceedWhenNotNull NoReturnValue)
         ]
 
@@ -236,57 +167,7 @@ decodeTaskOnWindowResponseStruct : Json.Decode.Decoder TaskOnWindowResponseStruc
 decodeTaskOnWindowResponseStruct =
     Json.Decode.oneOf
         [ Json.Decode.field "WindowNotFound" (jsonDecodeSucceedWhenNotNull WindowNotFound)
-        , Json.Decode.field "ReadFromWindowComplete"
-            jsonDecodeReadFromWindowCompleteStruct
-            |> Json.Decode.map ReadFromWindowComplete
         ]
-
-
-jsonDecodeReadFromWindowCompleteStruct : Json.Decode.Decoder ReadFromWindowCompleteStruct
-jsonDecodeReadFromWindowCompleteStruct =
-    Json.Decode.map5 ReadFromWindowCompleteStruct
-        (Json.Decode.field "readingId" Json.Decode.string)
-        (Json.Decode.field "windowSize" jsonDecodeLocation2d)
-        (Json.Decode.field "windowClientRectOffset" jsonDecodeLocation2d)
-        (Json.Decode.field "windowClientAreaSize" jsonDecodeLocation2d)
-        (Json.Decode.field "imageData" jsonDecodeGetImageDataFromReadingResult)
-
-
-jsonDecodeGetImageDataFromReadingCompleteStruct : Json.Decode.Decoder GetImageDataFromReadingCompleteStruct
-jsonDecodeGetImageDataFromReadingCompleteStruct =
-    Json.Decode.map2 GetImageDataFromReadingCompleteStruct
-        (Json.Decode.field "readingId" Json.Decode.string)
-        (Json.Decode.field "imageData" jsonDecodeGetImageDataFromReadingResult)
-
-
-jsonDecodeGetImageDataFromReadingResult : Json.Decode.Decoder GetImageDataFromReadingResultStructure
-jsonDecodeGetImageDataFromReadingResult =
-    Json.Decode.map2 GetImageDataFromReadingResultStructure
-        (Json.Decode.field "crops_1x1_r8g8b8" (Json.Decode.nullable (Json.Decode.list jsonDecodeImageCrop))
-            |> Json.Decode.map (Maybe.withDefault [])
-        )
-        (Json.Decode.field "crops_2x2_r8g8b8" (Json.Decode.nullable (Json.Decode.list jsonDecodeImageCrop))
-            |> Json.Decode.map (Maybe.withDefault [])
-        )
-
-
-jsonDecodeImageCrop : Json.Decode.Decoder ImageCropRGB
-jsonDecodeImageCrop =
-    Json.Decode.map2 ImageCrop
-        (Json.Decode.field "offset" jsonDecodeLocation2d)
-        (Json.Decode.field "pixels" (Json.Decode.list (Json.Decode.list jsonDecodePixelValue_R8G8B8)))
-
-
-jsonDecodePixelValue_R8G8B8 : Json.Decode.Decoder PixelValueRGB
-jsonDecodePixelValue_R8G8B8 =
-    Json.Decode.int
-        |> Json.Decode.map
-            (\asInt ->
-                { red = asInt // (256 * 256)
-                , green = asInt // 256 |> modBy 256
-                , blue = asInt |> modBy 256
-                }
-            )
 
 
 encodeWindowId : WindowId -> Json.Encode.Value
@@ -313,9 +194,6 @@ encodeTaskOnWindowRequestStruct taskOnWindow =
         BringWindowToForeground ->
             ( "BringWindowToForeground", [] |> Json.Encode.object )
 
-        ReadFromWindowRequest readFromWindowRequest ->
-            ( "ReadFromWindowRequest", readFromWindowRequest |> encodeReadFromWindow )
-
         EffectSequenceOnWindowRequest effectSequenceOnWindowRequest ->
             ( "EffectSequenceOnWindowRequest"
             , effectSequenceOnWindowRequest |> Json.Encode.list jsonEncodeEffectSequenceOnWindowElement
@@ -323,53 +201,6 @@ encodeTaskOnWindowRequestStruct taskOnWindow =
     )
         |> List.singleton
         |> Json.Encode.object
-
-
-encodeGetImageDataFromReadingRequestStruct : GetImageDataFromReadingRequestStruct -> Json.Encode.Value
-encodeGetImageDataFromReadingRequestStruct readFromWindow =
-    Json.Encode.object
-        [ ( "readingId", readFromWindow.readingId |> Json.Encode.string )
-        , ( "getImageData", readFromWindow.getImageData |> encodeGetImageDataFromReading )
-        ]
-
-
-decodeGetImageDataFromReadingRequestStruct : Json.Decode.Decoder GetImageDataFromReadingRequestStruct
-decodeGetImageDataFromReadingRequestStruct =
-    Json.Decode.map2 GetImageDataFromReadingRequestStruct
-        (Json.Decode.field "readingId" Json.Decode.string)
-        (Json.Decode.field "getImageData" decodeGetImageDataFromReading)
-
-
-encodeReadFromWindow : ReadFromWindowStructure -> Json.Encode.Value
-encodeReadFromWindow readFromWindow =
-    Json.Encode.object
-        [ ( "getImageData", readFromWindow.getImageData |> encodeGetImageDataFromReading )
-        ]
-
-
-decodeReadFromWindow : Json.Decode.Decoder ReadFromWindowStructure
-decodeReadFromWindow =
-    Json.Decode.map ReadFromWindowStructure
-        (Json.Decode.field "getImageData" decodeGetImageDataFromReading)
-
-
-encodeGetImageDataFromReading : GetImageDataFromReadingStructure -> Json.Encode.Value
-encodeGetImageDataFromReading getImageData =
-    Json.Encode.object
-        [ ( "crops_1x1_r8g8b8"
-          , getImageData.crops_1x1_r8g8b8 |> Json.Encode.list jsonEncodeRect2d
-          )
-        , ( "crops_2x2_r8g8b8"
-          , getImageData.crops_2x2_r8g8b8 |> Json.Encode.list jsonEncodeRect2d
-          )
-        ]
-
-
-decodeGetImageDataFromReading : Json.Decode.Decoder GetImageDataFromReadingStructure
-decodeGetImageDataFromReading =
-    Json.Decode.map2 GetImageDataFromReadingStructure
-        (Json.Decode.field "crops_1x1_r8g8b8" (Json.Decode.list jsonDecodeRect2d))
-        (Json.Decode.field "crops_2x2_r8g8b8" (Json.Decode.list jsonDecodeRect2d))
 
 
 jsonEncodeEffectSequenceOnWindowElement : EffectSequenceOnWindowElement -> Json.Encode.Value

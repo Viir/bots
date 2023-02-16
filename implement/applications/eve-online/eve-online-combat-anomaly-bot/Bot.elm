@@ -1,14 +1,23 @@
-{- EVE Online combat anomaly bot version 2023-01-26
+{- EVE Online combat anomaly bot version 2023-02-13
 
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
-   Setup instructions for the EVE Online client:
+   ## Features
+
+   + Automatically detects if another pilot is in an anomaly on arrival and switches to another anomaly if necessary.
+   + Filtering for specific anomalies using bot settings.
+   + Avoiding dangerous or too-powerful rats using bot settings.
+   + Remembers observed properties of anomalies, like other pilots or dangerous rats, to inform the selection of anomalies in the future.
+
+   ## Setting up the Game Client
+
+   Despite being quite robust, this bot is less intelligent than a human. For example, its perception is more limited than ours, so we need to set up the game to ensure that the bot can see everything it needs. Following is the list of setup instructions for the EVE Online client:
 
    + Set the UI language to English.
    + Undock, open probe scanner, overview window and drones window.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + In the ship UI, arrange the modules:
-     + Place to use in combat (to activate on targets) in the top row.
+     + Place the modules to use in combat (to activate on targets) in the top row.
      + Hide passive modules by disabling the check-box `Display Passive Modules`.
    + Configure the keyboard key 'W' to make the ship orbit.
 
@@ -47,7 +56,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_2023_01_17 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
@@ -55,7 +64,8 @@ import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
 import EveOnline.BotFramework
     exposing
-        ( ReadingFromGameClient
+        ( ModuleButtonTooltipMemory
+        , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
         , UseContextMenuCascadeNode(..)
@@ -88,7 +98,6 @@ import EveOnline.ParseUserInterface
         ( OverviewWindowEntry
         , ShipUI
         , ShipUIModuleButton
-        , getAllContainedDisplayTexts
         )
 import Set
 
@@ -111,22 +120,25 @@ parseBotSettings =
     AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "hide-when-neutral-in-local"
            , AppSettings.valueTypeYesOrNo
-                (\hide -> \settings -> { settings | hideWhenNeutralInLocal = hide })
+                (\hide settings -> { settings | hideWhenNeutralInLocal = hide })
            )
          , ( "anomaly-name"
            , AppSettings.valueTypeString
-                (\anomalyName ->
-                    \settings -> { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
+                (\anomalyName settings ->
+                    { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
                 )
            )
          , ( "avoid-rat"
            , AppSettings.valueTypeString
-                (\ratToAvoid ->
-                    \settings -> { settings | avoidRats = String.trim ratToAvoid :: settings.avoidRats }
+                (\ratToAvoid settings ->
+                    { settings | avoidRats = String.trim ratToAvoid :: settings.avoidRats }
                 )
            )
          , ( "activate-module-always"
-           , AppSettings.valueTypeString (\moduleName -> \settings -> { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways })
+           , AppSettings.valueTypeString
+                (\moduleName settings ->
+                    { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways }
+                )
            )
          , ( "anomaly-wait-time"
            , AppSettings.valueTypeInteger
@@ -135,10 +147,16 @@ parseBotSettings =
                 )
            )
          , ( "orbit-in-combat"
-           , AppSettings.valueTypeYesOrNo (\orbitInCombat settings -> { settings | orbitInCombat = orbitInCombat })
+           , AppSettings.valueTypeYesOrNo
+                (\orbitInCombat settings ->
+                    { settings | orbitInCombat = orbitInCombat }
+                )
            )
          , ( "bot-step-delay"
-           , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
+           , AppSettings.valueTypeInteger
+                (\delay settings ->
+                    { settings | botStepDelayMilliseconds = delay }
+                )
            )
          ]
             |> Dict.fromList
@@ -840,13 +858,11 @@ knownModulesToActivateAlways context =
             )
 
 
-tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> EveOnline.ParseUserInterface.ModuleButtonTooltip -> Maybe String
+tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> ModuleButtonTooltipMemory -> Maybe String
 tooltipLooksLikeModuleToActivateAlways context =
-    .uiNode
-        >> .uiNode
-        >> getAllContainedDisplayTexts
+    .allContainedDisplayTextsWithRegion
         >> List.filterMap
-            (\tooltipText ->
+            (\( tooltipText, _ ) ->
                 context.eventContext.botSettings.activateModulesAlways
                     |> List.filterMap
                         (\moduleToActivateAlways ->

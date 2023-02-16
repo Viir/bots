@@ -16,19 +16,22 @@ To learn more about developing for EVE Online, see the guide at <https://to.botl
 
 -}
 
+import Array
 import Bitwise
-import BotLab.BotInterface_To_Host_2023_01_17 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.Basics
 import Common.EffectOnWindow
 import Common.FNV
 import CompilationInterface.SourceFiles
 import Dict
 import EveOnline.MemoryReading
-import EveOnline.ParseUserInterface exposing (DisplayRegion, Location2d, centerFromDisplayRegion)
+import EveOnline.ParseUserInterface exposing (DisplayRegion, centerFromDisplayRegion, getAllContainedDisplayTextsWithRegion)
 import EveOnline.VolatileProcessInterface as VolatileProcessInterface
 import Json.Decode
 import Json.Encode
 import List.Extra
+import Maybe.Extra
+import Result.Extra
 import String.Extra
 
 
@@ -40,7 +43,7 @@ type alias BotConfiguration botSettings botState =
 
 
 type BotEvent
-    = ReadingFromGameClientCompleted EveOnline.ParseUserInterface.ParsedUserInterface ReadingFromGameClientImage
+    = ReadingFromGameClientCompleted EveOnline.ParseUserInterface.ParsedUserInterface ReadingFromGameClientScreenshot
 
 
 type BotEventResponse
@@ -68,7 +71,6 @@ type TaskType
 type alias ContinueSessionStructure =
     { effects : List Common.EffectOnWindow.EffectOnWindowStructure
     , millisecondsToNextReadingFromGame : Int
-    , screenshotRegionsToRead : ReadingFromGameClient -> { rects1x1 : List Rect2dStructure }
     , statusText : String
     }
 
@@ -93,7 +95,6 @@ type alias StateIncludingFramework botSettings botState =
     , botState : BotAndLastEventState botState
     , timeInMilliseconds : Int
     , lastTaskIndex : Int
-    , startedReading : Maybe { timeInMilliseconds : Int }
     , waitingForSetupTasks : List { taskId : String, description : String }
     , botSettings : Maybe botSettings
     , sessionTimeLimitInMilliseconds : Maybe Int
@@ -104,8 +105,7 @@ type alias BotAndLastEventState botState =
     { botState : botState
     , lastEvent :
         Maybe
-            { readingTimeInMilliseconds : Int
-            , timeInMilliseconds : Int
+            { timeInMilliseconds : Int
             , eventResult : ( botState, BotEventResponse )
             }
     }
@@ -117,19 +117,19 @@ type alias SetupState =
     , lastRequestToVolatileProcessResult : Maybe (Result String ( InterfaceToHost.RequestToVolatileProcessComplete, Result String VolatileProcessInterface.ResponseFromVolatileHost ))
     , gameClientProcesses : Maybe (List GameClientProcessSummary)
     , searchUIRootAddressResult : Maybe VolatileProcessInterface.SearchUIRootAddressResultStructure
-    , lastReadingFromGame : Maybe { timeInMilliseconds : Int, aggregate : ReadingFromGameClientAggregateState }
+    , lastReadingFromGame : Maybe { timeInMilliseconds : Int, stage : ReadingFromGameState }
     , lastEffectFailedToAcquireInputFocus : Maybe String
-    , lastReadingFromWindowComplete : Maybe { timeInMilliseconds : Int, reading : InterfaceToHost.ReadFromWindowCompleteStruct }
     }
 
 
+type ReadingFromGameState
+    = ReadingFromGameInProgress ReadingFromGameClientAggregateState
+    | ReadingFromGameCompleted
+
+
 type alias ReadingFromGameClientAggregateState =
-    { initialReading :
-        { timeInMilliseconds : Int
-        , fromVolatileProcess : VolatileProcessInterface.ReadFromWindowResultStructure
-        }
-    , imageDataFromReadingResults : List GetImageDataFromReadingResultStructure
-    , lastReadingFromWindow : Maybe InterfaceToHost.ReadFromWindowCompleteStruct
+    { memoryReading : Maybe VolatileProcessInterface.ReadFromWindowResultStructure
+    , readingFromWindow : Maybe InterfaceToHost.ReadFromWindowCompleteStruct
     }
 
 
@@ -141,8 +141,7 @@ type SetupTask
 
 type alias OperateBotConfiguration =
     { buildTaskFromEffectSequence : List Common.EffectOnWindow.EffectOnWindowStructure -> InterfaceToHost.Task
-    , readFromWindowTasks : GetImageDataFromReadingStructure -> List InterfaceToHost.Task
-    , getImageDataFromReadingTask : GetImageDataFromReadingStructure -> InterfaceToHost.Task
+    , readFromWindowTasks : List InterfaceToHost.Task
     , releaseVolatileProcessTask : InterfaceToHost.Task
     }
 
@@ -160,8 +159,39 @@ type alias GameClientProcessSummary =
 
 
 type alias ShipModulesMemory =
-    { tooltipFromModuleButton : Dict.Dict String EveOnline.ParseUserInterface.ModuleButtonTooltip
-    , lastReadingTooltip : Maybe EveOnline.ParseUserInterface.ModuleButtonTooltip
+    { tooltipFromModuleButton : Dict.Dict String ModuleButtonTooltipMemory
+    , previousReadingTooltip : Maybe ModuleButtonTooltipMemory
+    }
+
+
+type alias ReadingFromGameClientMemory =
+    { contextMenus : List ContextMenu
+    }
+
+
+type alias ModuleButtonTooltipMemory =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , shortcut : Maybe { text : String, parseResult : Result String (List Common.EffectOnWindow.VirtualKeyCode) }
+    , optimalRange : Maybe { asString : String, inMeters : Result String Int }
+    , allContainedDisplayTextsWithRegion : List ( String, UITreeNodeWithDisplayRegion )
+    }
+
+
+type alias ContextMenu =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , entries : List ContextMenuEntry
+    }
+
+
+type alias ContextMenuEntry =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , text : String
+    }
+
+
+type alias UITreeNodeWithDisplayRegion =
+    { uiNode : { pythonObjectAddress : String }
+    , totalDisplayRegion : EveOnline.ParseUserInterface.DisplayRegion
     }
 
 
@@ -171,9 +201,9 @@ type alias SeeUndockingComplete =
     }
 
 
-type alias ReadingFromGameClientImage =
-    { pixels_1x1 : Dict.Dict ( Int, Int ) PixelValueRGB
-    , pixels_2x2 : Dict.Dict ( Int, Int ) PixelValueRGB
+type alias ReadingFromGameClientScreenshot =
+    { pixels_1x1 : ( Int, Int ) -> Maybe PixelValueRGB
+    , pixels_2x2 : ( Int, Int ) -> Maybe PixelValueRGB
     }
 
 
@@ -181,24 +211,21 @@ type alias PixelValueRGB =
     { red : Int, green : Int, blue : Int }
 
 
-type alias GetImageDataFromReadingStructure =
-    { screenshotCrops_1x1 : List Rect2dStructure
-    , screenshotCrops_2x2 : List Rect2dStructure
-    }
-
-
 type alias ReadingFromGameClientStructure =
-    { timeInMilliseconds : Int
-    , parsedMemoryReading : EveOnline.ParseUserInterface.ParsedUserInterface
-    , lastReadingFromWindow : Maybe InterfaceToHost.ReadFromWindowCompleteStruct
-    , imageDataFromReadingResults : List GetImageDataFromReadingResultStructure
+    { parsedMemoryReading : EveOnline.ParseUserInterface.ParsedUserInterface
+    , readingFromWindow : InterfaceToHost.ReadFromWindowCompleteStruct
     }
 
 
-type alias GetImageDataFromReadingResultStructure =
-    { screenshot1x1Rects : List VolatileProcessInterface.ImageCrop
-    , screenshot2x2Rects : List VolatileProcessInterface.ImageCrop
+type alias ImageCrop =
+    { offset : InterfaceToHost.WinApiPointStruct
+    , widthPixels : Int
+    , pixels : Array.Array Int
     }
+
+
+type alias Location2d =
+    EveOnline.ParseUserInterface.Location2d
 
 
 effectSequenceSpacingMilliseconds : Int
@@ -219,21 +246,24 @@ getImageDataFromReadingRequestLimit =
 initShipModulesMemory : ShipModulesMemory
 initShipModulesMemory =
     { tooltipFromModuleButton = Dict.empty
-    , lastReadingTooltip = Nothing
+    , previousReadingTooltip = Nothing
     }
 
 
 integrateCurrentReadingsIntoShipModulesMemory : EveOnline.ParseUserInterface.ParsedUserInterface -> ShipModulesMemory -> ShipModulesMemory
 integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
     let
+        currentTooltipMemory =
+            currentReading.moduleButtonTooltip
+                |> Maybe.map asModuleButtonTooltipMemory
+
         getTooltipDataForEqualityComparison tooltip =
-            tooltip.uiNode
-                |> EveOnline.ParseUserInterface.getAllContainedDisplayTextsWithRegion
+            tooltip.allContainedDisplayTextsWithRegion
                 |> List.map (Tuple.mapSecond .totalDisplayRegion)
 
-        {- To ensure robustness, we store a new tooltip only when the display texts match in two consecutive readings from the game client. -}
+        {- To ensure robustness, we store a new tooltip only when the display texts match in two readings from the game client. -}
         tooltipAvailableToStore =
-            case ( memoryBefore.lastReadingTooltip, currentReading.moduleButtonTooltip ) of
+            case ( memoryBefore.previousReadingTooltip, currentTooltipMemory ) of
                 ( Just previousTooltip, Just currentTooltip ) ->
                     if getTooltipDataForEqualityComparison previousTooltip == getTooltipDataForEqualityComparison currentTooltip then
                         Just currentTooltip
@@ -271,11 +301,13 @@ integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
                 |> Dict.filter (\moduleButtonId _ -> visibleModuleButtonsIds |> List.member moduleButtonId)
     in
     { tooltipFromModuleButton = tooltipFromModuleButton
-    , lastReadingTooltip = currentReading.moduleButtonTooltip
+    , previousReadingTooltip =
+        currentTooltipMemory
+            |> Maybe.Extra.orElse memoryBefore.previousReadingTooltip
     }
 
 
-getModuleButtonTooltipFromModuleButton : ShipModulesMemory -> EveOnline.ParseUserInterface.ShipUIModuleButton -> Maybe EveOnline.ParseUserInterface.ModuleButtonTooltip
+getModuleButtonTooltipFromModuleButton : ShipModulesMemory -> EveOnline.ParseUserInterface.ShipUIModuleButton -> Maybe ModuleButtonTooltipMemory
 getModuleButtonTooltipFromModuleButton moduleMemory moduleButton =
     moduleMemory.tooltipFromModuleButton |> Dict.get (moduleButton |> getModuleButtonIdentifierInMemory)
 
@@ -294,7 +326,6 @@ initSetup =
     , searchUIRootAddressResult = Nothing
     , lastReadingFromGame = Nothing
     , lastEffectFailedToAcquireInputFocus = Nothing
-    , lastReadingFromWindowComplete = Nothing
     }
 
 
@@ -307,7 +338,6 @@ initState botState =
         }
     , timeInMilliseconds = 0
     , lastTaskIndex = 0
-    , startedReading = Nothing
     , waitingForSetupTasks = []
     , botSettings = Nothing
     , sessionTimeLimitInMilliseconds = Nothing
@@ -344,12 +374,28 @@ processEvent botConfiguration fromHostEvent stateBefore =
                                 }
                             )
 
-                startedReading =
-                    if List.any (.taskType >> (==) (Just StartsReadingTaskType)) continueSession.startTasks then
-                        Just { timeInMilliseconds = state.timeInMilliseconds }
+                startsReading =
+                    List.any (.taskType >> (==) (Just StartsReadingTaskType)) continueSession.startTasks
+
+                setupStateBefore =
+                    state.setup
+
+                setupState =
+                    if startsReading then
+                        { setupStateBefore
+                            | lastReadingFromGame =
+                                Just
+                                    { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                    , stage =
+                                        ReadingFromGameInProgress
+                                            { memoryReading = Nothing
+                                            , readingFromWindow = Nothing
+                                            }
+                                    }
+                        }
 
                     else
-                        state.startedReading
+                        setupStateBefore
 
                 waitingForSetupTasks =
                     (startTasksWithOrigin
@@ -371,8 +417,8 @@ processEvent botConfiguration fromHostEvent stateBefore =
             in
             ( { state
                 | lastTaskIndex = state.lastTaskIndex + List.length startTasks
-                , startedReading = startedReading
                 , waitingForSetupTasks = waitingForSetupTasks
+                , setup = setupState
               }
             , InterfaceToHost.ContinueSession
                 { statusText = continueSession.statusText
@@ -397,7 +443,7 @@ processEventLessMappingTasks botConfiguration fromHostEvent stateBeforeUpdateTim
     in
     case fromHostEvent.eventAtTime of
         InterfaceToHost.TimeArrivedEvent ->
-            continueAfterIntegrateEvent Nothing stateBefore
+            continueAfterIntegrateEvent stateBefore
 
         InterfaceToHost.TaskCompletedEvent taskComplete ->
             let
@@ -405,12 +451,11 @@ processEventLessMappingTasks botConfiguration fromHostEvent stateBeforeUpdateTim
                     stateBefore.waitingForSetupTasks
                         |> List.filter (.taskId >> (/=) taskComplete.taskId)
 
-                ( setupState, maybeReadingFromGameClient ) =
+                setupState =
                     stateBefore.setup
                         |> integrateTaskResult ( stateBefore.timeInMilliseconds, taskComplete.taskResult )
             in
             continueAfterIntegrateEvent
-                maybeReadingFromGameClient
                 { stateBefore
                     | setup = setupState
                     , waitingForSetupTasks = waitingForSetupTasks
@@ -435,16 +480,14 @@ processEventLessMappingTasks botConfiguration fromHostEvent stateBeforeUpdateTim
 
         InterfaceToHost.SessionDurationPlannedEvent sessionTimeLimit ->
             continueAfterIntegrateEvent
-                Nothing
                 { stateBefore | sessionTimeLimitInMilliseconds = Just sessionTimeLimit.timeInMilliseconds }
 
 
 processEventAfterIntegrateEvent :
     BotConfiguration botSettings botState
-    -> Maybe ReadingFromGameClientStructure
     -> StateIncludingFramework botSettings botState
     -> ( StateIncludingFramework botSettings botState, InternalBotEventResponse )
-processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stateBefore =
+processEventAfterIntegrateEvent botConfiguration stateBefore =
     let
         ( stateBeforeCountingRequests, responseBeforeAddingStatusMessage ) =
             case stateBefore.botSettings of
@@ -463,7 +506,6 @@ processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stat
                         , botSettings = botSettings
                         , sessionTimeLimitInMilliseconds = stateBefore.sessionTimeLimitInMilliseconds
                         }
-                        maybeReadingFromGameClient
                         stateBefore
 
         newRequestsToVolatileProcessCount =
@@ -529,10 +571,9 @@ processEventAfterIntegrateEvent botConfiguration maybeReadingFromGameClient stat
 processEventNotWaitingForTaskCompletion :
     BotConfiguration botSettings botState
     -> BotEventContext botSettings
-    -> Maybe ReadingFromGameClientStructure
     -> StateIncludingFramework botSettings botState
     -> ( StateIncludingFramework botSettings botState, InternalBotEventResponse )
-processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeReadingFromGameClient stateBefore =
+processEventNotWaitingForTaskCompletion botConfiguration botEventContext stateBefore =
     case stateBefore.setup |> getNextSetupTask botConfiguration stateBefore.botSettings of
         ContinueSetup setupState setupTask setupTaskDescription ->
             case List.head stateBefore.waitingForSetupTasks of
@@ -591,7 +632,6 @@ processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeRe
                 operateBotExceptRenewingVolatileProcess
                     botConfiguration
                     botEventContext
-                    maybeReadingFromGameClient
                     stateBefore
                     operateBot
 
@@ -604,11 +644,10 @@ processEventNotWaitingForTaskCompletion botConfiguration botEventContext maybeRe
 operateBotExceptRenewingVolatileProcess :
     BotConfiguration botSettings botState
     -> BotEventContext botSettings
-    -> Maybe ReadingFromGameClientStructure
     -> StateIncludingFramework botSettings botState
     -> OperateBotConfiguration
     -> ( StateIncludingFramework botSettings botState, InternalBotEventResponse )
-operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeNewReadingFromGameClient stateBefore operateBot =
+operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBefore operateBot =
     let
         continueWithNamedTasksToWaitOn { startsReading, taskAreaId } tasks =
             ( stateBefore
@@ -626,237 +665,155 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeNe
                                 , task = task
                                 }
                             )
-              , statusText =
-                    "Operate bot"
-                        ++ (if startsReading then
-                                " - start reading"
-
-                            else
-                                ""
-                           )
+              , statusText = "Operate bot"
               , notifyWhenArrivedAtTime = Nothing
               }
                 |> InternalContinueSession
             )
+
+        maybeReadingFromGameClient =
+            case stateBefore.setup.lastReadingFromGame of
+                Nothing ->
+                    Nothing
+
+                Just lastReadingFromGame ->
+                    case lastReadingFromGame.stage of
+                        ReadingFromGameCompleted ->
+                            Nothing
+
+                        ReadingFromGameInProgress aggregate ->
+                            aggregate
+                                |> parseReadingFromGameClient
+                                |> Result.toMaybe
 
         continueWithReadingFromGameClient =
             continueWithNamedTasksToWaitOn
                 { startsReading = True
                 , taskAreaId = "read-from-game"
                 }
-                (operateBot.readFromWindowTasks { screenshotCrops_1x1 = [], screenshotCrops_2x2 = [] })
+                operateBot.readFromWindowTasks
     in
-    case maybeNewReadingFromGameClient of
+    case maybeReadingFromGameClient of
         Just readingFromGameClient ->
             let
-                screenshot1x1Rects =
-                    readingFromGameClient.imageDataFromReadingResults
-                        |> List.concatMap .screenshot1x1Rects
+                clientRectOffset =
+                    readingFromGameClient.readingFromWindow.clientRectLeftUpperToScreen
 
-                screenshot2x2Rects =
-                    readingFromGameClient.imageDataFromReadingResults
-                        |> List.concatMap .screenshot2x2Rects
+                pixelFromCropsInClientArea binningFactor crops ( pixelX, pixelY ) =
+                    pixelFromCrops crops
+                        ( pixelX + (clientRectOffset.x // binningFactor)
+                        , pixelY + (clientRectOffset.y // binningFactor)
+                        )
 
-                image =
-                    { pixels_1x1 = pixelDictionaryFromCrops screenshot1x1Rects
-                    , pixels_2x2 = pixelDictionaryFromCrops screenshot2x2Rects
+                screenshotCrops_original =
+                    readingFromGameClient.readingFromWindow.imageData.screenshotCrops_original
+                        |> List.map parseImageCropFromInterface
+                        |> List.filterMap Result.toMaybe
+
+                screenshotCrops_binned_2x2 =
+                    readingFromGameClient.readingFromWindow.imageData.screenshotCrops_binned_2x2
+                        |> List.map parseImageCropFromInterface
+                        |> List.filterMap Result.toMaybe
+
+                screenshot =
+                    { pixels_1x1 = screenshotCrops_original |> pixelFromCropsInClientArea 1
+                    , pixels_2x2 = screenshotCrops_binned_2x2 |> pixelFromCropsInClientArea 2
                     }
 
-                ( frameworkRequestedScreenshotCrops, parsedUserInterface ) =
-                    parseUserInterface readingFromGameClient.parsedMemoryReading image
+                ( parsedUserInterface, statusTextAdditionFromParseFromScreenshot ) =
+                    case parseUserInterfaceFromScreenshot screenshot readingFromGameClient.parsedMemoryReading of
+                        Ok parsed ->
+                            ( parsed, [] )
 
-                screenshotRequiredRegionsFromBot =
-                    case stateBefore.botState.lastEvent of
-                        Nothing ->
-                            { binned_1x1 = []
-                            , binned_2x2 = []
+                        Err parseErr ->
+                            ( readingFromGameClient.parsedMemoryReading
+                            , [ "Failed to parse user interface: " ++ parseErr ]
+                            )
+
+                botStateBefore =
+                    stateBefore.botState
+
+                botEvent =
+                    ReadingFromGameClientCompleted parsedUserInterface screenshot
+
+                ( newBotState, botEventResponse ) =
+                    botStateBefore.botState
+                        |> botConfiguration.processEvent botEventContext botEvent
+
+                lastEvent =
+                    { timeInMilliseconds = stateBefore.timeInMilliseconds
+                    , eventResult = ( newBotState, botEventResponse )
+                    }
+
+                sharedStatusTextAddition =
+                    statusTextAdditionFromParseFromScreenshot
+
+                response =
+                    case botEventResponse of
+                        FinishSession _ ->
+                            InternalFinishSession
+                                { statusText =
+                                    "The bot finished the session."
+                                        :: sharedStatusTextAddition
+                                        |> String.join "\n"
+                                }
+
+                        ContinueSession continueSession ->
+                            let
+                                timeForNextReadingFromGame =
+                                    stateBefore.timeInMilliseconds
+                                        + continueSession.millisecondsToNextReadingFromGame
+
+                                startTasks =
+                                    case continueSession.effects of
+                                        [] ->
+                                            []
+
+                                        effects ->
+                                            [ { areaId = "send-effects"
+                                              , taskType = Nothing
+                                              , task = operateBot.buildTaskFromEffectSequence effects
+                                              }
+                                            ]
+                            in
+                            { startTasks = startTasks
+                            , statusText =
+                                "Operate bot"
+                                    :: sharedStatusTextAddition
+                                    |> String.join "\n"
+                            , notifyWhenArrivedAtTime =
+                                if startTasks == [] then
+                                    Just { timeInMilliseconds = timeForNextReadingFromGame }
+
+                                else
+                                    Nothing
                             }
+                                |> InternalContinueSession
 
-                        Just lastEvent ->
-                            case Tuple.second lastEvent.eventResult of
-                                FinishSession _ ->
-                                    { binned_1x1 = []
-                                    , binned_2x2 = []
-                                    }
+                setupStateBefore =
+                    stateBefore.setup
 
-                                ContinueSession continueSession ->
-                                    { binned_1x1 =
-                                        (continueSession.screenshotRegionsToRead readingFromGameClient.parsedMemoryReading).rects1x1
-                                    , binned_2x2 = []
-                                    }
-
-                screenshotRequiredRegions =
-                    { binned_1x1 =
-                        screenshotRequiredRegionsFromBot.binned_1x1
-                            ++ frameworkRequestedScreenshotCrops.screenshotCrops_1x1
-                    , binned_2x2 =
-                        screenshotRequiredRegionsFromBot.binned_2x2
-                            ++ frameworkRequestedScreenshotCrops.screenshotCrops_2x2
+                setup =
+                    { setupStateBefore
+                        | lastReadingFromGame =
+                            setupStateBefore.lastReadingFromGame
+                                |> Maybe.map
+                                    (\lastReadingFromGame ->
+                                        { lastReadingFromGame | stage = ReadingFromGameCompleted }
+                                    )
                     }
 
-                coveredRegions_1x1 =
-                    screenshot1x1Rects
-                        |> List.map
-                            (\imageCrop ->
-                                let
-                                    width =
-                                        imageCrop.pixels
-                                            |> List.map List.length
-                                            |> List.minimum
-                                            |> Maybe.withDefault 0
-
-                                    height =
-                                        List.length imageCrop.pixels
-                                in
-                                { x = imageCrop.offset.x
-                                , y = imageCrop.offset.y
-                                , width = width
-                                , height = height
-                                }
-                            )
-
-                coveredRegions_2x2 =
-                    screenshot2x2Rects
-                        |> List.map
-                            (\imageCrop ->
-                                let
-                                    width =
-                                        imageCrop.pixels
-                                            |> List.map List.length
-                                            |> List.minimum
-                                            |> Maybe.withDefault 0
-
-                                    height =
-                                        List.length imageCrop.pixels
-                                in
-                                { x = imageCrop.offset.x * 2
-                                , y = imageCrop.offset.y * 2
-                                , width = width * 2
-                                , height = height * 2
-                                }
-                            )
-
-                isRegionCovered_1x1 region =
-                    EveOnline.ParseUserInterface.subtractRegionsFromRegion
-                        { minuend = region, subtrahend = coveredRegions_1x1 }
-                        |> List.isEmpty
-
-                isRegionCovered_2x2 region =
-                    EveOnline.ParseUserInterface.subtractRegionsFromRegion
-                        { minuend = region, subtrahend = coveredRegions_2x2 }
-                        |> List.isEmpty
-
-                requiredRegionsNotCovered_1x1 =
-                    screenshotRequiredRegions.binned_1x1
-                        |> List.filter (isRegionCovered_1x1 >> not)
-
-                requiredRegionsNotCovered_2x2 =
-                    screenshotRequiredRegions.binned_2x2
-                        |> List.filter (isRegionCovered_2x2 >> not)
-
-                newCrops_1x1_WithMargins =
-                    requiredRegionsNotCovered_1x1
-                        |> List.map (regionAddMarginOnEachSide 1)
-
-                newCrops_2x2_WithMargins =
-                    requiredRegionsNotCovered_2x2
-                        |> List.map (regionAddMarginOnEachSide 2)
-
-                getImageData =
-                    { screenshotCrops_1x1 = newCrops_1x1_WithMargins
-                    , screenshotCrops_2x2 = newCrops_2x2_WithMargins
+                state =
+                    { stateBefore
+                        | botState =
+                            { botStateBefore
+                                | botState = newBotState
+                                , lastEvent = Just lastEvent
+                            }
+                        , setup = setup
                     }
-
-                currentReadingAlreadyProcessed =
-                    case stateBefore.botState.lastEvent of
-                        Nothing ->
-                            False
-
-                        Just lastEvent ->
-                            readingFromGameClient.timeInMilliseconds <= lastEvent.readingTimeInMilliseconds
             in
-            if
-                (getImageData /= { screenshotCrops_1x1 = [], screenshotCrops_2x2 = [] })
-                    && (List.length readingFromGameClient.imageDataFromReadingResults < getImageDataFromReadingRequestLimit)
-            then
-                continueWithNamedTasksToWaitOn
-                    { startsReading = False
-                    , taskAreaId = "get-image-data-from-reading"
-                    }
-                    [ operateBot.getImageDataFromReadingTask getImageData ]
-
-            else if currentReadingAlreadyProcessed then
-                ( stateBefore
-                , { startTasks = []
-                  , statusText = "Operate bot"
-                  , notifyWhenArrivedAtTime = Nothing
-                  }
-                    |> InternalContinueSession
-                )
-
-            else
-                let
-                    botStateBefore =
-                        stateBefore.botState
-
-                    botEvent =
-                        ReadingFromGameClientCompleted parsedUserInterface image
-
-                    ( newBotState, botEventResponse ) =
-                        botStateBefore.botState
-                            |> botConfiguration.processEvent botEventContext botEvent
-
-                    lastEvent =
-                        { readingTimeInMilliseconds = readingFromGameClient.timeInMilliseconds
-                        , timeInMilliseconds = stateBefore.timeInMilliseconds
-                        , eventResult = ( newBotState, botEventResponse )
-                        }
-
-                    response =
-                        case botEventResponse of
-                            FinishSession _ ->
-                                InternalFinishSession
-                                    { statusText = "The bot finished the session." }
-
-                            ContinueSession continueSession ->
-                                let
-                                    timeForNextReadingFromGame =
-                                        stateBefore.timeInMilliseconds
-                                            + continueSession.millisecondsToNextReadingFromGame
-
-                                    startTasks =
-                                        case continueSession.effects of
-                                            [] ->
-                                                []
-
-                                            effects ->
-                                                [ { areaId = "send-effects"
-                                                  , taskType = Nothing
-                                                  , task = operateBot.buildTaskFromEffectSequence effects
-                                                  }
-                                                ]
-                                in
-                                { startTasks = startTasks
-                                , statusText = "Operate bot"
-                                , notifyWhenArrivedAtTime =
-                                    if startTasks == [] then
-                                        Just { timeInMilliseconds = timeForNextReadingFromGame }
-
-                                    else
-                                        Nothing
-                                }
-                                    |> InternalContinueSession
-
-                    state =
-                        { stateBefore
-                            | botState =
-                                { botStateBefore
-                                    | botState = newBotState
-                                    , lastEvent = Just lastEvent
-                                }
-                        }
-                in
-                ( state, response )
+            ( state, response )
 
         Nothing ->
             let
@@ -865,7 +822,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeNe
                         |> Maybe.map .timeInMilliseconds
                         |> Maybe.withDefault 0
                     )
-                        + 10000
+                        + 5000
 
                 timeForNextReadingFromGameFromBot =
                     stateBefore.botState.lastEvent
@@ -884,7 +841,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeNe
                         |> Maybe.withDefault 0
 
                 nextReadingLowerBoundByLast =
-                    case stateBefore.startedReading of
+                    case stateBefore.setup.lastReadingFromGame of
                         Nothing ->
                             0
 
@@ -925,52 +882,64 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext maybeNe
                 )
 
 
-pixelDictionaryFromCrops : List VolatileProcessInterface.ImageCrop -> Dict.Dict ( Int, Int ) PixelValueRGB
-pixelDictionaryFromCrops crops =
+pixelFromCrops : List ImageCrop -> ( Int, Int ) -> Maybe PixelValueRGB
+pixelFromCrops crops ( pixelX, pixelY ) =
     crops
-        |> List.concatMap
+        |> List.Extra.findMap
             (\imageCrop ->
-                imageCrop.pixels
-                    |> List.indexedMap
-                        (\rowIndexInCrop rowPixels ->
-                            rowPixels
-                                |> List.indexedMap
-                                    (\columnIndexInCrop pixelValue ->
-                                        ( ( columnIndexInCrop + imageCrop.offset.x
-                                          , rowIndexInCrop + imageCrop.offset.y
-                                          )
-                                        , pixelValue
-                                        )
-                                    )
-                        )
-                    |> List.concat
+                let
+                    inCropX =
+                        pixelX - imageCrop.offset.x
+
+                    inCropY =
+                        pixelY - imageCrop.offset.y
+                in
+                if inCropX < 0 || inCropY < 0 || imageCrop.widthPixels <= inCropX then
+                    Nothing
+
+                else
+                    Array.get (inCropY * imageCrop.widthPixels + inCropX) imageCrop.pixels
+                        |> Maybe.map colorFromInt_R8G8B8
             )
-        |> Dict.fromList
+
+
+parseImageCropFromInterface : InterfaceToHost.ImageCrop -> Result String ImageCrop
+parseImageCropFromInterface imageCrop =
+    imageCrop.pixelsString
+        |> parseImageCropPixelsArrayFromPixelsString
+        |> Result.map
+            (\pixels ->
+                { offset = imageCrop.offset
+                , widthPixels = imageCrop.widthPixels
+                , pixels = pixels
+                }
+            )
+
+
+parseImageCropPixelsArrayFromPixelsString : String -> Result String (Array.Array Int)
+parseImageCropPixelsArrayFromPixelsString =
+    Json.Decode.decodeString
+        (Json.Decode.array Json.Decode.int)
+        >> Result.mapError Json.Decode.errorToString
 
 
 integrateTaskResult :
     ( Int, InterfaceToHost.TaskResultStructure )
     -> SetupState
-    -> ( SetupState, Maybe ReadingFromGameClientStructure )
+    -> SetupState
 integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
     case taskResult of
         InterfaceToHost.CreateVolatileProcessResponse createVolatileProcessResult ->
-            ( { setupStateBefore
+            { setupStateBefore
                 | createVolatileProcessResult = Just createVolatileProcessResult
                 , requestsToVolatileProcessCount = 0
-              }
-            , Nothing
-            )
+            }
 
         InterfaceToHost.RequestToVolatileProcessResponse (Err InterfaceToHost.ProcessNotFound) ->
-            ( { setupStateBefore | createVolatileProcessResult = Nothing }
-            , Nothing
-            )
+            { setupStateBefore | createVolatileProcessResult = Nothing }
 
         InterfaceToHost.RequestToVolatileProcessResponse (Err InterfaceToHost.FailedToAcquireInputFocus) ->
-            ( { setupStateBefore | lastEffectFailedToAcquireInputFocus = Just "Failed before entering volatile process." }
-            , Nothing
-            )
+            { setupStateBefore | lastEffectFailedToAcquireInputFocus = Just "Failed before entering volatile process." }
 
         InterfaceToHost.RequestToVolatileProcessResponse (Ok requestResult) ->
             let
@@ -998,189 +967,109 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
             in
             case requestToVolatileProcessResult |> Result.andThen Tuple.second |> Result.toMaybe of
                 Nothing ->
-                    ( setupStateWithScriptRunResult, Nothing )
+                    setupStateWithScriptRunResult
 
                 Just responseFromVolatileProcessOk ->
                     setupStateWithScriptRunResult
-                        |> integrateResponseFromVolatileProcess
-                            { timeInMilliseconds = timeInMilliseconds
-                            , responseFromVolatileProcess = responseFromVolatileProcessOk
-                            , runInVolatileProcessDurationInMs = requestResult.durationInMilliseconds
-                            }
+                        |> integrateResponseFromVolatileProcess responseFromVolatileProcessOk
 
         InterfaceToHost.OpenWindowResponse _ ->
-            ( setupStateBefore, Nothing )
+            setupStateBefore
 
         InterfaceToHost.InvokeMethodOnWindowResponse _ methodOnWindowResult ->
             case methodOnWindowResult of
                 Ok (InterfaceToHost.ReadFromWindowMethodResult readFromWindowComplete) ->
                     setupStateBefore
                         |> integrateReadFromWindowComplete
-                            { timeInMilliseconds = timeInMilliseconds
-                            , readFromWindowComplete = readFromWindowComplete
+                            { readFromWindowComplete = readFromWindowComplete
                             }
 
                 _ ->
-                    ( setupStateBefore, Nothing )
+                    setupStateBefore
 
         InterfaceToHost.RandomBytesResponse _ ->
-            ( setupStateBefore, Nothing )
+            setupStateBefore
 
         InterfaceToHost.CompleteWithoutResult ->
-            ( setupStateBefore, Nothing )
+            setupStateBefore
 
 
 integrateResponseFromVolatileProcess :
-    { timeInMilliseconds : Int, responseFromVolatileProcess : VolatileProcessInterface.ResponseFromVolatileHost, runInVolatileProcessDurationInMs : Int }
+    VolatileProcessInterface.ResponseFromVolatileHost
     -> SetupState
-    -> ( SetupState, Maybe ReadingFromGameClientStructure )
-integrateResponseFromVolatileProcess { timeInMilliseconds, responseFromVolatileProcess, runInVolatileProcessDurationInMs } stateBefore =
+    -> SetupState
+integrateResponseFromVolatileProcess responseFromVolatileProcess stateBefore =
     case responseFromVolatileProcess of
         VolatileProcessInterface.ListGameClientProcessesResponse gameClientProcesses ->
-            ( { stateBefore | gameClientProcesses = Just gameClientProcesses }, Nothing )
+            { stateBefore | gameClientProcesses = Just gameClientProcesses }
 
         VolatileProcessInterface.SearchUIRootAddressResult searchUIRootAddressResult ->
             let
                 state =
                     { stateBefore | searchUIRootAddressResult = Just searchUIRootAddressResult }
             in
-            ( state, Nothing )
+            state
 
         VolatileProcessInterface.ReadFromWindowResult readFromWindowResult ->
-            let
-                lastReadingFromGame =
-                    { timeInMilliseconds = timeInMilliseconds
-                    , aggregate =
-                        { initialReading =
-                            { timeInMilliseconds = timeInMilliseconds
-                            , fromVolatileProcess = readFromWindowResult
-                            }
-                        , imageDataFromReadingResults = []
-                        , lastReadingFromWindow = Nothing
-                        }
-                    }
+            case stateBefore.lastReadingFromGame of
+                Nothing ->
+                    stateBefore
 
-                state =
-                    { stateBefore
-                        | lastReadingFromGame = Just lastReadingFromGame
-                    }
+                Just lastReadingFromGame ->
+                    case lastReadingFromGame.stage of
+                        ReadingFromGameCompleted ->
+                            stateBefore
 
-                maybeReadingFromGameClient =
-                    parseReadingFromGameClient lastReadingFromGame.aggregate
-                        |> Result.toMaybe
-            in
-            ( state, maybeReadingFromGameClient )
+                        ReadingFromGameInProgress inProgress ->
+                            let
+                                readingFromGameStage =
+                                    { inProgress
+                                        | memoryReading = Just readFromWindowResult
+                                    }
 
-        {-
-           TODO: Remove VolatileProcessInterface.GetImageDataFromReadingResult
-        -}
-        VolatileProcessInterface.GetImageDataFromReadingResult getImageDataFromReadingResult ->
-            ( stateBefore, Nothing )
+                                state =
+                                    { stateBefore
+                                        | lastReadingFromGame =
+                                            Just
+                                                { lastReadingFromGame
+                                                    | stage = ReadingFromGameInProgress readingFromGameStage
+                                                }
+                                    }
+                            in
+                            state
 
         VolatileProcessInterface.FailedToBringWindowToFront error ->
-            ( { stateBefore | lastEffectFailedToAcquireInputFocus = Just error }, Nothing )
+            { stateBefore | lastEffectFailedToAcquireInputFocus = Just error }
 
         VolatileProcessInterface.CompletedEffectSequenceOnWindow ->
-            ( { stateBefore | lastEffectFailedToAcquireInputFocus = Nothing }, Nothing )
+            { stateBefore | lastEffectFailedToAcquireInputFocus = Nothing }
 
 
 integrateReadFromWindowComplete :
-    { timeInMilliseconds : Int, readFromWindowComplete : InterfaceToHost.ReadFromWindowCompleteStruct }
+    { readFromWindowComplete : InterfaceToHost.ReadFromWindowCompleteStruct }
     -> SetupState
-    -> ( SetupState, Maybe ReadingFromGameClientStructure )
-integrateReadFromWindowComplete { timeInMilliseconds, readFromWindowComplete } stateBeforeUpdateLastReading =
-    let
-        stateBefore =
-            { stateBeforeUpdateLastReading
-                | lastReadingFromWindowComplete =
-                    Just
-                        { timeInMilliseconds = timeInMilliseconds
-                        , reading = readFromWindowComplete
-                        }
-            }
-    in
+    -> SetupState
+integrateReadFromWindowComplete { readFromWindowComplete } stateBefore =
     case stateBefore.lastReadingFromGame of
         Nothing ->
-            ( stateBefore, Nothing )
+            stateBefore
 
-        Just lastReadingFromGameBefore ->
-            let
-                screenshot1x1RectsFromCrop : InterfaceToHost.ImageCrop -> List VolatileProcessInterface.ImageCrop
-                screenshot1x1RectsFromCrop crop =
-                    if crop.origin.binning == { x = 1, y = 1 } then
-                        [ { offset =
-                                { x = crop.origin.offset.x - readFromWindowComplete.clientRectLeftUpperToScreen.x
-                                , y = crop.origin.offset.y - readFromWindowComplete.clientRectLeftUpperToScreen.y
-                                }
-                          , pixels = crop.pixels |> List.map (List.map colorFromInt_R8G8B8)
-                          }
-                        ]
+        Just lastReadingFromGame ->
+            case lastReadingFromGame.stage of
+                ReadingFromGameCompleted ->
+                    stateBefore
 
-                    else
-                        []
-
-                screenshot2x2RectsFromCrop : InterfaceToHost.ImageCrop -> List VolatileProcessInterface.ImageCrop
-                screenshot2x2RectsFromCrop crop =
+                ReadingFromGameInProgress aggregateBefore ->
                     let
-                        inWindowOffsetX =
-                            crop.origin.offset.x - readFromWindowComplete.clientRectLeftUpperToScreen.x
-
-                        inWindowOffsetY =
-                            crop.origin.offset.y - readFromWindowComplete.clientRectLeftUpperToScreen.y
+                        aggregate =
+                            { aggregateBefore | readingFromWindow = Just readFromWindowComplete }
                     in
-                    if
-                        crop.origin.binning == { x = 2, y = 2 }
-                        {-
-                           && ((inWindowOffsetX |> modBy 2) == 0)
-                           && ((inWindowOffsetY |> modBy 2) == 0)
-                        -}
-                    then
-                        [ { offset =
-                                { x = inWindowOffsetX // 2
-                                , y = inWindowOffsetY // 2
-                                }
-                          , pixels = crop.pixels |> List.map (List.map colorFromInt_R8G8B8)
-                          }
-                        ]
-
-                    else
-                        []
-
-                getImageDataFromReadingResult : GetImageDataFromReadingResultStructure
-                getImageDataFromReadingResult =
-                    { screenshot1x1Rects =
-                        readFromWindowComplete.imageData.screenshotCrops
-                            |> List.concatMap screenshot1x1RectsFromCrop
-                    , screenshot2x2Rects =
-                        readFromWindowComplete.imageData.screenshotCrops
-                            |> List.concatMap screenshot2x2RectsFromCrop
+                    { stateBefore
+                        | lastReadingFromGame = Just { lastReadingFromGame | stage = ReadingFromGameInProgress aggregate }
                     }
 
-                aggregateBefore =
-                    lastReadingFromGameBefore.aggregate
 
-                imageDataFromReadingResults =
-                    getImageDataFromReadingResult :: aggregateBefore.imageDataFromReadingResults
-
-                lastReadingFromGame =
-                    { lastReadingFromGameBefore
-                        | aggregate =
-                            { aggregateBefore
-                                | imageDataFromReadingResults = imageDataFromReadingResults
-                                , lastReadingFromWindow = Just readFromWindowComplete
-                            }
-                    }
-
-                maybeReadingFromGameClient =
-                    parseReadingFromGameClient lastReadingFromGame.aggregate
-                        |> Result.toMaybe
-            in
-            ( { stateBefore | lastReadingFromGame = Just lastReadingFromGame }
-            , maybeReadingFromGameClient
-            )
-
-
-colorFromInt_R8G8B8 : Int -> VolatileProcessInterface.PixelValueRGB
+colorFromInt_R8G8B8 : Int -> PixelValueRGB
 colorFromInt_R8G8B8 combined =
     { red = combined |> Bitwise.shiftRightZfBy 16 |> Bitwise.and 0xFF
     , green = combined |> Bitwise.shiftRightZfBy 8 |> Bitwise.and 0xFF
@@ -1192,28 +1081,36 @@ parseReadingFromGameClient :
     ReadingFromGameClientAggregateState
     -> Result String ReadingFromGameClientStructure
 parseReadingFromGameClient readingAggregate =
-    case readingAggregate.initialReading.fromVolatileProcess of
-        VolatileProcessInterface.ProcessNotFound ->
-            Err "Initial reading failed with 'Process Not Found'"
+    case readingAggregate.memoryReading of
+        Nothing ->
+            Err "Memory reading not completed"
 
-        VolatileProcessInterface.Completed completedReading ->
-            case completedReading.memoryReadingSerialRepresentationJson of
-                Nothing ->
-                    Err "Missing json representation of memory reading"
+        Just memoryReading ->
+            case memoryReading of
+                VolatileProcessInterface.ProcessNotFound ->
+                    Err "Initial reading failed with 'Process Not Found'"
 
-                Just memoryReadingSerialRepresentationJson ->
-                    memoryReadingSerialRepresentationJson
-                        |> EveOnline.MemoryReading.decodeMemoryReadingFromString
-                        |> Result.mapError Json.Decode.errorToString
-                        |> Result.map (EveOnline.ParseUserInterface.parseUITreeWithDisplayRegionFromUITree >> EveOnline.ParseUserInterface.parseUserInterfaceFromUITree)
-                        |> Result.map
-                            (\parsedMemoryReading ->
-                                { timeInMilliseconds = readingAggregate.initialReading.timeInMilliseconds
-                                , parsedMemoryReading = parsedMemoryReading
-                                , lastReadingFromWindow = Nothing
-                                , imageDataFromReadingResults = readingAggregate.imageDataFromReadingResults
-                                }
-                            )
+                VolatileProcessInterface.Completed completedReading ->
+                    case completedReading.memoryReadingSerialRepresentationJson of
+                        Nothing ->
+                            Err "Missing json representation of memory reading"
+
+                        Just memoryReadingSerialRepresentationJson ->
+                            case readingAggregate.readingFromWindow of
+                                Nothing ->
+                                    Err "Reading from window not arrived yet"
+
+                                Just readingFromWindow ->
+                                    memoryReadingSerialRepresentationJson
+                                        |> EveOnline.MemoryReading.decodeMemoryReadingFromString
+                                        |> Result.mapError Json.Decode.errorToString
+                                        |> Result.map (EveOnline.ParseUserInterface.parseUITreeWithDisplayRegionFromUITree >> EveOnline.ParseUserInterface.parseUserInterfaceFromUITree)
+                                        |> Result.map
+                                            (\parsedMemoryReading ->
+                                                { parsedMemoryReading = parsedMemoryReading
+                                                , readingFromWindow = readingFromWindow
+                                                }
+                                            )
 
 
 getNextSetupTask :
@@ -1310,151 +1207,80 @@ getSetupTaskWhenVolatileProcessSetupCompleted botConfiguration botSettings state
 
                                     Just uiRootAddress ->
                                         let
-                                            readFromWindowRequest getImageData =
+                                            readFromWindowRequest =
                                                 VolatileProcessInterface.ReadFromWindow
                                                     { windowId = gameClientSelection.selectedProcess.mainWindowId
                                                     , uiRootAddress = uiRootAddress
-                                                    , getImageData = getImageData
+                                                    }
+                                        in
+                                        let
+                                            buildTaskFromRequestToVolatileProcess maybeAcquireInputFocus requestToVolatileProcess =
+                                                let
+                                                    requestBeforeConsideringInputFocus =
+                                                        { processId = volatileProcessId
+                                                        , request = VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileProcess
+                                                        }
+                                                in
+                                                InterfaceToHost.RequestToVolatileProcess
+                                                    (case maybeAcquireInputFocus of
+                                                        Nothing ->
+                                                            InterfaceToHost.RequestNotRequiringInputFocus
+                                                                requestBeforeConsideringInputFocus
+
+                                                        Just acquireInputFocus ->
+                                                            InterfaceToHost.RequestRequiringInputFocus
+                                                                { request = requestBeforeConsideringInputFocus
+                                                                , acquireInputFocus = acquireInputFocus
+                                                                }
+                                                    )
+
+                                            buildTaskFromInvokeMethodOnWindowRequest methodOnWindow =
+                                                InterfaceToHost.InvokeMethodOnWindowRequest
+                                                    ("winapi-" ++ gameClientSelection.selectedProcess.mainWindowId)
+                                                    methodOnWindow
+
+                                            continueNormalOperation =
+                                                OperateBot
+                                                    { buildTaskFromEffectSequence =
+                                                        \effectSequenceOnWindow ->
+                                                            { windowId = gameClientSelection.selectedProcess.mainWindowId
+                                                            , task =
+                                                                effectSequenceOnWindow
+                                                                    |> List.map (effectOnWindowAsVolatileProcessEffectOnWindow >> VolatileProcessInterface.Effect)
+                                                                    |> List.intersperse (VolatileProcessInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
+                                                            , bringWindowToForeground = True
+                                                            }
+                                                                |> VolatileProcessInterface.EffectSequenceOnWindow
+                                                                |> buildTaskFromRequestToVolatileProcess (Just { maximumDelayMilliseconds = 500 })
+                                                    , readFromWindowTasks =
+                                                        [ readFromWindowRequest
+                                                            |> buildTaskFromRequestToVolatileProcess
+                                                                (Just { maximumDelayMilliseconds = 500 })
+                                                        , buildTaskFromInvokeMethodOnWindowRequest
+                                                            InterfaceToHost.ReadFromWindowMethod
+                                                        ]
+                                                    , releaseVolatileProcessTask = InterfaceToHost.ReleaseVolatileProcess { processId = volatileProcessId }
                                                     }
                                         in
                                         case stateBefore.lastReadingFromGame of
                                             Nothing ->
-                                                ContinueSetup stateBefore
-                                                    (InterfaceToHost.RequestToVolatileProcess
-                                                        (InterfaceToHost.RequestNotRequiringInputFocus
-                                                            { processId = volatileProcessId
-                                                            , request =
-                                                                VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost
-                                                                    (readFromWindowRequest { screenshot1x1Rects = [] })
-                                                            }
-                                                        )
-                                                    )
-                                                    "Get the first memory reading from the EVE Online client process. This can take several seconds."
+                                                continueNormalOperation
 
-                                            Just lastMemoryReading ->
-                                                case lastMemoryReading.aggregate.initialReading.fromVolatileProcess of
-                                                    VolatileProcessInterface.ProcessNotFound ->
-                                                        FrameworkStopSession "The EVE Online client process disappeared."
+                                            Just lastReadingFromGame ->
+                                                case lastReadingFromGame.stage of
+                                                    ReadingFromGameCompleted ->
+                                                        continueNormalOperation
 
-                                                    VolatileProcessInterface.Completed lastCompletedMemoryReading ->
-                                                        let
-                                                            buildTaskFromRequestToVolatileProcess maybeAcquireInputFocus requestToVolatileProcess =
-                                                                let
-                                                                    requestBeforeConsideringInputFocus =
-                                                                        { processId = volatileProcessId
-                                                                        , request = VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileProcess
-                                                                        }
-                                                                in
-                                                                InterfaceToHost.RequestToVolatileProcess
-                                                                    (case maybeAcquireInputFocus of
-                                                                        Nothing ->
-                                                                            InterfaceToHost.RequestNotRequiringInputFocus
-                                                                                requestBeforeConsideringInputFocus
+                                                    ReadingFromGameInProgress inProgress ->
+                                                        case inProgress.memoryReading of
+                                                            Nothing ->
+                                                                continueNormalOperation
 
-                                                                        Just acquireInputFocus ->
-                                                                            InterfaceToHost.RequestRequiringInputFocus
-                                                                                { request = requestBeforeConsideringInputFocus
-                                                                                , acquireInputFocus = acquireInputFocus
-                                                                                }
-                                                                    )
+                                                            Just VolatileProcessInterface.ProcessNotFound ->
+                                                                FrameworkStopSession "The EVE Online client process disappeared."
 
-                                                            buildTaskFromInvokeMethodOnWindowRequest methodOnWindow =
-                                                                InterfaceToHost.InvokeMethodOnWindowRequest
-                                                                    ("winapi-" ++ gameClientSelection.selectedProcess.mainWindowId)
-                                                                    methodOnWindow
-
-                                                            lastReadingClientRectLeftUpperToScreen =
-                                                                stateBefore.lastReadingFromWindowComplete
-                                                                    |> Maybe.map (.reading >> .clientRectLeftUpperToScreen)
-                                                                    |> Maybe.withDefault { x = 0, y = 0 }
-
-                                                            mapGetImageData : GetImageDataFromReadingStructure -> InterfaceToHost.GetImageDataFromReadingStruct
-                                                            mapGetImageData botGetImageData =
-                                                                let
-                                                                    crops_1x1 =
-                                                                        botGetImageData.screenshotCrops_1x1
-                                                                            |> List.map
-                                                                                (\rectInClientArea ->
-                                                                                    { offset =
-                                                                                        { x =
-                                                                                            ((rectInClientArea.x // 2) * 2)
-                                                                                                + lastReadingClientRectLeftUpperToScreen.x
-                                                                                        , y =
-                                                                                            ((rectInClientArea.y // 2) * 2)
-                                                                                                + lastReadingClientRectLeftUpperToScreen.y
-                                                                                        }
-                                                                                    , binning = { x = 1, y = 1 }
-                                                                                    , binnedWidth = rectInClientArea.width
-                                                                                    , binnedHeight = rectInClientArea.height
-                                                                                    }
-                                                                                )
-
-                                                                    crops_2x2 =
-                                                                        botGetImageData.screenshotCrops_2x2
-                                                                            |> List.map
-                                                                                (\rectInClientArea ->
-                                                                                    { offset =
-                                                                                        { x = rectInClientArea.x + lastReadingClientRectLeftUpperToScreen.x
-                                                                                        , y = rectInClientArea.y + lastReadingClientRectLeftUpperToScreen.y
-                                                                                        }
-                                                                                    , binning = { x = 2, y = 2 }
-                                                                                    , binnedWidth = rectInClientArea.width // 2
-                                                                                    , binnedHeight = rectInClientArea.height // 2
-                                                                                    }
-                                                                                )
-                                                                in
-                                                                { screenshotCrops = crops_1x1 ++ crops_2x2 }
-                                                        in
-                                                        OperateBot
-                                                            { buildTaskFromEffectSequence =
-                                                                \effectSequenceOnWindow ->
-                                                                    { windowId = gameClientSelection.selectedProcess.mainWindowId
-                                                                    , task =
-                                                                        effectSequenceOnWindow
-                                                                            |> List.map (effectOnWindowAsVolatileProcessEffectOnWindow >> VolatileProcessInterface.Effect)
-                                                                            |> List.intersperse (VolatileProcessInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
-                                                                    , bringWindowToForeground = True
-                                                                    }
-                                                                        |> VolatileProcessInterface.EffectSequenceOnWindow
-                                                                        |> buildTaskFromRequestToVolatileProcess (Just { maximumDelayMilliseconds = 500 })
-                                                            , readFromWindowTasks =
-                                                                {-
-                                                                   \getImageData ->
-                                                                       buildTaskFromInvokeMethodOnWindowRequest
-                                                                           (InterfaceToHost.ReadFromWindowMethod
-                                                                               { reuseLastReading = False
-                                                                               , imageData = mapGetImageData getImageData
-                                                                               }
-                                                                           )
-                                                                -}
-                                                                \getImageData ->
-                                                                    [ readFromWindowRequest
-                                                                        -- getImageData
-                                                                        { screenshot1x1Rects = [] }
-                                                                        |> buildTaskFromRequestToVolatileProcess
-                                                                            (Just { maximumDelayMilliseconds = 500 })
-                                                                    , buildTaskFromInvokeMethodOnWindowRequest
-                                                                        (InterfaceToHost.ReadFromWindowMethod
-                                                                            { reuseLastReading = False
-
-                                                                            {- For now, do the reading of screenshot crops after we get the memory reading.
-
-                                                                               , imageData = mapGetImageData getImageData
-                                                                            -}
-                                                                            , imageData = { screenshotCrops = [] }
-                                                                            }
-                                                                        )
-                                                                    ]
-                                                            , getImageDataFromReadingTask =
-                                                                \getImageData ->
-                                                                    buildTaskFromInvokeMethodOnWindowRequest
-                                                                        (InterfaceToHost.ReadFromWindowMethod
-                                                                            { reuseLastReading = True
-                                                                            , imageData = mapGetImageData getImageData
-                                                                            }
-                                                                        )
-                                                            , releaseVolatileProcessTask = InterfaceToHost.ReleaseVolatileProcess { processId = volatileProcessId }
-                                                            }
+                                                            Just (VolatileProcessInterface.Completed _) ->
+                                                                continueNormalOperation
 
 
 effectOnWindowAsVolatileProcessEffectOnWindow : Common.EffectOnWindow.EffectOnWindowStructure -> VolatileProcessInterface.EffectOnWindowStructure
@@ -1589,23 +1415,12 @@ statusReportFromState state =
                     "None so far"
 
                 Just lastReadingFromGame ->
-                    let
-                        allCrops =
-                            lastReadingFromGame.aggregate.imageDataFromReadingResults
-                                |> List.concatMap (\r -> [ r.screenshot1x1Rects, r.screenshot2x2Rects ])
-                                |> List.concat
+                    case lastReadingFromGame.stage of
+                        ReadingFromGameInProgress _ ->
+                            "in progress"
 
-                        allPixelsCount =
-                            allCrops
-                                |> List.map (.pixels >> List.map List.length >> List.sum)
-                                |> List.sum
-                    in
-                    Maybe.withDefault "no-reading" (Maybe.map .readingId lastReadingFromGame.aggregate.lastReadingFromWindow)
-                        ++ ": "
-                        ++ String.fromInt (List.length allCrops)
-                        ++ " crops containing "
-                        ++ String.fromInt allPixelsCount
-                        ++ " pixels"
+                        ReadingFromGameCompleted ->
+                            "completed"
     in
     [ [ fromBot ]
     , [ "----"
@@ -1853,36 +1668,89 @@ shipUIIndicatesShipIsWarpingOrJumping =
 
 doEffectsClickModuleButton : EveOnline.ParseUserInterface.ShipUIModuleButton -> List Common.EffectOnWindow.EffectOnWindowStructure -> Bool
 doEffectsClickModuleButton moduleButton =
-    List.Extra.tails
-        >> List.any
-            (\effects ->
-                case effects of
-                    firstEffect :: secondEffect :: _ ->
-                        case ( firstEffect, secondEffect ) of
-                            ( Common.EffectOnWindow.MouseMoveTo mouseMoveTo, Common.EffectOnWindow.KeyDown keyDown ) ->
-                                doesPointIntersectRegion mouseMoveTo moduleButton.uiNode.totalDisplayRegion
-                                    && (keyDown == Common.EffectOnWindow.vkey_LBUTTON)
-
-                            _ ->
-                                False
-
-                    [ _ ] ->
-                        False
-
-                    [] ->
-                        False
-            )
+    findMouseButtonClickLocationsInListOfEffects Common.EffectOnWindow.MouseButtonLeft
+        >> List.any (isPointInRectangle moduleButton.uiNode.totalDisplayRegion)
 
 
-doesPointIntersectRegion : { x : Int, y : Int } -> EveOnline.ParseUserInterface.DisplayRegion -> Bool
-doesPointIntersectRegion { x, y } region =
-    (region.x <= x)
-        && (x <= region.x + region.width)
-        && (region.y <= y)
-        && (y <= region.y + region.height)
+findMouseButtonClickLocationsInListOfEffects : Common.EffectOnWindow.MouseButton -> List Common.EffectOnWindow.EffectOnWindowStructure -> List Location2d
+findMouseButtonClickLocationsInListOfEffects mouseButton =
+    List.foldl
+        (\effect ( maybeLastMouseMoveLocation, leftClickLocations ) ->
+            case effect of
+                Common.EffectOnWindow.MouseMoveTo mouseMoveTo ->
+                    ( Just mouseMoveTo, leftClickLocations )
+
+                Common.EffectOnWindow.KeyDown keyDown ->
+                    case maybeLastMouseMoveLocation of
+                        Nothing ->
+                            ( maybeLastMouseMoveLocation, leftClickLocations )
+
+                        Just lastMouseMoveLocation ->
+                            if keyDown == Common.EffectOnWindow.virtualKeyCodeFromMouseButton mouseButton then
+                                ( maybeLastMouseMoveLocation, leftClickLocations ++ [ lastMouseMoveLocation ] )
+
+                            else
+                                ( maybeLastMouseMoveLocation, leftClickLocations )
+
+                _ ->
+                    ( maybeLastMouseMoveLocation, leftClickLocations )
+        )
+        ( Nothing, [] )
+        >> Tuple.second
 
 
-cornersFromDisplayRegion : EveOnline.ParseUserInterface.DisplayRegion -> List { x : Int, y : Int }
+{-| Finds the closest point on the edge of an orthogonal rectangle.
+<https://math.stackexchange.com/questions/356792/how-to-find-nearest-point-on-line-of-rectangle-from-anywhere/356813#356813>
+-}
+closestPointOnRectangleEdge : EveOnline.ParseUserInterface.DisplayRegion -> Location2d -> Location2d
+closestPointOnRectangleEdge rectangle point =
+    let
+        distToLeft =
+            abs (point.x - rectangle.x)
+
+        distToRight =
+            abs ((rectangle.x + rectangle.width) - point.x)
+
+        distToTop =
+            abs (point.y - rectangle.y)
+
+        distToBottom =
+            abs ((rectangle.y + rectangle.height) - point.y)
+    in
+    if isPointInRectangle rectangle point then
+        if min distToLeft distToRight < min distToTop distToBottom then
+            if distToLeft < distToRight then
+                { x = rectangle.x, y = point.y }
+
+            else
+                { x = rectangle.x + rectangle.width, y = point.y }
+
+        else if distToTop < distToBottom then
+            { x = point.x, y = rectangle.y }
+
+        else
+            { x = point.x, y = rectangle.y + rectangle.height }
+
+    else
+        closestPointInRectangle rectangle point
+
+
+closestPointInRectangle : EveOnline.ParseUserInterface.DisplayRegion -> Location2d -> Location2d
+closestPointInRectangle rectangle { x, y } =
+    { x = x |> max rectangle.x |> min (rectangle.x + rectangle.width)
+    , y = y |> max rectangle.y |> min (rectangle.y + rectangle.height)
+    }
+
+
+isPointInRectangle : EveOnline.ParseUserInterface.DisplayRegion -> Location2d -> Bool
+isPointInRectangle rectangle { x, y } =
+    (rectangle.x <= x)
+        && (x <= rectangle.x + rectangle.width)
+        && (rectangle.y <= y)
+        && (y <= rectangle.y + rectangle.height)
+
+
+cornersFromDisplayRegion : EveOnline.ParseUserInterface.DisplayRegion -> List Location2d
 cornersFromDisplayRegion region =
     [ { x = region.x, y = region.y }
     , { x = region.x + region.width, y = region.y }
@@ -1900,28 +1768,41 @@ growRegionOnAllSides growthAmount region =
     }
 
 
-offsetRect : Location2d -> Rect2dStructure -> Rect2dStructure
-offsetRect offset rect =
-    { rect | x = rect.x + offset.x, y = rect.y + offset.y }
+parseUserInterfaceFromScreenshot :
+    ReadingFromGameClientScreenshot
+    -> EveOnline.ParseUserInterface.ParsedUserInterface
+    -> Result String EveOnline.ParseUserInterface.ParsedUserInterface
+parseUserInterfaceFromScreenshot screenshot original =
+    original.messageBoxes
+        |> List.map (parseUserInterfaceFromScreenshotMessageBox screenshot)
+        |> Result.Extra.combine
+        |> Result.map (\messageBoxes -> { original | messageBoxes = messageBoxes })
 
 
-parseUserInterface :
-    EveOnline.ParseUserInterface.ParsedUserInterface
-    -> ReadingFromGameClientImage
-    -> ( GetImageDataFromReadingStructure, EveOnline.ParseUserInterface.ParsedUserInterface )
-parseUserInterface original readingFromImage =
+parseUserInterfaceFromScreenshotMessageBox :
+    ReadingFromGameClientScreenshot
+    -> EveOnline.ParseUserInterface.MessageBox
+    -> Result String EveOnline.ParseUserInterface.MessageBox
+parseUserInterfaceFromScreenshotMessageBox screenshot messageBox =
     let
+        colorSum color =
+            color.red + color.green + color.blue
+
+        colorDifferenceSum colorA colorB =
+            [ colorA.red - colorB.red
+            , colorA.green - colorB.green
+            , colorA.blue - colorB.blue
+            ]
+                |> List.map abs
+                |> List.sum
+
         {- Based on this sample:
            data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAUCAYAAACXtf2DAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsIAAA7CARUoSoAAAANWSURBVEhL1VVbb0xRFP7OHL3QzqheZjQtdUsZqhfNSAdhVKlrxJSIS0hFJEiQeJWI+AU8STzwIBGijRDSoiEpIcSgrom4PajeVAztGMwZa619zpnpqL77zux99uX71tpn773WaOXLG+IQxOkZHho9jI6WJmkozUj8RO2QmhBnCReDhFyow31l5W9T1rDNT9Iks8kBDdKTnjYKR/ftwv5tG+GvmIWDjZvhzMzAod07YJA4WcZ8/q1cOA97NjXg8N6dmODJR8PSADbU18JX5hUWw/6C8fm5ePT8JZpabsBDbV7NptX1OHXhInETxi2wE++0STh2+gzCAwMwYjEUe9woGDcW90JPbJbtQEGtTCY0Byq8pRiMRKhHz3BOeMjk83yFdzoi0ai0re2yHfyI/kKh241xOS7ZknjcwJHjJ7Bl7SqTMRR88D+iP1Fc6IEzKwuaQ8Pltlu01WmYMqHYZIkDdUe6P/fj2eu3NFmE9gch3Al1oLO3Dw+fvyIDY4ihbgVDWlQ1tbbBP6cS19vvIvx9AC/evMO5K9dQQFts8c1rSiumDq+abwN3eEUyGqcFUJufp63NoipfHpTdEV2MNNTiCRnTqEUNh0NtDtWKytBoUqMJTecPozadgzLOSPCGgPlszHwrG5a7f2j+KwxJFf+G2qTUVDEylEadBIHpUlhqyq1i1amQeaqG1yiIA3VbgICvGmvrFiLX5aR0UQbjdwy1NT5TkCzjOKHoz8vDuqWL4K8sgytrNLyTS1DkLkBpyUThMOxb5M7NwcypJXjz7gPmV88m0WxUzyxF3lgnXV1DOBZYwSW4LIDb90NY4vfBOToTMyZPxPZ1q9DV02NaTUoVmRnp+NTTiy/hb5Qm1P5tC67B2UtXxZqKlGTESZOBj93d+D4YgUExtCKwAKFnL9D/NaxWQJXtwDoUyw77eExRvFi2SDykwOQL4tJ7SZmgpqocOsUDa3gbbQddff2omuXF+pV16Or9LPZOnm/GYv9cM1UkwMbEIKWGA41b4crOliB739mJKzfbEaxfYrqnoLNTBbkzjJiEvprjVRgSzRz2/E5NFXw2nKZlqfTJPMaRzNB1nXuJQ2YCG3LQH49jFBcdOr8dRBSRyUsCpwTmCZ8M6tymt2gEwB+SX2kpOjZ/ywAAAABJRU5ErkJggg==
         -}
         matchesButtonTextOk buttonCenter =
             let
-                colorSum color =
-                    color.red + color.green + color.blue
-
                 colorFromRelativeLocation_binned ( fromCenterX, fromCenterY ) =
-                    readingFromImage.pixels_2x2
-                        |> Dict.get ( buttonCenter.x // 2 + fromCenterX, buttonCenter.y // 2 + fromCenterY )
+                    screenshot.pixels_2x2 ( buttonCenter.x // 2 + fromCenterX, buttonCenter.y // 2 + fromCenterY )
                         |> Maybe.withDefault { red = 0, green = 0, blue = 0 }
 
                 ( darkestOffsetX, darkestOffsetY ) =
@@ -1964,55 +1845,52 @@ parseUserInterface original readingFromImage =
             ]
                 |> List.Extra.find (Tuple.first >> (|>) buttonCenter)
                 |> Maybe.map Tuple.second
+    in
+    case messageBox.buttonGroup of
+        Nothing ->
+            Ok messageBox
 
-        mapMessageBox messageBox =
-            case messageBox.buttonGroup of
+        Just buttonGroup ->
+            let
+                measureButtonEdgesY =
+                    buttonGroup.totalDisplayRegion.y + 6
+
+                measureButtonEdgesLeft_2 =
+                    buttonGroup.totalDisplayRegion.x // 2 - 1
+
+                measureButtonEdgesRight_2 =
+                    (measureButtonEdgesLeft_2 + buttonGroup.totalDisplayRegion.width // 2) + 1
+
+                getEdgeLinePixel x =
+                    screenshot.pixels_2x2 ( x, measureButtonEdgesY // 2 )
+            in
+            case
+                List.range measureButtonEdgesLeft_2 measureButtonEdgesRight_2
+                    |> List.map
+                        (\x ->
+                            case ( getEdgeLinePixel (x - 1), getEdgeLinePixel (x + 1) ) of
+                                ( Just leftPixel, Just rightPixel ) ->
+                                    Just (20 < colorDifferenceSum leftPixel rightPixel)
+
+                                _ ->
+                                    Nothing
+                        )
+                    |> Maybe.Extra.combine
+            of
                 Nothing ->
-                    { messageBox = messageBox
-                    , crops_2x2 = []
-                    }
+                    Err
+                        ("Missing pixel data for button group at "
+                            ++ String.fromInt
+                                (buttonGroup.totalDisplayRegion.x + buttonGroup.totalDisplayRegion.width // 2)
+                            ++ ","
+                            ++ String.fromInt
+                                (buttonGroup.totalDisplayRegion.y + buttonGroup.totalDisplayRegion.height // 2)
+                        )
 
-                Just buttonGroup ->
+                Just buttonEdgesBools_2 ->
                     let
-                        cropRegionCenterY =
-                            buttonGroup.totalDisplayRegion.y
-                                + (buttonGroup.totalDisplayRegion.height // 2)
-
-                        measureButtonEdgesY =
-                            buttonGroup.totalDisplayRegion.y + 6
-
-                        measureButtonEdgesLeft_2 =
-                            buttonGroup.totalDisplayRegion.x // 2 - 1
-
-                        measureButtonEdgesRight_2 =
-                            (measureButtonEdgesLeft_2 + buttonGroup.totalDisplayRegion.width // 2) + 1
-
-                        getEdgeLinePixel x =
-                            Dict.get ( x, measureButtonEdgesY // 2 ) readingFromImage.pixels_2x2
-
-                        colorDifferenceSum colorA colorB =
-                            [ colorA.red - colorB.red
-                            , colorA.green - colorB.green
-                            , colorA.blue - colorB.blue
-                            ]
-                                |> List.map abs
-                                |> List.sum
-
-                        buttonEdgesBools_2 =
-                            List.range measureButtonEdgesLeft_2 measureButtonEdgesRight_2
-                                |> List.map
-                                    (\x ->
-                                        case ( getEdgeLinePixel (x - 1), getEdgeLinePixel (x + 1) ) of
-                                            ( Just leftPixel, Just rightPixel ) ->
-                                                Just (20 < colorDifferenceSum leftPixel rightPixel)
-
-                                            _ ->
-                                                Nothing
-                                    )
-
                         fromImageButtonsRegions =
                             buttonEdgesBools_2
-                                |> List.map (Maybe.withDefault False)
                                 |> centersOfTrueSequences
                                 |> List.map ((+) measureButtonEdgesLeft_2)
                                 |> pairsFromList
@@ -2031,7 +1909,11 @@ parseUserInterface original readingFromImage =
                                 (.uiNode >> .totalDisplayRegion >> regionAddMarginOnEachSide -2 >> EveOnline.ParseUserInterface.regionsOverlap displayRegion)
                                 messageBox.buttons
 
-                        fromImageButtons : List { uiNode : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion, mainText : Maybe String }
+                        fromImageButtons :
+                            List
+                                { uiNode : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
+                                , mainText : Maybe String
+                                }
                         fromImageButtons =
                             fromImageButtonsRegions
                                 |> List.filterMap
@@ -2063,32 +1945,11 @@ parseUserInterface original readingFromImage =
                                                 , mainText = mainText
                                                 }
                                     )
-
-                        cropRegion =
-                            { x = buttonGroup.totalDisplayRegion.x - 6
-                            , y = measureButtonEdgesY - 2
-                            , width = buttonGroup.totalDisplayRegion.width + 12
-                            , height = cropRegionCenterY - measureButtonEdgesY + 14
-                            }
                     in
-                    { messageBox =
+                    Ok
                         { messageBox
                             | buttons = messageBox.buttons ++ fromImageButtons
                         }
-                    , crops_2x2 = [ cropRegion ]
-                    }
-
-        mappedMessageBoxes =
-            original.messageBoxes |> List.map mapMessageBox
-
-        screenshotCrops_2x2 =
-            mappedMessageBoxes |> List.concatMap .crops_2x2
-    in
-    ( { screenshotCrops_1x1 = []
-      , screenshotCrops_2x2 = screenshotCrops_2x2
-      }
-    , { original | messageBoxes = mappedMessageBoxes |> List.map .messageBox }
-    )
 
 
 centersOfTrueSequences : List Bool -> List Int
@@ -2138,3 +1999,53 @@ regionAddMarginOnEachSide marginSize originalRect =
     , width = originalRect.width + marginSize * 2
     , height = originalRect.height + marginSize * 2
     }
+
+
+asReadingFromGameClientMemory : EveOnline.ParseUserInterface.ParsedUserInterface -> ReadingFromGameClientMemory
+asReadingFromGameClientMemory reading =
+    { contextMenus = reading.contextMenus |> List.map asContextMenuMemory }
+
+
+asModuleButtonTooltipMemory : EveOnline.ParseUserInterface.ModuleButtonTooltip -> ModuleButtonTooltipMemory
+asModuleButtonTooltipMemory tooltip =
+    { uiNode = tooltip.uiNode |> asUITreeNodeWithDisplayRegionMemory
+    , shortcut = tooltip.shortcut
+    , optimalRange = tooltip.optimalRange
+    , allContainedDisplayTextsWithRegion =
+        tooltip.uiNode
+            |> getAllContainedDisplayTextsWithRegion
+            |> List.map (Tuple.mapSecond asUITreeNodeWithDisplayRegionMemory)
+    }
+
+
+asContextMenuMemory : EveOnline.ParseUserInterface.ContextMenu -> ContextMenu
+asContextMenuMemory contextMenu =
+    { uiNode = contextMenu.uiNode |> asUITreeNodeWithDisplayRegionMemory
+    , entries = contextMenu.entries |> List.map asContextMenuEntryMemory
+    }
+
+
+asContextMenuEntryMemory : EveOnline.ParseUserInterface.ContextMenuEntry -> ContextMenuEntry
+asContextMenuEntryMemory contextMenuEntry =
+    { uiNode = contextMenuEntry.uiNode |> asUITreeNodeWithDisplayRegionMemory
+    , text = contextMenuEntry.text
+    }
+
+
+asUITreeNodeWithDisplayRegionMemory : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion -> UITreeNodeWithDisplayRegion
+asUITreeNodeWithDisplayRegionMemory node =
+    { uiNode = { pythonObjectAddress = node.uiNode.pythonObjectAddress }
+    , totalDisplayRegion = node.totalDisplayRegion
+    }
+
+
+distanceSquaredBetweenLocations : Location2d -> Location2d -> Int
+distanceSquaredBetweenLocations a b =
+    let
+        distanceX =
+            a.x - b.x
+
+        distanceY =
+            a.y - b.y
+    in
+    distanceX * distanceX + distanceY * distanceY

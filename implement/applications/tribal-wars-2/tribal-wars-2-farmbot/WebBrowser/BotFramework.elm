@@ -6,7 +6,7 @@
 
 module WebBrowser.BotFramework exposing (..)
 
-import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Dict
 import Json.Decode
 import Json.Encode
@@ -607,6 +607,9 @@ integrateTaskResult { timeInMilliseconds, taskId, taskResult } webBrowserStateBe
         InterfaceToHost.CompleteWithoutResult ->
             ( webBrowserStateBefore, Nothing )
 
+        InterfaceToHost.RandomBytesResponse _ ->
+            ( webBrowserStateBefore, Nothing )
+
         InterfaceToHost.OpenWindowResponse openWindowResult ->
             case webBrowserStateBefore of
                 OpeningWebBrowserState opening ->
@@ -647,7 +650,7 @@ integrateTaskResult { timeInMilliseconds, taskId, taskResult } webBrowserStateBe
                 _ ->
                     ( webBrowserStateBefore, Nothing )
 
-        InterfaceToHost.InvokeMethodOnWindowResponse invokeMethodOnWindowResponse ->
+        InterfaceToHost.InvokeMethodOnWindowResponse _ invokeMethodOnWindowResponse ->
             case invokeMethodOnWindowResponse of
                 Err err ->
                     case webBrowserStateBefore of
@@ -660,6 +663,9 @@ integrateTaskResult { timeInMilliseconds, taskId, taskResult } webBrowserStateBe
 
                                         InterfaceToHost.MethodNotAvailableError ->
                                             "Method not available"
+
+                                        InterfaceToHost.ReadFromWindowError readErr ->
+                                            "Failed to read from window: " ++ readErr
                             in
                             ( RunningFailedWebBrowserState errorText running
                             , Nothing
@@ -678,6 +684,11 @@ integrateTaskResult { timeInMilliseconds, taskId, taskResult } webBrowserStateBe
                             )
 
                         InterfaceToHost.ChromeDevToolsProtocolRuntimeEvaluateMethodResult (Err _) ->
+                            ( webBrowserStateBefore
+                            , Nothing
+                            )
+
+                        InterfaceToHost.ReadFromWindowMethodResult _ ->
                             ( webBrowserStateBefore
                             , Nothing
                             )

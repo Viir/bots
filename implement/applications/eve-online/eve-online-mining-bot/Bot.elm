@@ -261,36 +261,46 @@ miningBotDecisionRootBeforeApplyingSettings context =
 
 continueIfShouldHide : { ifShouldHide : DecisionPathNode } -> BotDecisionContext -> Maybe DecisionPathNode
 continueIfShouldHide config context =
-    if not (context |> shouldHideWhenNeutralInLocal) then
-        Nothing
+    case
+        context.eventContext |> EveOnline.BotFramework.secondsToSessionEnd |> Maybe.andThen (nothingFromIntIfGreaterThan 200)
+    of
+        Just secondsToSessionEnd ->
+            Just
+                (describeBranch ("Session ends in " ++ (secondsToSessionEnd |> String.fromInt) ++ " seconds.")
+                    config.ifShouldHide
+                )
 
-    else
-        case context.readingFromGameClient |> localChatWindowFromUserInterface of
-            Nothing ->
-                Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
+        Nothing ->
+            if not (context |> shouldHideWhenNeutralInLocal) then
+                Nothing
 
-            Just localChatWindow ->
-                let
-                    chatUserHasGoodStanding chatUser =
-                        goodStandingPatterns
-                            |> List.any
-                                (\goodStandingPattern ->
-                                    chatUser.standingIconHint
-                                        |> Maybe.map (stringContainsIgnoringCase goodStandingPattern)
-                                        |> Maybe.withDefault False
-                                )
+            else
+                case context.readingFromGameClient |> localChatWindowFromUserInterface of
+                    Nothing ->
+                        Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
 
-                    subsetOfUsersWithNoGoodStanding =
-                        localChatWindow.userlist
-                            |> Maybe.map .visibleUsers
-                            |> Maybe.withDefault []
-                            |> List.filter (chatUserHasGoodStanding >> not)
-                in
-                if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
-                    Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+                    Just localChatWindow ->
+                        let
+                            chatUserHasGoodStanding chatUser =
+                                goodStandingPatterns
+                                    |> List.any
+                                        (\goodStandingPattern ->
+                                            chatUser.standingIconHint
+                                                |> Maybe.map (stringContainsIgnoringCase goodStandingPattern)
+                                                |> Maybe.withDefault False
+                                        )
 
-                else
-                    Nothing
+                            subsetOfUsersWithNoGoodStanding =
+                                localChatWindow.userlist
+                                    |> Maybe.map .visibleUsers
+                                    |> Maybe.withDefault []
+                                    |> List.filter (chatUserHasGoodStanding >> not)
+                        in
+                        if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                            Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+
+                        else
+                            Nothing
 
 
 shouldHideWhenNeutralInLocal : BotDecisionContext -> Bool
@@ -1445,3 +1455,12 @@ containsSelectionIndicatorPhotonUI =
                                )
                    )
             )
+
+
+nothingFromIntIfGreaterThan : Int -> Int -> Maybe Int
+nothingFromIntIfGreaterThan limit originalInt =
+    if limit < originalInt then
+        Nothing
+
+    else
+        Just originalInt

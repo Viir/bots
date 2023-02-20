@@ -197,7 +197,7 @@ type alias UITreeNodeWithDisplayRegion =
 
 type alias SeeUndockingComplete =
     { shipUI : EveOnline.ParseUserInterface.ShipUI
-    , overviewWindow : EveOnline.ParseUserInterface.OverviewWindow
+    , overviewWindows : List EveOnline.ParseUserInterface.OverviewWindow
     }
 
 
@@ -1511,9 +1511,8 @@ getEntropyIntFromReadingFromGameClient readingFromGameClient =
                 |> List.concatMap entropyFromUiElement
 
         fromOverview =
-            readingFromGameClient.overviewWindow
-                |> Maybe.map .entries
-                |> Maybe.withDefault []
+            readingFromGameClient.overviewWindows
+                |> List.concatMap .entries
                 |> List.concatMap entropyFromOverviewEntry
 
         fromProbeScanner =

@@ -564,16 +564,16 @@ branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI, ifUndockingComplete } 
         Just shipUI ->
             ifSeeShipUI shipUI
                 |> Maybe.withDefault
-                    (case readingFromGameClient.overviewWindow of
-                        Nothing ->
+                    (case readingFromGameClient.overviewWindows of
+                        [] ->
                             Common.DecisionPath.describeBranch
                                 "I see no overview window, wait until undocking completed."
                                 waitForProgressInGame
 
-                        Just overviewWindow ->
+                        overviewWindows ->
                             Common.DecisionPath.describeBranch "I see ship UI and overview, undocking complete."
                                 (ifUndockingComplete
-                                    { shipUI = shipUI, overviewWindow = overviewWindow }
+                                    { shipUI = shipUI, overviewWindows = overviewWindows }
                                 )
                     )
 

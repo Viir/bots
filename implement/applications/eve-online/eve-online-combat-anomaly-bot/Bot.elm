@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2023-02-17
+{- EVE Online combat anomaly bot version 2023-02-18
 
    This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
 
@@ -577,7 +577,8 @@ decideActionInAnomaly :
 decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplete continueIfCombatComplete =
     let
         overviewEntriesToAttack =
-            seeUndockingComplete.overviewWindow.entries
+            seeUndockingComplete.overviewWindows
+                |> List.concatMap .entries
                 |> List.sortBy (.objectDistanceInMeters >> Result.withDefault 999999)
                 |> List.filter shouldAttackOverviewEntry
 
@@ -1124,9 +1125,8 @@ getNamesOfOtherPilotsInOverview readingFromGameClient =
             (overviewEntry.objectName |> Maybe.map (\objectName -> pilotNamesFromLocalChat |> List.member objectName))
                 |> Maybe.withDefault False
     in
-    readingFromGameClient.overviewWindow
-        |> Maybe.map .entries
-        |> Maybe.withDefault []
+    readingFromGameClient.overviewWindows
+        |> List.concatMap .entries
         |> List.filter overviewEntryRepresentsOtherPilot
         |> List.map (.objectName >> Maybe.withDefault "do not see name of overview entry")
 
@@ -1141,9 +1141,8 @@ getNamesOfRatsInOverview readingFromGameClient =
                         |> Result.withDefault False
                    )
     in
-    readingFromGameClient.overviewWindow
-        |> Maybe.map .entries
-        |> Maybe.withDefault []
+    readingFromGameClient.overviewWindows
+        |> List.concatMap .entries
         |> List.filter overviewEntryRepresentsRatOnGrid
         |> List.map (.objectName >> Maybe.withDefault "do not see name of overview entry")
 

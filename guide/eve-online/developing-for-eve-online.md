@@ -1,38 +1,24 @@
 # Developing for EVE Online
 
-Do you want to learn how to build a bot or intel tool for EVE Online or customize an existing one? This guide shows you how I make apps like these.
+Have you ever wondered about the process of creating bots or intel tools for EVE Online?
+This guide walks you through the process and enables you to customize bots.
 
-In part, this is a summary of my ~~failings~~ learnings from development projects. But most importantly, this guide lives from and evolves with your questions, so thank you for the feedback!
+After learning about the simple customization of an existing bot, we'll explore the techniques and tools used to develop the most advanced bots that can autonomously perform a range of in-game activities such as mining, ratting, trading, and mission running for hours on end.
 
-Wondering what outcome to expect? Two examples are the [mining bot](https://to.botlab.org/guide/app/eve-online-mining-bot) and [warp-to-0 autopilot](https://to.botlab.org/guide/app/eve-online-autopilot-bot).
-
-## Comparing to Alternatives
-
-The approach shown in this guide is just one out of many. How does it compare to, and how is it different from alternatives? I am not very patient with learning about all the details of underlying software or even hardware. To take the fastest route to a working app, I often build on libraries and tools that automate common tasks.
-I select methods that are simple and easy to explain and lead to software with low maintenance costs. These qualities are more important to me than squeezing out the last percent of performance.
-
-For those who already have some experience in software development, the following list details the technical choices that follow these preferences. If you have no programming experience, this list probably is less interesting, feel free to skip it:
-
-+ I do not write into the game client's memory or use injection. These techniques can allow for more direct control of the game, which can bring some advantages. A downside of these methods is they enable CCP to detect the presence of the foreign program. Another reason I don't use injection is the more complex concept makes it harder to learn and maintain implementations. The approach to controlling the game client here is simulating mouse and keyboard input.
-
-+ To get information about the game state and user interface, I use memory reading. Memory reading means reading directly from the memory of the game client process. So this guide does not cover the approach using image processing or 'OCR' on screenshots. The implementation of memory reading comes from the [Sanderling project](https://github.com/Arcitectus/Sanderling)
-
-+ For a simple bot or macro, I could use a programming language like C# or Python. I use the Elm programming language because it is simpler to learn and works better for larger projects and makes collaboration easier. Especially the time-travel inspection and simulations are useful when working on bots.
-
-+ Countless questions from other people taught me this: You want to make it easy for people to communicate what code they used and in which environment. If a bot does not work as expected, understanding the cause requires not only having the program code but also knowing the scenario in which the bot ran. The data a bot reads from its environment is the basis for its decisions, so I favor methods that make it easy to collect, organize, and share it.
+In part, this is a summary of my learnings from development projects. But more importantly, this guide is a product of your feedback. Thank you for the countless questions and suggestions, which made the guide what it is today.
 
 ## The Simplest Custom Bot
 
-In this section, we take the fastest way to a custom bot.
-First, let's look at one of the EVE Online bots in the example projects. Run this autopilot bot:
+In this exercise, we take the fastest way to a custom bot, starting with an open-source bot we find published on the internet.
+Let's run this autopilot bot:
 
-```cmd
-botlab  play  https://github.com/Viir/bots/tree/a534c1caca09c06fef23c0b2da1f41e9acbda66c/implement/applications/eve-online/eve-online-warp-to-0-autopilot
-```
+<https://github.com/Viir/bots/tree/eca3adf93f2b6fd31ff0c38e4118a4e31759d9c6/implement/applications/eve-online/eve-online-warp-to-0-autopilot>
 
-In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at https://to.botlab.org/guide/how-to-install-the-botlab-client
+The easiest way to run this bot is by entering the address above into the BotLab client in the 'Select Bot' view.
 
-The `botlab  play` command loads the program code code from the given address to run it on your system. Before running this bot, you need to start an EVE Online client, no need to go beyond character selection.
+In case the BotLab client program is not yet installed on your system, follow the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
+
+Before running this bot, you need to start an EVE Online client, no need to go beyond character selection.
 
 When the bot has started, it will display this message:
 
@@ -42,26 +28,23 @@ That is unless you have set a route in the autopilot.
 
 To customize this bot, we change its program code. The program code consists of the files behind the address we gave to the BotLab program.
 
-The easiest way to work on program codes is using the Elm Editor at https://elm-editor.com
+The easiest way to work on program codes is using the Elm Editor at <https://elm-editor.com>
 
 In this editor, we can load program code files, edit the code and get assistance in case of problems.
 
-You can use the 'Load Project from Git Repository' dialog in Elm Editor to load any bots program code that is located on GitHub, such as the one we used above.
+You can use the 'Project' -> 'Load from Git Repository' dialog in Elm Editor to load any bot program code that is located on GitHub, such as the one we used above.
 
 After loading the program files into Elm Editor, select the `Bot.elm` file to open in the code editor.
 
-Here is a link that brings you directly into the `Bot.elm` file in Elm Editor, automating the import steps described above: https://elm-editor.com/?project-state=https%3A%2F%2Fgithub.com%2FViir%2Fbots%2Ftree%2Fa534c1caca09c06fef23c0b2da1f41e9acbda66c%2Fimplement%2Fapplications%2Feve-online%2Feve-online-warp-to-0-autopilot&file-path-to-open=Bot.elm
+Here is a link that brings you directly into the `Bot.elm` file in Elm Editor, automating the import steps described above:
+<https://elm-editor.com/?project-state=https%3A%2F%2Fgithub.com%2FViir%2Fbots%2Ftree%2Feca3adf93f2b6fd31ff0c38e4118a4e31759d9c6%2Fimplement%2Fapplications%2Feve-online%2Feve-online-warp-to-0-autopilot&file-path-to-open=Bot.elm>
 
-You can use the 'Export Project to Zip Archive' dialog in Elm Editor to download the current state of the program files.
-Then you can run that bot by pointing the botlab client to this downloaded zip archive, with a command like this:
+After making changes to the program code, we can use the 'Project' -> 'Export to Zip Archive' dialog in Elm Editor to download all the files in the project with their new content.
+In the BotLab client, we can load the bot directly from that zip archive by entering the path to the archive as the source. We don't need to extract the archive, as that happens automatically.
 
-```cmd
-botlab  play  "C:\Users\John\Downloads\elm-app-20948c30a689c55a5540bbd2e33436da27e7273c299bdcae051612a4256ea2df.zip"
-```
+Now that we know how to run a program code from the editor, let's change it to make it our own.
 
-Now that we know how to run a program code from the editor let's change it to make it our own.
-
-In the `Bot.elm` file on line 144, we find the text that we saw in the bots status message earlier, enclosed in double-quotes:
+In the `Bot.elm` file on line 154, we find the text that we saw in the bots status message earlier, enclosed in double-quotes:
 
 ![EVE Online autopilot bot code in Elm Editor](./image/2021-08-29-eve-online-autopilot-bot-code-in-elm-editor-in-space.png)
 
@@ -87,7 +70,7 @@ In the remainder of this guide, I show how to speed up this process of discoveri
 
 An improvement to a bots program code begins with observation of the behavior of the bot in an environment. Environments can be synthetic, simulated, or an actual live game client.
 
-To learn how to observe and inspect the behavior of a bot, see the guide at https://to.botlab.org/guide/observing-and-inspecting-a-bot
+To learn how to observe and inspect the behavior of a bot, see the guide at <https://to.botlab.org/guide/observing-and-inspecting-a-bot>
 
 ## Overall Program Code Structure and Data Flow
 
@@ -132,23 +115,22 @@ These three modules contain hundreds of building blocks to compose your bot.
 
 ### Entry Point - `botMain`
 
-In the `Bot.elm` file of each bot program code, you can find a declaration named [`botMain`](https://github.com/Viir/bots/blob/3a19d243ce02b9fdc8ac199c74164d86b4777a5b/implement/applications/eve-online/eve-online-warp-to-0-autopilot/Bot.elm#L242-L254).
+In the `Bot.elm` file of each bot program code, you can find a declaration named [`botMain`](https://github.com/Viir/bots/blob/eca3adf93f2b6fd31ff0c38e4118a4e31759d9c6/implement/applications/eve-online/eve-online-warp-to-0-autopilot/Bot.elm#L258-L269).
 
 In contrast to other declarations in that file, `botMain` has a unique role. Any other declaration can contribute to the bots behavior only if it is somehow referenced by `botMain`, directly or indirectly. Because of its unique role, we also call it the 'entry point'.
 
 The type of `botMain` is not specific to EVE Online. Bots for other games use the same structure. Program codes for the EVE Online client use functions from `EveOnline.BotFrameworkSeparatingMemory` module to build the more general `botMain` value. We can see this in the example projects, no matter if it is a mining bot, ratting bot, or just a monitor that watches local chat and alerts the user when a hostile pilot enters. 
 
-Here is how the [autopilot example bot code](https://github.com/Viir/bots/blob/3a19d243ce02b9fdc8ac199c74164d86b4777a5b/implement/applications/eve-online/eve-online-warp-to-0-autopilot/Bot.elm#L242-L254) uses framework functions to configure the bot:
+Here is how the [autopilot example bot code](https://github.com/Viir/bots/blob/eca3adf93f2b6fd31ff0c38e4118a4e31759d9c6/implement/applications/eve-online/eve-online-warp-to-0-autopilot/Bot.elm#L258-L269) uses framework functions to configure the bot:
 
 ```Elm
 botMain : InterfaceToHost.BotConfig State
 botMain =
     { init = EveOnline.BotFrameworkSeparatingMemory.initState initBotMemory
     , processEvent =
-        EveOnline.BotFrameworkSeparatingMemory.processEventWithImageProcessing
+        EveOnline.BotFrameworkSeparatingMemory.processEvent
             { parseBotSettings = parseBotSettings
             , selectGameClientInstance = always EveOnline.BotFramework.selectGameClientInstanceWithTopmostWindow
-            , screenshotRegionsToRead = screenshotRegionsToRead
             , updateMemoryForNewReadingFromGame = updateMemoryForNewReadingFromGame
             , decideNextStep = autopilotBotDecisionRoot
             , statusTextFromDecisionContext = statusTextFromDecisionContext
@@ -204,7 +186,7 @@ The bots here are mainly written using the Elm programming language. Many bots a
 
 ### An Introduction to Elm
 
-A great resource to learn about the Elm programming language is the official guide at https://guide.elm-lang.org
+A great resource to learn about the Elm programming language is the official guide at <https://guide.elm-lang.org>
 
 Parts of this guide are specific to web applications and less interesting when building bots. However, it also teaches fundamentals, which are very useful for us, specifically ["Core Language"](https://guide.elm-lang.org/core_language.html) and ["Types"](https://guide.elm-lang.org/types/).
 And if you want to get into even more detail: The [Appendix](https://guide.elm-lang.org/appendix/function_types.html) covers more advanced topics, helping to understand not only how to write apps, but also how the framework is built.
@@ -216,9 +198,9 @@ Types are an important tool we get with the programming language. The type syste
 ```Elm
 type alias DronesWindow =
     { uiNode : UITreeNodeWithDisplayRegion
-    , droneGroups : List DronesWindowDroneGroup
-    , droneGroupInBay : Maybe DronesWindowDroneGroup
-    , droneGroupInLocalSpace : Maybe DronesWindowDroneGroup
+    , droneGroups : List DronesWindowEntryGroupStructure
+    , droneGroupInBay : Maybe DronesWindowEntryGroupStructure
+    , droneGroupInSpace : Maybe DronesWindowEntryGroupStructure
     }
 ```
 
@@ -232,7 +214,7 @@ type ShipManeuverType
 
 The guide on the Elm programming language has a chapter ["Types"](https://guide.elm-lang.org/types/), and I recommend reading this to learn what these syntaxes mean. This chapter is also worth a look if you encounter a confusing "TYPE MISMATCH" error in a program code. In the ["Reading Types"](https://guide.elm-lang.org/types/reading_types.html) part, you will also find an interactive playground where you can test Elm syntax to reveal types that are sometimes not visible in program syntax.
 
-Here is the link to the "Types" chapter in the Elm guide: https://guide.elm-lang.org/types/
+Here is the link to the "Types" chapter in the Elm guide: <https://guide.elm-lang.org/types/>
 
 
 ----

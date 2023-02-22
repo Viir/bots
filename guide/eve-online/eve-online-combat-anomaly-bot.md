@@ -1,6 +1,6 @@
 # EVE Online Combat Anomaly Bot
 
-This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
+This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
 ## Features
 

@@ -21,7 +21,6 @@ import Bitwise
 import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.Basics
 import Common.EffectOnWindow
-import Common.FNV
 import CompilationInterface.SourceFiles
 import Dict
 import EveOnline.MemoryReading
@@ -43,7 +42,14 @@ type alias BotConfiguration botSettings botState =
 
 
 type BotEvent
-    = ReadingFromGameClientCompleted EveOnline.ParseUserInterface.ParsedUserInterface ReadingFromGameClientScreenshot
+    = ReadingFromGameClientCompleted ReadingFromGameClientCompletedStruct
+
+
+type alias ReadingFromGameClientCompletedStruct =
+    { parsed : EveOnline.ParseUserInterface.ParsedUserInterface
+    , screenshot : ReadingFromGameClientScreenshot
+    , randomIntegers : List Int
+    }
 
 
 type BotEventResponse
@@ -119,6 +125,7 @@ type alias SetupState =
     , searchUIRootAddressResult : Maybe VolatileProcessInterface.SearchUIRootAddressResultStructure
     , lastReadingFromGame : Maybe { timeInMilliseconds : Int, stage : ReadingFromGameState }
     , lastEffectFailedToAcquireInputFocus : Maybe String
+    , randomIntegers : List Int
     }
 
 
@@ -317,18 +324,6 @@ getModuleButtonIdentifierInMemory =
     .uiNode >> .uiNode >> .pythonObjectAddress
 
 
-initSetup : SetupState
-initSetup =
-    { createVolatileProcessResult = Nothing
-    , requestsToVolatileProcessCount = 0
-    , lastRequestToVolatileProcessResult = Nothing
-    , gameClientProcesses = Nothing
-    , searchUIRootAddressResult = Nothing
-    , lastReadingFromGame = Nothing
-    , lastEffectFailedToAcquireInputFocus = Nothing
-    }
-
-
 initState : botState -> StateIncludingFramework botSettings botState
 initState botState =
     { setup = initSetup
@@ -341,6 +336,19 @@ initState botState =
     , waitingForSetupTasks = []
     , botSettings = Nothing
     , sessionTimeLimitInMilliseconds = Nothing
+    }
+
+
+initSetup : SetupState
+initSetup =
+    { createVolatileProcessResult = Nothing
+    , requestsToVolatileProcessCount = 0
+    , lastRequestToVolatileProcessResult = Nothing
+    , gameClientProcesses = Nothing
+    , searchUIRootAddressResult = Nothing
+    , lastReadingFromGame = Nothing
+    , lastEffectFailedToAcquireInputFocus = Nothing
+    , randomIntegers = []
     }
 
 
@@ -360,6 +368,9 @@ processEvent botConfiguration fromHostEvent stateBefore =
 
         InternalContinueSession continueSession ->
             let
+                setupStateBefore =
+                    state.setup
+
                 startTasksWithOrigin =
                     continueSession.startTasks
                         |> List.indexedMap
@@ -376,9 +387,6 @@ processEvent botConfiguration fromHostEvent stateBefore =
 
                 startsReading =
                     List.any (.taskType >> (==) (Just StartsReadingTaskType)) continueSession.startTasks
-
-                setupStateBefore =
-                    state.setup
 
                 setupState =
                     if startsReading then
@@ -544,6 +552,17 @@ processEventAfterIntegrateEvent botConfiguration stateBefore =
         notifyWhenArrivedAtTimeUpperBound =
             stateBefore.timeInMilliseconds + 2000
 
+        startTasksGetRandom =
+            if 100 < List.length state.setup.randomIntegers then
+                []
+
+            else
+                [ { areaId = "get-entropy"
+                  , taskType = Nothing
+                  , task = InterfaceToHost.RandomBytesRequest 300
+                  }
+                ]
+
         response =
             case responseBeforeAddingStatusMessage of
                 InternalContinueSession continueSession ->
@@ -558,6 +577,7 @@ processEventAfterIntegrateEvent botConfiguration stateBefore =
                                             |> Maybe.withDefault notifyWhenArrivedAtTimeUpperBound
                                             |> min notifyWhenArrivedAtTimeUpperBound
                                     }
+                            , startTasks = continueSession.startTasks ++ startTasksGetRandom
                         }
 
                 InternalFinishSession finishSession ->
@@ -730,11 +750,18 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                             , [ "Failed to parse user interface: " ++ parseErr ]
                             )
 
+                setupStateBefore =
+                    stateBefore.setup
+
                 botStateBefore =
                     stateBefore.botState
 
                 botEvent =
-                    ReadingFromGameClientCompleted parsedUserInterface screenshot
+                    ReadingFromGameClientCompleted
+                        { parsed = parsedUserInterface
+                        , screenshot = screenshot
+                        , randomIntegers = setupStateBefore.randomIntegers
+                        }
 
                 ( newBotState, botEventResponse ) =
                     botStateBefore.botState
@@ -790,9 +817,6 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                             }
                                 |> InternalContinueSession
 
-                setupStateBefore =
-                    stateBefore.setup
-
                 setup =
                     { setupStateBefore
                         | lastReadingFromGame =
@@ -801,6 +825,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                                     (\lastReadingFromGame ->
                                         { lastReadingFromGame | stage = ReadingFromGameCompleted }
                                     )
+                        , randomIntegers = List.drop 1 setupStateBefore.randomIntegers
                     }
 
                 state =
@@ -987,11 +1012,24 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
                 _ ->
                     setupStateBefore
 
-        InterfaceToHost.RandomBytesResponse _ ->
-            setupStateBefore
+        InterfaceToHost.RandomBytesResponse randomBytes ->
+            { setupStateBefore
+                | randomIntegers = setupStateBefore.randomIntegers ++ randomIntegersFromRandomBytes randomBytes
+            }
 
         InterfaceToHost.CompleteWithoutResult ->
             setupStateBefore
+
+
+randomIntegersFromRandomBytes : List Int -> List Int
+randomIntegersFromRandomBytes bytes =
+    case bytes of
+        a :: b :: c :: d :: e :: f :: remaining ->
+            ((((((a - 127) * 255 + b) * 255 + c) * 255 + d) * 255 + e) * 255 + f)
+                :: randomIntegersFromRandomBytes remaining
+
+        _ ->
+            []
 
 
 integrateResponseFromVolatileProcess :
@@ -1483,47 +1521,6 @@ unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
                 following
 
 
-getEntropyIntFromReadingFromGameClient : EveOnline.ParseUserInterface.ParsedUserInterface -> Int
-getEntropyIntFromReadingFromGameClient readingFromGameClient =
-    let
-        entropyFromString =
-            Common.FNV.hashString
-
-        entropyFromUiElement uiElement =
-            [ uiElement.uiNode.pythonObjectAddress |> entropyFromString
-            , uiElement.totalDisplayRegion.x
-            , uiElement.totalDisplayRegion.y
-            , uiElement.totalDisplayRegion.width
-            , uiElement.totalDisplayRegion.height
-            ]
-
-        entropyFromOverviewEntry overviewEntry =
-            (overviewEntry.cellsTexts |> Dict.values |> List.map entropyFromString)
-                ++ (overviewEntry.uiNode |> entropyFromUiElement)
-
-        entropyFromProbeScanResult probeScanResult =
-            [ probeScanResult.uiNode |> entropyFromUiElement, probeScanResult.textsLeftToRight |> List.map entropyFromString ]
-                |> List.concat
-
-        fromMenus =
-            readingFromGameClient.contextMenus
-                |> List.concatMap (.entries >> List.map .uiNode)
-                |> List.concatMap entropyFromUiElement
-
-        fromOverview =
-            readingFromGameClient.overviewWindows
-                |> List.concatMap .entries
-                |> List.concatMap entropyFromOverviewEntry
-
-        fromProbeScanner =
-            readingFromGameClient.probeScannerWindow
-                |> Maybe.map .scanResults
-                |> Maybe.withDefault []
-                |> List.concatMap entropyFromProbeScanResult
-    in
-    (fromMenus ++ fromOverview ++ fromProbeScanner) |> List.sum
-
-
 secondsToSessionEnd : BotEventContext a -> Maybe Int
 secondsToSessionEnd botEventContext =
     botEventContext.sessionTimeLimitInMilliseconds
@@ -1597,15 +1594,15 @@ useMenuEntryInLastContextMenuInCascade choice =
         }
 
 
-useRandomMenuEntry : UseContextMenuCascadeNode -> UseContextMenuCascadeNode
-useRandomMenuEntry =
+useRandomMenuEntry : Int -> UseContextMenuCascadeNode -> UseContextMenuCascadeNode
+useRandomMenuEntry randomInt =
     MenuEntryWithCustomChoice
         { describeChoice = "random entry"
         , chooseEntry =
             \readingFromGameClient ->
                 readingFromGameClient
                     |> pickEntryFromLastContextMenuInCascade
-                        (Common.Basics.listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient readingFromGameClient))
+                        (Common.Basics.listElementAtWrappedIndex randomInt)
         }
 
 

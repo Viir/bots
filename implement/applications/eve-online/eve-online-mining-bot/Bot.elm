@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-02-18
+{- EVE Online mining bot version 2023-02-21
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -60,7 +60,6 @@ import EveOnline.BotFramework
         , ShipModulesMemory
         , UIElement
         , doEffectsClickModuleButton
-        , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
         , mouseClickOnUIElement
@@ -919,15 +918,16 @@ dockToStationOrStructureUsingSurroundingsButtonMenu { prioritizeStructures, desc
 
 
 warpToMiningSite : BotDecisionContext -> DecisionPathNode
-warpToMiningSite =
+warpToMiningSite context =
     useContextMenuCascadeOnListSurroundingsButton
         (useMenuEntryWithTextContaining "asteroid belts"
-            (useRandomMenuEntry
+            (useRandomMenuEntry (context.randomIntegers |> List.head |> Maybe.withDefault 0)
                 (useMenuEntryWithTextContaining "Warp to Within"
                     (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
                 )
             )
         )
+        context
 
 
 runAway : BotDecisionContext -> DecisionPathNode
@@ -966,7 +966,7 @@ dockToRandomStationOrStructure context =
     dockToStationOrStructureUsingSurroundingsButtonMenu
         { prioritizeStructures = False
         , describeChoice = "Pick random station"
-        , chooseEntry = listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
+        , chooseEntry = listElementAtWrappedIndex (context.randomIntegers |> List.head |> Maybe.withDefault 0)
         }
         context
 

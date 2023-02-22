@@ -1,6 +1,6 @@
-{- EVE Online combat anomaly bot version 2023-02-18
+{- EVE Online combat anomaly bot version 2023-02-21
 
-   This bot uses the probe scanner to warp to combat anomalies and kills rats using drones and weapon modules.
+   This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
    ## Features
 
@@ -70,7 +70,6 @@ import EveOnline.BotFramework
         , ShipModulesMemory
         , UseContextMenuCascadeNode(..)
         , doEffectsClickModuleButton
-        , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
         , mouseClickOnUIElement
@@ -453,9 +452,9 @@ dockAtRandomStationOrStructure context =
                         [ withTextContainingIgnoringCase "dock"
                         , List.filter (.text >> stringContainsIgnoringCase "station")
                             >> Common.Basics.listElementAtWrappedIndex
-                                (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
+                                (context.randomIntegers |> List.head |> Maybe.withDefault 0)
                         , Common.Basics.listElementAtWrappedIndex
-                            (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
+                            (context.randomIntegers |> List.head |> Maybe.withDefault 0)
                         ]
                             |> List.filterMap (\priority -> suitableMenuEntries |> priority)
                             |> List.head
@@ -702,7 +701,7 @@ enterAnomaly { ifNoAcceptableAnomalyAvailable } context =
                 scanResultsWithReasonToIgnore
                     |> List.filter (Tuple.second >> (==) Nothing)
                     |> List.map Tuple.first
-                    |> listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
+                    |> listElementAtWrappedIndex (context.randomIntegers |> List.head |> Maybe.withDefault 0)
             of
                 Nothing ->
                     describeBranch

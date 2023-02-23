@@ -1842,9 +1842,6 @@ parseButtonsFromButtonGroupRow :
     -> Result String (List ParsedButton)
 parseButtonsFromButtonGroupRow screenshot buttonGroup =
     let
-        colorSum color =
-            color.red + color.green + color.blue
-
         colorDifferenceSum colorA colorB =
             [ colorA.red - colorB.red
             , colorA.green - colorB.green
@@ -1853,55 +1850,21 @@ parseButtonsFromButtonGroupRow screenshot buttonGroup =
                 |> List.map abs
                 |> List.sum
 
-        {- Based on this sample:
-           data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAUCAYAAACXtf2DAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsIAAA7CARUoSoAAAANWSURBVEhL1VVbb0xRFP7OHL3QzqheZjQtdUsZqhfNSAdhVKlrxJSIS0hFJEiQeJWI+AU8STzwIBGijRDSoiEpIcSgrom4PajeVAztGMwZa619zpnpqL77zux99uX71tpn773WaOXLG+IQxOkZHho9jI6WJmkozUj8RO2QmhBnCReDhFyow31l5W9T1rDNT9Iks8kBDdKTnjYKR/ftwv5tG+GvmIWDjZvhzMzAod07YJA4WcZ8/q1cOA97NjXg8N6dmODJR8PSADbU18JX5hUWw/6C8fm5ePT8JZpabsBDbV7NptX1OHXhInETxi2wE++0STh2+gzCAwMwYjEUe9woGDcW90JPbJbtQEGtTCY0Byq8pRiMRKhHz3BOeMjk83yFdzoi0ai0re2yHfyI/kKh241xOS7ZknjcwJHjJ7Bl7SqTMRR88D+iP1Fc6IEzKwuaQ8Pltlu01WmYMqHYZIkDdUe6P/fj2eu3NFmE9gch3Al1oLO3Dw+fvyIDY4ihbgVDWlQ1tbbBP6cS19vvIvx9AC/evMO5K9dQQFts8c1rSiumDq+abwN3eEUyGqcFUJufp63NoipfHpTdEV2MNNTiCRnTqEUNh0NtDtWKytBoUqMJTecPozadgzLOSPCGgPlszHwrG5a7f2j+KwxJFf+G2qTUVDEylEadBIHpUlhqyq1i1amQeaqG1yiIA3VbgICvGmvrFiLX5aR0UQbjdwy1NT5TkCzjOKHoz8vDuqWL4K8sgytrNLyTS1DkLkBpyUThMOxb5M7NwcypJXjz7gPmV88m0WxUzyxF3lgnXV1DOBZYwSW4LIDb90NY4vfBOToTMyZPxPZ1q9DV02NaTUoVmRnp+NTTiy/hb5Qm1P5tC67B2UtXxZqKlGTESZOBj93d+D4YgUExtCKwAKFnL9D/NaxWQJXtwDoUyw77eExRvFi2SDykwOQL4tJ7SZmgpqocOsUDa3gbbQddff2omuXF+pV16Or9LPZOnm/GYv9cM1UkwMbEIKWGA41b4crOliB739mJKzfbEaxfYrqnoLNTBbkzjJiEvprjVRgSzRz2/E5NFXw2nKZlqfTJPMaRzNB1nXuJQ2YCG3LQH49jFBcdOr8dRBSRyUsCpwTmCZ8M6tymt2gEwB+SX2kpOjZ/ywAAAABJRU5ErkJggg==
-        -}
-        matchesButtonTextOk buttonCenter =
-            let
-                colorFromRelativeLocation_binned ( fromCenterX, fromCenterY ) =
-                    screenshot.pixels_2x2 ( buttonCenter.x // 2 + fromCenterX, buttonCenter.y // 2 + fromCenterY )
-                        |> Maybe.withDefault { red = 0, green = 0, blue = 0 }
-
-                ( darkestOffsetX, darkestOffsetY ) =
-                    [ ( 0, 0 ), ( -1, 0 ), ( -2, 0 ), ( 0, 1 ), ( -1, 1 ), ( -2, 1 ) ]
-                        |> List.sortBy (colorFromRelativeLocation_binned >> colorSum)
-                        |> List.head
-                        |> Maybe.withDefault ( 0, 0 )
-
-                edgeThreshold =
-                    20
-
-                colorsAndEdges =
-                    List.range -3 2
-                        |> List.map
-                            (\index ->
-                                let
-                                    leftColor =
-                                        colorFromRelativeLocation_binned
-                                            ( darkestOffsetX + index, darkestOffsetY )
-
-                                    rightColor =
-                                        colorFromRelativeLocation_binned
-                                            ( darkestOffsetX + index + 1, darkestOffsetY )
-                                in
-                                ( leftColor
-                                , ((colorSum rightColor - colorSum leftColor) // edgeThreshold)
-                                    |> min 1
-                                    |> max -1
-                                )
-                            )
-
-                edges =
-                    colorsAndEdges |> List.map Tuple.second
-            in
-            (List.drop 1 edges == [ 1, -1, 1, -1, 1 ])
-                || (List.take 5 edges == [ 1, 1, -1, 1, 1 ])
-
+        getTextFromButtonCenter : Location2d -> Result String (Maybe String)
         getTextFromButtonCenter buttonCenter =
-            [ ( matchesButtonTextOk, "OK" )
-            ]
-                |> List.Extra.find (Tuple.first >> (|>) buttonCenter)
-                |> Maybe.map Tuple.second
+            case
+                readButtonLabel
+                    { x = buttonCenter.x // 2 - 1, width = 3, y = buttonCenter.y // 2 - 1, height = 3 }
+                    { pixels_2x2 = screenshot.pixels_2x2 }
+            of
+                [] ->
+                    Ok Nothing
+
+                [ singleMatch ] ->
+                    Ok (Just singleMatch)
+
+                moreMatches ->
+                    Err ("Matched " ++ String.fromInt (List.length moreMatches) ++ " labels: " ++ String.join ", " moreMatches)
 
         measureButtonEdgesY =
             buttonGroup.totalDisplayRegion.y + 6
@@ -1959,28 +1922,113 @@ parseButtonsFromButtonGroupRow screenshot buttonGroup =
                 |> List.map
                     (\fromImageButtonRegion ->
                         let
-                            mainText =
-                                fromImageButtonRegion
-                                    |> centerFromDisplayRegion
-                                    |> getTextFromButtonCenter
+                            buttonCenter =
+                                centerFromDisplayRegion fromImageButtonRegion
                         in
-                        { uiNode =
-                            { uiNode =
-                                { originalJson = Json.Encode.null
-                                , pythonObjectAddress = buttonGroup.uiNode.pythonObjectAddress ++ "-button"
-                                , pythonObjectTypeName = "button-from-screenshot"
-                                , dictEntriesOfInterest = Dict.empty
-                                , children = Nothing
-                                }
-                            , totalDisplayRegion = fromImageButtonRegion
-                            , totalDisplayRegionVisible = fromImageButtonRegion
-                            , children = Nothing
-                            , selfDisplayRegion = fromImageButtonRegion
-                            }
-                        , mainText = mainText
-                        }
+                        case getTextFromButtonCenter buttonCenter of
+                            Err err ->
+                                Err
+                                    ("Failed for button at "
+                                        ++ String.fromInt buttonCenter.x
+                                        ++ ","
+                                        ++ String.fromInt buttonCenter.y
+                                        ++ ": "
+                                        ++ err
+                                    )
+
+                            Ok mainText ->
+                                Ok
+                                    { uiNode =
+                                        { uiNode =
+                                            { originalJson = Json.Encode.null
+                                            , pythonObjectAddress = buttonGroup.uiNode.pythonObjectAddress ++ "-button"
+                                            , pythonObjectTypeName = "button-from-screenshot"
+                                            , dictEntriesOfInterest = Dict.empty
+                                            , children = Nothing
+                                            }
+                                        , totalDisplayRegion = fromImageButtonRegion
+                                        , totalDisplayRegionVisible = fromImageButtonRegion
+                                        , children = Nothing
+                                        , selfDisplayRegion = fromImageButtonRegion
+                                        }
+                                    , mainText = mainText
+                                    }
                     )
-                |> Ok
+                |> Result.Extra.combine
+
+
+readButtonLabel : DisplayRegion -> { pixels_2x2 : ( Int, Int ) -> Maybe PixelValueRGB } -> List String
+readButtonLabel region screenshot =
+    let
+        offsets_pixels =
+            List.range region.x (region.x + region.width)
+                |> List.concatMap
+                    (\offsetX ->
+                        List.range region.y (region.y + region.height)
+                            |> List.map
+                                (\offsetY ->
+                                    \( x, y ) -> screenshot.pixels_2x2 ( x + offsetX, y + offsetY )
+                                )
+                    )
+    in
+    [ ( "OK", buttonLabelOK )
+    , ( "Repair All", buttonLabelRepairAll )
+    ]
+        |> List.filter
+            (\( _, labelPattern ) ->
+                offsets_pixels |> List.any (\pixels_2x2 -> labelPattern { pixels_2x2 = pixels_2x2 })
+            )
+        |> List.map Tuple.first
+
+
+buttonLabelOK : { pixels_2x2 : ( Int, Int ) -> Maybe PixelValueRGB } -> Bool
+buttonLabelOK screenshot =
+    let
+        colorSum color =
+            color.red + color.green + color.blue
+
+        pixels_2x2_withDefault =
+            screenshot.pixels_2x2 >> Maybe.withDefault { red = 0, green = 0, blue = 0 }
+
+        colorSumFromOffset =
+            pixels_2x2_withDefault >> colorSum
+
+        edgeThreshold =
+            50
+
+        secondIsSignificantlyBrighter a b =
+            colorSumFromOffset a + edgeThreshold < colorSumFromOffset b
+    in
+    secondIsSignificantlyBrighter ( -1, -1 ) ( -1, -2 )
+        && secondIsSignificantlyBrighter ( -1, 1 ) ( -1, 2 )
+        && secondIsSignificantlyBrighter ( -1, -1 ) ( -2, -1 )
+        && secondIsSignificantlyBrighter ( -1, -1 ) ( 0, -1 )
+        && secondIsSignificantlyBrighter ( -1, 1 ) ( -2, 1 )
+        && secondIsSignificantlyBrighter ( -1, 1 ) ( 0, 1 )
+
+
+buttonLabelRepairAll : { pixels_2x2 : ( Int, Int ) -> Maybe PixelValueRGB } -> Bool
+buttonLabelRepairAll screenshot =
+    let
+        colorSum color =
+            color.red + color.green + color.blue
+
+        pixels_2x2_withDefault =
+            screenshot.pixels_2x2 >> Maybe.withDefault { red = 0, green = 0, blue = 0 }
+
+        colorSumFromOffset =
+            pixels_2x2_withDefault >> colorSum
+
+        edgeThreshold =
+            50
+
+        secondIsSignificantlyBrighter a b =
+            colorSumFromOffset a + edgeThreshold < colorSumFromOffset b
+    in
+    secondIsSignificantlyBrighter ( -10, -1 ) ( -11, -1 )
+        && secondIsSignificantlyBrighter ( -10, -1 ) ( -9, -1 )
+        && secondIsSignificantlyBrighter ( 12, -1 ) ( 11, -1 )
+        && secondIsSignificantlyBrighter ( 12, -1 ) ( 13, -1 )
 
 
 centersOfTrueSequences : List Bool -> List Int

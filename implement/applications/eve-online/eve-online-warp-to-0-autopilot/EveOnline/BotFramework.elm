@@ -1780,6 +1780,35 @@ parseUserInterfaceFromScreenshotMessageBox :
     -> EveOnline.ParseUserInterface.MessageBox
     -> Result String EveOnline.ParseUserInterface.MessageBox
 parseUserInterfaceFromScreenshotMessageBox screenshot messageBox =
+    case messageBox.buttonGroup of
+        Nothing ->
+            Ok messageBox
+
+        Just buttonGroup ->
+            buttonGroup
+                |> parseButtonsFromButtonGroupRow screenshot
+                |> Result.map
+                    (\fromImageButtons ->
+                        { messageBox
+                            | buttons = messageBox.buttons ++ fromImageButtons
+                        }
+                    )
+
+
+type alias ParsedButton =
+    { uiNode : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
+    , mainText : Maybe String
+    }
+
+
+{-| Parses buttons from a button group as seen in message boxes and other windows.
+Constraints derived from the observations of game clients: All buttons are aligned in a single row, sharing the same horizontal (upper and lower) edges.
+-}
+parseButtonsFromButtonGroupRow :
+    ReadingFromGameClientScreenshot
+    -> EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
+    -> Result String (List ParsedButton)
+parseButtonsFromButtonGroupRow screenshot buttonGroup =
     let
         colorSum color =
             color.red + color.green + color.blue
@@ -1841,111 +1870,85 @@ parseUserInterfaceFromScreenshotMessageBox screenshot messageBox =
             ]
                 |> List.Extra.find (Tuple.first >> (|>) buttonCenter)
                 |> Maybe.map Tuple.second
+
+        measureButtonEdgesY =
+            buttonGroup.totalDisplayRegion.y + 6
+
+        measureButtonEdgesLeft_2 =
+            buttonGroup.totalDisplayRegion.x // 2 - 1
+
+        measureButtonEdgesRight_2 =
+            (measureButtonEdgesLeft_2 + buttonGroup.totalDisplayRegion.width // 2) + 1
+
+        getEdgeLinePixel x =
+            screenshot.pixels_2x2 ( x, measureButtonEdgesY // 2 )
     in
-    case messageBox.buttonGroup of
+    case
+        List.range measureButtonEdgesLeft_2 measureButtonEdgesRight_2
+            |> List.map
+                (\x ->
+                    case ( getEdgeLinePixel (x - 1), getEdgeLinePixel (x + 1) ) of
+                        ( Just leftPixel, Just rightPixel ) ->
+                            Just (20 < colorDifferenceSum leftPixel rightPixel)
+
+                        _ ->
+                            Nothing
+                )
+            |> Maybe.Extra.combine
+    of
         Nothing ->
-            Ok messageBox
+            Err
+                ("Missing pixel data for button group at "
+                    ++ String.fromInt
+                        (buttonGroup.totalDisplayRegion.x + buttonGroup.totalDisplayRegion.width // 2)
+                    ++ ","
+                    ++ String.fromInt
+                        (buttonGroup.totalDisplayRegion.y + buttonGroup.totalDisplayRegion.height // 2)
+                )
 
-        Just buttonGroup ->
+        Just buttonEdgesBools_2 ->
             let
-                measureButtonEdgesY =
-                    buttonGroup.totalDisplayRegion.y + 6
-
-                measureButtonEdgesLeft_2 =
-                    buttonGroup.totalDisplayRegion.x // 2 - 1
-
-                measureButtonEdgesRight_2 =
-                    (measureButtonEdgesLeft_2 + buttonGroup.totalDisplayRegion.width // 2) + 1
-
-                getEdgeLinePixel x =
-                    screenshot.pixels_2x2 ( x, measureButtonEdgesY // 2 )
-            in
-            case
-                List.range measureButtonEdgesLeft_2 measureButtonEdgesRight_2
-                    |> List.map
-                        (\x ->
-                            case ( getEdgeLinePixel (x - 1), getEdgeLinePixel (x + 1) ) of
-                                ( Just leftPixel, Just rightPixel ) ->
-                                    Just (20 < colorDifferenceSum leftPixel rightPixel)
-
-                                _ ->
-                                    Nothing
-                        )
-                    |> Maybe.Extra.combine
-            of
-                Nothing ->
-                    Err
-                        ("Missing pixel data for button group at "
-                            ++ String.fromInt
-                                (buttonGroup.totalDisplayRegion.x + buttonGroup.totalDisplayRegion.width // 2)
-                            ++ ","
-                            ++ String.fromInt
-                                (buttonGroup.totalDisplayRegion.y + buttonGroup.totalDisplayRegion.height // 2)
-                        )
-
-                Just buttonEdgesBools_2 ->
-                    let
-                        fromImageButtonsRegions =
-                            buttonEdgesBools_2
-                                |> centersOfTrueSequences
-                                |> List.map ((+) measureButtonEdgesLeft_2)
-                                |> pairsFromList
-                                |> Tuple.first
-                                |> List.map
-                                    (\( left_binned, right_binned ) ->
-                                        { x = left_binned * 2
-                                        , y = buttonGroup.totalDisplayRegion.y
-                                        , width = (right_binned - left_binned) * 2
-                                        , height = buttonGroup.totalDisplayRegion.height
-                                        }
-                                    )
-
-                        displayRegionOverlapsWithExistingButton displayRegion =
-                            List.any
-                                (.uiNode >> .totalDisplayRegion >> regionAddMarginOnEachSide -2 >> EveOnline.ParseUserInterface.regionsOverlap displayRegion)
-                                messageBox.buttons
-
-                        fromImageButtons :
-                            List
-                                { uiNode : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
-                                , mainText : Maybe String
+                fromImageButtonsRegions =
+                    buttonEdgesBools_2
+                        |> centersOfTrueSequences
+                        |> List.map ((+) measureButtonEdgesLeft_2)
+                        |> pairsFromList
+                        |> Tuple.first
+                        |> List.map
+                            (\( left_binned, right_binned ) ->
+                                { x = left_binned * 2
+                                , y = buttonGroup.totalDisplayRegion.y
+                                , width = (right_binned - left_binned) * 2
+                                , height = buttonGroup.totalDisplayRegion.height
                                 }
-                        fromImageButtons =
-                            fromImageButtonsRegions
-                                |> List.filterMap
-                                    (\fromImageButtonRegion ->
-                                        if displayRegionOverlapsWithExistingButton fromImageButtonRegion then
-                                            Nothing
-
-                                        else
-                                            let
-                                                mainText =
-                                                    fromImageButtonRegion
-                                                        |> centerFromDisplayRegion
-                                                        |> getTextFromButtonCenter
-                                            in
-                                            Just
-                                                { uiNode =
-                                                    { uiNode =
-                                                        { originalJson = Json.Encode.null
-                                                        , pythonObjectAddress = buttonGroup.uiNode.pythonObjectAddress ++ "-button"
-                                                        , pythonObjectTypeName = "button-from-screenshot"
-                                                        , dictEntriesOfInterest = Dict.empty
-                                                        , children = Nothing
-                                                        }
-                                                    , totalDisplayRegion = fromImageButtonRegion
-                                                    , totalDisplayRegionVisible = fromImageButtonRegion
-                                                    , children = Nothing
-                                                    , selfDisplayRegion = fromImageButtonRegion
-                                                    }
-                                                , mainText = mainText
-                                                }
-                                    )
-                    in
-                    Ok
-                        { messageBox
-                            | buttons = messageBox.buttons ++ fromImageButtons
+                            )
+            in
+            fromImageButtonsRegions
+                |> List.map
+                    (\fromImageButtonRegion ->
+                        let
+                            mainText =
+                                fromImageButtonRegion
+                                    |> centerFromDisplayRegion
+                                    |> getTextFromButtonCenter
+                        in
+                        { uiNode =
+                            { uiNode =
+                                { originalJson = Json.Encode.null
+                                , pythonObjectAddress = buttonGroup.uiNode.pythonObjectAddress ++ "-button"
+                                , pythonObjectTypeName = "button-from-screenshot"
+                                , dictEntriesOfInterest = Dict.empty
+                                , children = Nothing
+                                }
+                            , totalDisplayRegion = fromImageButtonRegion
+                            , totalDisplayRegionVisible = fromImageButtonRegion
+                            , children = Nothing
+                            , selfDisplayRegion = fromImageButtonRegion
+                            }
+                        , mainText = mainText
                         }
+                    )
+                |> Ok
 
 
 centersOfTrueSequences : List Bool -> List Int

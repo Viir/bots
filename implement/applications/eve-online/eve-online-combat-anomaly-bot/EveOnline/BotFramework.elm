@@ -1772,7 +1772,19 @@ parseUserInterfaceFromScreenshot screenshot original =
     original.messageBoxes
         |> List.map (parseUserInterfaceFromScreenshotMessageBox screenshot)
         |> Result.Extra.combine
-        |> Result.map (\messageBoxes -> { original | messageBoxes = messageBoxes })
+        |> Result.andThen
+            (\messageBoxes ->
+                original.repairShopWindow
+                    |> Maybe.map (parseUserInterfaceFromScreenshotRepairShopWindow screenshot >> Result.map Just)
+                    |> Maybe.withDefault (Ok Nothing)
+                    |> Result.map
+                        (\repairShopWindow ->
+                            { original
+                                | messageBoxes = messageBoxes
+                                , repairShopWindow = repairShopWindow
+                            }
+                        )
+            )
 
 
 parseUserInterfaceFromScreenshotMessageBox :
@@ -1791,6 +1803,26 @@ parseUserInterfaceFromScreenshotMessageBox screenshot messageBox =
                     (\fromImageButtons ->
                         { messageBox
                             | buttons = messageBox.buttons ++ fromImageButtons
+                        }
+                    )
+
+
+parseUserInterfaceFromScreenshotRepairShopWindow :
+    ReadingFromGameClientScreenshot
+    -> EveOnline.ParseUserInterface.RepairShopWindow
+    -> Result String EveOnline.ParseUserInterface.RepairShopWindow
+parseUserInterfaceFromScreenshotRepairShopWindow screenshot repairShopWindow =
+    case repairShopWindow.buttonGroup of
+        Nothing ->
+            Ok repairShopWindow
+
+        Just buttonGroup ->
+            buttonGroup
+                |> parseButtonsFromButtonGroupRow screenshot
+                |> Result.map
+                    (\fromImageButtons ->
+                        { repairShopWindow
+                            | buttons = repairShopWindow.buttons ++ fromImageButtons
                         }
                     )
 

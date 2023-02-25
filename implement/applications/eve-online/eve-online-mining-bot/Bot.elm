@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-02-24
+{- EVE Online mining bot version 2023-02-25
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -1392,7 +1392,7 @@ selectedContainerFirstItemFromInventoryWindow =
             (\itemsView ->
                 case itemsView of
                     EveOnline.ParseUserInterface.InventoryItemsListView { items } ->
-                        items
+                        items |> List.map .uiNode
 
                     EveOnline.ParseUserInterface.InventoryItemsNotListView { items } ->
                         items

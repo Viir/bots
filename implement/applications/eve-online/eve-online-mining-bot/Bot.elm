@@ -433,9 +433,9 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
         Just itemHangar ->
             case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
-                    describeBranch "I see no item in the mining hold. Check if we should undock."
+                    describeBranch "I see no item in the mining hold. Checking if we should repaired ship and undock."
                         (if
-                            shouldDockWhenWithoutDrones context
+                            (context |> shouldDockWhenWithoutDrones)
                                 && shouldDockBecauseDroneWindowWasInvisibleTooLong context.memory
                          then
                             describeBranch "Stay docked because I didn't see the drone window. Are we out of drones?"
@@ -448,16 +448,16 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
                                 }
                                 context
                                 |> Maybe.withDefault
-                                    (repairShipWhenDockUsingContextMenu context inventoryWindowWithMiningHoldSelected
-                                     -- |> Maybe.withDefault
-                                     --     (undockUsingStationWindow context
-                                     --         { ifCannotReachButton =
-                                     --             describeBranch "Undock using context menu"
-                                     --                 (undockUsingContextMenu context
-                                     --                     { inventoryWindowWithMiningHoldSelected = inventoryWindowWithMiningHoldSelected }
-                                     --                 )
-                                     --         }
-                                     --     )
+                                    (checkAndRepairShipWhenDockUsingContextMenu context inventoryWindowWithMiningHoldSelected
+                                        |> Maybe.withDefault
+                                            (undockUsingStationWindow context
+                                                { ifCannotReachButton =
+                                                    describeBranch "Undock using context menu"
+                                                        (undockUsingContextMenu context
+                                                            { inventoryWindowWithMiningHoldSelected = inventoryWindowWithMiningHoldSelected }
+                                                        )
+                                                }
+                                            )
                                     )
                         )
 
@@ -547,37 +547,59 @@ undockUsingContextMenu context { inventoryWindowWithMiningHoldSelected } =
                 context
 
 
-repairShipWhenDockUsingContextMenu : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
-repairShipWhenDockUsingContextMenu context inventoryWindowWithMiningHoldSelected =
-    case context.readingFromGameClient.repairShopWindow of
-        Nothing ->
-            case inventoryWindowWithMiningHoldSelected |> activeShipTreeEntryFromInventoryWindow of
-                Nothing ->
-                    describeBranch "I do not see the active ship in the inventory window." askForHelpToGetUnstuck
+checkAndRepairShipWhenDockUsingContextMenu : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> Maybe DecisionPathNode
+checkAndRepairShipWhenDockUsingContextMenu context inventoryWindowWithMiningHoldSelected =
+    if not (context |> shouldRepairShipWhenDock) then
+        Nothing
 
-                Just activeShipEntry ->
-                    useContextMenuCascade
-                        ( "active ship", activeShipEntry.uiNode )
-                        (useMenuEntryWithTextContaining "get repair quote" menuCascadeCompleted)
-                        context
+    else
+        case context.readingFromGameClient.repairShopWindow of
+            Nothing ->
+                case inventoryWindowWithMiningHoldSelected |> activeShipTreeEntryFromInventoryWindow of
+                    Nothing ->
+                        Just (describeBranch "I do not see the active ship in the inventory window." askForHelpToGetUnstuck)
 
-        Just visibleRepairShopWindow ->
-            let
-                buttonUsedToRepairAll =
-                    .mainText
-                        >> Maybe.map (String.trim >> String.toLower >> (\buttonText -> [ "repair all" ] |> List.member buttonText))
-                        >> Maybe.withDefault False
-            in
-            case visibleRepairShopWindow.buttons |> List.filter buttonUsedToRepairAll |> List.head of
-                Just btnrepairAll ->
-                    describeBranch
-                        "I see the repair all button, I'm going to click on it."
-                        (decideActionForCurrentStep
-                            (mouseClickOnUIElement MouseButtonLeft btnrepairAll.uiNode)
-                        )
+                    Just activeShipEntry ->
+                        Just
+                            (useContextMenuCascade
+                                ( "active ship", activeShipEntry.uiNode )
+                                (useMenuEntryWithTextContaining "get repair quote" menuCascadeCompleted)
+                                context
+                            )
 
-                Nothing ->
-                    describeBranch "Nothing to fix in the Repairshop!" askForHelpToGetUnstuck
+            Just repairShopWindow ->
+                let
+                    buttonUsed =
+                        .mainText
+                            >> Maybe.map
+                                (String.trim
+                                    >> String.toLower
+                                    >> (\buttonText -> [ "repair all" ] |> List.member buttonText)
+                                )
+                            >> Maybe.withDefault False
+                in
+                case repairShopWindow.items |> List.head of
+                    Nothing ->
+                        Nothing
+
+                    Just itemsRepair ->
+                        Just
+                            (describeBranch "It has items to repair, selecting the first item."
+                                (case repairShopWindow.buttons |> List.filter buttonUsed |> List.head of
+                                    Just btnRepairAll ->
+                                        describeBranch "I see the repair all button, i'm going to click it."
+                                            (decideActionForCurrentStep
+                                                ([ mouseClickOnUIElement MouseButtonLeft itemsRepair
+                                                 , mouseClickOnUIElement MouseButtonLeft btnRepairAll.uiNode
+                                                 ]
+                                                    |> List.concat
+                                                )
+                                            )
+
+                                    Nothing ->
+                                        describeBranch "It has items to repair, but I do not see the repair all button." askForHelpToGetUnstuck
+                                )
+                            )
 
 
 inSpaceWithMiningHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode

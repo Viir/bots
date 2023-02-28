@@ -40,6 +40,8 @@ What is more interesting than playing video games? - Programming bots to play vi
 
 + Syntax highlighting of code blocks - How to format code on the forum: <https://forum.botlab.org/t/syntax-highlighting-of-code-blocks-how-to-format-code-on-the-forum/738>
 
++ BotLab Contributor Program: <https://to.botlab.org/guide/botlab-contributor-program>
+
 ## Example Bots
 
 Wondering what outcome you can expect from following the guides? Below is a list of example bots. You can test them for free:

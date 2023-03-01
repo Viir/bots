@@ -15,6 +15,7 @@ The framework derives the notifications from your bot's status text, according t
 import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import BotLab.NotificationsShim.VolatileProcessInterface as VolatileProcessInterface
 import CompilationInterface.SourceFiles
+import Dict
 
 
 type alias NotificationsFunction =
@@ -33,7 +34,12 @@ type alias ConsoleBeepStructure =
 
 type alias StateWithNotifications botState =
     { -- Remember also the last response because we continue to display the status text.
-      wrappedBot : ( botState, InterfaceToHost.BotEventResponse )
+      timeInMilliseconds : Int
+    , wrappedBot :
+        { state : botState
+        , lastStatusText : String
+        , notifyWhenArrivedAtTime : Maybe { timeInMilliseconds : Int }
+        }
     , notifications : ( NotificationsState, InterfaceToHost.ContinueSessionStructure )
     }
 
@@ -41,6 +47,9 @@ type alias StateWithNotifications botState =
 type alias NotificationsState =
     { volatileProcess : Maybe VolatileProcessSetupState
     , notificationsCount : Int
+    , queuedNotifications : List { timeInMilliseconds : Int, notification : Notification }
+    , startedNotifications : List { timeInMilliseconds : Int, notification : Notification }
+    , runningTasks : Dict.Dict String { timeInMilliseconds : Int }
     }
 
 
@@ -72,13 +81,18 @@ addNotifications notificationsFunction wrappedBot =
 
 init : InterfaceToHost.BotConfig botState -> StateWithNotifications botState
 init wrappedBot =
-    { wrappedBot =
-        ( wrappedBot.init
-        , InterfaceToHost.FinishSession { statusText = "This value will never be used" }
-        )
+    { timeInMilliseconds = 0
+    , wrappedBot =
+        { state = wrappedBot.init
+        , lastStatusText = "This value will never be used"
+        , notifyWhenArrivedAtTime = Nothing
+        }
     , notifications =
         ( { volatileProcess = Nothing
           , notificationsCount = 0
+          , queuedNotifications = []
+          , startedNotifications = []
+          , runningTasks = Dict.empty
           }
         , { startTasks = [], statusText = "", notifyWhenArrivedAtTime = Nothing }
         )
@@ -97,8 +111,14 @@ switchEvent event =
             else
                 { toNotifications = Nothing, toWrappedBot = Just event }
 
-        _ ->
+        InterfaceToHost.TimeArrivedEvent ->
             { toNotifications = Just event, toWrappedBot = Just event }
+
+        InterfaceToHost.SessionDurationPlannedEvent _ ->
+            { toNotifications = Just event, toWrappedBot = Just event }
+
+        _ ->
+            { toNotifications = Nothing, toWrappedBot = Just event }
 
 
 processEventNotificationsSetup :
@@ -120,13 +140,20 @@ processEventNotificationsSetup event stateBefore =
 
                 InterfaceToHost.TaskCompletedEvent taskCompleted ->
                     if String.startsWith taskIdPrefix taskCompleted.taskId then
-                        [ taskCompleted.taskResult ]
+                        [ taskCompleted ]
 
                     else
                         []
 
+        runningTasks =
+            notificationTasksCompleted
+                |> List.map .taskId
+                |> List.foldl Dict.remove
+                    stateBefore.runningTasks
+
         state =
             notificationTasksCompleted
+                |> List.map .taskResult
                 |> List.foldl
                     (\notificationTaskCompleted intermediateState ->
                         case notificationTaskCompleted of
@@ -159,7 +186,7 @@ processEventNotificationsSetup event stateBefore =
                             InterfaceToHost.RandomBytesResponse _ ->
                                 intermediateState
                     )
-                    stateBefore
+                    { stateBefore | runningTasks = runningTasks }
     in
     case state.volatileProcess of
         Nothing ->
@@ -209,19 +236,75 @@ processEvent :
     -> ( StateWithNotifications botState, InterfaceToHost.BotEventResponse )
 processEvent wrappedBot notificationsFunction event stateBefore =
     let
+        notificationsStateBefore =
+            Tuple.first stateBefore.notifications
+
         switchedEvent =
             switchEvent event
 
         wrappedBotNewStateAndResponse =
             switchedEvent.toWrappedBot
-                |> Maybe.map (wrappedBot.processEvent >> (|>) (Tuple.first stateBefore.wrappedBot))
+                |> Maybe.map (wrappedBot.processEvent >> (|>) stateBefore.wrappedBot.state)
 
-        notificationsStateBefore =
-            Tuple.first stateBefore.notifications
+        wrappedBotState =
+            case wrappedBotNewStateAndResponse of
+                Nothing ->
+                    stateBefore.wrappedBot
+
+                Just ( botState, botResponse ) ->
+                    let
+                        ( lastStatusText, notifyWhenArrivedAtTime ) =
+                            case botResponse of
+                                InterfaceToHost.ContinueSession botContinueSession ->
+                                    ( botContinueSession.statusText, botContinueSession.notifyWhenArrivedAtTime )
+
+                                InterfaceToHost.FinishSession botFinishSession ->
+                                    ( botFinishSession.statusText, Nothing )
+                    in
+                    { state = botState
+                    , lastStatusText = lastStatusText
+                    , notifyWhenArrivedAtTime = notifyWhenArrivedAtTime
+                    }
+
+        currentNotifications =
+            case wrappedBotNewStateAndResponse of
+                Nothing ->
+                    []
+
+                Just ( _, botResponse ) ->
+                    let
+                        botResponseStatusText =
+                            case botResponse of
+                                InterfaceToHost.ContinueSession continueSession ->
+                                    continueSession.statusText
+
+                                InterfaceToHost.FinishSession finishSession ->
+                                    finishSession.statusText
+                    in
+                    notificationsFunction { statusText = botResponseStatusText }
+
+        notificationAlreadyQueued notification =
+            notificationsStateBefore.queuedNotifications
+                |> List.map .notification
+                |> List.member notification
+
+        newQueuedNotifications =
+            currentNotifications
+                |> List.filter (notificationAlreadyQueued >> not)
+                |> List.map
+                    (\notification ->
+                        { timeInMilliseconds = stateBefore.timeInMilliseconds, notification = notification }
+                    )
 
         maybeNotificationEventSetupResult =
             switchedEvent.toNotifications
-                |> Maybe.map (processEventNotificationsSetup >> (|>) notificationsStateBefore)
+                |> Maybe.map
+                    (processEventNotificationsSetup
+                        >> (|>)
+                            { notificationsStateBefore
+                                | queuedNotifications = notificationsStateBefore.queuedNotifications ++ newQueuedNotifications
+                            }
+                    )
 
         notificationsState =
             maybeNotificationEventSetupResult
@@ -229,115 +312,142 @@ processEvent wrappedBot notificationsFunction event stateBefore =
                 |> Maybe.withDefault notificationsStateBefore
 
         notificationsLastResponse =
-            maybeNotificationEventSetupResult |> Maybe.map Tuple.second |> Maybe.withDefault (Tuple.second stateBefore.notifications)
+            maybeNotificationEventSetupResult
+                |> Maybe.map Tuple.second
+                |> Maybe.withDefault (Tuple.second stateBefore.notifications)
 
-        wrappedBotStateAndResponse =
+        notificationsTasks =
+            if notificationsState.runningTasks /= Dict.empty then
+                []
+
+            else
+                case notificationsState.volatileProcess of
+                    Nothing ->
+                        []
+
+                    Just CreationRequestedSetupState ->
+                        []
+
+                    Just (CreationFailedSetupState _) ->
+                        []
+
+                    Just (CreationCompletedState creationComplete) ->
+                        case notificationsState.queuedNotifications of
+                            [] ->
+                                []
+
+                            nextQueuedNotification :: _ ->
+                                let
+                                    taskIdString =
+                                        [ taskIdPrefix
+                                        , "notify"
+                                        , String.fromInt notificationsStateBefore.notificationsCount
+                                        ]
+                                            |> String.join "-"
+
+                                    taskRequest =
+                                        case nextQueuedNotification.notification of
+                                            ConsoleBeepNotification beeps ->
+                                                VolatileProcessInterface.EffectConsoleBeepSequence beeps
+
+                                    task =
+                                        InterfaceToHost.RequestToVolatileProcess
+                                            (InterfaceToHost.RequestNotRequiringInputFocus
+                                                { processId = creationComplete.processId
+                                                , request =
+                                                    VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost taskRequest
+                                                }
+                                            )
+                                in
+                                [ { taskId = taskIdString
+                                  , task = task
+                                  }
+                                ]
+
+        startedNotifications =
+            notificationsState.queuedNotifications
+                |> List.take (List.length notificationsTasks)
+
+        remainingQueuedNotifications =
+            notificationsState.queuedNotifications
+                |> List.drop (List.length notificationsTasks)
+
+        runningTasks =
+            notificationsTasks
+                |> List.map .taskId
+                |> List.foldl (\taskId -> Dict.insert taskId { timeInMilliseconds = stateBefore.timeInMilliseconds })
+                    notificationsState.runningTasks
+
+        statusTextNotificationsAppendix =
+            case notificationsLastResponse.statusText of
+                "" ->
+                    Nothing
+
+                nonEmpty ->
+                    Just ("Notifications shim: " ++ nonEmpty)
+
+        baseResponse =
             wrappedBotNewStateAndResponse
-                |> Maybe.withDefault stateBefore.wrappedBot
+                |> Maybe.map Tuple.second
+                |> Maybe.withDefault
+                    (InterfaceToHost.ContinueSession
+                        { statusText = stateBefore.wrappedBot.lastStatusText
+                        , startTasks = []
+                        , notifyWhenArrivedAtTime = Nothing
+                        }
+                    )
 
-        ( mergedResponse, notificationsCountIncrease ) =
-            case Tuple.second wrappedBotStateAndResponse of
+        mergedResponse =
+            case baseResponse of
                 InterfaceToHost.FinishSession _ ->
-                    ( Tuple.second wrappedBotStateAndResponse, 0 )
+                    baseResponse
 
-                InterfaceToHost.ContinueSession wrappedBotContinueSession ->
+                InterfaceToHost.ContinueSession continueSession ->
                     let
-                        ( wrappedBotStartTasks, notifications ) =
-                            case Maybe.map Tuple.second wrappedBotNewStateAndResponse of
-                                Nothing ->
-                                    ( [], [] )
-
-                                Just (InterfaceToHost.FinishSession _) ->
-                                    ( [], [] )
-
-                                Just (InterfaceToHost.ContinueSession wrappedBotNewContinueSession) ->
-                                    ( wrappedBotNewContinueSession.startTasks
-                                    , notificationsFunction
-                                        { statusText = wrappedBotNewContinueSession.statusText }
-                                    )
-
                         notificationsSetupTasks =
                             maybeNotificationEventSetupResult
                                 |> Maybe.map (Tuple.second >> .startTasks)
                                 |> Maybe.withDefault []
 
-                        notificationsTasks =
-                            case notificationsState.volatileProcess of
-                                Nothing ->
-                                    []
-
-                                Just CreationRequestedSetupState ->
-                                    []
-
-                                Just (CreationFailedSetupState _) ->
-                                    []
-
-                                Just (CreationCompletedState creationComplete) ->
-                                    notifications
-                                        |> List.indexedMap
-                                            (\index notification ->
-                                                let
-                                                    taskIdString =
-                                                        taskIdPrefix ++ "notify-" ++ String.fromInt (notificationsStateBefore.notificationsCount + index)
-
-                                                    taskRequest =
-                                                        case notification of
-                                                            ConsoleBeepNotification beeps ->
-                                                                VolatileProcessInterface.EffectConsoleBeepSequence beeps
-
-                                                    task =
-                                                        InterfaceToHost.RequestToVolatileProcess
-                                                            (InterfaceToHost.RequestNotRequiringInputFocus
-                                                                { processId = creationComplete.processId
-                                                                , request =
-                                                                    VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost taskRequest
-                                                                }
-                                                            )
-                                                in
-                                                { taskId = taskIdString
-                                                , task = task
-                                                }
-                                            )
-
-                        statusTextNotificationsAppendix =
-                            case notificationsLastResponse.statusText of
-                                "" ->
-                                    Nothing
-
-                                nonEmpty ->
-                                    Just ("Notifications shim: " ++ nonEmpty)
-
                         mergedStatusText =
-                            wrappedBotContinueSession.statusText
+                            continueSession.statusText
                                 ++ "\n"
                                 ++ Maybe.withDefault "" statusTextNotificationsAppendix
 
                         mergedNotifyWhenArrivedAtTime =
-                            [ Just wrappedBotContinueSession, Maybe.map Tuple.second maybeNotificationEventSetupResult ]
+                            [ Just wrappedBotState.notifyWhenArrivedAtTime
+                            , Maybe.map (Tuple.second >> .notifyWhenArrivedAtTime) maybeNotificationEventSetupResult
+                            ]
                                 |> List.filterMap identity
-                                |> List.map .notifyWhenArrivedAtTime
                                 |> List.filterMap (Maybe.map .timeInMilliseconds)
                                 |> List.minimum
                                 |> Maybe.map (\timeInMilliseconds -> { timeInMilliseconds = timeInMilliseconds })
 
                         startTasks =
-                            wrappedBotStartTasks
+                            continueSession.startTasks
                                 ++ notificationsSetupTasks
                                 ++ notificationsTasks
                     in
-                    ( InterfaceToHost.ContinueSession
+                    InterfaceToHost.ContinueSession
                         { statusText = mergedStatusText
                         , startTasks = startTasks
                         , notifyWhenArrivedAtTime = mergedNotifyWhenArrivedAtTime
                         }
-                    , List.length notifications
-                    )
 
         notificationsCount =
-            notificationsStateBefore.notificationsCount + notificationsCountIncrease
+            notificationsState.notificationsCount + List.length notificationsTasks
     in
-    ( { wrappedBot = wrappedBotStateAndResponse
-      , notifications = ( { notificationsState | notificationsCount = notificationsCount }, notificationsLastResponse )
+    ( { timeInMilliseconds = event.timeInMilliseconds
+      , wrappedBot = wrappedBotState
+      , notifications =
+            ( { notificationsState
+                | notificationsCount = notificationsCount
+                , queuedNotifications = remainingQueuedNotifications
+                , startedNotifications = List.take 10 (startedNotifications ++ notificationsState.startedNotifications)
+                , runningTasks = runningTasks
+              }
+            , notificationsLastResponse
+            )
       }
     , mergedResponse
     )

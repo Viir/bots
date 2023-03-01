@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-02-25
+{- EVE Online mining bot version 2023-03-01
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -329,28 +329,12 @@ shouldHideWhenNeutralInLocal context =
 
 shouldDockWhenWithoutDrones : BotDecisionContext -> Bool
 shouldDockWhenWithoutDrones context =
-    case context.eventContext.botSettings.dockWhenWithoutDrones of
-        Just AppSettings.No ->
-            False
-
-        Just AppSettings.Yes ->
-            True
-
-        Nothing ->
-            False
+    context.eventContext.botSettings.dockWhenWithoutDrones == Just AppSettings.Yes
 
 
 shouldRepairBeforeUndocking : BotDecisionContext -> Bool
 shouldRepairBeforeUndocking context =
-    case context.eventContext.botSettings.repairBeforeUndocking of
-        Just AppSettings.No ->
-            False
-
-        Just AppSettings.Yes ->
-            True
-
-        Nothing ->
-            False
+    context.eventContext.botSettings.repairBeforeUndocking == Just AppSettings.Yes
 
 
 returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode

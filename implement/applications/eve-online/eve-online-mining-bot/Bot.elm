@@ -22,6 +22,7 @@
    + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
    + `unload-fleet-hangar-percent` : This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
    + `dock-when-without-drones` : This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`.
+   + `repair-before-undocking` : Repair the ship at the station before undocking. The only supported values are `no` and `yes`.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -107,6 +108,7 @@ defaultBotSettings =
     , activateModulesAlways = []
     , hideWhenNeutralInLocal = Nothing
     , dockWhenWithoutDrones = Nothing
+    , repairBeforeUndocking = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 1300
@@ -143,6 +145,10 @@ parseBotSettings =
          , ( "dock-when-without-drones"
            , AppSettings.valueTypeYesOrNo
                 (\without settings -> { settings | dockWhenWithoutDrones = Just without })
+           )
+         , ( "repair-before-undocking"
+           , AppSettings.valueTypeYesOrNo
+                (\repair settings -> { settings | repairBeforeUndocking = Just repair })
            )
          , ( "targeting-range"
            , AppSettings.valueTypeInteger (\range settings -> { settings | targetingRange = range })
@@ -187,6 +193,7 @@ type alias BotSettings =
     , activateModulesAlways : List String
     , hideWhenNeutralInLocal : Maybe AppSettings.YesOrNo
     , dockWhenWithoutDrones : Maybe AppSettings.YesOrNo
+    , repairBeforeUndocking : Maybe AppSettings.YesOrNo
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
@@ -333,6 +340,19 @@ shouldDockWhenWithoutDrones context =
             False
 
 
+shouldRepairBeforeUndocking : BotDecisionContext -> Bool
+shouldRepairBeforeUndocking context =
+    case context.eventContext.botSettings.repairBeforeUndocking of
+        Just AppSettings.No ->
+            False
+
+        Just AppSettings.Yes ->
+            True
+
+        Nothing ->
+            False
+
+
 returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
 returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones context shipUI =
     let
@@ -413,9 +433,9 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
         Just itemHangar ->
             case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
-                    describeBranch "I see no item in the mining hold. Check if we should undock."
+                    describeBranch "I see no item in the mining hold. Checking if we should repaired ship and undock."
                         (if
-                            shouldDockWhenWithoutDrones context
+                            (context |> shouldDockWhenWithoutDrones)
                                 && shouldDockBecauseDroneWindowWasInvisibleTooLong context.memory
                          then
                             describeBranch "Stay docked because I didn't see the drone window. Are we out of drones?"
@@ -428,13 +448,16 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
                                 }
                                 context
                                 |> Maybe.withDefault
-                                    (undockUsingStationWindow context
-                                        { ifCannotReachButton =
-                                            describeBranch "Undock using context menu"
-                                                (undockUsingContextMenu context
-                                                    { inventoryWindowWithMiningHoldSelected = inventoryWindowWithMiningHoldSelected }
-                                                )
-                                        }
+                                    (checkAndRepairBeforeUndockingUsingContextMenu context inventoryWindowWithMiningHoldSelected
+                                        |> Maybe.withDefault
+                                            (undockUsingStationWindow context
+                                                { ifCannotReachButton =
+                                                    describeBranch "Undock using context menu"
+                                                        (undockUsingContextMenu context
+                                                            { inventoryWindowWithMiningHoldSelected = inventoryWindowWithMiningHoldSelected }
+                                                        )
+                                                }
+                                            )
                                     )
                         )
 
@@ -522,6 +545,61 @@ undockUsingContextMenu context { inventoryWindowWithMiningHoldSelected } =
                 ( "active ship", activeShipEntry.uiNode )
                 (useMenuEntryWithTextContainingFirstOf [ "undock from station" ] menuCascadeCompleted)
                 context
+
+
+checkAndRepairBeforeUndockingUsingContextMenu : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> Maybe DecisionPathNode
+checkAndRepairBeforeUndockingUsingContextMenu context inventoryWindowWithMiningHoldSelected =
+    if not (context |> shouldRepairBeforeUndocking) then
+        Nothing
+
+    else
+        case context.readingFromGameClient.repairShopWindow of
+            Nothing ->
+                case inventoryWindowWithMiningHoldSelected |> activeShipTreeEntryFromInventoryWindow of
+                    Nothing ->
+                        Just (describeBranch "I do not see the active ship in the inventory window." askForHelpToGetUnstuck)
+
+                    Just activeShipEntry ->
+                        Just
+                            (useContextMenuCascade
+                                ( "active ship", activeShipEntry.uiNode )
+                                (useMenuEntryWithTextContaining "get repair quote" menuCascadeCompleted)
+                                context
+                            )
+
+            Just repairShopWindow ->
+                let
+                    buttonUsed =
+                        .mainText
+                            >> Maybe.map
+                                (String.trim
+                                    >> String.toLower
+                                    >> (\buttonText -> [ "repair all" ] |> List.member buttonText)
+                                )
+                            >> Maybe.withDefault False
+                in
+                case repairShopWindow.items |> List.head of
+                    Nothing ->
+                        Nothing
+
+                    Just itemsRepair ->
+                        Just
+                            (describeBranch "It has items to repair, selecting the first item."
+                                (case repairShopWindow.buttons |> List.filter buttonUsed |> List.head of
+                                    Just btnRepairAll ->
+                                        describeBranch "I see the repair all button, i'm going to click it."
+                                            (decideActionForCurrentStep
+                                                ([ mouseClickOnUIElement MouseButtonLeft itemsRepair
+                                                 , mouseClickOnUIElement MouseButtonLeft btnRepairAll.uiNode
+                                                 ]
+                                                    |> List.concat
+                                                )
+                                            )
+
+                                    Nothing ->
+                                        describeBranch "It has items to repair, but I do not see the repair all button." askForHelpToGetUnstuck
+                                )
+                            )
 
 
 inSpaceWithMiningHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode

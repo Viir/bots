@@ -121,7 +121,7 @@ type alias SetupState =
     , requestsToVolatileProcessCount : Int
     , lastRequestToVolatileProcessResult : Maybe (Result String ( InterfaceToHost.RequestToVolatileProcessComplete, Result String VolatileProcessInterface.ResponseFromVolatileHost ))
     , gameClientProcesses : Maybe (List GameClientProcessSummary)
-    , searchUIRootAddressResult : Maybe VolatileProcessInterface.SearchUIRootAddressResultStructure
+    , searchUIRootAddressResponse : Maybe VolatileProcessInterface.SearchUIRootAddressResponseStruct
     , lastReadingFromGame : Maybe { timeInMilliseconds : Int, stage : ReadingFromGameState }
     , lastEffectFailedToAcquireInputFocus : Maybe String
     , randomIntegers : List Int
@@ -342,7 +342,7 @@ initSetup =
     , requestsToVolatileProcessCount = 0
     , lastRequestToVolatileProcessResult = Nothing
     , gameClientProcesses = Nothing
-    , searchUIRootAddressResult = Nothing
+    , searchUIRootAddressResponse = Nothing
     , lastReadingFromGame = Nothing
     , lastEffectFailedToAcquireInputFocus = Nothing
     , randomIntegers = []
@@ -1041,10 +1041,10 @@ integrateResponseFromVolatileProcess responseFromVolatileProcess stateBefore =
         VolatileProcessInterface.ListGameClientProcessesResponse gameClientProcesses ->
             { stateBefore | gameClientProcesses = Just gameClientProcesses }
 
-        VolatileProcessInterface.SearchUIRootAddressResult searchUIRootAddressResult ->
+        VolatileProcessInterface.SearchUIRootAddressResponse searchUIRootAddressResponse ->
             let
                 state =
-                    { stateBefore | searchUIRootAddressResult = Just searchUIRootAddressResult }
+                    { stateBefore | searchUIRootAddressResponse = Just searchUIRootAddressResponse }
             in
             state
 
@@ -1224,7 +1224,7 @@ getSetupTaskWhenVolatileProcessSetupCompleted botConfiguration botSettings state
                                     |> String.join "\n"
                                 )
                     in
-                    case stateBefore.searchUIRootAddressResult of
+                    case stateBefore.searchUIRootAddressResponse of
                         Nothing ->
                             continueWithSearchUIRootAddress
 
@@ -1233,92 +1233,97 @@ getSetupTaskWhenVolatileProcessSetupCompleted botConfiguration botSettings state
                                 continueWithSearchUIRootAddress
 
                             else
-                                case searchResult.uiRootAddress of
-                                    Nothing ->
-                                        FrameworkStopSession
-                                            ("Did not find the root of the UI tree in game client instance '"
-                                                ++ gameClientSelection.selectedProcess.mainWindowTitle
-                                                ++ "' (pid "
-                                                ++ String.fromInt gameClientSelection.selectedProcess.processId
-                                                ++ "). Maybe the selected game client had not yet completed its startup? TODO: Check if we can read memory of that process at all."
-                                            )
+                                case searchResult.stage of
+                                    VolatileProcessInterface.SearchUIRootAddressInProgress _ ->
+                                        continueWithSearchUIRootAddress
 
-                                    Just uiRootAddress ->
-                                        let
-                                            readFromWindowRequest =
-                                                VolatileProcessInterface.ReadFromWindow
-                                                    { windowId = gameClientSelection.selectedProcess.mainWindowId
-                                                    , uiRootAddress = uiRootAddress
-                                                    }
-                                        in
-                                        let
-                                            buildTaskFromRequestToVolatileProcess maybeAcquireInputFocus requestToVolatileProcess =
-                                                let
-                                                    requestBeforeConsideringInputFocus =
-                                                        { processId = volatileProcessId
-                                                        , request = VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileProcess
-                                                        }
-                                                in
-                                                InterfaceToHost.RequestToVolatileProcess
-                                                    (case maybeAcquireInputFocus of
-                                                        Nothing ->
-                                                            InterfaceToHost.RequestNotRequiringInputFocus
-                                                                requestBeforeConsideringInputFocus
-
-                                                        Just acquireInputFocus ->
-                                                            InterfaceToHost.RequestRequiringInputFocus
-                                                                { request = requestBeforeConsideringInputFocus
-                                                                , acquireInputFocus = acquireInputFocus
-                                                                }
+                                    VolatileProcessInterface.SearchUIRootAddressCompleted searchRootCompleted ->
+                                        case searchRootCompleted.uiRootAddress of
+                                            Nothing ->
+                                                FrameworkStopSession
+                                                    ("Did not find the root of the UI tree in game client instance '"
+                                                        ++ gameClientSelection.selectedProcess.mainWindowTitle
+                                                        ++ "' (pid "
+                                                        ++ String.fromInt gameClientSelection.selectedProcess.processId
+                                                        ++ "). Maybe the selected game client had not yet completed its startup? TODO: Check if we can read memory of that process at all."
                                                     )
 
-                                            buildTaskFromInvokeMethodOnWindowRequest methodOnWindow =
-                                                InterfaceToHost.InvokeMethodOnWindowRequest
-                                                    ("winapi-" ++ gameClientSelection.selectedProcess.mainWindowId)
-                                                    methodOnWindow
-
-                                            continueNormalOperation =
-                                                OperateBot
-                                                    { buildTaskFromEffectSequence =
-                                                        \effectSequenceOnWindow ->
+                                            Just uiRootAddress ->
+                                                let
+                                                    readFromWindowRequest =
+                                                        VolatileProcessInterface.ReadFromWindow
                                                             { windowId = gameClientSelection.selectedProcess.mainWindowId
-                                                            , task =
-                                                                effectSequenceOnWindow
-                                                                    |> List.map (effectOnWindowAsVolatileProcessEffectOnWindow >> VolatileProcessInterface.Effect)
-                                                                    |> List.intersperse (VolatileProcessInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
-                                                            , bringWindowToForeground = True
+                                                            , uiRootAddress = uiRootAddress
                                                             }
-                                                                |> VolatileProcessInterface.EffectSequenceOnWindow
-                                                                |> buildTaskFromRequestToVolatileProcess (Just { maximumDelayMilliseconds = 500 })
-                                                    , readFromWindowTasks =
-                                                        [ readFromWindowRequest
-                                                            |> buildTaskFromRequestToVolatileProcess
-                                                                (Just { maximumDelayMilliseconds = 500 })
-                                                        , buildTaskFromInvokeMethodOnWindowRequest
-                                                            InterfaceToHost.ReadFromWindowMethod
-                                                        ]
-                                                    , releaseVolatileProcessTask = InterfaceToHost.ReleaseVolatileProcess { processId = volatileProcessId }
-                                                    }
-                                        in
-                                        case stateBefore.lastReadingFromGame of
-                                            Nothing ->
-                                                continueNormalOperation
+                                                in
+                                                let
+                                                    buildTaskFromRequestToVolatileProcess maybeAcquireInputFocus requestToVolatileProcess =
+                                                        let
+                                                            requestBeforeConsideringInputFocus =
+                                                                { processId = volatileProcessId
+                                                                , request = VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost requestToVolatileProcess
+                                                                }
+                                                        in
+                                                        InterfaceToHost.RequestToVolatileProcess
+                                                            (case maybeAcquireInputFocus of
+                                                                Nothing ->
+                                                                    InterfaceToHost.RequestNotRequiringInputFocus
+                                                                        requestBeforeConsideringInputFocus
 
-                                            Just lastReadingFromGame ->
-                                                case lastReadingFromGame.stage of
-                                                    ReadingFromGameCompleted ->
+                                                                Just acquireInputFocus ->
+                                                                    InterfaceToHost.RequestRequiringInputFocus
+                                                                        { request = requestBeforeConsideringInputFocus
+                                                                        , acquireInputFocus = acquireInputFocus
+                                                                        }
+                                                            )
+
+                                                    buildTaskFromInvokeMethodOnWindowRequest methodOnWindow =
+                                                        InterfaceToHost.InvokeMethodOnWindowRequest
+                                                            ("winapi-" ++ gameClientSelection.selectedProcess.mainWindowId)
+                                                            methodOnWindow
+
+                                                    continueNormalOperation =
+                                                        OperateBot
+                                                            { buildTaskFromEffectSequence =
+                                                                \effectSequenceOnWindow ->
+                                                                    { windowId = gameClientSelection.selectedProcess.mainWindowId
+                                                                    , task =
+                                                                        effectSequenceOnWindow
+                                                                            |> List.map (effectOnWindowAsVolatileProcessEffectOnWindow >> VolatileProcessInterface.Effect)
+                                                                            |> List.intersperse (VolatileProcessInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
+                                                                    , bringWindowToForeground = True
+                                                                    }
+                                                                        |> VolatileProcessInterface.EffectSequenceOnWindow
+                                                                        |> buildTaskFromRequestToVolatileProcess (Just { maximumDelayMilliseconds = 500 })
+                                                            , readFromWindowTasks =
+                                                                [ readFromWindowRequest
+                                                                    |> buildTaskFromRequestToVolatileProcess
+                                                                        (Just { maximumDelayMilliseconds = 500 })
+                                                                , buildTaskFromInvokeMethodOnWindowRequest
+                                                                    InterfaceToHost.ReadFromWindowMethod
+                                                                ]
+                                                            , releaseVolatileProcessTask = InterfaceToHost.ReleaseVolatileProcess { processId = volatileProcessId }
+                                                            }
+                                                in
+                                                case stateBefore.lastReadingFromGame of
+                                                    Nothing ->
                                                         continueNormalOperation
 
-                                                    ReadingFromGameInProgress inProgress ->
-                                                        case inProgress.memoryReading of
-                                                            Nothing ->
+                                                    Just lastReadingFromGame ->
+                                                        case lastReadingFromGame.stage of
+                                                            ReadingFromGameCompleted ->
                                                                 continueNormalOperation
 
-                                                            Just VolatileProcessInterface.ProcessNotFound ->
-                                                                FrameworkStopSession "The EVE Online client process disappeared."
+                                                            ReadingFromGameInProgress inProgress ->
+                                                                case inProgress.memoryReading of
+                                                                    Nothing ->
+                                                                        continueNormalOperation
 
-                                                            Just (VolatileProcessInterface.Completed _) ->
-                                                                continueNormalOperation
+                                                                    Just VolatileProcessInterface.ProcessNotFound ->
+                                                                        FrameworkStopSession "The EVE Online client process disappeared."
+
+                                                                    Just (VolatileProcessInterface.Completed _) ->
+                                                                        continueNormalOperation
 
 
 effectOnWindowAsVolatileProcessEffectOnWindow : Common.EffectOnWindow.EffectOnWindowStructure -> VolatileProcessInterface.EffectOnWindowStructure

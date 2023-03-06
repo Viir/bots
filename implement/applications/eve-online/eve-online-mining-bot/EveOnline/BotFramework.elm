@@ -176,10 +176,10 @@ type alias ReadingFromGameClientMemory =
 
 
 type alias ModuleButtonTooltipMemory =
-    { uiNode : UITreeNodeWithDisplayRegion
+    { uiNodeDisplayRegion : DisplayRegion
     , shortcut : Maybe { text : String, parseResult : Result String (List Common.EffectOnWindow.VirtualKeyCode) }
     , optimalRange : Maybe { asString : String, inMeters : Result String Int }
-    , allContainedDisplayTextsWithRegion : List ( String, UITreeNodeWithDisplayRegion )
+    , allContainedDisplayTextsWithRegion : List ( String, DisplayRegion )
     }
 
 
@@ -263,17 +263,26 @@ integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
 
         getTooltipDataForEqualityComparison tooltip =
             tooltip.allContainedDisplayTextsWithRegion
-                |> List.map (Tuple.mapSecond .totalDisplayRegion)
 
-        {- To ensure robustness, we store a new tooltip only when the display texts match in two readings from the game client. -}
+        {- To ensure robustness, we store a new tooltip only when the display texts from two game client readings are similar enough. -}
         tooltipAvailableToStore =
             case ( memoryBefore.previousReadingTooltip, currentTooltipMemory ) of
                 ( Just previousTooltip, Just currentTooltip ) ->
-                    if getTooltipDataForEqualityComparison previousTooltip == getTooltipDataForEqualityComparison currentTooltip then
-                        Just currentTooltip
+                    let
+                        previousVariants =
+                            previousTooltip
+                                :: commonReductionsOfModuleButtonTooltipMemoryForRobustness previousTooltip
+                                |> List.map getTooltipDataForEqualityComparison
+                                |> List.Extra.unique
 
-                    else
-                        Nothing
+                        currentVariants =
+                            currentTooltip
+                                :: commonReductionsOfModuleButtonTooltipMemoryForRobustness currentTooltip
+                                |> List.Extra.unique
+                    in
+                    currentVariants
+                        |> List.filter (getTooltipDataForEqualityComparison >> (<|) List.member >> (|>) previousVariants)
+                        |> List.head
 
                 _ ->
                     Nothing
@@ -309,6 +318,47 @@ integrateCurrentReadingsIntoShipModulesMemory currentReading memoryBefore =
         currentTooltipMemory
             |> Maybe.Extra.orElse memoryBefore.previousReadingTooltip
     }
+
+
+commonReductionsOfModuleButtonTooltipMemoryForRobustness : ModuleButtonTooltipMemory -> List ModuleButtonTooltipMemory
+commonReductionsOfModuleButtonTooltipMemoryForRobustness originalTooltip =
+    {-
+       Adapt to the game client from session-recording-2023-03-03T12-59-09:
+       The tooltips of some module buttons exhibit frequently changing text.
+       In the said session, one of the texts changes from '01:42' in event 80 to '01:39' in event 84.
+       In that module tooltip is another text element left of the changing text, containing "Activation time / duration".
+    -}
+    let
+        allContainedDisplayTextsWithRegionTrimmed =
+            originalTooltip.allContainedDisplayTextsWithRegion
+                |> List.map (Tuple.mapFirst String.trim)
+
+        reduceTextIfTime text =
+            if
+                String.split ":" text
+                    |> List.all (String.toInt >> (/=) Nothing)
+            then
+                "reduced-time"
+
+            else
+                text
+
+        reduceTimeFromText =
+            String.split " "
+                >> List.map reduceTextIfTime
+                >> String.join " "
+
+        allContainedDisplayTextsWithRegionTimeReduced =
+            allContainedDisplayTextsWithRegionTrimmed
+                |> List.map (Tuple.mapFirst reduceTimeFromText)
+    in
+    [ { originalTooltip
+        | allContainedDisplayTextsWithRegion = allContainedDisplayTextsWithRegionTrimmed
+      }
+    , { originalTooltip
+        | allContainedDisplayTextsWithRegion = allContainedDisplayTextsWithRegionTimeReduced
+      }
+    ]
 
 
 getModuleButtonTooltipFromModuleButton : ShipModulesMemory -> EveOnline.ParseUserInterface.ShipUIModuleButton -> Maybe ModuleButtonTooltipMemory
@@ -1785,13 +1835,13 @@ asReadingFromGameClientMemory reading =
 
 asModuleButtonTooltipMemory : EveOnline.ParseUserInterface.ModuleButtonTooltip -> ModuleButtonTooltipMemory
 asModuleButtonTooltipMemory tooltip =
-    { uiNode = tooltip.uiNode |> asUITreeNodeWithDisplayRegionMemory
+    { uiNodeDisplayRegion = tooltip.uiNode.totalDisplayRegion
     , shortcut = tooltip.shortcut
     , optimalRange = tooltip.optimalRange
     , allContainedDisplayTextsWithRegion =
         tooltip.uiNode
             |> getAllContainedDisplayTextsWithRegion
-            |> List.map (Tuple.mapSecond asUITreeNodeWithDisplayRegionMemory)
+            |> List.map (Tuple.mapSecond .totalDisplayRegion)
     }
 
 

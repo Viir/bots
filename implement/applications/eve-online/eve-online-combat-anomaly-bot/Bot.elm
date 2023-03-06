@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2023-03-04
+{- EVE Online combat anomaly bot version 2023-03-06
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -30,6 +30,7 @@
    + `avoid-rat` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
    + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
    + `anomaly-wait-time`: Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid.
+   + `warp-to-anomaly-distance`: Defaults to 'Within 0 m'
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -111,6 +112,7 @@ defaultBotSettings =
     , botStepDelayMilliseconds = 1400
     , anomalyWaitTimeSeconds = 15
     , orbitInCombat = AppSettings.Yes
+    , warpToAnomalyDistance = "Within 0 m"
     }
 
 
@@ -151,6 +153,12 @@ parseBotSettings =
                     { settings | orbitInCombat = orbitInCombat }
                 )
            )
+         , ( "warp-to-anomaly-distance"
+           , AppSettings.valueTypeString
+                (\warpToAnomalyDistance settings ->
+                    { settings | warpToAnomalyDistance = warpToAnomalyDistance }
+                )
+           )
          , ( "bot-step-delay"
            , AppSettings.valueTypeInteger
                 (\delay settings ->
@@ -177,6 +185,7 @@ type alias BotSettings =
     , anomalyWaitTimeSeconds : Int
     , botStepDelayMilliseconds : Int
     , orbitInCombat : AppSettings.YesOrNo
+    , warpToAnomalyDistance : String
     }
 
 
@@ -716,7 +725,10 @@ enterAnomaly { ifNoAcceptableAnomalyAvailable } context =
                         (useContextMenuCascade
                             ( "Scan result", anomalyScanResult.uiNode )
                             (useMenuEntryWithTextContaining "Warp to Within"
-                                (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
+                                (useMenuEntryWithTextContaining
+                                    context.eventContext.botSettings.warpToAnomalyDistance
+                                    menuCascadeCompleted
+                                )
                             )
                             context
                         )

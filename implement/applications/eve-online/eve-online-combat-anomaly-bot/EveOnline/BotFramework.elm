@@ -1088,7 +1088,8 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
                 Ok (InterfaceToHost.ReadFromWindowMethodResult readFromWindowComplete) ->
                     setupStateBefore
                         |> integrateReadFromWindowComplete
-                            { readFromWindowComplete = readFromWindowComplete
+                            { timeInMilliseconds = timeInMilliseconds
+                            , readFromWindowComplete = readFromWindowComplete
                             }
 
                 _ ->
@@ -1138,32 +1139,41 @@ integrateResponseFromVolatileProcess { timeInMilliseconds } responseFromVolatile
             state
 
         VolatileProcessInterface.ReadFromWindowResult readFromWindowResult ->
-            case stateBefore.lastReadingFromGame of
-                Nothing ->
-                    stateBefore
+            let
+                readingTimeInMilliseconds =
+                    stateBefore.lastReadingFromGame
+                        |> Maybe.map .timeInMilliseconds
+                        |> Maybe.withDefault timeInMilliseconds
 
-                Just lastReadingFromGame ->
-                    case lastReadingFromGame.stage of
-                        ReadingFromGameCompleted _ ->
-                            stateBefore
+                inProgressBefore =
+                    case stateBefore.lastReadingFromGame of
+                        Nothing ->
+                            { memoryReading = Nothing
+                            , readingFromWindow = Nothing
+                            }
 
-                        ReadingFromGameInProgress inProgress ->
-                            let
-                                readingFromGameStage =
-                                    { inProgress
-                                        | memoryReading = Just readFromWindowResult
+                        Just lastReadingFromGame ->
+                            case lastReadingFromGame.stage of
+                                ReadingFromGameCompleted _ ->
+                                    { memoryReading = Nothing
+                                    , readingFromWindow = Nothing
                                     }
 
-                                state =
-                                    { stateBefore
-                                        | lastReadingFromGame =
-                                            Just
-                                                { lastReadingFromGame
-                                                    | stage = ReadingFromGameInProgress readingFromGameStage
-                                                }
-                                    }
-                            in
-                            state
+                                ReadingFromGameInProgress readingInProgress ->
+                                    readingInProgress
+
+                inProgress =
+                    { inProgressBefore
+                        | memoryReading = Just readFromWindowResult
+                    }
+            in
+            { stateBefore
+                | lastReadingFromGame =
+                    Just
+                        { timeInMilliseconds = readingTimeInMilliseconds
+                        , stage = ReadingFromGameInProgress inProgress
+                        }
+            }
 
         VolatileProcessInterface.FailedToBringWindowToFront error ->
             { stateBefore | lastEffectFailedToAcquireInputFocus = Just error }
@@ -1173,27 +1183,43 @@ integrateResponseFromVolatileProcess { timeInMilliseconds } responseFromVolatile
 
 
 integrateReadFromWindowComplete :
-    { readFromWindowComplete : InterfaceToHost.ReadFromWindowCompleteStruct }
+    { timeInMilliseconds : Int, readFromWindowComplete : InterfaceToHost.ReadFromWindowCompleteStruct }
     -> SetupState
     -> SetupState
-integrateReadFromWindowComplete { readFromWindowComplete } stateBefore =
-    case stateBefore.lastReadingFromGame of
-        Nothing ->
-            stateBefore
+integrateReadFromWindowComplete { timeInMilliseconds, readFromWindowComplete } stateBefore =
+    let
+        readingTimeInMilliseconds =
+            stateBefore.lastReadingFromGame
+                |> Maybe.map .timeInMilliseconds
+                |> Maybe.withDefault timeInMilliseconds
 
-        Just lastReadingFromGame ->
-            case lastReadingFromGame.stage of
-                ReadingFromGameCompleted _ ->
-                    stateBefore
-
-                ReadingFromGameInProgress aggregateBefore ->
-                    let
-                        aggregate =
-                            { aggregateBefore | readingFromWindow = Just readFromWindowComplete }
-                    in
-                    { stateBefore
-                        | lastReadingFromGame = Just { lastReadingFromGame | stage = ReadingFromGameInProgress aggregate }
+        inProgressBefore =
+            case stateBefore.lastReadingFromGame of
+                Nothing ->
+                    { memoryReading = Nothing
+                    , readingFromWindow = Nothing
                     }
+
+                Just lastReadingFromGame ->
+                    case lastReadingFromGame.stage of
+                        ReadingFromGameCompleted _ ->
+                            { memoryReading = Nothing
+                            , readingFromWindow = Nothing
+                            }
+
+                        ReadingFromGameInProgress readingInProgress ->
+                            readingInProgress
+
+        inProgress =
+            { inProgressBefore | readingFromWindow = Just readFromWindowComplete }
+    in
+    { stateBefore
+        | lastReadingFromGame =
+            Just
+                { timeInMilliseconds = readingTimeInMilliseconds
+                , stage = ReadingFromGameInProgress inProgress
+                }
+    }
 
 
 colorFromInt_R8G8B8 : Int -> PixelValueRGB

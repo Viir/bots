@@ -248,10 +248,10 @@ readButtonLabel : DisplayRegion -> { pixels_2x2 : ( Int, Int ) -> Maybe PixelVal
 readButtonLabel region screenshot =
     let
         offsets_pixels =
-            List.range region.x (region.x + region.width)
+            List.range region.x (region.x + region.width - 1)
                 |> List.concatMap
                     (\offsetX ->
-                        List.range region.y (region.y + region.height)
+                        List.range region.y (region.y + region.height - 1)
                             |> List.map
                                 (\offsetY ->
                                     \( x, y ) -> screenshot.pixels_2x2 ( x + offsetX, y + offsetY )

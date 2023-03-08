@@ -69,8 +69,7 @@ type alias InternalContinueSessionStructure =
 
 
 type TaskType
-    = StartsReadingTaskType
-    | SetupTaskType { description : String }
+    = SetupTaskType { description : String }
 
 
 type alias ContinueSessionStructure =
@@ -131,7 +130,7 @@ type alias SetupState =
 
 type ReadingFromGameState
     = ReadingFromGameInProgress ReadingFromGameClientAggregateState
-    | ReadingFromGameCompleted
+    | ReadingFromGameCompleted { timeInMilliseconds : Int }
 
 
 type alias ReadingFromGameClientAggregateState =
@@ -416,9 +415,6 @@ processEvent botConfiguration fromHostEvent stateBefore =
 
         InternalContinueSession continueSession ->
             let
-                setupStateBefore =
-                    state.setup
-
                 startTasksWithOrigin =
                     continueSession.startTasks
                         |> List.indexedMap
@@ -432,26 +428,6 @@ processEvent botConfiguration fromHostEvent stateBefore =
                                 , taskType = startTask.taskType
                                 }
                             )
-
-                startsReading =
-                    List.any (.taskType >> (==) (Just StartsReadingTaskType)) continueSession.startTasks
-
-                setupState =
-                    if startsReading then
-                        { setupStateBefore
-                            | lastReadingFromGame =
-                                Just
-                                    { timeInMilliseconds = stateBefore.timeInMilliseconds
-                                    , stage =
-                                        ReadingFromGameInProgress
-                                            { memoryReading = Nothing
-                                            , readingFromWindow = Nothing
-                                            }
-                                    }
-                        }
-
-                    else
-                        setupStateBefore
 
                 waitingForSetupTasks =
                     (startTasksWithOrigin
@@ -474,7 +450,6 @@ processEvent botConfiguration fromHostEvent stateBefore =
             ( { state
                 | lastTaskIndex = state.lastTaskIndex + List.length startTasks
                 , waitingForSetupTasks = waitingForSetupTasks
-                , setup = setupState
               }
             , InterfaceToHost.ContinueSession
                 { statusText = continueSession.statusText
@@ -594,8 +569,8 @@ processEventAfterIntegrateEvent botConfiguration stateBefore =
                     }
             }
 
-        statusMessagePrefix =
-            (state |> statusReportFromState) ++ "\nCurrent activity: "
+        commonStatusMessagePrefix =
+            statusReportFromState state
 
         notifyWhenArrivedAtTimeUpperBound =
             stateBefore.timeInMilliseconds + 2000
@@ -616,7 +591,11 @@ processEventAfterIntegrateEvent botConfiguration stateBefore =
                 InternalContinueSession continueSession ->
                     InternalContinueSession
                         { continueSession
-                            | statusText = statusMessagePrefix ++ continueSession.statusText
+                            | statusText =
+                                [ commonStatusMessagePrefix
+                                , continueSession.statusText
+                                ]
+                                    |> String.join "\n"
                             , notifyWhenArrivedAtTime =
                                 Just
                                     { timeInMilliseconds =
@@ -630,7 +609,11 @@ processEventAfterIntegrateEvent botConfiguration stateBefore =
 
                 InternalFinishSession finishSession ->
                     InternalFinishSession
-                        { statusText = statusMessagePrefix ++ finishSession.statusText
+                        { statusText =
+                            [ commonStatusMessagePrefix
+                            , finishSession.statusText
+                            ]
+                                |> String.join "\n"
                         }
     in
     ( state, response )
@@ -664,7 +647,7 @@ processEventNotWaitingForTaskCompletion botConfiguration botEventContext stateBe
                                         ]
                                     )
                                 |> Maybe.withDefault []
-                      , statusText = "Continue setup: " ++ setupTaskDescription
+                      , statusText = setupTaskDescription
                       , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
                       }
                         |> InternalContinueSession
@@ -673,7 +656,7 @@ processEventNotWaitingForTaskCompletion botConfiguration botEventContext stateBe
                 Just waitingForSetupTask ->
                     ( stateBefore
                     , { startTasks = []
-                      , statusText = "Continue setup: Wait for completion: " ++ waitingForSetupTask.description
+                      , statusText = "Wait for completion: " ++ waitingForSetupTask.description
                       , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
                       }
                         |> InternalContinueSession
@@ -701,7 +684,7 @@ processEventNotWaitingForTaskCompletion botConfiguration botEventContext stateBe
                           , taskType = Just (SetupTaskType { description = setupTaskDescription })
                           }
                         ]
-                  , statusText = "Continue setup: " ++ setupTaskDescription
+                  , statusText = setupTaskDescription
                   , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
                   }
                     |> InternalContinueSession
@@ -728,27 +711,34 @@ operateBotExceptRenewingVolatileProcess :
     -> ( StateIncludingFramework botSettings botState, InternalBotEventResponse )
 operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBefore operateBot =
     let
-        continueWithNamedTasksToWaitOn { startsReading, taskAreaId } tasks =
-            ( stateBefore
-            , { startTasks =
-                    tasks
-                        |> List.map
-                            (\task ->
-                                { areaId = taskAreaId
-                                , taskType =
-                                    if startsReading then
-                                        Just StartsReadingTaskType
+        setupStateBefore =
+            stateBefore.setup
+
+        continueSessionStatusText statusTextState =
+            [ "Reading from game"
+            , case statusTextState.setup.lastReadingFromGame of
+                Nothing ->
+                    "not started"
+
+                Just lastReadingFromGame ->
+                    case lastReadingFromGame.stage of
+                        ReadingFromGameInProgress _ ->
+                            "in progress"
+
+                        ReadingFromGameCompleted completed ->
+                            let
+                                ageInSeconds =
+                                    (statusTextState.timeInMilliseconds - completed.timeInMilliseconds) // 1000
+                            in
+                            "completed "
+                                ++ (if ageInSeconds < 1 then
+                                        ""
 
                                     else
-                                        Nothing
-                                , task = task
-                                }
-                            )
-              , statusText = "Operate bot"
-              , notifyWhenArrivedAtTime = Nothing
-              }
-                |> InternalContinueSession
-            )
+                                        String.fromInt ageInSeconds ++ " s ago"
+                                   )
+            ]
+                |> String.join " "
 
         maybeReadingFromGameClient =
             case stateBefore.setup.lastReadingFromGame of
@@ -757,7 +747,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
 
                 Just lastReadingFromGame ->
                     case lastReadingFromGame.stage of
-                        ReadingFromGameCompleted ->
+                        ReadingFromGameCompleted _ ->
                             Nothing
 
                         ReadingFromGameInProgress aggregate ->
@@ -766,11 +756,38 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                                 |> Result.toMaybe
 
         continueWithReadingFromGameClient =
-            continueWithNamedTasksToWaitOn
-                { startsReading = True
-                , taskAreaId = "read-from-game"
-                }
-                operateBot.readFromWindowTasks
+            let
+                state =
+                    { stateBefore
+                        | setup =
+                            { setupStateBefore
+                                | lastReadingFromGame =
+                                    Just
+                                        { timeInMilliseconds = stateBefore.timeInMilliseconds
+                                        , stage =
+                                            ReadingFromGameInProgress
+                                                { memoryReading = Nothing
+                                                , readingFromWindow = Nothing
+                                                }
+                                        }
+                            }
+                    }
+            in
+            ( state
+            , { startTasks =
+                    operateBot.readFromWindowTasks
+                        |> List.map
+                            (\task ->
+                                { areaId = "read-from-game"
+                                , taskType = Nothing
+                                , task = task
+                                }
+                            )
+              , statusText = continueSessionStatusText state
+              , notifyWhenArrivedAtTime = Nothing
+              }
+                |> InternalContinueSession
+            )
     in
     case maybeReadingFromGameClient of
         Just readingFromGameClient ->
@@ -812,9 +829,6 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                             , [ "Failed to parse user interface: " ++ parseErr ]
                             )
 
-                setupStateBefore =
-                    stateBefore.setup
-
                 botStateBefore =
                     stateBefore.botState
 
@@ -836,6 +850,31 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
 
                 sharedStatusTextAddition =
                     statusTextAdditionFromParseFromScreenshot
+
+                setup =
+                    { setupStateBefore
+                        | lastReadingFromGame =
+                            setupStateBefore.lastReadingFromGame
+                                |> Maybe.map
+                                    (\lastReadingFromGame ->
+                                        { lastReadingFromGame
+                                            | stage =
+                                                ReadingFromGameCompleted
+                                                    { timeInMilliseconds = stateBefore.timeInMilliseconds }
+                                        }
+                                    )
+                        , randomIntegers = List.drop 1 setupStateBefore.randomIntegers
+                    }
+
+                state =
+                    { stateBefore
+                        | botState =
+                            { botStateBefore
+                                | botState = newBotState
+                                , lastEvent = Just lastEvent
+                            }
+                        , setup = setup
+                    }
 
                 response =
                     case botEventResponse of
@@ -867,7 +906,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                             in
                             { startTasks = startTasks
                             , statusText =
-                                "Operate bot"
+                                continueSessionStatusText state
                                     :: sharedStatusTextAddition
                                     |> String.join "\n"
                             , notifyWhenArrivedAtTime =
@@ -878,27 +917,6 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                                     Nothing
                             }
                                 |> InternalContinueSession
-
-                setup =
-                    { setupStateBefore
-                        | lastReadingFromGame =
-                            setupStateBefore.lastReadingFromGame
-                                |> Maybe.map
-                                    (\lastReadingFromGame ->
-                                        { lastReadingFromGame | stage = ReadingFromGameCompleted }
-                                    )
-                        , randomIntegers = List.drop 1 setupStateBefore.randomIntegers
-                    }
-
-                state =
-                    { stateBefore
-                        | botState =
-                            { botStateBefore
-                                | botState = newBotState
-                                , lastEvent = Just lastEvent
-                            }
-                        , setup = setup
-                    }
             in
             ( state, response )
 
@@ -962,7 +980,7 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
             else
                 ( stateBefore
                 , { startTasks = []
-                  , statusText = "Operate bot."
+                  , statusText = continueSessionStatusText stateBefore
                   , notifyWhenArrivedAtTime = Just { timeInMilliseconds = timeForNextReadingFromGame }
                   }
                     |> InternalContinueSession
@@ -1126,7 +1144,7 @@ integrateResponseFromVolatileProcess { timeInMilliseconds } responseFromVolatile
 
                 Just lastReadingFromGame ->
                     case lastReadingFromGame.stage of
-                        ReadingFromGameCompleted ->
+                        ReadingFromGameCompleted _ ->
                             stateBefore
 
                         ReadingFromGameInProgress inProgress ->
@@ -1165,7 +1183,7 @@ integrateReadFromWindowComplete { readFromWindowComplete } stateBefore =
 
         Just lastReadingFromGame ->
             case lastReadingFromGame.stage of
-                ReadingFromGameCompleted ->
+                ReadingFromGameCompleted _ ->
                     stateBefore
 
                 ReadingFromGameInProgress aggregateBefore ->
@@ -1401,7 +1419,7 @@ getSetupTaskWhenVolatileProcessSetupCompleted { timeInMilliseconds } botConfigur
 
                                                     Just lastReadingFromGame ->
                                                         case lastReadingFromGame.stage of
-                                                            ReadingFromGameCompleted ->
+                                                            ReadingFromGameCompleted _ ->
                                                                 continueNormalOperation
 
                                                             ReadingFromGameInProgress inProgress ->
@@ -1541,25 +1559,11 @@ statusReportFromState state =
 
                 Just error ->
                     [ "Failed to acquire input focus: " ++ error ]
-
-        describeLastReadingFromGame =
-            case state.setup.lastReadingFromGame of
-                Nothing ->
-                    "None so far"
-
-                Just lastReadingFromGame ->
-                    case lastReadingFromGame.stage of
-                        ReadingFromGameInProgress _ ->
-                            "in progress"
-
-                        ReadingFromGameCompleted ->
-                            "completed"
     in
     [ [ fromBot ]
-    , [ "----"
+    , [ "--------"
       , "EVE Online framework status:"
       ]
-    , [ "Last reading from game client: " ++ describeLastReadingFromGame ]
     , inputFocusLines
     ]
         |> List.concat

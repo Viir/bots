@@ -11,7 +11,7 @@ operable program or batch file.
 
 The BotLab client program is a tool for developing and running bots, and many guides assume it is registered on your Windows system. To make these guides and scripts work, follow these steps:
 
-+ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/2023-03-02-botlab-client.zip
++ Download the file from https://botlabs.blob.core.windows.net/blob-library/by-name/2023-03-08-botlab-client.zip
 + Extract the downloaded zip archive. The extraction will give you a file named `BotLab.exe`.
 + Run the `BotLab.exe` program, for example by double clicking the file in the Windows Explorer. It will open a window like in this screenshot:
 

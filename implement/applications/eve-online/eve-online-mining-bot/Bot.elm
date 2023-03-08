@@ -3,10 +3,14 @@
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
 
-   Setup instructions for the EVE Online client:
+   ## Setting up the Game Client
+
+   Despite being quite robust, this bot is less intelligent than a human. For example, his perception is more limited than ours, so we need to configure the game to make sure the bot sees everything it needs to, and we're going to hide some things it doesn't need, here's a list of configuration instructions for the EVE client Online:
 
    + Set the UI language to English.
-   + In the ship UI in the 'Options' menu, tick the checkbox for 'Display Module Tooltips'.
+   + In the ship UI in the 'Options' menu:
+     + Hide passive modules by disabling the checkbox 'Display Passive Modules'.
+     + Tick the checkbox for 'Display Module Tooltips' to enabled.
    + In Overview window, make asteroids visible.
    + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + Open one inventory window.
@@ -277,7 +281,19 @@ continueIfShouldHide config context =
                 )
 
         Nothing ->
-            if not (context |> shouldHideWhenNeutralInLocal) then
+            if context |> quickMessageHasClusterShutdown then
+                Just
+                    (describeBranch
+                        ("Quick Message: "
+                            ++ (context.readingFromGameClient
+                                    |> EveOnline.BotFramework.quickMessageFromReadingFromGameClient
+                                    |> Maybe.withDefault ""
+                               )
+                        )
+                        config.ifShouldHide
+                    )
+
+            else if not (context |> shouldHideWhenNeutralInLocal) then
                 Nothing
 
             else
@@ -391,7 +407,7 @@ closeMessageBox readingFromGameClient =
                     (let
                         buttonCanBeUsedToClose =
                             .mainText
-                                >> Maybe.map (String.trim >> String.toLower >> (\buttonText -> [ "close", "ok" ] |> List.member buttonText))
+                                >> Maybe.map (String.trim >> String.toLower >> (\buttonText -> [ "close", "ok", "quit" ] |> List.member buttonText))
                                 >> Maybe.withDefault False
                      in
                      case messageBox.buttons |> List.filter buttonCanBeUsedToClose |> List.head of
@@ -1158,6 +1174,14 @@ tooltipLooksLikeModuleToActivateAlways context =
                     |> List.head
             )
         >> List.head
+
+
+quickMessageHasClusterShutdown : BotDecisionContext -> Bool
+quickMessageHasClusterShutdown context =
+    context.readingFromGameClient
+        |> EveOnline.BotFramework.quickMessageFromReadingFromGameClient
+        |> Maybe.map (Common.Basics.stringContainsIgnoringCase "Cluster Shutdown")
+        |> Maybe.withDefault False
 
 
 botMain : InterfaceToHost.BotConfig State

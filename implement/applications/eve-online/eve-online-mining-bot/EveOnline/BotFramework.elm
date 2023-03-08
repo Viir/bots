@@ -1687,6 +1687,13 @@ lastContextMenuOrSubmenu =
     .contextMenus >> List.head
 
 
+quickMessageFromReadingFromGameClient : ReadingFromGameClient -> Maybe String
+quickMessageFromReadingFromGameClient =
+    .layerAbovemain
+        >> Maybe.andThen .quickMessage
+        >> Maybe.map (.text >> String.trim)
+
+
 infoPanelRouteFirstMarkerFromReadingFromGameClient : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.InfoPanelRouteRouteElementMarker
 infoPanelRouteFirstMarkerFromReadingFromGameClient =
     .infoPanelContainer

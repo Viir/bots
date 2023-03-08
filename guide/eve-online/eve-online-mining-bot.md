@@ -27,11 +27,15 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from <https://catalog.botlab.org/f830cc8c84a58384> and then run it.
+To start the mining bot, download the script from <https://catalog.botlab.org/f70be31b0f035717> and then run it.
 
 In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
 
 After completing the installation, run the script again to start the mining bot.
+
+The bot needs a few seconds to start and find the EVE Online client process. It also shows status messages to inform what it is doing at the moment and when the startup is complete.
+
+![EVE Online Bot Starting](./image/2023-03-08-botlab-gui-eve-online-bot-startup.png)
 
 From here on, the bot works automatically. It detects the topmost game client window and starts working in that game client.
 
@@ -58,6 +62,7 @@ All settings are optional; you only need them in case the defaults don't fit you
 + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
 + `unload-fleet-hangar-percent` : This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
 + `dock-when-without-drones` : This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`.
++ `repair-before-undocking` : Repair the ship at the station before undocking. The only supported values are `no` and `yes`.
 
 When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of a complete settings string:

@@ -121,7 +121,8 @@ type alias SetupState =
     , requestsToVolatileProcessCount : Int
     , lastRequestToVolatileProcessResult : Maybe (Result String ( InterfaceToHost.RequestToVolatileProcessComplete, Result String VolatileProcessInterface.ResponseFromVolatileHost ))
     , gameClientProcesses : Maybe (List GameClientProcessSummary)
-    , searchUIRootAddressResponse : Maybe VolatileProcessInterface.SearchUIRootAddressResponseStruct
+    , searchUIRootAddressResponse :
+        Maybe { timeInMilliseconds : Int, response : VolatileProcessInterface.SearchUIRootAddressResponseStruct }
     , lastReadingFromGame : Maybe { timeInMilliseconds : Int, stage : ReadingFromGameState }
     , lastEffectFailedToAcquireInputFocus : Maybe String
     , randomIntegers : List Int
@@ -140,7 +141,7 @@ type alias ReadingFromGameClientAggregateState =
 
 
 type SetupTask
-    = ContinueSetup SetupState InterfaceToHost.Task String
+    = ContinueSetup SetupState (Maybe InterfaceToHost.Task) String
     | OperateBot OperateBotConfiguration
     | FrameworkStopSession String
 
@@ -641,17 +642,28 @@ processEventNotWaitingForTaskCompletion :
     -> StateIncludingFramework botSettings botState
     -> ( StateIncludingFramework botSettings botState, InternalBotEventResponse )
 processEventNotWaitingForTaskCompletion botConfiguration botEventContext stateBefore =
-    case stateBefore.setup |> getNextSetupTask botConfiguration stateBefore.botSettings of
-        ContinueSetup setupState setupTask setupTaskDescription ->
+    case
+        stateBefore.setup
+            |> getNextSetupTask
+                { timeInMilliseconds = stateBefore.timeInMilliseconds }
+                botConfiguration
+                stateBefore.botSettings
+    of
+        ContinueSetup setupState maybeSetupTask setupTaskDescription ->
             case List.head stateBefore.waitingForSetupTasks of
                 Nothing ->
                     ( { stateBefore | setup = setupState }
                     , { startTasks =
-                            [ { areaId = "setup"
-                              , task = setupTask
-                              , taskType = Just (SetupTaskType { description = setupTaskDescription })
-                              }
-                            ]
+                            maybeSetupTask
+                                |> Maybe.map
+                                    (\setupTask ->
+                                        [ { areaId = "setup"
+                                          , task = setupTask
+                                          , taskType = Just (SetupTaskType { description = setupTaskDescription })
+                                          }
+                                        ]
+                                    )
+                                |> Maybe.withDefault []
                       , statusText = "Continue setup: " ++ setupTaskDescription
                       , notifyWhenArrivedAtTime = Just { timeInMilliseconds = stateBefore.timeInMilliseconds + 2000 }
                       }
@@ -1046,7 +1058,9 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
 
                 Just responseFromVolatileProcessOk ->
                     setupStateWithScriptRunResult
-                        |> integrateResponseFromVolatileProcess responseFromVolatileProcessOk
+                        |> integrateResponseFromVolatileProcess
+                            { timeInMilliseconds = timeInMilliseconds }
+                            responseFromVolatileProcessOk
 
         InterfaceToHost.OpenWindowResponse _ ->
             setupStateBefore
@@ -1083,10 +1097,11 @@ randomIntegersFromRandomBytes bytes =
 
 
 integrateResponseFromVolatileProcess :
-    VolatileProcessInterface.ResponseFromVolatileHost
+    { timeInMilliseconds : Int }
+    -> VolatileProcessInterface.ResponseFromVolatileHost
     -> SetupState
     -> SetupState
-integrateResponseFromVolatileProcess responseFromVolatileProcess stateBefore =
+integrateResponseFromVolatileProcess { timeInMilliseconds } responseFromVolatileProcess stateBefore =
     case responseFromVolatileProcess of
         VolatileProcessInterface.ListGameClientProcessesResponse gameClientProcesses ->
             { stateBefore | gameClientProcesses = Just gameClientProcesses }
@@ -1094,7 +1109,13 @@ integrateResponseFromVolatileProcess responseFromVolatileProcess stateBefore =
         VolatileProcessInterface.SearchUIRootAddressResponse searchUIRootAddressResponse ->
             let
                 state =
-                    { stateBefore | searchUIRootAddressResponse = Just searchUIRootAddressResponse }
+                    { stateBefore
+                        | searchUIRootAddressResponse =
+                            Just
+                                { timeInMilliseconds = timeInMilliseconds
+                                , response = searchUIRootAddressResponse
+                                }
+                    }
             in
             state
 
@@ -1202,17 +1223,20 @@ parseReadingFromGameClient readingAggregate =
 
 
 getNextSetupTask :
-    BotConfiguration botSettings botState
+    { timeInMilliseconds : Int }
+    -> BotConfiguration botSettings botState
     -> Maybe botSettings
     -> SetupState
     -> SetupTask
-getNextSetupTask botConfiguration botSettings stateBefore =
+getNextSetupTask { timeInMilliseconds } botConfiguration botSettings stateBefore =
     case stateBefore.createVolatileProcessResult of
         Nothing ->
             ContinueSetup
                 stateBefore
-                (InterfaceToHost.CreateVolatileProcess
-                    { programCode = CompilationInterface.SourceFiles.file____EveOnline_VolatileProcess_csx.utf8 }
+                (Just
+                    (InterfaceToHost.CreateVolatileProcess
+                        { programCode = CompilationInterface.SourceFiles.file____EveOnline_VolatileProcess_csx.utf8 }
+                    )
                 )
                 "Setting up volatile process. This can take several seconds, especially when assemblies are not cached yet."
 
@@ -1221,6 +1245,7 @@ getNextSetupTask botConfiguration botSettings stateBefore =
 
         Just (Ok createVolatileProcessComplete) ->
             getSetupTaskWhenVolatileProcessSetupCompleted
+                { timeInMilliseconds = timeInMilliseconds }
                 botConfiguration
                 botSettings
                 stateBefore
@@ -1228,22 +1253,26 @@ getNextSetupTask botConfiguration botSettings stateBefore =
 
 
 getSetupTaskWhenVolatileProcessSetupCompleted :
-    BotConfiguration botSettings appState
+    { timeInMilliseconds : Int }
+    -> BotConfiguration botSettings appState
     -> Maybe botSettings
     -> SetupState
     -> String
     -> SetupTask
-getSetupTaskWhenVolatileProcessSetupCompleted botConfiguration botSettings stateBefore volatileProcessId =
+getSetupTaskWhenVolatileProcessSetupCompleted { timeInMilliseconds } botConfiguration botSettings stateBefore volatileProcessId =
     case stateBefore.gameClientProcesses of
         Nothing ->
-            ContinueSetup stateBefore
-                (InterfaceToHost.RequestToVolatileProcess
-                    (InterfaceToHost.RequestNotRequiringInputFocus
-                        { processId = volatileProcessId
-                        , request =
-                            VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost
-                                VolatileProcessInterface.ListGameClientProcessesRequest
-                        }
+            ContinueSetup
+                stateBefore
+                (Just
+                    (InterfaceToHost.RequestToVolatileProcess
+                        (InterfaceToHost.RequestNotRequiringInputFocus
+                            { processId = volatileProcessId
+                            , request =
+                                VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost
+                                    VolatileProcessInterface.ListGameClientProcessesRequest
+                            }
+                        )
                     )
                 )
                 "Get list of EVE Online client processes."
@@ -1255,16 +1284,23 @@ getSetupTaskWhenVolatileProcessSetupCompleted botConfiguration botSettings state
 
                 Ok gameClientSelection ->
                     let
-                        continueWithSearchUIRootAddress =
-                            ContinueSetup stateBefore
-                                (InterfaceToHost.RequestToVolatileProcess
-                                    (InterfaceToHost.RequestNotRequiringInputFocus
-                                        { processId = volatileProcessId
-                                        , request =
-                                            VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost
-                                                (VolatileProcessInterface.SearchUIRootAddress { processId = gameClientSelection.selectedProcess.processId })
-                                        }
-                                    )
+                        continueWithSearchUIRootAddress timeToSendRequest =
+                            ContinueSetup
+                                stateBefore
+                                (if not timeToSendRequest then
+                                    Nothing
+
+                                 else
+                                    Just
+                                        (InterfaceToHost.RequestToVolatileProcess
+                                            (InterfaceToHost.RequestNotRequiringInputFocus
+                                                { processId = volatileProcessId
+                                                , request =
+                                                    VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileHost
+                                                        (VolatileProcessInterface.SearchUIRootAddress { processId = gameClientSelection.selectedProcess.processId })
+                                                }
+                                            )
+                                        )
                                 )
                                 ((("Search the address of the UI root in process "
                                     ++ (gameClientSelection.selectedProcess.processId |> String.fromInt)
@@ -1276,16 +1312,20 @@ getSetupTaskWhenVolatileProcessSetupCompleted botConfiguration botSettings state
                     in
                     case stateBefore.searchUIRootAddressResponse of
                         Nothing ->
-                            continueWithSearchUIRootAddress
+                            continueWithSearchUIRootAddress True
 
-                        Just searchResult ->
-                            if searchResult.processId /= gameClientSelection.selectedProcess.processId then
-                                continueWithSearchUIRootAddress
+                        Just responseAtTime ->
+                            let
+                                timeToSendRequest =
+                                    1000 < timeInMilliseconds - responseAtTime.timeInMilliseconds
+                            in
+                            if responseAtTime.response.processId /= gameClientSelection.selectedProcess.processId then
+                                continueWithSearchUIRootAddress timeToSendRequest
 
                             else
-                                case searchResult.stage of
+                                case responseAtTime.response.stage of
                                     VolatileProcessInterface.SearchUIRootAddressInProgress _ ->
-                                        continueWithSearchUIRootAddress
+                                        continueWithSearchUIRootAddress timeToSendRequest
 
                                     VolatileProcessInterface.SearchUIRootAddressCompleted searchRootCompleted ->
                                         case searchRootCompleted.uiRootAddress of

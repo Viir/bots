@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-03-08
+{- EVE Online mining bot version 2023-03-17
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -90,6 +90,7 @@ import EveOnline.ParseUserInterface
         , UITreeNodeWithDisplayRegion
         , centerFromDisplayRegion
         )
+import Maybe.Extra
 import Regex
 
 
@@ -277,48 +278,45 @@ continueIfShouldHide config context =
                 )
 
         Nothing ->
-            if context |> quickMessageHasClusterShutdown then
-                Just
-                    (describeBranch
-                        ("Quick Message: "
-                            ++ (context.readingFromGameClient
-                                    |> EveOnline.BotFramework.quickMessageFromReadingFromGameClient
-                                    |> Maybe.withDefault ""
-                               )
+            case context |> quickMessageHasClusterShutdown of
+                Just shutdownMessage ->
+                    Just
+                        (describeBranch
+                            ("Quick Message: " ++ shutdownMessage)
+                            config.ifShouldHide
                         )
-                        config.ifShouldHide
-                    )
 
-            else if not (context |> shouldHideWhenNeutralInLocal) then
-                Nothing
+                Nothing ->
+                    if not (context |> shouldHideWhenNeutralInLocal) then
+                        Nothing
 
-            else
-                case context.readingFromGameClient |> localChatWindowFromUserInterface of
-                    Nothing ->
-                        Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
+                    else
+                        case context.readingFromGameClient |> localChatWindowFromUserInterface of
+                            Nothing ->
+                                Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
 
-                    Just localChatWindow ->
-                        let
-                            chatUserHasGoodStanding chatUser =
-                                goodStandingPatterns
-                                    |> List.any
-                                        (\goodStandingPattern ->
-                                            chatUser.standingIconHint
-                                                |> Maybe.map (stringContainsIgnoringCase goodStandingPattern)
-                                                |> Maybe.withDefault False
-                                        )
+                            Just localChatWindow ->
+                                let
+                                    chatUserHasGoodStanding chatUser =
+                                        goodStandingPatterns
+                                            |> List.any
+                                                (\goodStandingPattern ->
+                                                    chatUser.standingIconHint
+                                                        |> Maybe.map (stringContainsIgnoringCase goodStandingPattern)
+                                                        |> Maybe.withDefault False
+                                                )
 
-                            subsetOfUsersWithNoGoodStanding =
-                                localChatWindow.userlist
-                                    |> Maybe.map .visibleUsers
-                                    |> Maybe.withDefault []
-                                    |> List.filter (chatUserHasGoodStanding >> not)
-                        in
-                        if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
-                            Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+                                    subsetOfUsersWithNoGoodStanding =
+                                        localChatWindow.userlist
+                                            |> Maybe.map .visibleUsers
+                                            |> Maybe.withDefault []
+                                            |> List.filter (chatUserHasGoodStanding >> not)
+                                in
+                                if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                                    Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
 
-                        else
-                            Nothing
+                                else
+                                    Nothing
 
 
 shouldHideWhenNeutralInLocal : BotDecisionContext -> Bool
@@ -1172,12 +1170,11 @@ tooltipLooksLikeModuleToActivateAlways context =
         >> List.head
 
 
-quickMessageHasClusterShutdown : BotDecisionContext -> Bool
+quickMessageHasClusterShutdown : BotDecisionContext -> Maybe String
 quickMessageHasClusterShutdown context =
     context.readingFromGameClient
         |> EveOnline.BotFramework.quickMessageFromReadingFromGameClient
-        |> Maybe.map (Common.Basics.stringContainsIgnoringCase "Cluster Shutdown")
-        |> Maybe.withDefault False
+        |> Maybe.Extra.filter (Common.Basics.stringContainsIgnoringCase "Cluster Shutdown")
 
 
 botMain : InterfaceToHost.BotConfig State

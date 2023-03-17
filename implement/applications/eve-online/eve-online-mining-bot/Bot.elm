@@ -277,7 +277,19 @@ continueIfShouldHide config context =
                 )
 
         Nothing ->
-            if not (context |> shouldHideWhenNeutralInLocal) then
+            if context |> quickMessageHasClusterShutdown then
+                Just
+                    (describeBranch
+                        ("Quick Message: "
+                            ++ (context.readingFromGameClient
+                                    |> EveOnline.BotFramework.quickMessageFromReadingFromGameClient
+                                    |> Maybe.withDefault ""
+                               )
+                        )
+                        config.ifShouldHide
+                    )
+
+            else if not (context |> shouldHideWhenNeutralInLocal) then
                 Nothing
 
             else
@@ -1158,6 +1170,14 @@ tooltipLooksLikeModuleToActivateAlways context =
                     |> List.head
             )
         >> List.head
+
+
+quickMessageHasClusterShutdown : BotDecisionContext -> Bool
+quickMessageHasClusterShutdown context =
+    context.readingFromGameClient
+        |> EveOnline.BotFramework.quickMessageFromReadingFromGameClient
+        |> Maybe.map (Common.Basics.stringContainsIgnoringCase "Cluster Shutdown")
+        |> Maybe.withDefault False
 
 
 botMain : InterfaceToHost.BotConfig State

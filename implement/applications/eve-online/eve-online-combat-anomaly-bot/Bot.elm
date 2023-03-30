@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2023-03-08
+{- EVE Online combat anomaly bot version 2023-03-30
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -587,7 +587,12 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
         overviewEntriesToAttack =
             seeUndockingComplete.overviewWindows
                 |> List.concatMap .entries
-                |> List.sortBy (.objectDistanceInMeters >> Result.withDefault 999999)
+                {-
+                   2023-03-30
+                   Change to sort by display location after Wombat shared his experience in EVE Online at https://forum.botlab.org/t/eve-online-anomaly-ratting-bot-release/87/340
+                   |> List.sortBy (.objectDistanceInMeters >> Result.withDefault 999999)
+                -}
+                |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
                 |> List.filter shouldAttackOverviewEntry
 
         overviewEntriesToLock =
@@ -603,6 +608,7 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
 
         ensureShipIsOrbitingDecision =
             overviewEntriesToAttack
+                |> List.reverse
                 |> List.head
                 |> Maybe.andThen (\overviewEntryToAttack -> ensureShipIsOrbiting seeUndockingComplete.shipUI overviewEntryToAttack)
 

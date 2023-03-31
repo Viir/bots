@@ -46,7 +46,6 @@ import EveOnline.BotFramework
         , ShipModulesMemory
         , infoPanelRouteFirstMarkerFromReadingFromGameClient
         , menuCascadeCompleted
-        , mouseClickOnUIElement
         , shipUIIndicatesShipIsWarpingOrJumping
         , useMenuEntryWithTextContainingFirstOf
         )
@@ -55,7 +54,7 @@ import EveOnline.BotFrameworkSeparatingMemory
         ( DecisionPathNode
         , UpdateMemoryContext
         , branchDependingOnDockedOrInSpace
-        , decideActionForCurrentStep
+        , clickModuleButtonButWaitIfClickedInPreviousStep
         , useContextMenuCascade
         , waitForProgressInGame
         )
@@ -184,9 +183,7 @@ decideStepWhenInSpaceWaiting context =
         Just ( inactiveModuleMatchingText, inactiveModule ) ->
             describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
                 (describeBranch "Click on the module."
-                    (decideActionForCurrentStep
-                        (inactiveModule.uiNode |> mouseClickOnUIElement MouseButtonLeft)
-                    )
+                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                 )
 
         Nothing ->

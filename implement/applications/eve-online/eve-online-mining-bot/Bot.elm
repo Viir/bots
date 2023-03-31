@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-03-17
+{- EVE Online mining bot version 2023-03-31
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -60,11 +60,11 @@ import EveOnline.BotFramework
         , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
-        , doEffectsClickModuleButton
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
         , mouseClickOnUIElement
         , shipUIIndicatesShipIsWarpingOrJumping
+        , uiNodeVisibleRegionLargeEnoughForClicking
         , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
         , useMenuEntryWithTextContainingFirstOf
@@ -77,6 +77,7 @@ import EveOnline.BotFrameworkSeparatingMemory
         , EndDecisionPathStructure(..)
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
+        , clickModuleButtonButWaitIfClickedInPreviousStep
         , decideActionForCurrentStep
         , ensureInfoPanelLocationInfoIsExpanded
         , useContextMenuCascade
@@ -87,11 +88,11 @@ import EveOnline.BotFrameworkSeparatingMemory
 import EveOnline.ParseUserInterface
     exposing
         ( OverviewWindowEntry
-        , UITreeNodeWithDisplayRegion
         , centerFromDisplayRegion
         )
 import Maybe.Extra
 import Regex
+import Result.Extra
 
 
 {-| Sources for the defaults:
@@ -411,8 +412,10 @@ closeMessageBox readingFromGameClient =
                         Just buttonToUse ->
                             describeBranch
                                 ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
-                                (decideActionForCurrentStep
-                                    (mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode)
+                                (mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode
+                                    |> Result.Extra.unpack
+                                        (always (describeBranch "Failed to click" askForHelpToGetUnstuck))
+                                        decideActionForCurrentStep
                                 )
                     )
             )
@@ -481,8 +484,10 @@ inSpaceWithMiningHoldSelectedWithFleetHangar _ inventoryWindowWithMiningHoldSele
             case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
                     describeBranch "I see no item in the mining hold. Click the tree entry representing the fleet Hangar."
-                        (decideActionForCurrentStep
-                            (mouseClickOnUIElement MouseButtonLeft fleetHangarFromInventory)
+                        (mouseClickOnUIElement MouseButtonLeft fleetHangarFromInventory
+                            |> Result.Extra.unpack
+                                (always (describeBranch "Failed to click" askForHelpToGetUnstuck))
+                                decideActionForCurrentStep
                         )
 
                 Just itemInInventory ->
@@ -520,8 +525,10 @@ undockUsingStationWindow context { ifCannotReachButton } =
 
                 Just undockButton ->
                     describeBranch "Click on the button to undock."
-                        (decideActionForCurrentStep
-                            (mouseClickOnUIElement MouseButtonLeft undockButton)
+                        (mouseClickOnUIElement MouseButtonLeft undockButton
+                            |> Result.Extra.unpack
+                                (always ifCannotReachButton)
+                                decideActionForCurrentStep
                         )
 
 
@@ -576,22 +583,34 @@ checkAndRepairBeforeUndockingUsingContextMenu context inventoryWindowWithMiningH
                     Nothing ->
                         Nothing
 
-                    Just itemsRepair ->
+                    Just itemToRepair ->
                         Just
-                            (describeBranch "It has items to repair, selecting the first item."
-                                (case repairShopWindow.buttons |> List.filter buttonUsed |> List.head of
-                                    Just btnRepairAll ->
-                                        describeBranch "I see the repair all button, i'm going to click it."
-                                            (decideActionForCurrentStep
-                                                ([ mouseClickOnUIElement MouseButtonLeft itemsRepair
-                                                 , mouseClickOnUIElement MouseButtonLeft btnRepairAll.uiNode
-                                                 ]
-                                                    |> List.concat
-                                                )
-                                            )
+                            (describeBranch "There is at least one item to repair."
+                                (case mouseClickOnUIElement MouseButtonLeft itemToRepair of
+                                    Err _ ->
+                                        describeBranch "Failed to click" askForHelpToGetUnstuck
 
-                                    Nothing ->
-                                        describeBranch "It has items to repair, but I do not see the repair all button." askForHelpToGetUnstuck
+                                    Ok clickItemToRepair ->
+                                        case repairShopWindow.buttons |> List.filter buttonUsed |> List.head of
+                                            Just btnRepairAll ->
+                                                describeBranch "I see the repair all button, I'm going to click it."
+                                                    (case mouseClickOnUIElement MouseButtonLeft btnRepairAll.uiNode of
+                                                        Err _ ->
+                                                            describeBranch "Failed to click" askForHelpToGetUnstuck
+
+                                                        Ok clickButtonToRepair ->
+                                                            decideActionForCurrentStep
+                                                                ([ clickItemToRepair
+                                                                 , clickButtonToRepair
+                                                                 ]
+                                                                    |> List.concat
+                                                                )
+                                                    )
+
+                                            Nothing ->
+                                                describeBranch
+                                                    "I do not see the repair all button."
+                                                    askForHelpToGetUnstuck
                                 )
                             )
 
@@ -806,15 +825,19 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
 
                                                 Just toggleBtn ->
                                                     describeBranch "Click the toggle button to expand."
-                                                        (decideActionForCurrentStep
-                                                            (mouseClickOnUIElement MouseButtonLeft toggleBtn)
+                                                        (mouseClickOnUIElement MouseButtonLeft toggleBtn
+                                                            |> Result.Extra.unpack
+                                                                (always (describeBranch "Failed to click" askForHelpToGetUnstuck))
+                                                                decideActionForCurrentStep
                                                         )
                                             )
 
                                     Just miningHoldTreeEntry ->
                                         describeBranch "Click the tree entry representing the mining hold."
-                                            (decideActionForCurrentStep
-                                                (mouseClickOnUIElement MouseButtonLeft miningHoldTreeEntry.uiNode)
+                                            (mouseClickOnUIElement MouseButtonLeft miningHoldTreeEntry.uiNode
+                                                |> Result.Extra.unpack
+                                                    (always (describeBranch "Failed to click" askForHelpToGetUnstuck))
+                                                    decideActionForCurrentStep
                                             )
                         )
 
@@ -1358,18 +1381,6 @@ shouldDockBecauseDroneWindowWasInvisibleTooLong memory =
         && List.all ((==) False) memory.lastReadingsInSpaceDronesWindowWasVisible
 
 
-clickModuleButtonButWaitIfClickedInPreviousStep : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUIModuleButton -> DecisionPathNode
-clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
-    if doEffectsClickModuleButton moduleButton context.previousStepEffects then
-        describeBranch "Already clicked on this module button in previous step." waitForProgressInGame
-
-    else
-        describeBranch "Click on this module button."
-            (decideActionForCurrentStep
-                (mouseClickOnUIElement MouseButtonLeft moduleButton.uiNode)
-            )
-
-
 ensureUserEnabledNameColumnInOverview : { ifEnabled : DecisionPathNode, ifDisabled : DecisionPathNode } -> SeeUndockingComplete -> DecisionPathNode
 ensureUserEnabledNameColumnInOverview { ifEnabled, ifDisabled } seeUndockingComplete =
     if
@@ -1397,7 +1408,7 @@ activeShipTreeEntryFromInventoryWindow =
 clickableAsteroidsFromOverviewWindow : ReadingFromGameClient -> List OverviewWindowEntry
 clickableAsteroidsFromOverviewWindow =
     overviewWindowEntriesRepresentingAsteroids
-        >> List.filter (.uiNode >> uiNodeIsLargeEnoughForClicking)
+        >> List.filter (.uiNode >> uiNodeVisibleRegionLargeEnoughForClicking)
         >> List.filter (.opacityPercent >> Maybe.map ((<=) 50) >> Maybe.withDefault True)
         >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
 
@@ -1515,11 +1526,6 @@ shipManeuverIsApproaching =
         >> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverApproach)
         -- If the ship is just floating in space, there might be no indication displayed.
         >> Maybe.withDefault False
-
-
-uiNodeIsLargeEnoughForClicking : UITreeNodeWithDisplayRegion -> Bool
-uiNodeIsLargeEnoughForClicking node =
-    3 < node.totalDisplayRegionVisible.width && 3 < node.totalDisplayRegionVisible.height
 
 
 containsSelectionIndicatorPhotonUI : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion -> Bool

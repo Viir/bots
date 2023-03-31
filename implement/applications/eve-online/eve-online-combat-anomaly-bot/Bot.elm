@@ -59,7 +59,7 @@ module Bot exposing
 
 import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.AppSettings as AppSettings
-import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
+import Common.Basics exposing (listElementAtWrappedIndex, resultFirstSuccessOrFirstError, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
@@ -70,12 +70,12 @@ import EveOnline.BotFramework
         , SeeUndockingComplete
         , ShipModulesMemory
         , UseContextMenuCascadeNode(..)
-        , doEffectsClickModuleButton
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
         , mouseClickOnUIElement
         , pickEntryFromLastContextMenuInCascade
         , shipUIIndicatesShipIsWarpingOrJumping
+        , uiNodeVisibleRegionLargeEnoughForClicking
         , useMenuEntryWithTextContaining
         , useMenuEntryWithTextContainingFirstOf
         , useMenuEntryWithTextEqual
@@ -86,6 +86,7 @@ import EveOnline.BotFrameworkSeparatingMemory
         , UpdateMemoryContext
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
+        , clickModuleButtonButWaitIfClickedInPreviousStep
         , decideActionForCurrentStep
         , ensureInfoPanelLocationInfoIsExpanded
         , useContextMenuCascade
@@ -99,6 +100,7 @@ import EveOnline.ParseUserInterface
         , ShipUI
         , ShipUIModuleButton
         )
+import Result.Extra
 import Set
 
 
@@ -334,7 +336,10 @@ anomalyBotDecisionRootBeforeApplyingSettings context =
                             describeBranch "Stay docked." waitForProgressInGame
                         }
                         context
-                        |> Maybe.withDefault (undockUsingStationWindow context)
+                        |> Maybe.withDefault
+                            (undockUsingStationWindow context
+                                { ifCannotReachButton = describeBranch "No alternative for undocking" askForHelpToGetUnstuck }
+                            )
                 , ifSeeShipUI =
                     always
                         (continueIfShouldHide
@@ -382,9 +387,12 @@ closeMessageBox readingFromGameClient =
                             describeBranch "I see no way to close this message box." askForHelpToGetUnstuck
 
                         Just buttonToUse ->
-                            describeBranch ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
-                                (decideActionForCurrentStep
-                                    (mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode)
+                            describeBranch
+                                ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
+                                (mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode
+                                    |> Result.Extra.unpack
+                                        (always (describeBranch "Failed to click" askForHelpToGetUnstuck))
+                                        decideActionForCurrentStep
                                 )
                     )
             )
@@ -553,26 +561,31 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                                     )
 
 
-undockUsingStationWindow : BotDecisionContext -> DecisionPathNode
-undockUsingStationWindow context =
+undockUsingStationWindow :
+    BotDecisionContext
+    -> { ifCannotReachButton : DecisionPathNode }
+    -> DecisionPathNode
+undockUsingStationWindow context { ifCannotReachButton } =
     case context.readingFromGameClient.stationWindow of
         Nothing ->
-            describeBranch "I do not see the station window." askForHelpToGetUnstuck
+            describeBranch "I do not see the station window." ifCannotReachButton
 
         Just stationWindow ->
             case stationWindow.undockButton of
                 Nothing ->
                     case stationWindow.abortUndockButton of
                         Nothing ->
-                            describeBranch "I do not see the undock button." askForHelpToGetUnstuck
+                            describeBranch "I do not see the undock button." ifCannotReachButton
 
                         Just _ ->
                             describeBranch "I see we are already undocking." waitForProgressInGame
 
                 Just undockButton ->
                     describeBranch "Click on the button to undock."
-                        (decideActionForCurrentStep
-                            (mouseClickOnUIElement MouseButtonLeft undockButton)
+                        (mouseClickOnUIElement MouseButtonLeft undockButton
+                            |> Result.Extra.unpack
+                                (always ifCannotReachButton)
+                                decideActionForCurrentStep
                         )
 
 
@@ -598,6 +611,7 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
         overviewEntriesToLock =
             overviewEntriesToAttack
                 |> List.filter (overviewEntryIsTargetedOrTargeting >> not)
+                |> List.map (lockTargetFromOverviewEntry context)
 
         targetsToUnlock =
             if overviewEntriesToAttack |> List.any overviewEntryIsActiveTarget then
@@ -630,6 +644,20 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
             else
                 describeBranch "Wait for target locking to complete." waitForProgressInGame
 
+        continueLockOverviewEntries { ifNoEntryToLock } =
+            case resultFirstSuccessOrFirstError overviewEntriesToLock of
+                Nothing ->
+                    describeBranch "I see no more overview entries to lock."
+                        ifNoEntryToLock
+
+                Just nextOverviewEntryToLockResult ->
+                    describeBranch "I see an overview entry to lock."
+                        (nextOverviewEntryToLockResult
+                            |> Result.Extra.unpack
+                                (describeBranch >> (|>) askForHelpToGetUnstuck)
+                                identity
+                        )
+
         decisionToKillRats =
             case targetsToUnlock |> List.head of
                 Just targetToUnlock ->
@@ -644,18 +672,7 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                     case context.readingFromGameClient.targets |> List.head of
                         Nothing ->
                             describeBranch "I see no locked target."
-                                (case overviewEntriesToLock of
-                                    [] ->
-                                        describeBranch "I see no overview entry to lock."
-                                            decisionIfNoEnemyToAttack
-
-                                    nextOverviewEntryToLock :: _ ->
-                                        describeBranch "I see an overview entry to lock."
-                                            (lockTargetFromOverviewEntry
-                                                nextOverviewEntryToLock
-                                                context
-                                            )
-                                )
+                                (continueLockOverviewEntries { ifNoEntryToLock = decisionIfNoEnemyToAttack })
 
                         Just _ ->
                             describeBranch "I see a locked target."
@@ -669,16 +686,8 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                                                             describeBranch "Enough locked targets." waitForProgressInGame
 
                                                          else
-                                                            case overviewEntriesToLock of
-                                                                [] ->
-                                                                    describeBranch "I see no more overview entries to lock." waitForProgressInGame
-
-                                                                nextOverviewEntryToLock :: _ ->
-                                                                    describeBranch "Lock more targets."
-                                                                        (lockTargetFromOverviewEntry
-                                                                            nextOverviewEntryToLock
-                                                                            context
-                                                                        )
+                                                            continueLockOverviewEntries
+                                                                { ifNoEntryToLock = waitForProgressInGame }
                                                         )
                                                     )
                                             )
@@ -689,7 +698,11 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                                 )
     in
     if context.eventContext.botSettings.orbitInCombat == AppSettings.Yes then
-        ensureShipIsOrbitingDecision |> Maybe.withDefault decisionToKillRats
+        ensureShipIsOrbitingDecision
+            |> Maybe.withDefault (Ok decisionToKillRats)
+            |> Result.Extra.unpack
+                (describeBranch >> (|>) decisionToKillRats)
+                identity
 
     else
         decisionToKillRats
@@ -740,22 +753,29 @@ enterAnomaly { ifNoAcceptableAnomalyAvailable } context =
                         )
 
 
-ensureShipIsOrbiting : ShipUI -> OverviewWindowEntry -> Maybe DecisionPathNode
+ensureShipIsOrbiting : ShipUI -> OverviewWindowEntry -> Maybe (Result String DecisionPathNode)
 ensureShipIsOrbiting shipUI overviewEntryToOrbit =
     if (shipUI.indication |> Maybe.andThen .maneuverType) == Just EveOnline.ParseUserInterface.ManeuverOrbit then
         Nothing
 
     else
         Just
-            (describeBranch "Press the 'W' key and click on the overview entry."
-                (decideActionForCurrentStep
-                    ([ [ EffectOnWindow.KeyDown EffectOnWindow.vkey_W ]
-                     , overviewEntryToOrbit.uiNode |> mouseClickOnUIElement MouseButtonLeft
-                     , [ EffectOnWindow.KeyUp EffectOnWindow.vkey_W ]
-                     ]
-                        |> List.concat
-                    )
-                )
+            (case mouseClickOnUIElement MouseButtonLeft overviewEntryToOrbit.uiNode of
+                Err _ ->
+                    Err "Failed to click"
+
+                Ok effectToClick ->
+                    Ok
+                        (describeBranch "Press the 'W' key and click on the overview entry."
+                            (decideActionForCurrentStep
+                                ([ [ EffectOnWindow.KeyDown EffectOnWindow.vkey_W ]
+                                 , effectToClick
+                                 , [ EffectOnWindow.KeyUp EffectOnWindow.vkey_W ]
+                                 ]
+                                    |> List.concat
+                                )
+                            )
+                        )
             )
 
 
@@ -847,14 +867,23 @@ returnDronesToBay context =
             )
 
 
-lockTargetFromOverviewEntry : OverviewWindowEntry -> BotDecisionContext -> DecisionPathNode
-lockTargetFromOverviewEntry overviewEntry context =
-    describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
-        (useContextMenuCascadeOnOverviewEntry
-            (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
-            overviewEntry
-            context
-        )
+lockTargetFromOverviewEntry :
+    BotDecisionContext
+    -> OverviewWindowEntry
+    -> Result String DecisionPathNode
+lockTargetFromOverviewEntry context overviewEntry =
+    if uiNodeVisibleRegionLargeEnoughForClicking overviewEntry.uiNode then
+        Ok
+            (describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
+                (useContextMenuCascadeOnOverviewEntry
+                    (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
+                    overviewEntry
+                    context
+                )
+            )
+
+    else
+        Err "Unable to click this overview entry because more of it needs to be visible."
 
 
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
@@ -989,18 +1018,6 @@ statusTextFromState context =
     ]
         |> List.concat
         |> String.join "\n"
-
-
-clickModuleButtonButWaitIfClickedInPreviousStep : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUIModuleButton -> DecisionPathNode
-clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
-    if doEffectsClickModuleButton moduleButton context.previousStepEffects then
-        describeBranch "Already clicked on this module button in previous step." waitForProgressInGame
-
-    else
-        describeBranch "Click on this module button."
-            (decideActionForCurrentStep
-                (mouseClickOnUIElement MouseButtonLeft moduleButton.uiNode)
-            )
 
 
 overviewEntryIsTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool

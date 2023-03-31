@@ -29,6 +29,7 @@ import EveOnline.BotFramework
         , UseContextMenuCascadeNode
         , asReadingFromGameClientMemory
         , closestPointOnRectangleEdge
+        , doEffectsClickModuleButton
         , getModuleButtonTooltipFromModuleButton
         , growRegionOnAllSides
         , isPointInRectangle
@@ -41,6 +42,7 @@ import EveOnline.ParseUserInterface
         , subtractRegionsFromRegion
         )
 import List.Extra
+import Result.Extra
 
 
 type EndDecisionPathStructure
@@ -465,7 +467,11 @@ useContextMenuCascadeWithCustomConfig filterToDiscardContextMenu target useConte
                                                 Nothing ->
                                                     beginCascade
 
-                                                Just effectsToGameClient ->
+                                                Just (Err _) ->
+                                                    Common.DecisionPath.describeBranch "Failed to perform this action"
+                                                        beginCascade
+
+                                                Just (Ok effectsToGameClient) ->
                                                     decideActionForCurrentStep effectsToGameClient
                                             )
 
@@ -529,12 +535,15 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
                             Common.DecisionPath.describeBranch "I do not see the icon for the location info panel." askForHelpToGetUnstuck
 
                         Just iconLocationInfoPanel ->
-                            Common.DecisionPath.describeBranch
-                                "Click on the icon to enable the info panel."
-                                (iconLocationInfoPanel
-                                    |> mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft
-                                    |> decideActionForCurrentStep
-                                )
+                            case mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft iconLocationInfoPanel of
+                                Err _ ->
+                                    Common.DecisionPath.describeBranch "Failed to click the icon to enable the info panel."
+                                        askForHelpToGetUnstuck
+
+                                Ok clickEffect ->
+                                    Common.DecisionPath.describeBranch
+                                        "Click on the icon to enable the info panel."
+                                        (decideActionForCurrentStep clickEffect)
                     )
                 )
 
@@ -618,6 +627,24 @@ readShipUIModuleButtonTooltipWhereNotYetInMemory context =
                     (decideActionForCurrentStep
                         (EveOnline.BotFramework.mouseMoveToUIElement moduleButtonWithoutMemoryOfTooltip.uiNode)
                     )
+            )
+
+
+clickModuleButtonButWaitIfClickedInPreviousStep :
+    StepDecisionContext s m
+    -> EveOnline.ParseUserInterface.ShipUIModuleButton
+    -> DecisionPathNode
+clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
+    if doEffectsClickModuleButton moduleButton context.previousStepEffects then
+        Common.DecisionPath.describeBranch "Already clicked on this module button in previous step."
+            waitForProgressInGame
+
+    else
+        Common.DecisionPath.describeBranch "Click on this module button."
+            (mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft moduleButton.uiNode
+                |> Result.Extra.unpack
+                    (always (Common.DecisionPath.describeBranch "Failed to click" askForHelpToGetUnstuck))
+                    decideActionForCurrentStep
             )
 
 

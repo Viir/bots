@@ -1603,7 +1603,7 @@ With the switch to the new 'Photon UI' in the game client, the effects used to e
 -}
 unpackContextMenuTreeToListOfActionsDependingOnReadings :
     UseContextMenuCascadeNode
-    -> List (ReadingFromGameClient -> ( String, Maybe (List Common.EffectOnWindow.EffectOnWindowStructure) ))
+    -> List (ReadingFromGameClient -> ( String, Maybe (Result () (List Common.EffectOnWindow.EffectOnWindowStructure)) ))
 unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
     let
         actionFromChoice { isLastElement } ( describeChoice, chooseEntry ) =
@@ -1622,7 +1622,7 @@ unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
 
                         else
                             ( "Hover menu entry " ++ describeChoice ++ "."
-                            , menuEntry.uiNode |> mouseMoveToUIElement |> Just
+                            , menuEntry.uiNode |> mouseMoveToUIElement |> Ok |> Just
                             )
                     )
                 >> Maybe.withDefault
@@ -1658,11 +1658,33 @@ mouseMoveToUIElement uiElement =
         (uiElement.totalDisplayRegionVisible |> centerFromDisplayRegion)
 
 
-mouseClickOnUIElement : Common.EffectOnWindow.MouseButton -> UIElement -> List Common.EffectOnWindow.EffectOnWindowStructure
+{-| Composes a sequence of actions to click on the given UI element.
+Returns an error when too much of the given UI element is invisible, for example, because of occlusion.
+Other UI elements like windows or context menus could occlude this UI element, preventing us from a direct click in the current step.
+In that case, different strategies will lead to an alternate solution to achieve the desired action in the game, depending on the context.
+-}
+mouseClickOnUIElement :
+    Common.EffectOnWindow.MouseButton
+    -> UIElement
+    -> Result () (List Common.EffectOnWindow.EffectOnWindowStructure)
 mouseClickOnUIElement mouseButton uiElement =
-    Common.EffectOnWindow.effectsMouseClickAtLocation
-        mouseButton
-        (uiElement.totalDisplayRegionVisible |> centerFromDisplayRegion)
+    if uiNodeVisibleRegionLargeEnoughForClicking uiElement then
+        Ok
+            (Common.EffectOnWindow.effectsMouseClickAtLocation
+                mouseButton
+                (uiElement.totalDisplayRegionVisible |> centerFromDisplayRegion)
+            )
+
+    else
+        Err ()
+
+
+{-| Checks if the visible portion of the display region of the given element is large enough for clicking on it.
+Other UI elements like windows or context menus could occlude this UI element, preventing us from a direct click in the current step.
+-}
+uiNodeVisibleRegionLargeEnoughForClicking : UIElement -> Bool
+uiNodeVisibleRegionLargeEnoughForClicking node =
+    3 < node.totalDisplayRegionVisible.width && 3 < node.totalDisplayRegionVisible.height
 
 
 type UseContextMenuCascadeNode

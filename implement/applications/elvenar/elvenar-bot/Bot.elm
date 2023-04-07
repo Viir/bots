@@ -1,4 +1,4 @@
-{- Elvenar Bot version 2023-02-11
+{- Elvenar Bot version 2023-04-07
 
    This bot collects coins in the Elvenar game client window.
 

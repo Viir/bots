@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2023-02-14
+{- Tribal Wars 2 farmbot version 2023-04-07
 
    This bot farms barbarian villages in Tribal Wars 2. It automatically detects barbarian villages, available troops and configured army presets to attack.
 
@@ -104,61 +104,91 @@ parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
     AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "number-of-farm-cycles"
-           , AppSettings.valueTypeInteger
-                (\numberOfFarmCycles settings ->
-                    { settings | numberOfFarmCycles = numberOfFarmCycles }
-                )
+           , { description = "Number of farm cycles before the bot stops. The default is only one (`1`) cycle."
+             , valueParser =
+                AppSettings.valueTypeInteger
+                    (\numberOfFarmCycles settings ->
+                        { settings | numberOfFarmCycles = numberOfFarmCycles }
+                    )
+             }
            )
          , ( "break-duration"
-           , parseBotSettingBreakDurationMinutes
+           , { description = "Duration of breaks between farm cycles, in minutes. You can also specify a range like `60 - 120`. The bot then picks a random value in this range."
+             , valueParser = parseBotSettingBreakDurationMinutes
+             }
            )
          , ( "farm-barb-min-points"
-           , AppSettings.valueTypeInteger
-                (\minimumPoints settings ->
-                    { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }
-                )
+           , { description = "Minimum points of barbarian villages to attack."
+             , valueParser =
+                AppSettings.valueTypeInteger
+                    (\minimumPoints settings ->
+                        { settings | farmBarbarianVillageMinimumPoints = Just minimumPoints }
+                    )
+             }
            )
          , ( "farm-barb-max-distance"
-           , AppSettings.valueTypeInteger
-                (\maxDistance settings ->
-                    { settings | farmBarbarianVillageMaximumDistance = maxDistance }
-                )
+           , { description = "Maximum distance of barbarian villages to attack."
+             , valueParser =
+                AppSettings.valueTypeInteger
+                    (\maxDistance settings ->
+                        { settings | farmBarbarianVillageMaximumDistance = maxDistance }
+                    )
+             }
            )
          , ( "farm-avoid-coordinates"
-           , parseSettingFarmAvoidCoordinates
+           , { description = "List of village coordinates to avoid when farming. Here is an example with two coordinates: '567|456 413|593'. This filter applies to both target and sending villages."
+             , valueParser = parseSettingFarmAvoidCoordinates
+             }
            )
          , ( "farm-player"
-           , AppSettings.valueTypeString
-                (\playerName settings ->
-                    { settings | playersToFarm = playerName :: settings.playersToFarm }
-                )
+           , { description = "Name of a player/character to farm. By default, the bot only farms barbarians, but this setting allows you to also farm players."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\playerName settings ->
+                        { settings | playersToFarm = playerName :: settings.playersToFarm }
+                    )
+             }
            )
          , ( "farm-army-preset-pattern"
-           , AppSettings.valueTypeString
-                (\presetPattern settings ->
-                    { settings | farmArmyPresetPatterns = presetPattern :: settings.farmArmyPresetPatterns }
-                )
+           , { description = "Text for filtering the army presets to use for farm attacks. Army presets only pass the filter when their name contains this text."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\presetPattern settings ->
+                        { settings | farmArmyPresetPatterns = presetPattern :: settings.farmArmyPresetPatterns }
+                    )
+             }
            )
          , ( "limit-outgoing-commands-per-village"
-           , parseBotSettingLimitOutgoingCommandsPerVillage
+           , { description = "The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45 - 48`. The bot then picks a random value in this range for each village."
+             , valueParser = parseBotSettingLimitOutgoingCommandsPerVillage
+             }
            )
          , ( "restart-game-client-after-break"
-           , AppSettings.valueTypeYesOrNo
-                (\restartGameClientAfterBreak settings ->
-                    { settings | restartGameClientAfterBreak = restartGameClientAfterBreak }
-                )
+           , { description = "Set this to 'yes' to make the bot restart the game client/web browser after each break."
+             , valueParser =
+                AppSettings.valueTypeYesOrNo
+                    (\restartGameClientAfterBreak settings ->
+                        { settings | restartGameClientAfterBreak = restartGameClientAfterBreak }
+                    )
+             }
            )
          , ( "open-website-on-start"
-           , AppSettings.valueTypeString
-                (\openWebsiteOnStart settings ->
-                    { settings | openWebsiteOnStart = Just openWebsiteOnStart }
-                )
+           , { description = "Website to open when starting the web browser."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\openWebsiteOnStart settings ->
+                        { settings | openWebsiteOnStart = Just openWebsiteOnStart }
+                    )
+             }
            )
          , ( "web-browser-user-data-dir"
-           , AppSettings.valueTypeString
-                (\userDataDir settings ->
-                    { settings | webBrowserUserDataDir = Just userDataDir }
-                )
+           , { description = "To use the bot with multiple Tribal Wars 2 accounts simultaneously, configure a different name here for each account."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\userDataDir settings ->
+                        { settings | webBrowserUserDataDir = Just userDataDir }
+                    )
+             }
            )
          ]
             |> Dict.fromList

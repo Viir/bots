@@ -122,50 +122,74 @@ parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
     AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "hide-when-neutral-in-local"
-           , AppSettings.valueTypeYesOrNo
-                (\hide settings -> { settings | hideWhenNeutralInLocal = hide })
+           , { description = "Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat."
+             , valueParser =
+                AppSettings.valueTypeYesOrNo
+                    (\hide settings -> { settings | hideWhenNeutralInLocal = hide })
+             }
            )
          , ( "anomaly-name"
-           , AppSettings.valueTypeString
-                (\anomalyName settings ->
-                    { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
-                )
+           , { description = "Choose the name of anomalies to take. You can use this setting multiple times to select multiple names."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\anomalyName settings ->
+                        { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
+                    )
+             }
            )
          , ( "avoid-rat"
-           , AppSettings.valueTypeString
-                (\ratToAvoid settings ->
-                    { settings | avoidRats = String.trim ratToAvoid :: settings.avoidRats }
-                )
+           , { description = "Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\ratToAvoid settings ->
+                        { settings | avoidRats = String.trim ratToAvoid :: settings.avoidRats }
+                    )
+             }
            )
          , ( "activate-module-always"
-           , AppSettings.valueTypeString
-                (\moduleName settings ->
-                    { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways }
-                )
+           , { description = "Text found in tooltips of ship modules that should always be active. For example: 'shield hardener'."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\moduleName settings ->
+                        { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways }
+                    )
+             }
            )
          , ( "anomaly-wait-time"
-           , AppSettings.valueTypeInteger
-                (\anomalyWaitTimeSeconds settings ->
-                    { settings | anomalyWaitTimeSeconds = anomalyWaitTimeSeconds }
-                )
+           , { description = "Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid."
+             , valueParser =
+                AppSettings.valueTypeInteger
+                    (\anomalyWaitTimeSeconds settings ->
+                        { settings | anomalyWaitTimeSeconds = anomalyWaitTimeSeconds }
+                    )
+             }
            )
          , ( "orbit-in-combat"
-           , AppSettings.valueTypeYesOrNo
-                (\orbitInCombat settings ->
-                    { settings | orbitInCombat = orbitInCombat }
-                )
+           , { description = "Whether to keep the ship orbiting during combat"
+             , valueParser =
+                AppSettings.valueTypeYesOrNo
+                    (\orbitInCombat settings ->
+                        { settings | orbitInCombat = orbitInCombat }
+                    )
+             }
            )
          , ( "warp-to-anomaly-distance"
-           , AppSettings.valueTypeString
-                (\warpToAnomalyDistance settings ->
-                    { settings | warpToAnomalyDistance = warpToAnomalyDistance }
-                )
+           , { description = "Defaults to 'Within 0 m'"
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\warpToAnomalyDistance settings ->
+                        { settings | warpToAnomalyDistance = warpToAnomalyDistance }
+                    )
+             }
            )
          , ( "bot-step-delay"
-           , AppSettings.valueTypeInteger
-                (\delay settings ->
-                    { settings | botStepDelayMilliseconds = delay }
-                )
+           , { description = "Minimum time between starting bot steps in milliseconds"
+             , valueParser =
+                AppSettings.valueTypeInteger
+                    (\delay settings ->
+                        { settings | botStepDelayMilliseconds = delay }
+                    )
+             }
            )
          ]
             |> Dict.fromList

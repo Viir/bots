@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2023-04-03
+{- EVE Online combat anomaly bot version 2023-04-07
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -1071,7 +1071,8 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
             getNamesOfRatsInOverview context.readingFromGameClient
 
         weJustFinishedWarping =
-            (botMemoryBefore.shipWarpingInLastReading == Just True) && (shipIsWarping == Just False)
+            (shipIsWarping /= botMemoryBefore.shipWarpingInLastReading)
+                && (botMemoryBefore.shipWarpingInLastReading == Just True)
 
         visitedAnomalies =
             if shipIsWarping == Just True then

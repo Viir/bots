@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2023-04-07
+{- EVE Online combat anomaly bot version 2023-04-08
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -224,6 +224,8 @@ type alias BotMemory =
     , shipModules : ShipModulesMemory
     , shipWarpingInLastReading : Maybe Bool
     , visitedAnomalies : Dict.Dict String MemoryOfAnomaly
+    , notEnoughBandwidthToLaunchDrone : Bool
+    , droneBandwidthLimitatatinEvents : List { timeMilliseconds : Int, dronesInSpaceCount : Int }
     }
 
 
@@ -847,14 +849,18 @@ launchAndEngageDrones context =
                                 )
 
                         else if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
-                            Just
-                                (describeBranch "Launch drones"
-                                    (useContextMenuCascade
-                                        ( "drones group", droneGroupInBay.header.uiNode )
-                                        (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
-                                        context
+                            if assumeNotEnoughBandwidthToLaunchDrone context then
+                                Nothing
+
+                            else
+                                Just
+                                    (describeBranch "Launch drones"
+                                        (useContextMenuCascade
+                                            ( "drones group", droneGroupInBay.header.uiNode )
+                                            (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
+                                            context
+                                        )
                                     )
-                                )
 
                         else
                             Nothing
@@ -862,6 +868,38 @@ launchAndEngageDrones context =
                     _ ->
                         Nothing
             )
+
+
+assumeNotEnoughBandwidthToLaunchDrone : BotDecisionContext -> Bool
+assumeNotEnoughBandwidthToLaunchDrone context =
+    case
+        context.readingFromGameClient.dronesWindow
+            |> Maybe.andThen .droneGroupInSpace
+            |> Maybe.andThen (.header >> .quantityFromTitle)
+    of
+        Nothing ->
+            True
+
+        Just inSpaceQuantity ->
+            let
+                limitsFromPreviousEvents =
+                    context.memory.droneBandwidthLimitatatinEvents
+                        |> List.filter
+                            (\limitEvent ->
+                                context.eventContext.timeInMilliseconds < limitEvent.timeMilliseconds + 300 * 1000
+                            )
+                        |> List.map .dronesInSpaceCount
+
+                limitFromPreviousEvents =
+                    limitsFromPreviousEvents
+                        |> List.sort
+                        -- Require confirmation via multiple observations
+                        |> List.drop 1
+                        |> List.head
+                        |> Maybe.withDefault 999
+            in
+            context.memory.notEnoughBandwidthToLaunchDrone
+                || (limitFromPreviousEvents <= inSpaceQuantity.current)
 
 
 returnDronesToBay : BotDecisionContext -> Maybe DecisionPathNode
@@ -968,6 +1006,8 @@ initBotMemory =
     , shipModules = EveOnline.BotFramework.initShipModulesMemory
     , shipWarpingInLastReading = Nothing
     , visitedAnomalies = Dict.empty
+    , notEnoughBandwidthToLaunchDrone = False
+    , droneBandwidthLimitatatinEvents = []
     }
 
 
@@ -1134,6 +1174,35 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
                                 }
                         in
                         botMemoryBefore.visitedAnomalies |> Dict.insert currentAnomalyID anomalyMemory
+
+        notEnoughBandwidthToLaunchDrone =
+            readingFromGameClientSaysNotEnoughBandwidthToLaunchDrone context.readingFromGameClient
+
+        droneBandwidthLimitatatinEvents =
+            case context.readingFromGameClient.dronesWindow of
+                Nothing ->
+                    -- Also reset when docked
+                    []
+
+                Just dronesWindow ->
+                    let
+                        dronesInSpaceCount =
+                            dronesWindow.droneGroupInSpace
+                                |> Maybe.andThen (.header >> .quantityFromTitle)
+                                |> Maybe.map .current
+                                |> Maybe.withDefault 0
+
+                        newEvents =
+                            if notEnoughBandwidthToLaunchDrone && not botMemoryBefore.notEnoughBandwidthToLaunchDrone then
+                                [ { timeMilliseconds = context.timeInMilliseconds
+                                  , dronesInSpaceCount = dronesInSpaceCount
+                                  }
+                                ]
+
+                            else
+                                []
+                    in
+                    newEvents ++ botMemoryBefore.droneBandwidthLimitatatinEvents
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
@@ -1144,6 +1213,8 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
             |> EveOnline.BotFramework.integrateCurrentReadingsIntoShipModulesMemory context.readingFromGameClient
     , shipWarpingInLastReading = shipIsWarping
     , visitedAnomalies = visitedAnomalies
+    , notEnoughBandwidthToLaunchDrone = notEnoughBandwidthToLaunchDrone
+    , droneBandwidthLimitatatinEvents = droneBandwidthLimitatatinEvents |> List.take 4
     }
 
 
@@ -1218,3 +1289,21 @@ nothingFromIntIfGreaterThan limit originalInt =
 
     else
         Just originalInt
+
+
+readingFromGameClientSaysNotEnoughBandwidthToLaunchDrone : ReadingFromGameClient -> Bool
+readingFromGameClientSaysNotEnoughBandwidthToLaunchDrone reading =
+    reading.layerAbovemain
+        |> Maybe.map (.uiNode >> EveOnline.ParseUserInterface.getAllContainedDisplayTextsWithRegion)
+        |> Maybe.withDefault []
+        |> List.map Tuple.first
+        |> List.any abovemainMessageSaysNotEnoughBandwidthToLaunchDrone
+
+
+abovemainMessageSaysNotEnoughBandwidthToLaunchDrone : String -> Bool
+abovemainMessageSaysNotEnoughBandwidthToLaunchDrone message =
+    {-
+       Observed in session-recording-2023-04-08T19-20-34.zip-event-285-eve-online-memory-reading:
+       <center>You don't have enough bandwidth to launch Berserker II. You need 25.0 Mbit/s but only have 0.0 Mbit/s available.
+    -}
+    String.contains "don't have enough bandwidth to launch" message

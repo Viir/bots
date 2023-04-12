@@ -1,6 +1,6 @@
-{- EVE Online combat anomaly bot version 2023-04-08
+{- EVE Online AFK anomaly bot version wetgwetw 2023-04-13
 
-   This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
+   <https://forum.botlab.org/t/anomaly-ratting-bot-request/4627>
 
    ## Features
 
@@ -59,7 +59,7 @@ module Bot exposing
 
 import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.AppSettings as AppSettings
-import Common.Basics exposing (listElementAtWrappedIndex, resultFirstSuccessOrFirstError, stringContainsIgnoringCase)
+import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
 import Dict
@@ -75,10 +75,8 @@ import EveOnline.BotFramework
         , mouseClickOnUIElement
         , pickEntryFromLastContextMenuInCascade
         , shipUIIndicatesShipIsWarpingOrJumping
-        , uiNodeVisibleRegionLargeEnoughForClicking
         , useMenuEntryWithTextContaining
         , useMenuEntryWithTextContainingFirstOf
-        , useMenuEntryWithTextEqual
         )
 import EveOnline.BotFrameworkSeparatingMemory
     exposing
@@ -91,14 +89,12 @@ import EveOnline.BotFrameworkSeparatingMemory
         , ensureInfoPanelLocationInfoIsExpanded
         , useContextMenuCascade
         , useContextMenuCascadeOnListSurroundingsButton
-        , useContextMenuCascadeOnOverviewEntry
         , waitForProgressInGame
         )
 import EveOnline.ParseUserInterface
     exposing
         ( OverviewWindowEntry
         , ShipUI
-        , ShipUIModuleButton
         )
 import Result.Extra
 import Set
@@ -634,11 +630,6 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                 |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
                 |> List.filter shouldAttackOverviewEntry
 
-        overviewEntriesToLock =
-            overviewEntriesToAttack
-                |> List.filter (overviewEntryIsTargetedOrTargeting >> not)
-                |> List.map (lockTargetFromOverviewEntry context)
-
         targetsToUnlock =
             if overviewEntriesToAttack |> List.any overviewEntryIsActiveTarget then
                 []
@@ -655,7 +646,7 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
         waitTimeRemainingSeconds =
             context.eventContext.botSettings.anomalyWaitTimeSeconds - arrivalInAnomalyAgeSeconds
 
-        decisionIfNoEnemyToAttack =
+        _ =
             if overviewEntriesToAttack |> List.isEmpty then
                 if waitTimeRemainingSeconds <= 0 then
                     returnDronesToBay context
@@ -670,20 +661,6 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
             else
                 describeBranch "Wait for target locking to complete." waitForProgressInGame
 
-        continueLockOverviewEntries { ifNoEntryToLock } =
-            case resultFirstSuccessOrFirstError overviewEntriesToLock of
-                Nothing ->
-                    describeBranch "I see no more overview entries to lock."
-                        ifNoEntryToLock
-
-                Just nextOverviewEntryToLockResult ->
-                    describeBranch "I see an overview entry to lock."
-                        (nextOverviewEntryToLockResult
-                            |> Result.Extra.unpack
-                                (describeBranch >> (|>) askForHelpToGetUnstuck)
-                                identity
-                        )
-
         decisionToKillRats =
             case targetsToUnlock |> List.head of
                 Just targetToUnlock ->
@@ -695,33 +672,9 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                         )
 
                 Nothing ->
-                    case context.readingFromGameClient.targets |> List.head of
-                        Nothing ->
-                            describeBranch "I see no locked target."
-                                (continueLockOverviewEntries { ifNoEntryToLock = decisionIfNoEnemyToAttack })
-
-                        Just _ ->
-                            describeBranch "I see a locked target."
-                                (case seeUndockingComplete |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                    Nothing ->
-                                        describeBranch "All attack modules are active."
-                                            (launchAndEngageDrones context
-                                                |> Maybe.withDefault
-                                                    (describeBranch "No idling drones."
-                                                        (if context.eventContext.botSettings.maxTargetCount <= (context.readingFromGameClient.targets |> List.length) then
-                                                            describeBranch "Enough locked targets." waitForProgressInGame
-
-                                                         else
-                                                            continueLockOverviewEntries
-                                                                { ifNoEntryToLock = waitForProgressInGame }
-                                                        )
-                                                    )
-                                            )
-
-                                    Just inactiveModule ->
-                                        describeBranch "I see an inactive module to activate on targets. Activate it."
-                                            (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
-                                )
+                    launchDrones context
+                        |> Maybe.withDefault
+                            (describeBranch "No idling drones." waitForProgressInGame)
     in
     if context.eventContext.botSettings.orbitInCombat == AppSettings.Yes then
         ensureShipIsOrbitingDecision
@@ -805,15 +758,15 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
             )
 
 
-launchAndEngageDrones : BotDecisionContext -> Maybe DecisionPathNode
-launchAndEngageDrones context =
+launchDrones : BotDecisionContext -> Maybe DecisionPathNode
+launchDrones context =
     context.readingFromGameClient.dronesWindow
         |> Maybe.andThen
             (\dronesWindow ->
                 case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInSpace ) of
                     ( Just droneGroupInBay, Just droneGroupInSpace ) ->
                         let
-                            idlingDrones =
+                            _ =
                                 droneGroupInSpace
                                     |> EveOnline.ParseUserInterface.enumerateAllDronesFromDronesGroup
                                     |> List.filter
@@ -838,17 +791,7 @@ launchAndEngageDrones context =
                                     |> Maybe.andThen .maximum
                                     |> Maybe.withDefault 2
                         in
-                        if 0 < (idlingDrones |> List.length) then
-                            Just
-                                (describeBranch "Engage idling drone(s)"
-                                    (useContextMenuCascade
-                                        ( "drones group", droneGroupInSpace.header.uiNode )
-                                        (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
-                                        context
-                                    )
-                                )
-
-                        else if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
+                        if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
                             if assumeNotEnoughBandwidthToLaunchDrone context then
                                 Nothing
 
@@ -927,25 +870,6 @@ returnDronesToBay context =
                             )
                         )
             )
-
-
-lockTargetFromOverviewEntry :
-    BotDecisionContext
-    -> OverviewWindowEntry
-    -> Result String DecisionPathNode
-lockTargetFromOverviewEntry context overviewEntry =
-    if uiNodeVisibleRegionLargeEnoughForClicking overviewEntry.uiNode then
-        Ok
-            (describeBranch ("Lock target from overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'")
-                (useContextMenuCascadeOnOverviewEntry
-                    (useMenuEntryWithTextEqual "Lock target" menuCascadeCompleted)
-                    overviewEntry
-                    context
-                )
-            )
-
-    else
-        Err "Unable to click this overview entry because more of it needs to be visible."
 
 
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
@@ -1082,11 +1006,6 @@ statusTextFromState context =
     ]
         |> List.concat
         |> String.join "\n"
-
-
-overviewEntryIsTargetedOrTargeting : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
-overviewEntryIsTargetedOrTargeting overviewEntry =
-    overviewEntry.commonIndications.targetedByMe || overviewEntry.commonIndications.targeting
 
 
 overviewEntryIsActiveTarget : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
@@ -1275,11 +1194,6 @@ getNamesOfRatsInOverview readingFromGameClient =
         |> List.concatMap .entries
         |> List.filter overviewEntryRepresentsRatOnGrid
         |> List.map (.objectName >> Maybe.withDefault "do not see name of overview entry")
-
-
-shipUIModulesToActivateOnTarget : SeeUndockingComplete -> List ShipUIModuleButton
-shipUIModulesToActivateOnTarget =
-    .shipUI >> .moduleButtonsRows >> .top
 
 
 nothingFromIntIfGreaterThan : Int -> Int -> Maybe Int

@@ -14,7 +14,9 @@
 
 module BotLab.SimpleBotFramework exposing (..)
 
-import BotLab.BotInterface_To_Host_2022_12_03 as InterfaceToHost
+import Array
+import Bitwise
+import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
 import Common.EffectOnWindow exposing (MouseButton(..))
 import CompilationInterface.SourceFiles
 import Dict
@@ -59,7 +61,8 @@ type alias CompletedTaskStructure =
 
 type TaskResultStructure
     = NoResultValue
-    | ReadFromWindowResult ReadFromWindowResultStruct ImageStructure
+      -- Note: The screenshot pixels use the window rect for coordinates, not the client area.
+    | ReadFromWindowResult ReadFromWindowResultStruct ReadingFromGameClientScreenshot
 
 
 type alias ReadFromWindowResultStruct =
@@ -69,20 +72,22 @@ type alias ReadFromWindowResultStruct =
     }
 
 
-type alias ImageStructure =
-    { imageAsDict : Dict.Dict ( Int, Int ) PixelValue
-    , imageBinned2x2AsDict : Dict.Dict ( Int, Int ) PixelValue
+type alias ReadingFromGameClientScreenshot =
+    { pixels_1x1 : ( Int, Int ) -> Maybe PixelValueRGB
+    , pixels_2x2 : ( Int, Int ) -> Maybe PixelValueRGB
+    , pixels_4x4 : ( Int, Int ) -> Maybe PixelValueRGB
+    , bounds : InterfaceToHost.WinApiRectStruct
     }
 
 
-type alias ImageCropStructure =
-    { imageWidth : Int
-    , imageHeight : Int
-    , imageAsDict : Dict.Dict ( Int, Int ) PixelValue
+type alias ImageCrop =
+    { offset : InterfaceToHost.WinApiPointStruct
+    , widthPixels : Int
+    , pixels : Array.Array Int
     }
 
 
-type alias PixelValue =
+type alias PixelValueRGB =
     { red : Int, green : Int, blue : Int }
 
 
@@ -114,8 +119,7 @@ type alias Location2d =
 
 type Task
     = BringWindowToForeground
-    | ReadFromWindow GetImageDataFromReadingStructure
-    | GetImageDataFromReading GetImageDataFromReadingStructure
+    | ReadFromWindow
     | EffectSequenceOnWindowTask (List VolatileProcessInterface.EffectSequenceOnWindowElement)
 
 
@@ -134,11 +138,6 @@ type alias State botSettings botState =
             , result : Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete
             }
     , targetWindow : Maybe { windowId : String, windowTitle : String }
-    , lastReadFromWindowResult :
-        Maybe
-            { readFromWindowComplete : VolatileProcessInterface.ReadFromWindowCompleteStruct
-            , aggregateImage : ImageStructure
-            }
     , tasksInProgress : Dict.Dict String TaskInProgress
     , lastTaskIndex : Int
     , error : Maybe String
@@ -157,16 +156,21 @@ type alias TaskInProgress =
 type FrameworkSetupStepActivity
     = StopWithResult { resultDescription : String }
     | ContinueSetupWithTask { task : InterfaceToHost.StartTaskStructure, taskDescription : String }
-    | OperateSimpleBot
-        { windowId : String
-        , buildHostTaskFromRequest : VolatileProcessInterface.RequestToVolatileProcess -> InterfaceToHost.Task
-        }
+    | OperateSimpleBot OperateSimpleBotStruct
+
+
+type alias OperateSimpleBotStruct =
+    { windowId : String
+    , buildHostTaskFromRequest : VolatileProcessInterface.RequestToVolatileProcess -> InterfaceToHost.Task
+    , buildHostTaskToReadFromWindow : InterfaceToHost.Task
+    }
 
 
 type LocatePatternInImageApproach
-    = TestPerPixelWithBroadPhase2x2
-        { testOnBinned2x2 : ({ x : Int, y : Int } -> Maybe PixelValue) -> Bool
-        , testOnOriginalResolution : ({ x : Int, y : Int } -> Maybe PixelValue) -> Bool
+    = TestPerPixelWithBroadPhase4x4
+        { testOnBinned4x4 : ({ x : Int, y : Int } -> Maybe PixelValueRGB) -> Bool
+        , testOnBinned2x2 : ({ x : Int, y : Int } -> Maybe PixelValueRGB) -> Bool
+        , testOnOriginalResolution : ({ x : Int, y : Int } -> Maybe PixelValueRGB) -> Bool
         }
 
 
@@ -198,10 +202,6 @@ type alias InternalStartTaskStructure =
     }
 
 
-type alias GetImageDataFromReadingStructure =
-    VolatileProcessInterface.GetImageDataFromReadingStructure
-
-
 composeSimpleBotMain : BotConfig botSettings botState -> InterfaceToHost.BotConfig (State botSettings botState)
 composeSimpleBotMain botConfig =
     { init = initState botConfig.init
@@ -214,7 +214,6 @@ initState simpleBotInitState =
     { timeInMilliseconds = 0
     , createVolatileProcessResponse = Nothing
     , targetWindow = Nothing
-    , lastReadFromWindowResult = Nothing
     , tasksInProgress = Dict.empty
     , lastTaskIndex = 0
     , error = Nothing
@@ -545,9 +544,7 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
                                         (\simpleBotTaskWithId ->
                                             ( { taskId = simpleBotTaskWithId.taskId |> taskIdFromSimpleBotTaskId
                                               , task =
-                                                    simpleBotTaskWithId.task
-                                                        |> taskOnWindowFromSimpleBotTask { windowId = operateSimpleBot.windowId } stateBefore
-                                                        |> operateSimpleBot.buildHostTaskFromRequest
+                                                    taskOnWindowFromSimpleBotTask operateSimpleBot simpleBotTaskWithId.task
                                               , taskOrigin = BotOrigin simpleBotTaskWithId.taskId simpleBotTaskWithId.task
                                               }
                                             , simpleBotTaskWithId
@@ -581,23 +578,10 @@ consolidateBotTasks =
     let
         tryMerge taskA taskB =
             case ( taskA.task, taskB.task ) of
-                ( ReadFromWindow readFromWindowTaskA, ReadFromWindow readFromWindowTaskB ) ->
+                ( ReadFromWindow, ReadFromWindow ) ->
                     Just
                         { taskId = taskB.taskId
-                        , task =
-                            {-
-                               TODO: Also remove crops which are completely covered by other crop.
-                            -}
-                            ReadFromWindow
-                                { crops_1x1_r8g8b8 =
-                                    readFromWindowTaskA.crops_1x1_r8g8b8
-                                        ++ readFromWindowTaskB.crops_1x1_r8g8b8
-                                        |> List.Extra.unique
-                                , crops_2x2_r8g8b8 =
-                                    readFromWindowTaskA.crops_2x2_r8g8b8
-                                        ++ readFromWindowTaskB.crops_2x2_r8g8b8
-                                        |> List.Extra.unique
-                                }
+                        , task = ReadFromWindow
                         }
 
                 _ ->
@@ -651,13 +635,9 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
             Ok ( stateBefore, [ SessionDurationPlannedEvent sessionDurationPlannedEvent ] )
 
         TaskCompletedInternal completedTask ->
-            let
-                taskIdString =
-                    completedTask.taskId
-            in
             case maybeCompletedBotTask of
                 Nothing ->
-                    Err ("Did not find a bot task for task with ID " ++ taskIdString)
+                    Err ("Did not find a bot task for task with ID " ++ completedTask.taskId)
 
                 Just ( simpleBotTaskId, simpleBotTask ) ->
                     let
@@ -666,14 +646,48 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                 InterfaceToHost.CreateVolatileProcessResponse _ ->
                                     Err "CreateVolatileProcessResponse"
 
-                                InterfaceToHost.CompleteWithoutResult ->
-                                    Err "CompleteWithoutResult"
-
                                 InterfaceToHost.OpenWindowResponse _ ->
                                     Err "OpenWindowResponse"
 
-                                InterfaceToHost.InvokeMethodOnWindowResponse _ ->
-                                    Err "InvokeMethodOnWindowResponse"
+                                InterfaceToHost.InvokeMethodOnWindowResponse _ invokeMethodResult ->
+                                    case invokeMethodResult of
+                                        Err err ->
+                                            Err ("Failed invoke method on window: " ++ describeInvokeMethodOnWindowError err)
+
+                                        Ok invokeMethodOk ->
+                                            case invokeMethodOk of
+                                                InterfaceToHost.ReadFromWindowMethodResult readFromWindowComplete ->
+                                                    let
+                                                        image =
+                                                            deriveImageRepresentation readFromWindowComplete
+                                                    in
+                                                    Ok
+                                                        ( stateBefore
+                                                        , ReadFromWindowResult
+                                                            { windowSize =
+                                                                { x = readFromWindowComplete.windowRect.right - readFromWindowComplete.windowRect.left
+                                                                , y = readFromWindowComplete.windowRect.bottom - readFromWindowComplete.windowRect.top
+                                                                }
+                                                            , windowClientRectOffset = readFromWindowComplete.clientRectLeftUpperToScreen
+                                                            , windowClientAreaSize =
+                                                                { x = readFromWindowComplete.clientRect.right - readFromWindowComplete.clientRect.left
+                                                                , y = readFromWindowComplete.clientRect.bottom - readFromWindowComplete.clientRect.top
+                                                                }
+                                                            }
+                                                            image
+                                                        )
+
+                                                InterfaceToHost.InvokeMethodOnWindowResultWithoutValue ->
+                                                    Err "InvokeMethodOnWindowResultWithoutValue"
+
+                                                InterfaceToHost.ChromeDevToolsProtocolRuntimeEvaluateMethodResult _ ->
+                                                    Err "Unexpetced: ChromeDevToolsProtocolRuntimeEvaluateMethodResult"
+
+                                InterfaceToHost.RandomBytesResponse _ ->
+                                    Err "RandomBytesResponse"
+
+                                InterfaceToHost.CompleteWithoutResult ->
+                                    Err "CompleteWithoutResult"
 
                                 InterfaceToHost.RequestToVolatileProcessResponse requestToVolatileProcessResponse ->
                                     case requestToVolatileProcessResponse of
@@ -697,73 +711,10 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                             let
                                                                 continueForReadFromWindowOrGetImageData =
                                                                     case parsedResponse of
-                                                                        VolatileProcessInterface.ReadingNotFound ->
-                                                                            Err "ReadingNotFound"
-
                                                                         VolatileProcessInterface.TaskOnWindowResponse taskOnWindowResponse ->
                                                                             case taskOnWindowResponse.result of
                                                                                 VolatileProcessInterface.WindowNotFound ->
                                                                                     Err "WindowNotFound"
-
-                                                                                VolatileProcessInterface.ReadFromWindowComplete readFromWindowComplete ->
-                                                                                    let
-                                                                                        aggregateImage =
-                                                                                            deriveImageRepresentation
-                                                                                                readFromWindowComplete.imageData
-
-                                                                                        lastReadFromWindowResult =
-                                                                                            { readFromWindowComplete = readFromWindowComplete
-                                                                                            , aggregateImage = aggregateImage
-                                                                                            }
-                                                                                    in
-                                                                                    Ok
-                                                                                        ( { stateBefore
-                                                                                            | lastReadFromWindowResult = Just lastReadFromWindowResult
-                                                                                          }
-                                                                                        , ReadFromWindowResult
-                                                                                            { windowSize = readFromWindowComplete.windowSize
-                                                                                            , windowClientRectOffset = readFromWindowComplete.windowClientRectOffset
-                                                                                            , windowClientAreaSize = readFromWindowComplete.windowClientAreaSize
-                                                                                            }
-                                                                                            aggregateImage
-                                                                                        )
-
-                                                                        VolatileProcessInterface.GetImageDataFromReadingComplete getImageDataFromReadingComplete ->
-                                                                            case stateBefore.lastReadFromWindowResult of
-                                                                                Nothing ->
-                                                                                    Err "No lastReadFromWindowResult"
-
-                                                                                Just lastReadFromWindowResultBefore ->
-                                                                                    if lastReadFromWindowResultBefore.readFromWindowComplete.readingId /= getImageDataFromReadingComplete.readingId then
-                                                                                        Err "readingId mismatch"
-
-                                                                                    else
-                                                                                        let
-                                                                                            newImage =
-                                                                                                deriveImageRepresentation
-                                                                                                    getImageDataFromReadingComplete.imageData
-
-                                                                                            aggregateImage =
-                                                                                                mergeImageRepresentation
-                                                                                                    lastReadFromWindowResultBefore.aggregateImage
-                                                                                                    newImage
-
-                                                                                            lastReadFromWindowResult =
-                                                                                                { lastReadFromWindowResultBefore
-                                                                                                    | aggregateImage = aggregateImage
-                                                                                                }
-                                                                                        in
-                                                                                        Ok
-                                                                                            ( { stateBefore
-                                                                                                | lastReadFromWindowResult = Just lastReadFromWindowResult
-                                                                                              }
-                                                                                            , ReadFromWindowResult
-                                                                                                { windowSize = lastReadFromWindowResult.readFromWindowComplete.windowSize
-                                                                                                , windowClientRectOffset = lastReadFromWindowResult.readFromWindowComplete.windowClientRectOffset
-                                                                                                , windowClientAreaSize = lastReadFromWindowResult.readFromWindowComplete.windowClientAreaSize
-                                                                                                }
-                                                                                                aggregateImage
-                                                                                            )
 
                                                                         _ ->
                                                                             Err ("Unexpected return value from volatile process: " ++ (volatileProcessResponseSuccess.returnValueToString |> Maybe.withDefault ""))
@@ -775,10 +726,7 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                                 EffectSequenceOnWindowTask _ ->
                                                                     Ok ( stateBefore, NoResultValue )
 
-                                                                ReadFromWindow _ ->
-                                                                    continueForReadFromWindowOrGetImageData
-
-                                                                GetImageDataFromReading _ ->
+                                                                ReadFromWindow ->
                                                                     continueForReadFromWindowOrGetImageData
                     in
                     case taskResultResult of
@@ -792,156 +740,172 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                 )
 
 
-mergeImageRepresentation : ImageStructure -> ImageStructure -> ImageStructure
-mergeImageRepresentation imageA imageB =
-    { imageAsDict = Dict.union imageA.imageAsDict imageB.imageAsDict
-    , imageBinned2x2AsDict = Dict.union imageA.imageBinned2x2AsDict imageB.imageBinned2x2AsDict
-    }
+describeInvokeMethodOnWindowError : InterfaceToHost.InvokeMethodOnWindowError -> String
+describeInvokeMethodOnWindowError err =
+    case err of
+        InterfaceToHost.WindowNotFoundError _ ->
+            "window not found"
+
+        InterfaceToHost.MethodNotAvailableError ->
+            "window not found"
+
+        InterfaceToHost.ReadFromWindowError readFromWindowErr ->
+            "read from window error: " ++ readFromWindowErr
 
 
-deriveImageRepresentation : VolatileProcessInterface.GetImageDataFromReadingResultStructure -> ImageStructure
-deriveImageRepresentation imageData =
+deriveImageRepresentation : InterfaceToHost.ReadFromWindowCompleteStruct -> ReadingFromGameClientScreenshot
+deriveImageRepresentation readingFromGameClient =
     let
-        crops_1x1_r8g8b8_Derivations =
-            imageData.crops_1x1_r8g8b8 |> List.map deriveImageCropRepresentation
+        clientRectLeftUpperToScreen =
+            readingFromGameClient.clientRectLeftUpperToScreen
 
-        crops_2x2_r8g8b8_Derivations =
-            imageData.crops_2x2_r8g8b8
-                |> List.map (\crop -> { crop | offset = { x = crop.offset.x // 2, y = crop.offset.y // 2 } })
-                |> List.map deriveImageCropRepresentation
+        pixelFromCropsInClientArea binningFactor crops ( pixelX, pixelY ) =
+            pixelFromCrops crops
+                ( pixelX + (readingFromGameClient.windowRect.left // binningFactor)
+                , pixelY + (readingFromGameClient.windowRect.top // binningFactor)
+                )
 
-        imageAsDict =
-            crops_1x1_r8g8b8_Derivations
-                |> List.map .imageAsDict
-                |> List.foldl Dict.union Dict.empty
+        screenshotCrops_original =
+            readingFromGameClient.imageData.screenshotCrops_original
+                |> List.map parseImageCropFromInterface
+                |> List.filterMap Result.toMaybe
 
-        imageBinned2x2AsDict =
-            crops_2x2_r8g8b8_Derivations
-                |> List.map .imageAsDict
-                |> List.foldl Dict.union Dict.empty
+        screenshotCrops_binned_2x2 =
+            readingFromGameClient.imageData.screenshotCrops_binned_2x2
+                |> List.map parseImageCropFromInterface
+                |> List.filterMap Result.toMaybe
+
+        screenshotCrops_binned_4x4 =
+            readingFromGameClient.imageData.screenshotCrops_binned_4x4
+                |> List.map parseImageCropFromInterface
+                |> List.filterMap Result.toMaybe
     in
-    { imageAsDict = imageAsDict
-    , imageBinned2x2AsDict = imageBinned2x2AsDict
+    { pixels_1x1 = screenshotCrops_original |> pixelFromCropsInClientArea 1
+    , pixels_2x2 = screenshotCrops_binned_2x2 |> pixelFromCropsInClientArea 2
+    , pixels_4x4 = screenshotCrops_binned_4x4 |> pixelFromCropsInClientArea 4
+    , bounds =
+        { left = clientRectLeftUpperToScreen.x - readingFromGameClient.windowRect.left
+        , top = clientRectLeftUpperToScreen.y - readingFromGameClient.windowRect.top
+        , right = clientRectLeftUpperToScreen.x + (readingFromGameClient.clientRect.right - readingFromGameClient.clientRect.left)
+        , bottom = clientRectLeftUpperToScreen.y + (readingFromGameClient.clientRect.bottom - readingFromGameClient.clientRect.top)
+        }
     }
 
 
-deriveImageRepresentationFromNestedListOfPixels : List (List PixelValue) -> ImageStructure
-deriveImageRepresentationFromNestedListOfPixels imageAsNestedList =
-    let
-        imageAsDict =
-            imageAsNestedList |> dictWithTupleKeyFromIndicesInNestedList
+pixelFromCrops : List ImageCrop -> ( Int, Int ) -> Maybe PixelValueRGB
+pixelFromCrops crops ( pixelX, pixelY ) =
+    crops
+        |> List.Extra.findMap
+            (\imageCrop ->
+                let
+                    inCropX =
+                        pixelX - imageCrop.offset.x
 
-        imageBinned2x2AsDict =
-            List.range 0 (((imageAsNestedList |> List.length) - 1) // 2)
-                |> List.map
-                    (\binnedRowIndex ->
-                        let
-                            rowWidth =
-                                imageAsNestedList
-                                    |> List.drop (binnedRowIndex * 2)
-                                    |> List.take 2
-                                    |> List.map List.length
-                                    |> List.maximum
-                                    |> Maybe.withDefault 0
+                    inCropY =
+                        pixelY - imageCrop.offset.y
+                in
+                if inCropX < 0 || inCropY < 0 || imageCrop.widthPixels <= inCropX then
+                    Nothing
 
-                            rowBinnedWidth =
-                                (rowWidth - 1) // 2 + 1
-                        in
-                        List.range 0 (rowBinnedWidth - 1)
-                            |> List.map
-                                (\binnedColumnIndex ->
-                                    let
-                                        sourcePixelsValues =
-                                            [ ( 0, 0 ), ( 1, 0 ), ( 0, 1 ), ( 1, 1 ) ]
-                                                |> List.filterMap (\( relX, relY ) -> imageAsDict |> Dict.get ( binnedColumnIndex * 2 + relX, binnedRowIndex * 2 + relY ))
+                else
+                    Array.get (inCropY * imageCrop.widthPixels + inCropX) imageCrop.pixels
+                        |> Maybe.map colorFromInt_R8G8B8
+            )
 
-                                        pixelValueSum =
-                                            sourcePixelsValues
-                                                |> List.foldl (\pixel sum -> { red = sum.red + pixel.red, green = sum.green + pixel.green, blue = sum.blue + pixel.blue }) { red = 0, green = 0, blue = 0 }
 
-                                        sourcePixelsValuesCount =
-                                            sourcePixelsValues |> List.length
+parseImageCropFromInterface : InterfaceToHost.ImageCrop -> Result String ImageCrop
+parseImageCropFromInterface imageCrop =
+    imageCrop.pixelsString
+        |> parseImageCropPixelsArrayFromPixelsString
+        |> Result.map
+            (\pixels ->
+                { offset = imageCrop.offset
+                , widthPixels = imageCrop.widthPixels
+                , pixels = pixels
+                }
+            )
 
-                                        pixelValue =
-                                            { red = pixelValueSum.red // sourcePixelsValuesCount
-                                            , green = pixelValueSum.green // sourcePixelsValuesCount
-                                            , blue = pixelValueSum.blue // sourcePixelsValuesCount
-                                            }
-                                    in
-                                    pixelValue
-                                )
-                    )
-                |> dictWithTupleKeyFromIndicesInNestedList
-    in
-    { imageAsDict = imageAsDict
-    , imageBinned2x2AsDict = imageBinned2x2AsDict
+
+parseImageCropPixelsArrayFromPixelsString : String -> Result String (Array.Array Int)
+parseImageCropPixelsArrayFromPixelsString =
+    Json.Decode.decodeString
+        (Json.Decode.array Json.Decode.int)
+        >> Result.mapError Json.Decode.errorToString
+
+
+colorFromInt_R8G8B8 : Int -> PixelValueRGB
+colorFromInt_R8G8B8 combined =
+    { red = combined |> Bitwise.shiftRightZfBy 16 |> Bitwise.and 0xFF
+    , green = combined |> Bitwise.shiftRightZfBy 8 |> Bitwise.and 0xFF
+    , blue = combined |> Bitwise.and 0xFF
     }
 
 
-deriveImageCropRepresentation : VolatileProcessInterface.ImageCropRGB -> ImageCropStructure
-deriveImageCropRepresentation crop =
-    let
-        imageWidths =
-            crop.pixels |> List.map List.length
-
-        imageWidth =
-            imageWidths |> List.maximum |> Maybe.withDefault 0
-
-        imageHeight =
-            imageWidths |> List.length
-
-        imageAsDict =
-            crop.pixels |> dictWithTupleKeyFromIndicesInNestedListWithOffset crop.offset
-    in
-    { imageWidth = imageWidth
-    , imageHeight = imageHeight
-    , imageAsDict = imageAsDict
-    }
-
-
-locatePatternInImage : LocatePatternInImageApproach -> ImageSearchRegion -> ImageStructure -> List Location2d
+locatePatternInImage : LocatePatternInImageApproach -> ImageSearchRegion -> ReadingFromGameClientScreenshot -> List Location2d
 locatePatternInImage searchPattern searchRegion image =
     case searchPattern of
-        TestPerPixelWithBroadPhase2x2 { testOnBinned2x2, testOnOriginalResolution } ->
+        TestPerPixelWithBroadPhase4x4 patternConfig ->
             let
-                binnedSearchLocations =
+                searchLocations_4x4 =
                     case searchRegion of
                         SearchEverywhere ->
-                            image.imageBinned2x2AsDict |> Dict.keys |> List.map (\( x, y ) -> { x = x, y = y })
+                            List.range (image.bounds.left // 4) (image.bounds.right // 4)
+                                |> List.concatMap
+                                    (\x ->
+                                        List.range (image.bounds.top // 4) (image.bounds.bottom // 4)
+                                            |> List.map (\y -> { x = x, y = y })
+                                    )
 
-                matchLocationsOnBinned2x2 =
-                    image.imageBinned2x2AsDict
-                        |> getMatchesLocationsFromImage testOnBinned2x2 binnedSearchLocations
+                matchLocations_4x4 =
+                    image.pixels_4x4
+                        |> getMatchesLocationsFromImage patternConfig.testOnBinned4x4 searchLocations_4x4
 
-                originalResolutionSearchLocations =
-                    matchLocationsOnBinned2x2
+                searchLocations_2x2 =
+                    matchLocations_4x4
                         |> List.concatMap
                             (\binnedLocation ->
-                                [ { x = binnedLocation.x * 2, y = binnedLocation.y * 2 }
+                                [ { x = binnedLocation.x * 2 + 0, y = binnedLocation.y * 2 }
                                 , { x = binnedLocation.x * 2 + 1, y = binnedLocation.y * 2 }
-                                , { x = binnedLocation.x * 2, y = binnedLocation.y * 2 + 1 }
+                                , { x = binnedLocation.x * 2 + 0, y = binnedLocation.y * 2 + 1 }
+                                , { x = binnedLocation.x * 2 + 1, y = binnedLocation.y * 2 + 1 }
+                                ]
+                            )
+
+                matchLocations_2x2 =
+                    image.pixels_2x2
+                        |> getMatchesLocationsFromImage patternConfig.testOnBinned2x2 searchLocations_2x2
+
+                searchLocations_original =
+                    matchLocations_2x2
+                        |> List.concatMap
+                            (\binnedLocation ->
+                                [ { x = binnedLocation.x * 2 + 0, y = binnedLocation.y * 2 }
+                                , { x = binnedLocation.x * 2 + 1, y = binnedLocation.y * 2 }
+                                , { x = binnedLocation.x * 2 + 0, y = binnedLocation.y * 2 + 1 }
                                 , { x = binnedLocation.x * 2 + 1, y = binnedLocation.y * 2 + 1 }
                                 ]
                             )
 
                 matchLocations =
-                    image.imageAsDict
-                        |> getMatchesLocationsFromImage testOnOriginalResolution originalResolutionSearchLocations
+                    image.pixels_1x1
+                        |> getMatchesLocationsFromImage patternConfig.testOnOriginalResolution searchLocations_original
             in
             matchLocations
 
 
 getMatchesLocationsFromImage :
-    (({ x : Int, y : Int } -> Maybe PixelValue) -> Bool)
+    (({ x : Int, y : Int } -> Maybe PixelValueRGB) -> Bool)
     -> List { x : Int, y : Int }
-    -> Dict.Dict ( Int, Int ) PixelValue
+    -> (( Int, Int ) -> Maybe PixelValueRGB)
     -> List { x : Int, y : Int }
 getMatchesLocationsFromImage imageMatchesPatternAtOrigin locationsToSearchAt image =
     locationsToSearchAt
         |> List.filter
             (\searchOrigin ->
                 imageMatchesPatternAtOrigin
-                    (\relativeLocation -> image |> Dict.get ( relativeLocation.x + searchOrigin.x, relativeLocation.y + searchOrigin.y ))
+                    (\relativeLocation ->
+                        image ( relativeLocation.x + searchOrigin.x, relativeLocation.y + searchOrigin.y )
+                    )
             )
 
 
@@ -1015,38 +979,23 @@ taskIdFromSimpleBotTaskId simpleBotTaskId =
 
 
 taskOnWindowFromSimpleBotTask :
-    { windowId : String }
-    -> State botSettings botState
+    OperateSimpleBotStruct
     -> Task
-    -> VolatileProcessInterface.RequestToVolatileProcess
-taskOnWindowFromSimpleBotTask config state simpleBotTask =
+    -> InterfaceToHost.Task
+taskOnWindowFromSimpleBotTask config simpleBotTask =
     let
         continueWithTaskOnWindow taskOnWindow =
             { windowId = config.windowId, task = taskOnWindow }
                 |> VolatileProcessInterface.TaskOnWindowRequest
+                |> config.buildHostTaskFromRequest
     in
     case simpleBotTask of
         BringWindowToForeground ->
             VolatileProcessInterface.BringWindowToForeground
                 |> continueWithTaskOnWindow
 
-        ReadFromWindow readFromWindowTask ->
-            { getImageData = readFromWindowTask }
-                |> VolatileProcessInterface.ReadFromWindowRequest
-                |> continueWithTaskOnWindow
-
-        GetImageDataFromReading getImageDataFromReadingTask ->
-            case state.lastReadFromWindowResult of
-                Nothing ->
-                    { getImageData = getImageDataFromReadingTask }
-                        |> VolatileProcessInterface.ReadFromWindowRequest
-                        |> continueWithTaskOnWindow
-
-                Just lastReadFromWindowResult ->
-                    { readingId = lastReadFromWindowResult.readFromWindowComplete.readingId
-                    , getImageData = getImageDataFromReadingTask
-                    }
-                        |> VolatileProcessInterface.GetImageDataFromReadingRequest
+        ReadFromWindow ->
+            config.buildHostTaskToReadFromWindow
 
         EffectSequenceOnWindowTask effectSequence ->
             effectSequence
@@ -1095,7 +1044,7 @@ integrateEventTaskComplete :
     -> InterfaceToHost.TaskResultStructure
     -> State botSettings botState
     -> State botSettings botState
-integrateEventTaskComplete taskId taskResult stateBefore =
+integrateEventTaskComplete _ taskResult stateBefore =
     case taskResult of
         InterfaceToHost.CreateVolatileProcessResponse createVolatileProcessResult ->
             { stateBefore
@@ -1127,7 +1076,7 @@ integrateEventTaskComplete taskId taskResult stateBefore =
                                 Just (Err createVolatileProcessError) ->
                                     { stateBefore | error = Just ("Failed to create volatile process: " ++ createVolatileProcessError.exceptionToString) }
 
-                                Just (Ok createVolatileProcessCompleted) ->
+                                Just (Ok _) ->
                                     case returnValueToString |> VolatileProcessInterface.deserializeResponseFromVolatileProcess of
                                         Err error ->
                                             { stateBefore | error = Just ("Failed to parse response from volatile process: " ++ (error |> Json.Decode.errorToString)) }
@@ -1156,13 +1105,16 @@ integrateEventTaskComplete taskId taskResult stateBefore =
                                                 Just _ ->
                                                     stateBefore
 
-        InterfaceToHost.CompleteWithoutResult ->
-            stateBefore
-
         InterfaceToHost.OpenWindowResponse _ ->
             stateBefore
 
-        InterfaceToHost.InvokeMethodOnWindowResponse _ ->
+        InterfaceToHost.InvokeMethodOnWindowResponse _ _ ->
+            stateBefore
+
+        InterfaceToHost.RandomBytesResponse _ ->
+            stateBefore
+
+        InterfaceToHost.CompleteWithoutResult ->
             stateBefore
 
 
@@ -1263,32 +1215,16 @@ getNextSetupStepWithDescriptionFromState state =
                                                     }
                                                 }
                                             )
+                                , buildHostTaskToReadFromWindow =
+                                    InterfaceToHost.InvokeMethodOnWindowRequest
+                                        ("winapi-" ++ targetWindow.windowId)
+                                        InterfaceToHost.ReadFromWindowMethod
                                 }
 
 
 taskIdFromString : String -> TaskId
 taskIdFromString =
     TaskIdFromString
-
-
-dictWithTupleKeyFromIndicesInNestedList : List (List element) -> Dict.Dict ( Int, Int ) element
-dictWithTupleKeyFromIndicesInNestedList =
-    dictWithTupleKeyFromIndicesInNestedListWithOffset { x = 0, y = 0 }
-
-
-dictWithTupleKeyFromIndicesInNestedListWithOffset : Location2d -> List (List element) -> Dict.Dict ( Int, Int ) element
-dictWithTupleKeyFromIndicesInNestedListWithOffset offset nestedList =
-    nestedList
-        |> List.indexedMap
-            (\rowIndex list ->
-                list
-                    |> List.indexedMap
-                        (\columnIndex element ->
-                            ( ( columnIndex + offset.x, rowIndex + offset.y ), element )
-                        )
-            )
-        |> List.concat
-        |> Dict.fromList
 
 
 bringWindowToForeground : Task
@@ -1338,140 +1274,6 @@ effectSequenceTask config effects =
         |> EffectSequenceOnWindowTask
 
 
-readFromWindow : GetImageDataFromReadingStructure -> Task
-readFromWindow getImageData =
-    getImageData
-        |> sanitizeGetImageDataFromReading
-        |> ReadFromWindow
-
-
-getImageDataFromReading : GetImageDataFromReadingStructure -> Task
-getImageDataFromReading getImageData =
-    getImageData
-        |> sanitizeGetImageDataFromReading
-        |> GetImageDataFromReading
-
-
-sanitizeGetImageDataFromReading : GetImageDataFromReadingStructure -> GetImageDataFromReadingStructure
-sanitizeGetImageDataFromReading getImageData =
-    let
-        sanitizeAndOptimizeCrops =
-            sanitizeGetImageDataFromReadingCrops
-                >> optimizeGetImageDataFromReadingCrops
-    in
-    { crops_1x1_r8g8b8 = sanitizeAndOptimizeCrops getImageData.crops_1x1_r8g8b8
-    , crops_2x2_r8g8b8 = sanitizeAndOptimizeCrops getImageData.crops_2x2_r8g8b8
-    }
-
-
-sanitizeGetImageDataFromReadingCrops :
-    List VolatileProcessInterface.Rect2dStructure
-    -> List VolatileProcessInterface.Rect2dStructure
-sanitizeGetImageDataFromReadingCrops =
-    List.map (rectIntersection { x = 0, y = 0, width = 9999, height = 9999 })
-        >> List.filter (\rect -> 0 < rect.width && 0 < rect.height)
-
-
-optimizeGetImageDataFromReadingCrops :
-    List VolatileProcessInterface.Rect2dStructure
-    -> List VolatileProcessInterface.Rect2dStructure
-optimizeGetImageDataFromReadingCrops =
-    optimizeGetImageDataFromReadingCropsRecursive
-
-
-optimizeGetImageDataFromReadingCropsRecursive :
-    List VolatileProcessInterface.Rect2dStructure
-    -> List VolatileProcessInterface.Rect2dStructure
-optimizeGetImageDataFromReadingCropsRecursive crops =
-    let
-        rectIntersectEnoughToConsolidate a b =
-            let
-                intersection =
-                    rectIntersection a b
-            in
-            (max 0 intersection.width * max 0 intersection.height * 4)
-                > min (a.width * a.height) (b.width * b.height)
-
-        groupedCrops =
-            List.Extra.gatherWith rectIntersectEnoughToConsolidate crops
-
-        boundingBoxes =
-            groupedCrops
-                |> List.map
-                    (\( firstCrop, otherCrops ) ->
-                        otherCrops |> List.foldl rectBoundingBox firstCrop
-                    )
-    in
-    if crops == boundingBoxes then
-        boundingBoxes
-
-    else
-        optimizeGetImageDataFromReadingCropsRecursive boundingBoxes
-
-
-rectIntersection : VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure
-rectIntersection a b =
-    let
-        a_right =
-            a.x + a.width
-
-        b_right =
-            b.x + b.width
-
-        a_bottom =
-            a.y + a.height
-
-        b_bottom =
-            b.y + b.height
-
-        x =
-            max a.x b.x
-
-        y =
-            max a.y b.y
-
-        right =
-            min a_right b_right
-
-        bottom =
-            min a_bottom b_bottom
-    in
-    { x = x
-    , y = y
-    , width = right - x
-    , height = bottom - y
-    }
-
-
-rectBoundingBox : VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure -> VolatileProcessInterface.Rect2dStructure
-rectBoundingBox a b =
-    let
-        a_right =
-            a.x + a.width
-
-        b_right =
-            b.x + b.width
-
-        a_bottom =
-            a.y + a.height
-
-        b_bottom =
-            b.y + b.height
-
-        x =
-            min a.x b.x
-
-        y =
-            min a.y b.y
-
-        right =
-            max a_right b_right
-
-        bottom =
-            max a_bottom b_bottom
-    in
-    { x = x
-    , y = y
-    , width = right - x
-    , height = bottom - y
-    }
+readFromWindow : Task
+readFromWindow =
+    ReadFromWindow

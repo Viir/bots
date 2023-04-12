@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-02-08
+{- EVE Online mining bot version 2023-04-07
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -22,6 +22,7 @@
    + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
    + `unload-fleet-hangar-percent` : This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
    + `dock-when-without-drones` : This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`.
+   + `repair-before-undocking` : Repair the ship at the station before undocking. The only supported values are `no` and `yes`.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -59,12 +60,11 @@ import EveOnline.BotFramework
         , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
-        , doEffectsClickModuleButton
-        , getEntropyIntFromReadingFromGameClient
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
         , mouseClickOnUIElement
         , shipUIIndicatesShipIsWarpingOrJumping
+        , uiNodeVisibleRegionLargeEnoughForClicking
         , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
         , useMenuEntryWithTextContainingFirstOf
@@ -77,6 +77,7 @@ import EveOnline.BotFrameworkSeparatingMemory
         , EndDecisionPathStructure(..)
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
+        , clickModuleButtonButWaitIfClickedInPreviousStep
         , decideActionForCurrentStep
         , ensureInfoPanelLocationInfoIsExpanded
         , useContextMenuCascade
@@ -87,10 +88,11 @@ import EveOnline.BotFrameworkSeparatingMemory
 import EveOnline.ParseUserInterface
     exposing
         ( OverviewWindowEntry
-        , UITreeNodeWithDisplayRegion
         , centerFromDisplayRegion
         )
+import Maybe.Extra
 import Regex
+import Result.Extra
 
 
 {-| Sources for the defaults:
@@ -108,6 +110,7 @@ defaultBotSettings =
     , activateModulesAlways = []
     , hideWhenNeutralInLocal = Nothing
     , dockWhenWithoutDrones = Nothing
+    , repairBeforeUndocking = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
     , botStepDelayMilliseconds = 1300
@@ -120,48 +123,106 @@ parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
     AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "run-away-shield-hitpoints-threshold-percent"
-           , AppSettings.valueTypeInteger (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
+           , { description = "Threshold of shield hitpoints in percent to trigger running away."
+             , valueParser =
+                AppSettings.valueTypeInteger
+                    (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
+             }
            )
          , ( "unload-station-name"
-           , AppSettings.valueTypeString (\stationName settings -> { settings | unloadStationName = Just stationName })
+           , { description = "Name of a station to dock to when the mining hold is full."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\stationName settings -> { settings | unloadStationName = Just stationName })
+             }
            )
          , ( "unload-structure-name"
-           , AppSettings.valueTypeString (\structureName settings -> { settings | unloadStructureName = Just structureName })
+           , { description = "Name of a structure to dock to when the mining hold is full."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\structureName settings -> { settings | unloadStructureName = Just structureName })
+             }
            )
          , ( "unload-fleet-hangar-percent"
-           , AppSettings.valueTypeInteger (\fleetHangarPercent settings -> { settings | unloadFleetHangarPercent = fleetHangarPercent })
+           , { description = "This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window."
+             , valueParser =
+                AppSettings.valueTypeInteger
+                    (\fleetHangarPercent settings -> { settings | unloadFleetHangarPercent = fleetHangarPercent })
+             }
            )
          , ( "unload-mining-hold-percent"
-           , AppSettings.valueTypeInteger (\percent settings -> { settings | unloadMiningHoldPercent = percent })
+           , { description = "When the mining hold is filled at least this much, we start unloading the ore."
+             , valueParser =
+                AppSettings.valueTypeInteger
+                    (\percent settings -> { settings | unloadMiningHoldPercent = percent })
+             }
            )
          , ( "activate-module-always"
-           , AppSettings.valueTypeString (\moduleName settings -> { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways })
+           , { description = "Text found in tooltips of ship modules that should always be active. For example: 'shield hardener'."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\moduleName settings -> { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways })
+             }
            )
          , ( "hide-when-neutral-in-local"
-           , AppSettings.valueTypeYesOrNo
-                (\hide settings -> { settings | hideWhenNeutralInLocal = Just hide })
+           , { description = "Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`."
+             , valueParser =
+                AppSettings.valueTypeYesOrNo
+                    (\hide settings -> { settings | hideWhenNeutralInLocal = Just hide })
+             }
            )
          , ( "dock-when-without-drones"
-           , AppSettings.valueTypeYesOrNo
-                (\without settings -> { settings | dockWhenWithoutDrones = Just without })
+           , { description = "This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`."
+             , valueParser =
+                AppSettings.valueTypeYesOrNo
+                    (\without settings -> { settings | dockWhenWithoutDrones = Just without })
+             }
+           )
+         , ( "repair-before-undocking"
+           , { description = "Repair the ship at the station before undocking. The only supported values are `no` and `yes`."
+             , valueParser =
+                AppSettings.valueTypeYesOrNo
+                    (\repair settings -> { settings | repairBeforeUndocking = Just repair })
+             }
            )
          , ( "targeting-range"
-           , AppSettings.valueTypeInteger (\range settings -> { settings | targetingRange = range })
+           , { description = "Distance under which we try to target an object in space."
+             , valueParser =
+                AppSettings.valueTypeInteger
+                    (\range settings -> { settings | targetingRange = range })
+             }
            )
          , ( "mining-module-range"
-           , AppSettings.valueTypeInteger (\range settings -> { settings | miningModuleRange = range })
+           , { description = "Range of the mining modules in the current ship fitting."
+             , valueParser =
+                AppSettings.valueTypeInteger
+                    (\range settings -> { settings | miningModuleRange = range })
+             }
            )
          , ( "select-instance-pilot-name"
-           , AppSettings.valueTypeString (\pilotName settings -> { settings | selectInstancePilotName = Just pilotName })
+           , { description = "Name of EVE Online character to search for when selecting an instance of the game client."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\pilotName settings -> { settings | selectInstancePilotName = Just pilotName })
+             }
            )
          , ( "bot-step-delay"
-           , AppSettings.valueTypeInteger (\delay settings -> { settings | botStepDelayMilliseconds = delay })
+           , { description = "Minimum time between starting bot steps in milliseconds"
+             , valueParser =
+                AppSettings.valueTypeInteger
+                    (\delay settings ->
+                        { settings | botStepDelayMilliseconds = delay }
+                    )
+             }
            )
          , ( "include-asteroid-pattern"
-           , AppSettings.valueTypeString
-                (\pattern settings ->
-                    { settings | includeAsteroidPatterns = pattern :: settings.includeAsteroidPatterns }
-                )
+           , { description = "Names of asteroids to select for mining. Can be used multiple times. If the setting is used zero times, we mine all kinds of asteroids."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\pattern settings ->
+                        { settings | includeAsteroidPatterns = pattern :: settings.includeAsteroidPatterns }
+                    )
+             }
            )
          ]
             |> Dict.fromList
@@ -188,6 +249,7 @@ type alias BotSettings =
     , activateModulesAlways : List String
     , hideWhenNeutralInLocal : Maybe AppSettings.YesOrNo
     , dockWhenWithoutDrones : Maybe AppSettings.YesOrNo
+    , repairBeforeUndocking : Maybe AppSettings.YesOrNo
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : Int
@@ -261,36 +323,55 @@ miningBotDecisionRootBeforeApplyingSettings context =
 
 continueIfShouldHide : { ifShouldHide : DecisionPathNode } -> BotDecisionContext -> Maybe DecisionPathNode
 continueIfShouldHide config context =
-    if not (context |> shouldHideWhenNeutralInLocal) then
-        Nothing
+    case
+        context.eventContext |> EveOnline.BotFramework.secondsToSessionEnd |> Maybe.andThen (nothingFromIntIfGreaterThan 200)
+    of
+        Just secondsToSessionEnd ->
+            Just
+                (describeBranch ("Session ends in " ++ (secondsToSessionEnd |> String.fromInt) ++ " seconds.")
+                    config.ifShouldHide
+                )
 
-    else
-        case context.readingFromGameClient |> localChatWindowFromUserInterface of
-            Nothing ->
-                Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
+        Nothing ->
+            case context |> quickMessageHasClusterShutdown of
+                Just shutdownMessage ->
+                    Just
+                        (describeBranch
+                            ("Quick Message: " ++ shutdownMessage)
+                            config.ifShouldHide
+                        )
 
-            Just localChatWindow ->
-                let
-                    chatUserHasGoodStanding chatUser =
-                        goodStandingPatterns
-                            |> List.any
-                                (\goodStandingPattern ->
-                                    chatUser.standingIconHint
-                                        |> Maybe.map (stringContainsIgnoringCase goodStandingPattern)
-                                        |> Maybe.withDefault False
-                                )
+                Nothing ->
+                    if not (context |> shouldHideWhenNeutralInLocal) then
+                        Nothing
 
-                    subsetOfUsersWithNoGoodStanding =
-                        localChatWindow.userlist
-                            |> Maybe.map .visibleUsers
-                            |> Maybe.withDefault []
-                            |> List.filter (chatUserHasGoodStanding >> not)
-                in
-                if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
-                    Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+                    else
+                        case context.readingFromGameClient |> localChatWindowFromUserInterface of
+                            Nothing ->
+                                Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
 
-                else
-                    Nothing
+                            Just localChatWindow ->
+                                let
+                                    chatUserHasGoodStanding chatUser =
+                                        goodStandingPatterns
+                                            |> List.any
+                                                (\goodStandingPattern ->
+                                                    chatUser.standingIconHint
+                                                        |> Maybe.map (stringContainsIgnoringCase goodStandingPattern)
+                                                        |> Maybe.withDefault False
+                                                )
+
+                                    subsetOfUsersWithNoGoodStanding =
+                                        localChatWindow.userlist
+                                            |> Maybe.map .visibleUsers
+                                            |> Maybe.withDefault []
+                                            |> List.filter (chatUserHasGoodStanding >> not)
+                                in
+                                if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
+                                    Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+
+                                else
+                                    Nothing
 
 
 shouldHideWhenNeutralInLocal : BotDecisionContext -> Bool
@@ -313,15 +394,12 @@ shouldHideWhenNeutralInLocal context =
 
 shouldDockWhenWithoutDrones : BotDecisionContext -> Bool
 shouldDockWhenWithoutDrones context =
-    case context.eventContext.botSettings.dockWhenWithoutDrones of
-        Just AppSettings.No ->
-            False
+    context.eventContext.botSettings.dockWhenWithoutDrones == Just AppSettings.Yes
 
-        Just AppSettings.Yes ->
-            True
 
-        Nothing ->
-            False
+shouldRepairBeforeUndocking : BotDecisionContext -> Bool
+shouldRepairBeforeUndocking context =
+    context.eventContext.botSettings.repairBeforeUndocking == Just AppSettings.Yes
 
 
 returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
@@ -388,8 +466,10 @@ closeMessageBox readingFromGameClient =
                         Just buttonToUse ->
                             describeBranch
                                 ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
-                                (decideActionForCurrentStep
-                                    (mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode)
+                                (mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode
+                                    |> Result.Extra.unpack
+                                        (always (describeBranch "Failed to click" askForHelpToGetUnstuck))
+                                        decideActionForCurrentStep
                                 )
                     )
             )
@@ -404,9 +484,9 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
         Just itemHangar ->
             case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
-                    describeBranch "I see no item in the mining hold. Check if we should undock."
+                    describeBranch "I see no item in the mining hold. Checking if we should repaired ship and undock."
                         (if
-                            shouldDockWhenWithoutDrones context
+                            (context |> shouldDockWhenWithoutDrones)
                                 && shouldDockBecauseDroneWindowWasInvisibleTooLong context.memory
                          then
                             describeBranch "Stay docked because I didn't see the drone window. Are we out of drones?"
@@ -419,13 +499,16 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
                                 }
                                 context
                                 |> Maybe.withDefault
-                                    (undockUsingStationWindow context
-                                        { ifCannotReachButton =
-                                            describeBranch "Undock using context menu"
-                                                (undockUsingContextMenu context
-                                                    { inventoryWindowWithMiningHoldSelected = inventoryWindowWithMiningHoldSelected }
-                                                )
-                                        }
+                                    (checkAndRepairBeforeUndockingUsingContextMenu context inventoryWindowWithMiningHoldSelected
+                                        |> Maybe.withDefault
+                                            (undockUsingStationWindow context
+                                                { ifCannotReachButton =
+                                                    describeBranch "Undock using context menu"
+                                                        (undockUsingContextMenu context
+                                                            { inventoryWindowWithMiningHoldSelected = inventoryWindowWithMiningHoldSelected }
+                                                        )
+                                                }
+                                            )
                                     )
                         )
 
@@ -455,8 +538,10 @@ inSpaceWithMiningHoldSelectedWithFleetHangar _ inventoryWindowWithMiningHoldSele
             case inventoryWindowWithMiningHoldSelected |> selectedContainerFirstItemFromInventoryWindow of
                 Nothing ->
                     describeBranch "I see no item in the mining hold. Click the tree entry representing the fleet Hangar."
-                        (decideActionForCurrentStep
-                            (mouseClickOnUIElement MouseButtonLeft fleetHangarFromInventory)
+                        (mouseClickOnUIElement MouseButtonLeft fleetHangarFromInventory
+                            |> Result.Extra.unpack
+                                (always (describeBranch "Failed to click" askForHelpToGetUnstuck))
+                                decideActionForCurrentStep
                         )
 
                 Just itemInInventory ->
@@ -494,8 +579,10 @@ undockUsingStationWindow context { ifCannotReachButton } =
 
                 Just undockButton ->
                     describeBranch "Click on the button to undock."
-                        (decideActionForCurrentStep
-                            (mouseClickOnUIElement MouseButtonLeft undockButton)
+                        (mouseClickOnUIElement MouseButtonLeft undockButton
+                            |> Result.Extra.unpack
+                                (always ifCannotReachButton)
+                                decideActionForCurrentStep
                         )
 
 
@@ -513,6 +600,73 @@ undockUsingContextMenu context { inventoryWindowWithMiningHoldSelected } =
                 ( "active ship", activeShipEntry.uiNode )
                 (useMenuEntryWithTextContainingFirstOf [ "undock from station" ] menuCascadeCompleted)
                 context
+
+
+checkAndRepairBeforeUndockingUsingContextMenu : BotDecisionContext -> EveOnline.ParseUserInterface.InventoryWindow -> Maybe DecisionPathNode
+checkAndRepairBeforeUndockingUsingContextMenu context inventoryWindowWithMiningHoldSelected =
+    if not (context |> shouldRepairBeforeUndocking) then
+        Nothing
+
+    else
+        case context.readingFromGameClient.repairShopWindow of
+            Nothing ->
+                case inventoryWindowWithMiningHoldSelected |> activeShipTreeEntryFromInventoryWindow of
+                    Nothing ->
+                        Just (describeBranch "I do not see the active ship in the inventory window." askForHelpToGetUnstuck)
+
+                    Just activeShipEntry ->
+                        Just
+                            (useContextMenuCascade
+                                ( "active ship", activeShipEntry.uiNode )
+                                (useMenuEntryWithTextContaining "get repair quote" menuCascadeCompleted)
+                                context
+                            )
+
+            Just repairShopWindow ->
+                let
+                    buttonUsed =
+                        .mainText
+                            >> Maybe.map
+                                (String.trim
+                                    >> String.toLower
+                                    >> (\buttonText -> [ "repair all" ] |> List.member buttonText)
+                                )
+                            >> Maybe.withDefault False
+                in
+                case repairShopWindow.items |> List.head of
+                    Nothing ->
+                        Nothing
+
+                    Just itemToRepair ->
+                        Just
+                            (describeBranch "There is at least one item to repair."
+                                (case mouseClickOnUIElement MouseButtonLeft itemToRepair of
+                                    Err _ ->
+                                        describeBranch "Failed to click" askForHelpToGetUnstuck
+
+                                    Ok clickItemToRepair ->
+                                        case repairShopWindow.buttons |> List.filter buttonUsed |> List.head of
+                                            Just btnRepairAll ->
+                                                describeBranch "I see the repair all button, I'm going to click it."
+                                                    (case mouseClickOnUIElement MouseButtonLeft btnRepairAll.uiNode of
+                                                        Err _ ->
+                                                            describeBranch "Failed to click" askForHelpToGetUnstuck
+
+                                                        Ok clickButtonToRepair ->
+                                                            decideActionForCurrentStep
+                                                                ([ clickItemToRepair
+                                                                 , clickButtonToRepair
+                                                                 ]
+                                                                    |> List.concat
+                                                                )
+                                                    )
+
+                                            Nothing ->
+                                                describeBranch
+                                                    "I do not see the repair all button."
+                                                    askForHelpToGetUnstuck
+                                )
+                            )
 
 
 inSpaceWithMiningHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
@@ -725,15 +879,19 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
 
                                                 Just toggleBtn ->
                                                     describeBranch "Click the toggle button to expand."
-                                                        (decideActionForCurrentStep
-                                                            (mouseClickOnUIElement MouseButtonLeft toggleBtn)
+                                                        (mouseClickOnUIElement MouseButtonLeft toggleBtn
+                                                            |> Result.Extra.unpack
+                                                                (always (describeBranch "Failed to click" askForHelpToGetUnstuck))
+                                                                decideActionForCurrentStep
                                                         )
                                             )
 
                                     Just miningHoldTreeEntry ->
                                         describeBranch "Click the tree entry representing the mining hold."
-                                            (decideActionForCurrentStep
-                                                (mouseClickOnUIElement MouseButtonLeft miningHoldTreeEntry.uiNode)
+                                            (mouseClickOnUIElement MouseButtonLeft miningHoldTreeEntry.uiNode
+                                                |> Result.Extra.unpack
+                                                    (always (describeBranch "Failed to click" askForHelpToGetUnstuck))
+                                                    decideActionForCurrentStep
                                             )
                         )
 
@@ -797,15 +955,15 @@ dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSetting
                 >> String.contains (nameFromSettingOrInfoPanel |> simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry)
 
         matchingOverviewEntry =
-            context.readingFromGameClient.overviewWindow
-                |> Maybe.map .entries
-                |> Maybe.withDefault []
+            context.readingFromGameClient.overviewWindows
+                |> List.concatMap .entries
                 |> List.filter (.objectName >> Maybe.map displayTextRepresentsMatchingStation >> Maybe.withDefault False)
                 |> List.head
 
         overviewWindowScrollControls =
-            context.readingFromGameClient.overviewWindow
-                |> Maybe.andThen .scrollControls
+            context.readingFromGameClient.overviewWindows
+                |> List.filterMap .scrollControls
+                |> List.head
     in
     matchingOverviewEntry
         |> Maybe.map
@@ -909,15 +1067,16 @@ dockToStationOrStructureUsingSurroundingsButtonMenu { prioritizeStructures, desc
 
 
 warpToMiningSite : BotDecisionContext -> DecisionPathNode
-warpToMiningSite =
+warpToMiningSite context =
     useContextMenuCascadeOnListSurroundingsButton
         (useMenuEntryWithTextContaining "asteroid belts"
-            (useRandomMenuEntry
+            (useRandomMenuEntry (context.randomIntegers |> List.head |> Maybe.withDefault 0)
                 (useMenuEntryWithTextContaining "Warp to Within"
                     (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
                 )
             )
         )
+        context
 
 
 runAway : BotDecisionContext -> DecisionPathNode
@@ -956,7 +1115,7 @@ dockToRandomStationOrStructure context =
     dockToStationOrStructureUsingSurroundingsButtonMenu
         { prioritizeStructures = False
         , describeChoice = "Pick random station"
-        , chooseEntry = listElementAtWrappedIndex (getEntropyIntFromReadingFromGameClient context.readingFromGameClient)
+        , chooseEntry = listElementAtWrappedIndex (context.randomIntegers |> List.head |> Maybe.withDefault 0)
         }
         context
 
@@ -1086,6 +1245,13 @@ tooltipLooksLikeModuleToActivateAlways context =
                     |> List.head
             )
         >> List.head
+
+
+quickMessageHasClusterShutdown : BotDecisionContext -> Maybe String
+quickMessageHasClusterShutdown context =
+    context.readingFromGameClient
+        |> EveOnline.BotFramework.quickMessageFromReadingFromGameClient
+        |> Maybe.Extra.filter (Common.Basics.stringContainsIgnoringCase "Cluster Shutdown")
 
 
 botMain : InterfaceToHost.BotConfig State
@@ -1269,23 +1435,15 @@ shouldDockBecauseDroneWindowWasInvisibleTooLong memory =
         && List.all ((==) False) memory.lastReadingsInSpaceDronesWindowWasVisible
 
 
-clickModuleButtonButWaitIfClickedInPreviousStep : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUIModuleButton -> DecisionPathNode
-clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
-    if doEffectsClickModuleButton moduleButton context.previousStepEffects then
-        describeBranch "Already clicked on this module button in previous step." waitForProgressInGame
-
-    else
-        describeBranch "Click on this module button."
-            (decideActionForCurrentStep
-                (mouseClickOnUIElement MouseButtonLeft moduleButton.uiNode)
-            )
-
-
 ensureUserEnabledNameColumnInOverview : { ifEnabled : DecisionPathNode, ifDisabled : DecisionPathNode } -> SeeUndockingComplete -> DecisionPathNode
 ensureUserEnabledNameColumnInOverview { ifEnabled, ifDisabled } seeUndockingComplete =
     if
-        (seeUndockingComplete.overviewWindow.entries |> List.all (.objectName >> (==) Nothing))
-            && (0 < List.length seeUndockingComplete.overviewWindow.entries)
+        seeUndockingComplete.overviewWindows
+            |> List.any
+                (\overviewWindow ->
+                    (overviewWindow.entries |> List.all (.objectName >> (==) Nothing))
+                        && (0 < List.length overviewWindow.entries)
+                )
     then
         describeBranch "The 'Name' column in the overview window seems disabled." ifDisabled
 
@@ -1304,7 +1462,7 @@ activeShipTreeEntryFromInventoryWindow =
 clickableAsteroidsFromOverviewWindow : ReadingFromGameClient -> List OverviewWindowEntry
 clickableAsteroidsFromOverviewWindow =
     overviewWindowEntriesRepresentingAsteroids
-        >> List.filter (.uiNode >> uiNodeIsLargeEnoughForClicking)
+        >> List.filter (.uiNode >> uiNodeVisibleRegionLargeEnoughForClicking)
         >> List.filter (.opacityPercent >> Maybe.map ((<=) 50) >> Maybe.withDefault True)
         >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
 
@@ -1325,9 +1483,9 @@ asteroidOverviewEntryMatchesSettings settings overviewEntry =
 
 overviewWindowEntriesRepresentingAsteroids : ReadingFromGameClient -> List OverviewWindowEntry
 overviewWindowEntriesRepresentingAsteroids =
-    .overviewWindow
-        >> Maybe.map (.entries >> List.filter overviewWindowEntryRepresentsAnAsteroid)
-        >> Maybe.withDefault []
+    .overviewWindows
+        >> List.map (.entries >> List.filter overviewWindowEntryRepresentsAnAsteroid)
+        >> List.concat
 
 
 overviewWindowEntryRepresentsAnAsteroid : OverviewWindowEntry -> Bool
@@ -1378,7 +1536,7 @@ selectedContainerFirstItemFromInventoryWindow =
             (\itemsView ->
                 case itemsView of
                     EveOnline.ParseUserInterface.InventoryItemsListView { items } ->
-                        items
+                        items |> List.map .uiNode
 
                     EveOnline.ParseUserInterface.InventoryItemsNotListView { items } ->
                         items
@@ -1424,11 +1582,6 @@ shipManeuverIsApproaching =
         >> Maybe.withDefault False
 
 
-uiNodeIsLargeEnoughForClicking : UITreeNodeWithDisplayRegion -> Bool
-uiNodeIsLargeEnoughForClicking node =
-    3 < node.totalDisplayRegionVisible.width && 3 < node.totalDisplayRegionVisible.height
-
-
 containsSelectionIndicatorPhotonUI : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion -> Bool
 containsSelectionIndicatorPhotonUI =
     EveOnline.ParseUserInterface.listDescendantsWithDisplayRegion
@@ -1445,3 +1598,12 @@ containsSelectionIndicatorPhotonUI =
                                )
                    )
             )
+
+
+nothingFromIntIfGreaterThan : Int -> Int -> Maybe Int
+nothingFromIntIfGreaterThan limit originalInt =
+    if limit < originalInt then
+        Nothing
+
+    else
+        Just originalInt

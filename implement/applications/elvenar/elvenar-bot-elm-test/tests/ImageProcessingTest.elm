@@ -3,7 +3,7 @@ module ImageProcessingTest exposing (..)
 import Base64
 import Base64.Decode
 import Bot
-import BotLab.SimpleBotFramework exposing (Location2d)
+import BotLab.SimpleBotFramework exposing (Location2d, PixelValueRGB)
 import DecodeBMPImage
 import Expect
 import Sample_2022_03_07
@@ -24,7 +24,7 @@ locate_coin_in_image =
 
 expectationLocationTolerance : Int
 expectationLocationTolerance =
-    3
+    4
 
 
 buildTestsFromScenario :
@@ -60,7 +60,6 @@ buildTestsFromScenario pattern scenario =
                             foundLocations =
                                 imageRepresentation
                                     |> BotLab.SimpleBotFramework.locatePatternInImage pattern BotLab.SimpleBotFramework.SearchEverywhere
-                                    |> Bot.filterRemoveCloseLocations expectationLocationTolerance
                                     |> List.sortBy .y
                         in
                         Test.test ("offset " ++ String.fromInt offset.x ++ ", " ++ String.fromInt offset.y) <|
@@ -86,6 +85,26 @@ buildExpectationFromLocations :
     -> Expect.Expectation
 buildExpectationFromLocations originalLocations =
     let
+        foundAfterClustering =
+            originalLocations.found
+                |> Bot.filterRemoveCloseLocations expectationLocationTolerance
+
+        fail failureDetail =
+            let
+                describeFound =
+                    [ ("Found at " ++ String.fromInt (List.length originalLocations.found) ++ " locations before clustering:")
+                        :: (originalLocations.found |> List.map describeLocation)
+                        |> String.join "\n"
+                    , "(" ++ String.fromInt (List.length foundAfterClustering) ++ " remaining after clustering)"
+                    ]
+                        |> String.join "\n"
+            in
+            [ failureDetail
+            , describeFound
+            ]
+                |> String.join "\n"
+                |> Expect.fail
+
         recursive locations =
             case locations.expected of
                 [] ->
@@ -94,9 +113,9 @@ buildExpectationFromLocations originalLocations =
                             Expect.pass
 
                         nextFound :: _ ->
-                            Expect.fail
+                            fail
                                 ("Got "
-                                    ++ (String.fromInt (List.length originalLocations.expected - List.length originalLocations.found)
+                                    ++ (String.fromInt (List.length foundAfterClustering - List.length originalLocations.expected)
                                             ++ " too many matches: Unexpected at  "
                                             ++ describeLocation nextFound
                                        )
@@ -105,9 +124,9 @@ buildExpectationFromLocations originalLocations =
                 nextExpected :: remainingExpected ->
                     case locations.found |> List.sortBy (distanceSquaredFromLocations nextExpected) of
                         [] ->
-                            Expect.fail
+                            fail
                                 ("Missing "
-                                    ++ (String.fromInt (List.length originalLocations.expected - List.length originalLocations.found)
+                                    ++ (String.fromInt (List.length originalLocations.expected - List.length foundAfterClustering)
                                             ++ " matches: Did not find  "
                                             ++ describeLocation nextExpected
                                        )
@@ -119,7 +138,7 @@ buildExpectationFromLocations originalLocations =
                                     distanceSquaredFromLocations closestFound nextExpected
                             in
                             if expectationLocationTolerance * expectationLocationTolerance < distanceSquared then
-                                Expect.fail
+                                fail
                                     ("Did not find "
                                         ++ describeLocation nextExpected
                                         ++ ": Closest found is "
@@ -129,7 +148,7 @@ buildExpectationFromLocations originalLocations =
                             else
                                 recursive { expected = remainingExpected, found = nextRemainingFound }
     in
-    recursive originalLocations
+    recursive { originalLocations | found = foundAfterClustering }
 
 
 deriveImageRepresentationFromNestedListOfPixels :
@@ -143,24 +162,11 @@ deriveImageRepresentationFromNestedListOfPixels pixelsRows =
                 |> List.head
                 |> Maybe.andThen (List.drop x >> List.head)
 
-        pixels_2x2 ( x, y ) =
-            let
-                originalPixels =
-                    [ ( 0, 0 )
-                    , ( 0, 1 )
-                    , ( 1, 0 )
-                    , ( 1, 1 )
-                    ]
-                        |> List.filterMap (\( offsetX, offsetY ) -> pixels_1x1 ( x * 2 + offsetX, y * 2 + offsetY ))
+        pixels_2x2 =
+            bin_pixels_2x2 pixels_1x1
 
-                componentAverage component =
-                    List.sum (List.map component originalPixels) // List.length originalPixels
-            in
-            if List.length originalPixels < 1 then
-                Nothing
-
-            else
-                Just { red = componentAverage .red, green = componentAverage .green, blue = componentAverage .blue }
+        pixels_4x4 =
+            bin_pixels_2x2 pixels_2x2
 
         width =
             pixelsRows
@@ -170,6 +176,7 @@ deriveImageRepresentationFromNestedListOfPixels pixelsRows =
     in
     { pixels_1x1 = pixels_1x1
     , pixels_2x2 = pixels_2x2
+    , pixels_4x4 = pixels_4x4
     , bounds =
         { left = 0
         , top = 0
@@ -177,6 +184,27 @@ deriveImageRepresentationFromNestedListOfPixels pixelsRows =
         , bottom = List.length pixelsRows
         }
     }
+
+
+bin_pixels_2x2 : (( Int, Int ) -> Maybe PixelValueRGB) -> ( Int, Int ) -> Maybe PixelValueRGB
+bin_pixels_2x2 getPixel ( x, y ) =
+    let
+        originalPixels =
+            [ ( 0, 0 )
+            , ( 0, 1 )
+            , ( 1, 0 )
+            , ( 1, 1 )
+            ]
+                |> List.filterMap (\( offsetX, offsetY ) -> getPixel ( x * 2 + offsetX, y * 2 + offsetY ))
+
+        componentAverage component =
+            List.sum (List.map component originalPixels) // List.length originalPixels
+    in
+    if List.length originalPixels < 1 then
+        Nothing
+
+    else
+        Just { red = componentAverage .red, green = componentAverage .green, blue = componentAverage .blue }
 
 
 describeLocation : Location2d -> String

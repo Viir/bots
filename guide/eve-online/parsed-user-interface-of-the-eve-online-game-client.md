@@ -2,6 +2,8 @@
 
 The parsed user interface is a library of building blocks to build apps that read from the EVE Online game client.
 
+This library helps us identify and locate the various UI elements in the EVE Online game client. It takes the low-level data available in the game client and extracts high-level information such as text, numbers, or types of icons.
+
 Developers use the parsing library to make ratting, mining, and mission running bots and intel tools. Following are some links to bots and tools using the parsing library:
 
 + <https://forum.botlab.org/t/list-of-eve-online-bots-for-beginners/629>
@@ -17,7 +19,7 @@ When programming an app, we use functions to reach into the UI tree and extract 
 
 To find things faster and automatically detect program code errors, we also use types adapted to the user interface's shape. We use the type system of the Elm programming language to assign names to parts of the UI tree describe the values that we expect in certain parts of the UI. The types provide us with names more closely related to players' experience, such as the overview window or ship modules.
 
-To help find these functions and types, we collect the most popular ones in the [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/5a80367063af122ea679930952d570ba2b7cd026/implement/applications/eve-online/eve-online-mining-bot/EveOnline/ParseUserInterface.elm) Elm module.
+To help find these functions and types, we collect the most popular ones in the [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/eca3adf93f2b6fd31ff0c38e4118a4e31759d9c6/implement/applications/eve-online/eve-online-mining-bot/EveOnline/ParseUserInterface.elm) Elm module.
 
 If you are not sure how to read the type definitions in that module, see the ["Reading Types"](https://guide.elm-lang.org/types/reading_types.html) and ["Type Aliases"](https://guide.elm-lang.org/types/type_aliases.html) sections in the Elm programming language guide.
 
@@ -30,7 +32,7 @@ type alias ParsedUserInterface =
     , shipUI : Maybe ShipUI
     , targets : List Target
     , infoPanelContainer : Maybe InfoPanelContainer
-    , overviewWindow : Maybe OverviewWindow
+    , overviewWindows : List OverviewWindow
     , selectedItemWindow : Maybe SelectedItemWindow
     , dronesWindow : Maybe DronesWindow
     , fittingWindow : Maybe FittingWindow
@@ -49,6 +51,7 @@ type alias ParsedUserInterface =
     , watchListPanel : Maybe WatchListPanel
     , standaloneBookmarkWindow : Maybe StandaloneBookmarkWindow
     , moduleButtonTooltip : Maybe ModuleButtonTooltip
+    , heatStatusTooltip : Maybe HeatStatusTooltip
     , neocom : Maybe Neocom
     , messageBoxes : List MessageBox
     , layerAbovemain : Maybe UITreeNodeWithDisplayRegion
@@ -84,6 +87,7 @@ type alias ShipUI =
     , squadronsUI : Maybe SquadronsUI
     , stopButton : Maybe UITreeNodeWithDisplayRegion
     , maxSpeedButton : Maybe UITreeNodeWithDisplayRegion
+    , heatGauges : Maybe ShipUIHeatGauges
     }
 ```
 
@@ -111,9 +115,12 @@ type alias ShipUIModuleButton =
     }
 ```
 
-The ship UI displays ship modules in the form of module buttons. One module button can represent a single module or multiple grouped modules. We can look at these module buttons to learn about the state of the modules, and we can also click on them to toggle the module activity.
+The ship UI displays ship modules in the form of module buttons. The game client UI lets us group modules, so one module button can represent a single module or multiple grouped modules.
+We can look at these module buttons to learn about the state of the modules, and we can also click on them to toggle the module activity.
 
-Some apps identify ship modules by their display location because this is faster than reading the tooltips. You can find some app descriptions calling for arranging modules into the three rows by use. To access the modules grouped into `top`, `middle`, and `bottom`, use the field `moduleButtonsRows`.
+Some bots identify ship modules by their display location because this is faster than reading the tooltips.
+You can find some bots descriptions calling for arranging modules into the three available rows based on the role of the module. Other bots read the module tooltips to identify the module behind the button. These bots don't require a particular arrangement of the module buttons because they remember the tooltip of each button.
+To access the modules grouped into `top`, `middle`, and `bottom`, use the field `moduleButtonsRows`.
 
 ![Ship UI modules grouped into rows](./image/2020-03-11-eve-online-ship-ui-module-rows-names.png)
 
@@ -158,7 +165,7 @@ To work with items in the inventory, use the field `selectedContainerInventory` 
 
 Are looking for an item with a specific name? You could use the filtering function in the game client, but there is an easier way: Using the function `getAllContainedDisplayTexts` on the inventory item, you can filter the list of items immediately.
 
-As you can also see in the screenshot of the live inspector, we get the used, selected, and maximum capacity of the selected container with the field `selectedContainerCapacityGauge`. You can compare the `used` and `maximum` values to see if the container is (almost) full. [Mining bots do this](https://github.com/Viir/bots/blob/3a19d243ce02b9fdc8ac199c74164d86b4777a5b/implement/applications/eve-online/eve-online-mining-bot/Bot.elm#L1115-L1120) on the mining hold to know when to travel to the unload location.
+As you can also see in the screenshot of the live inspector, we get the used, selected, and maximum capacity of the selected container with the field `selectedContainerCapacityGauge`. You can compare the `used` and `maximum` values to see if the container is (almost) full. [Mining bots do this](https://github.com/Viir/bots/blob/eca3adf93f2b6fd31ff0c38e4118a4e31759d9c6/implement/applications/eve-online/eve-online-mining-bot/Bot.elm#L1353-L1358) on the mining hold to know when to travel to the unload location.
 
 ## Drones Window
 
@@ -174,7 +181,7 @@ type alias DronesWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , droneGroups : List DronesWindowEntryGroupStructure
     , droneGroupInBay : Maybe DronesWindowEntryGroupStructure
-    , droneGroupInLocalSpace : Maybe DronesWindowEntryGroupStructure
+    , droneGroupInSpace : Maybe DronesWindowEntryGroupStructure
     }
 
 
@@ -192,8 +199,13 @@ type DronesWindowEntry
 type alias DronesWindowDroneGroupHeader =
     { uiNode : UITreeNodeWithDisplayRegion
     , mainText : Maybe String
-    , expander : Expander
-    , quantityFromTitle : Maybe Int
+    , quantityFromTitle : Maybe DronesWindowDroneGroupHeaderQuantity
+    }
+
+
+type alias DronesWindowDroneGroupHeaderQuantity =
+    { current : Int
+    , maximum : Maybe Int
     }
 
 

@@ -1,4 +1,4 @@
-{- Elvenar Bot version 2023-02-10
+{- Elvenar Bot version 2023-04-07
 
    This bot collects coins in the Elvenar game client window.
 
@@ -61,10 +61,6 @@ type alias State =
 
 type alias BotSettings =
     {}
-
-
-type alias PixelValue =
-    SimpleBotFramework.PixelValueRGB
 
 
 botMain : InterfaceToHost.BotConfig State
@@ -215,7 +211,7 @@ computeReadFromWindowResult readFromWindowResult image stateBefore =
                 coinPattern
                 SimpleBotFramework.SearchEverywhere
                 image
-                |> filterRemoveCloseLocations 3
+                |> filterRemoveCloseLocations 4
     in
     { timeInMilliseconds = stateBefore.timeInMilliseconds
     , readResult = readFromWindowResult
@@ -259,49 +255,43 @@ lastReadingDescription stateBefore =
 
 coinPattern : SimpleBotFramework.LocatePatternInImageApproach
 coinPattern =
-    SimpleBotFramework.TestPerPixelWithBroadPhase2x2
-        { testOnBinned2x2 = coinPatternTestOnBinned2x2
-        , testOnOriginalResolution =
+    SimpleBotFramework.TestPerPixelWithBroadPhase4x4
+        { testOnBinned4x4 =
             \getPixelColor ->
                 case getPixelColor { x = 0, y = 0 } of
                     Nothing ->
                         False
 
                     Just centerColor ->
-                        if
-                            not
-                                ((centerColor.red > 240)
-                                    && (centerColor.green < 240 && centerColor.green > 210)
-                                    && (centerColor.blue < 200 && centerColor.blue > 120)
-                                )
-                        then
-                            False
+                        (160 < centerColor.red)
+                            && (centerColor.green < centerColor.red)
+                            && (centerColor.blue < centerColor.red // 2)
+        , testOnBinned2x2 =
+            \getPixelColor ->
+                case
+                    ( getPixelColor { x = 0, y = 0 }
+                    , ( getPixelColor { x = -2, y = 0 }, getPixelColor { x = 0, y = -2 } )
+                    , getPixelColor { x = 2, y = 0 }
+                    )
+                of
+                    ( Just centerColor, ( Just leftColor, Just topColor ), Just rightColor ) ->
+                        (centerColor.red > 240)
+                            && (centerColor.green > 190 && centerColor.green < 235)
+                            && (centerColor.blue > 90 && centerColor.blue < 150)
+                            && (leftColor.red > 150 && leftColor.red < 220)
+                            && (leftColor.green > 90 && leftColor.green < 190)
+                            && (leftColor.blue > 20 && leftColor.blue < 100)
+                            && (topColor.red > 140 && topColor.red < 200)
+                            && (topColor.green > 90 && topColor.red < 170)
+                            && (topColor.blue > 10 && topColor.blue < 80)
+                            && (rightColor.red > 150 && rightColor.red < 240)
+                            && (rightColor.green > 90 && rightColor.green < 200)
+                            && (rightColor.blue > 10 && rightColor.blue < 100)
 
-                        else
-                            case ( getPixelColor { x = 9, y = 0 }, getPixelColor { x = 2, y = -8 } ) of
-                                ( Just rightColor, Just upperColor ) ->
-                                    (rightColor.red > 70 && rightColor.red < 120)
-                                        && (rightColor.green > 30 && rightColor.green < 80)
-                                        && (rightColor.blue > 5 && rightColor.blue < 50)
-                                        && (upperColor.red > 100 && upperColor.red < 180)
-                                        && (upperColor.green > 70 && upperColor.green < 180)
-                                        && (upperColor.blue > 60 && upperColor.blue < 100)
-
-                                _ ->
-                                    False
+                    _ ->
+                        False
+        , testOnOriginalResolution = always True
         }
-
-
-coinPatternTestOnBinned2x2 : ({ x : Int, y : Int } -> Maybe PixelValue) -> Bool
-coinPatternTestOnBinned2x2 getPixelColor =
-    case getPixelColor { x = 0, y = 0 } of
-        Nothing ->
-            False
-
-        Just centerColor ->
-            (centerColor.red > 240)
-                && (centerColor.green < 230 && centerColor.green > 190)
-                && (centerColor.blue < 150 && centerColor.blue > 80)
 
 
 filterRemoveCloseLocations : Int -> List { x : Int, y : Int } -> List { x : Int, y : Int }

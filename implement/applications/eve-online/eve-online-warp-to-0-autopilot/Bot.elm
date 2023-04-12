@@ -1,4 +1,4 @@
-{- EVE Online warp-to-0 auto-pilot version 2023-02-08
+{- EVE Online warp-to-0 auto-pilot version 2023-04-07
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
@@ -46,7 +46,6 @@ import EveOnline.BotFramework
         , ShipModulesMemory
         , infoPanelRouteFirstMarkerFromReadingFromGameClient
         , menuCascadeCompleted
-        , mouseClickOnUIElement
         , shipUIIndicatesShipIsWarpingOrJumping
         , useMenuEntryWithTextContainingFirstOf
         )
@@ -55,7 +54,7 @@ import EveOnline.BotFrameworkSeparatingMemory
         ( DecisionPathNode
         , UpdateMemoryContext
         , branchDependingOnDockedOrInSpace
-        , decideActionForCurrentStep
+        , clickModuleButtonButWaitIfClickedInPreviousStep
         , useContextMenuCascade
         , waitForProgressInGame
         )
@@ -71,10 +70,13 @@ parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
     AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "activate-module-always"
-           , AppSettings.valueTypeString
-                (\moduleName settings ->
-                    { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways }
-                )
+           , { description = "Text found in tooltips of ship modules that should always be active. For example: " cloaking device "."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\moduleName settings ->
+                        { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways }
+                    )
+             }
            )
          ]
             |> Dict.fromList
@@ -184,9 +186,7 @@ decideStepWhenInSpaceWaiting context =
         Just ( inactiveModuleMatchingText, inactiveModule ) ->
             describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
                 (describeBranch "Click on the module."
-                    (decideActionForCurrentStep
-                        (inactiveModule.uiNode |> mouseClickOnUIElement MouseButtonLeft)
-                    )
+                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                 )
 
         Nothing ->

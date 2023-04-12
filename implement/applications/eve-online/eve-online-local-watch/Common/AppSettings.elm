@@ -1,9 +1,10 @@
 module Common.AppSettings exposing (..)
 
-{-| This module helps you build settings-string parsers with two purposes:
+{-| This module helps you build settings-string parsers with the following three goals:
 
   - Mapping an unstructured settings string into a structured representation for easy consumption by other program parts.
   - If the given settings string does not conform with the configured format, generate specific error messages for the user to explain available settings and how to use them.
+  - Provide additional commands, 'list settings' and 'explain setting', to make it easy for users to list all supported settings and their descriptions.
 
 -}
 
@@ -16,6 +17,12 @@ import String.Extra
 type YesOrNo
     = Yes
     | No
+
+
+type alias SettingConfig appSettings =
+    { description : String
+    , valueParser : SettingValueType appSettings
+    }
 
 
 type alias SettingValueType appSettings =
@@ -76,7 +83,7 @@ Use the dictionary argument to specify the settings to support in the settings s
 This framework expects to find an equals sign (`=`) in each setting, separating the setting name and the assigned value.
 
 -}
-parseSimpleListOfAssignmentsSeparatedByNewlines : Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
+parseSimpleListOfAssignmentsSeparatedByNewlines : Dict.Dict String (SettingConfig appSettings) -> appSettings -> String -> Result String appSettings
 parseSimpleListOfAssignmentsSeparatedByNewlines =
     parseSimpleListOfAssignments { assignmentsSeparators = [ "\n" ] }
 
@@ -91,97 +98,165 @@ Use the dictionary argument to specify the settings to support in the settings s
 This framework expects to find an equals sign (`=`) in each setting, separating the setting name and the assigned value.
 
 -}
-parseSimpleListOfAssignments : { assignmentsSeparators : List String } -> Dict.Dict String (SettingValueType appSettings) -> appSettings -> String -> Result String appSettings
+parseSimpleListOfAssignments : { assignmentsSeparators : List String } -> Dict.Dict String (SettingConfig appSettings) -> appSettings -> String -> Result String appSettings
 parseSimpleListOfAssignments { assignmentsSeparators } namedSettings defaultSettings settingsString =
-    let
-        assignments =
-            assignmentsSeparators
-                |> List.foldl (\assignmentSeparator -> List.concatMap (String.split assignmentSeparator))
-                    [ settingsString ]
+    case guideOnSettingsHandler settingsString of
+        Just guideHandler ->
+            Err (guideHandler namedSettings)
 
-        assignmentValueSeparator =
-            "="
+        Nothing ->
+            let
+                assignments =
+                    assignmentsSeparators
+                        |> List.foldl (\assignmentSeparator -> List.concatMap (String.split assignmentSeparator))
+                            [ settingsString ]
 
-        assignmentFunctionResults =
-            assignments
-                |> List.map String.trim
-                |> List.filter (String.isEmpty >> not)
-                |> List.map
-                    (\assignment ->
-                        case namedSettings |> Dict.toList of
-                            [] ->
-                                Err messageOnlyAcceptEmptyAppSettings
+                assignmentValueSeparator =
+                    "="
 
-                            firstNamedSetting :: _ ->
-                                case assignment |> String.split assignmentValueSeparator of
-                                    settingNameBeforeTrim :: assignedValueFirstElement :: assignedValueOtherElements ->
-                                        let
-                                            settingName =
-                                                String.trim settingNameBeforeTrim
+                assignmentFunctionResults =
+                    assignments
+                        |> List.map String.trim
+                        |> List.filter (String.isEmpty >> not)
+                        |> List.map
+                            (\assignment ->
+                                case namedSettings |> Dict.toList of
+                                    [] ->
+                                        Err messageOnlyAcceptEmptyAppSettings
 
-                                            assignedValue =
-                                                (assignedValueFirstElement :: assignedValueOtherElements)
-                                                    |> String.join assignmentValueSeparator
-                                                    |> String.trim
-                                        in
-                                        case namedSettings |> Dict.get settingName of
-                                            Nothing ->
+                                    firstNamedSetting :: _ ->
+                                        case assignment |> String.split assignmentValueSeparator of
+                                            settingNameBeforeTrim :: assignedValueFirstElement :: assignedValueOtherElements ->
                                                 let
-                                                    settingsNamesWithSimilarity =
-                                                        namedSettings
-                                                            |> Dict.keys
-                                                            |> List.map
-                                                                (\supportedSettingName ->
-                                                                    ( supportedSettingName
-                                                                    , JaroWinkler.similarity supportedSettingName settingName
-                                                                    )
-                                                                )
-                                                            |> List.sortBy (Tuple.second >> negate)
+                                                    settingName =
+                                                        String.trim settingNameBeforeTrim
 
-                                                    pointOutSimilarSettingNameLines =
-                                                        case
-                                                            settingsNamesWithSimilarity
-                                                                |> List.filter (Tuple.second >> (<=) 0.5)
-                                                        of
-                                                            ( mostSimilarSettingName, _ ) :: _ ->
-                                                                [ "Did you mean '" ++ mostSimilarSettingName ++ "'?" ]
-
-                                                            _ ->
-                                                                []
+                                                    assignedValue =
+                                                        (assignedValueFirstElement :: assignedValueOtherElements)
+                                                            |> String.join assignmentValueSeparator
+                                                            |> String.trim
                                                 in
-                                                [ [ "Unknown setting name '" ++ settingName ++ "'." ]
-                                                , pointOutSimilarSettingNameLines
-                                                , [ "Here is a list of supported settings names: "
-                                                        ++ (namedSettings |> Dict.keys |> List.map (String.Extra.surround "'") |> String.join ", ")
-                                                  ]
+                                                getSettingByNameOrGuide settingName namedSettings
+                                                    |> Result.andThen
+                                                        (\settingConfig ->
+                                                            settingConfig.valueParser assignedValue
+                                                                |> Result.mapError
+                                                                    ((++) ("Failed to parse value for setting '" ++ settingName ++ "': "))
+                                                        )
+
+                                            _ ->
+                                                [ "Failed to parse assignment '"
+                                                    ++ assignment
+                                                    ++ "': Did not find the equals sign '=' in this text."
+                                                , "Here is an example of an assignment:"
+                                                , Tuple.first firstNamedSetting ++ " = 1234"
                                                 ]
-                                                    |> List.concat
                                                     |> String.join "\n"
                                                     |> Err
-
-                                            Just parseFunction ->
-                                                parseFunction assignedValue
-                                                    |> Result.mapError (\parseError -> "Failed to parse value for setting '" ++ settingName ++ "': " ++ parseError)
-
-                                    _ ->
-                                        [ "Failed to parse assignment '"
-                                            ++ assignment
-                                            ++ "': Did not find the equals sign '=' in this text."
-                                        , "Here is an example of an assignment:"
-                                        , Tuple.first firstNamedSetting ++ " = 1234"
-                                        ]
-                                            |> String.join "\n"
-                                            |> Err
-                    )
-    in
-    assignmentFunctionResults
-        |> Result.Extra.combine
-        |> Result.map
-            (\assignmentFunctions ->
-                assignmentFunctions
-                    |> List.foldl (\assignmentFunction previousSettings -> assignmentFunction previousSettings)
+                            )
+            in
+            assignmentFunctionResults
+                |> Result.Extra.combine
+                |> Result.map
+                    (List.foldl (\assignmentFunction previousSettings -> assignmentFunction previousSettings)
                         defaultSettings
-            )
+                    )
+
+
+guideOnSettingsHandler : String -> Maybe (Dict.Dict String (SettingConfig appSettings) -> String)
+guideOnSettingsHandler settingsString =
+    let
+        settingsStringWords =
+            String.words (String.toLower settingsString)
+    in
+    case settingsStringWords of
+        [ "list", "setting" ] ->
+            Just respondToCommandListSettings
+
+        [ "list", "settings" ] ->
+            Just respondToCommandListSettings
+
+        [ "explain", "settings" ] ->
+            Just respondToCommandListSettings
+
+        [ "explain", "setting", settingName ] ->
+            Just (explainSettingHandler settingName)
+
+        [ "list", "setting", settingName ] ->
+            Just (explainSettingHandler settingName)
+
+        [ "explain", "setting" ] ->
+            Just (listSettingsTextWithHeading >> (++) "Missing setting name. ")
+
+        _ ->
+            Nothing
+
+
+explainSettingHandler : String -> Dict.Dict String (SettingConfig appSettings) -> String
+explainSettingHandler settingName namedSettings =
+    getSettingByNameOrGuide settingName namedSettings
+        |> Result.Extra.unpack
+            identity
+            (\selectedSetting -> "Description of setting '" ++ settingName ++ "':\n" ++ selectedSetting.description)
+
+
+getSettingByNameOrGuide : String -> Dict.Dict String (SettingConfig appSettings) -> Result String (SettingConfig appSettings)
+getSettingByNameOrGuide settingName namedSettings =
+    case namedSettings |> Dict.get settingName of
+        Nothing ->
+            let
+                settingsNamesWithSimilarity =
+                    namedSettings
+                        |> Dict.keys
+                        |> List.map
+                            (\supportedSettingName ->
+                                ( supportedSettingName
+                                , JaroWinkler.similarity supportedSettingName settingName
+                                )
+                            )
+                        |> List.sortBy (Tuple.second >> negate)
+
+                pointOutSimilarSettingNameLines =
+                    case
+                        settingsNamesWithSimilarity
+                            |> List.filter (Tuple.second >> (<=) 0.5)
+                    of
+                        ( mostSimilarSettingName, _ ) :: _ ->
+                            [ "Did you mean '" ++ mostSimilarSettingName ++ "'?" ]
+
+                        _ ->
+                            []
+            in
+            [ [ "Unknown setting name '" ++ settingName ++ "'." ]
+            , pointOutSimilarSettingNameLines
+            , [ listSettingsTextWithHeading namedSettings ]
+            ]
+                |> List.concat
+                |> String.join "\n"
+                |> Err
+
+        Just settingConfig ->
+            Ok settingConfig
+
+
+respondToCommandListSettings : Dict.Dict String (SettingConfig appSettings) -> String
+respondToCommandListSettings namedSettings =
+    [ "Are you looking for a list of all settings?"
+    , listSettingsTextWithHeading namedSettings
+    ]
+        |> String.join " "
+
+
+listSettingsTextWithHeading : Dict.Dict String (SettingConfig appSettings) -> String
+listSettingsTextWithHeading namedSettings =
+    "Following is a list of the "
+        ++ String.fromInt (Dict.size namedSettings)
+        ++ " setting names that I understand:\n"
+        ++ (namedSettings
+                |> Dict.keys
+                |> List.map (String.Extra.surround "'")
+                |> String.join "\n"
+           )
 
 
 listAllSupportedValues :

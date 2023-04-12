@@ -36,13 +36,40 @@ using System.Runtime.InteropServices;
 
 
 int readingFromGameCount = 0;
-var generalStopwatch = System.Diagnostics.Stopwatch.StartNew();
+static var generalStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
 var readingFromGameHistory = new Queue<ReadingFromGameClient>();
 
 
 string ToStringBase16(byte[] array) => BitConverter.ToString(array).Replace("-", "");
 
+
+var searchUIRootAddressTasks = new Dictionary<int, SearchUIRootAddressTask>();
+
+class SearchUIRootAddressTask
+{
+    public Request.SearchUIRootAddressStructure request;
+
+    public TimeSpan beginTime;
+
+    public Response.SearchUIRootAddressCompletedStruct completed;
+
+    public SearchUIRootAddressTask(Request.SearchUIRootAddressStructure request)
+    {
+        this.request = request;
+        beginTime = generalStopwatch.Elapsed;
+
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            var uiTreeRootAddress = FindUIRootAddressFromProcessId(request.processId);
+
+            completed = new Response.SearchUIRootAddressCompletedStruct
+            {
+                uiRootAddress = uiTreeRootAddress?.ToString()
+            };
+        });
+    }
+}
 
 struct ReadingFromGameClient
 {
@@ -118,7 +145,7 @@ class Response
 {
     public GameClientProcessSummaryStruct[] ListGameClientProcessesResponse;
 
-    public SearchUIRootAddressResultStructure SearchUIRootAddressResult;
+    public SearchUIRootAddressResponseStruct SearchUIRootAddressResponse;
 
     public ReadFromWindowResultStructure ReadFromWindowResult;
 
@@ -139,10 +166,31 @@ class Response
         public int mainWindowZIndex;
     }
 
-    public class SearchUIRootAddressResultStructure
+    public class SearchUIRootAddressResponseStruct
     {
         public int processId;
 
+        public SearchUIRootAddressStage stage;
+    }
+
+
+    public class SearchUIRootAddressStage
+    {
+        public SearchUIRootAddressInProgressStruct SearchUIRootAddressInProgress;
+
+        public SearchUIRootAddressCompletedStruct SearchUIRootAddressCompleted;
+    }
+
+    public class SearchUIRootAddressInProgressStruct
+    {
+        public long searchBeginTimeMilliseconds;
+
+        public long currentTimeMilliseconds;
+    }
+
+
+    public class SearchUIRootAddressCompletedStruct
+    {
         public string uiRootAddress;
     }
 
@@ -194,14 +242,21 @@ Response request(Request request)
 
     if (request.SearchUIRootAddress != null)
     {
-        var uiTreeRootAddress = FindUIRootAddressFromProcessId(request.SearchUIRootAddress.processId);
+        searchUIRootAddressTasks.TryGetValue(request.SearchUIRootAddress.processId, out var searchTask);
+
+        if (searchTask is null)
+        {
+            searchTask = new SearchUIRootAddressTask(request.SearchUIRootAddress);
+
+            searchUIRootAddressTasks[request.SearchUIRootAddress.processId] = searchTask;
+        }
 
         return new Response
         {
-            SearchUIRootAddressResult = new Response.SearchUIRootAddressResultStructure
+            SearchUIRootAddressResponse = new Response.SearchUIRootAddressResponseStruct
             {
                 processId = request.SearchUIRootAddress.processId,
-                uiRootAddress = uiTreeRootAddress?.ToString(),
+                stage = SearchUIRootAddressTaskAsResponseStage(searchTask)
             },
         };
     }
@@ -331,7 +386,25 @@ Response request(Request request)
     return null;
 }
 
-ulong? FindUIRootAddressFromProcessId(int processId)
+static Response.SearchUIRootAddressStage SearchUIRootAddressTaskAsResponseStage(SearchUIRootAddressTask task)
+{
+    return task.completed switch
+    {
+        Response.SearchUIRootAddressCompletedStruct completed =>
+        new Response.SearchUIRootAddressStage { SearchUIRootAddressCompleted = completed },
+
+        _ => new Response.SearchUIRootAddressStage
+        {
+            SearchUIRootAddressInProgress = new Response.SearchUIRootAddressInProgressStruct
+            {
+                searchBeginTimeMilliseconds = (long)task.beginTime.TotalMilliseconds,
+                currentTimeMilliseconds = generalStopwatch.ElapsedMilliseconds,
+            }
+        }
+    };
+}
+
+static ulong? FindUIRootAddressFromProcessId(int processId)
 {
     var candidatesAddresses =
         read_memory_64_bit.EveOnline64.EnumeratePossibleAddressesForUIRootObjectsFromProcessId(processId);

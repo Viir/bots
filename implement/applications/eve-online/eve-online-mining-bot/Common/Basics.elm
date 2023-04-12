@@ -1,5 +1,20 @@
 module Common.Basics exposing (..)
 
+import Maybe.Extra
+import Result.Extra
+
+
+resultFirstSuccessOrFirstError : List (Result e o) -> Maybe (Result e o)
+resultFirstSuccessOrFirstError list =
+    let
+        ( oks, errors ) =
+            Result.Extra.partition list
+    in
+    oks
+        |> List.head
+        |> Maybe.map Ok
+        |> Maybe.Extra.orElse (errors |> List.head |> Maybe.map Err)
+
 
 listElementAtWrappedIndex : Int -> List element -> Maybe element
 listElementAtWrappedIndex indexToWrap list =

@@ -6,11 +6,13 @@ Fortunately, this process can be automated using a bot. The bot we are using her
 
 ## Starting the Autopilot Bot
 
-To start the bot, download the script from <https://catalog.botlab.org/7337617498ba941b> and then run it.
+If the BotLab client is not already installed on your machine, follow the guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
+The BotLab client is a tool for developing bots and also makes running bots easier with graphical user interfaces for configuration.
 
-In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
+In the BotLab client, load the bot by entering the following link in the 'Select Bot' view:
+<https://catalog.botlab.org/71b931ae096f7bca>
 
-After completing the installation, run the script again to start the bot.
+There is a detailed walkthrough video on how to load and run a bot at <https://to.botlab.org/guide/video/how-to-run-a-bot-live>
 
 Before starting the bot, set up the game client as follows:
 
@@ -20,7 +22,7 @@ Before starting the bot, set up the game client as follows:
 
 The bot needs a few seconds to start and find the EVE Online client process. It also shows status messages to inform what it is doing at the moment and when the startup is complete.
 
-![EVE Online Warp-To-0 Autopilot Starting](./image/2023-03-08-botlab-gui-eve-online-bot-startup.png)
+![EVE Online Bot Starting](./image/2023-03-08-botlab-gui-eve-online-bot-startup.png)
 
 When the startup sequence has completed, the bot might display this message:
 

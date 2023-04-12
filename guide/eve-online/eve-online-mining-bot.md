@@ -27,11 +27,13 @@ Despite being quite robust, this mining bot is far from being as smart as a huma
 
 ## Starting the Mining Bot
 
-To start the mining bot, download the script from <https://catalog.botlab.org/f70be31b0f035717> and then run it.
+If the BotLab client is not already installed on your machine, follow the guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
+The BotLab client is a tool for developing bots and also makes running bots easier with graphical user interfaces for configuration.
 
-In case the BotLab client program is not yet installed on your system, the script will redirect you to the installation guide at <https://to.botlab.org/guide/how-to-install-the-botlab-client>
+In the BotLab client, load the bot by entering the following link in the 'Select Bot' view:
+<https://catalog.botlab.org/7e8737ddc07149b7>
 
-After completing the installation, run the script again to start the mining bot.
+There is a detailed walkthrough video on how to load and run a bot at <https://to.botlab.org/guide/video/how-to-run-a-bot-live>
 
 The bot needs a few seconds to start and find the EVE Online client process. It also shows status messages to inform what it is doing at the moment and when the startup is complete.
 

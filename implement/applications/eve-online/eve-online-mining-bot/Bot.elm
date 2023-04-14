@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-04-07
+{- EVE Online mining bot version 2023-04-14
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -274,6 +274,12 @@ type alias BotDecisionContext =
 
 type alias State =
     EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory
+
+
+type alias SelectedAsteroidsFromOverview =
+    { clickableAsteroids : List OverviewWindowEntry
+    , asteroidMatchingSettings : Maybe ( OverviewWindowEntry, { closeEnoughForMining : Bool } )
+    }
 
 
 miningBotDecisionRoot : BotDecisionContext -> DecisionPathNode
@@ -717,38 +723,61 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                                 )
 
                         else
-                            describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
-                                (case context.readingFromGameClient.targets |> List.head of
-                                    Nothing ->
-                                        describeBranch "I see no locked target."
-                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid context)
+                            case selectAsteroidsFromOverview context of
+                                Err err ->
+                                    describeBranch ("Failed to select asteroids from overview: " ++ err)
+                                        (dockToUnloadOre context)
 
-                                    Just _ ->
-                                        {- Depending on the UI configuration, the game client might automatically target rats.
-                                           To avoid these targets interfering with mining, unlock them here.
-                                        -}
-                                        unlockTargetsNotForMining context
-                                            |> Maybe.withDefault
-                                                (describeBranch "I see a locked target."
-                                                    (case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                                        Nothing ->
-                                                            describeBranch
-                                                                (if knownMiningModules == [] then
-                                                                    "Found no mining modules so far."
+                                Ok selectedAsteroids ->
+                                    if
+                                        (selectedAsteroids.asteroidMatchingSettings
+                                            |> Maybe.map (Tuple.second >> .closeEnoughForMining)
+                                            |> Maybe.withDefault False
+                                        )
+                                            && shipManeuverIsApproaching context.readingFromGameClient
+                                    then
+                                        describeBranch "Minable asteroid is close enough to stop the ship"
+                                            (decideActionForCurrentStep
+                                                [ EffectOnWindow.KeyDown EffectOnWindow.vkey_CONTROL
+                                                , EffectOnWindow.KeyDown EffectOnWindow.vkey_SPACE
+                                                , EffectOnWindow.KeyUp EffectOnWindow.vkey_CONTROL
+                                                , EffectOnWindow.KeyUp EffectOnWindow.vkey_SPACE
+                                                ]
+                                            )
 
-                                                                 else
-                                                                    "All known mining modules found so far are active."
+                                    else
+                                        describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
+                                            (case context.readingFromGameClient.targets |> List.head of
+                                                Nothing ->
+                                                    describeBranch "I see no locked target."
+                                                        (travelToMiningSiteAndLaunchDronesAndTargetAsteroid selectedAsteroids context)
+
+                                                Just _ ->
+                                                    {- Depending on the UI configuration, the game client might automatically target rats.
+                                                       To avoid these targets interfering with mining, unlock them here.
+                                                    -}
+                                                    unlockTargetsNotForMining context
+                                                        |> Maybe.withDefault
+                                                            (describeBranch "I see a locked target."
+                                                                (case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                                    Nothing ->
+                                                                        describeBranch
+                                                                            (if knownMiningModules == [] then
+                                                                                "Found no mining modules so far."
+
+                                                                             else
+                                                                                "All known mining modules found so far are active."
+                                                                            )
+                                                                            (readShipUIModuleButtonTooltips context
+                                                                                |> Maybe.withDefault waitForProgressInGame
+                                                                            )
+
+                                                                    Just inactiveModule ->
+                                                                        describeBranch "I see an inactive mining module. Activate it."
+                                                                            (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                                                                 )
-                                                                (readShipUIModuleButtonTooltips context
-                                                                    |> Maybe.withDefault waitForProgressInGame
-                                                                )
-
-                                                        Just inactiveModule ->
-                                                            describeBranch "I see an inactive mining module. Activate it."
-                                                                (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
-                                                    )
-                                                )
-                                )
+                                                            )
+                                            )
 
 
 unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode
@@ -775,48 +804,85 @@ unlockTargetsNotForMining context =
             )
 
 
-travelToMiningSiteAndLaunchDronesAndTargetAsteroid : BotDecisionContext -> DecisionPathNode
-travelToMiningSiteAndLaunchDronesAndTargetAsteroid context =
+travelToMiningSiteAndLaunchDronesAndTargetAsteroid : SelectedAsteroidsFromOverview -> BotDecisionContext -> DecisionPathNode
+travelToMiningSiteAndLaunchDronesAndTargetAsteroid selectedAsteroids context =
     let
         continueWithWarpToMiningSite =
             returnDronesToBay context
                 |> Maybe.withDefault (warpToMiningSite context)
     in
-    case context.readingFromGameClient |> clickableAsteroidsFromOverviewWindow of
-        [] ->
-            describeBranch "I see no clickable asteroid in the overview. Warp to mining site."
-                continueWithWarpToMiningSite
+    case selectedAsteroids.asteroidMatchingSettings of
+        Nothing ->
+            case selectedAsteroids.clickableAsteroids of
+                [] ->
+                    describeBranch "I see no clickable asteroid in the overview. Warp to mining site."
+                        continueWithWarpToMiningSite
 
-        clickableAsteroids ->
-            case
-                clickableAsteroids
-                    |> List.filter (asteroidOverviewEntryMatchesSettings context.eventContext.botSettings)
-                    |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
-                    |> List.head
-            of
-                Nothing ->
+                clickableAsteroids ->
                     describeBranch
                         ("I see "
                             ++ String.fromInt (List.length clickableAsteroids)
-                            ++ "clickable asteroids in the overview. But none of these matches the filter from settings. Warp to mining site."
+                            ++ "clickable asteroids in the overview. But none of these matches the filter from settings. Warp to other mining site."
                         )
                         continueWithWarpToMiningSite
 
-                Just asteroidInOverview ->
-                    describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                        (warpToOverviewEntryIfFarEnough context asteroidInOverview
+        Just ( asteroidInOverview, _ ) ->
+            describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                (warpToOverviewEntryIfFarEnough context asteroidInOverview
+                    |> Maybe.withDefault
+                        (launchDrones context
                             |> Maybe.withDefault
-                                (launchDrones context
-                                    |> Maybe.withDefault
-                                        (lockTargetFromOverviewEntryAndEnsureIsInRange
-                                            context
-                                            (min context.eventContext.botSettings.targetingRange
-                                                context.eventContext.botSettings.miningModuleRange
-                                            )
-                                            asteroidInOverview
-                                        )
+                                (lockTargetFromOverviewEntryAndEnsureIsInRange
+                                    context
+                                    (min context.eventContext.botSettings.targetingRange
+                                        context.eventContext.botSettings.miningModuleRange
+                                    )
+                                    asteroidInOverview
                                 )
                         )
+                )
+
+
+selectAsteroidsFromOverview : BotDecisionContext -> Result String SelectedAsteroidsFromOverview
+selectAsteroidsFromOverview context =
+    let
+        clickableAsteroids =
+            clickableAsteroidsFromOverviewWindow context.readingFromGameClient
+
+        continueWithAsteroidMatchingSettings asteroidMatchingSettings =
+            Ok
+                { clickableAsteroids = clickableAsteroids
+                , asteroidMatchingSettings = asteroidMatchingSettings
+                }
+    in
+    clickableAsteroids
+        |> List.filter (asteroidOverviewEntryMatchesSettings context.eventContext.botSettings)
+        |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
+        |> List.head
+        |> Maybe.map
+            (\overviewEntry ->
+                overviewEntry.objectDistanceInMeters
+                    |> Result.mapError
+                        ((++)
+                            ("Failed to read the distance on overview entry "
+                                ++ (overviewEntry.objectName |> Maybe.withDefault "")
+                                ++ ": "
+                            )
+                        )
+                    |> Result.andThen
+                        (\distanceInMeters ->
+                            ( overviewEntry
+                            , { closeEnoughForMining =
+                                    distanceInMeters
+                                        <= min context.eventContext.botSettings.targetingRange
+                                            context.eventContext.botSettings.miningModuleRange
+                              }
+                            )
+                                |> Just
+                                |> continueWithAsteroidMatchingSettings
+                        )
+            )
+        |> Maybe.withDefault (continueWithAsteroidMatchingSettings Nothing)
 
 
 warpToOverviewEntryIfFarEnough : BotDecisionContext -> OverviewWindowEntry -> Maybe DecisionPathNode

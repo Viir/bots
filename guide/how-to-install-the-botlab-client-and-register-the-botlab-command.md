@@ -17,12 +17,14 @@ The BotLab client program is a tool for developing and running bots, and many gu
 
 ![BotLab client offers to install](./image/2022-10-07-botlab-client-offer-install.png)
 
-+ To start the installation/registration, use the button labeled `Install and Continue`.
++ To start the installation, use the button labeled `Install and Continue`.
 + The program then confirms the successful installation with a new output like this:
 
 ![BotLab client completed installation](./image/2022-10-07-botlab-client-completed-installation.png)
 
-That's it; the installation is complete. Now you can run bot configurations and scripts from the [botlab catalog](https://to.botlab.org/catalog)
+That's it; the installation is complete. Now you can run bots by using the 'Run Bot' button:
+
+![The first view visible in the BotLab client after installing](./image/2022-12-10-botlab-client-main-menu.png)
 
 If you have any questions, the [BotLab forum](https://forum.botlab.org) is a good place to learn more.
 

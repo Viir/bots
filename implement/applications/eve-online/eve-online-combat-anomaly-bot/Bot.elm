@@ -1,4 +1,6 @@
-{- EVE Online combat anomaly bot version 2023-04-08
+{- EVE Online bot version j2288 2023-04-16
+
+   Adapted to use-case from <https://forum.botlab.org/t/eve-online-anomaly-ratting-bot-release/87/352>
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -517,74 +519,77 @@ dockAtRandomStationOrStructure context =
 
 decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
 decideNextActionWhenInSpace context seeUndockingComplete =
-    if seeUndockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
-        describeBranch "I see we are warping."
-            ([ returnDronesToBay context
-             , readShipUIModuleButtonTooltips context
-             ]
-                |> List.filterMap identity
-                |> List.head
-                |> Maybe.withDefault waitForProgressInGame
-            )
+    readShipUIModuleButtonTooltips context
+        |> Maybe.withDefault
+            (if seeUndockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
+                describeBranch "I see we are warping."
+                    ([ returnDronesToBay context
+                     , readShipUIModuleButtonTooltips context
+                     ]
+                        |> List.filterMap identity
+                        |> List.head
+                        |> Maybe.withDefault waitForProgressInGame
+                    )
 
-    else
-        case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> moduleIsActiveOrReloading >> not) |> List.head of
-            Just ( inactiveModuleMatchingText, inactiveModule ) ->
-                describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
-                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+             else
+                case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> moduleIsActiveOrReloading >> not) |> List.head of
+                    Just ( inactiveModuleMatchingText, inactiveModule ) ->
+                        describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
+                            (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
 
-            Nothing ->
-                let
-                    returnDronesAndEnterAnomaly { ifNoAcceptableAnomalyAvailable } =
-                        returnDronesToBay context
-                            |> Maybe.withDefault
-                                (describeBranch "No drones to return."
-                                    (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable } context)
-                                )
-
-                    returnDronesAndEnterAnomalyOrWait =
-                        returnDronesAndEnterAnomaly
-                            { ifNoAcceptableAnomalyAvailable =
-                                describeBranch "Wait for a matching anomaly to appear." waitForProgressInGame
-                            }
-                in
-                case context.readingFromGameClient |> getCurrentAnomalyIDAsSeenInProbeScanner of
                     Nothing ->
-                        describeBranch "Looks like we are not in an anomaly." returnDronesAndEnterAnomalyOrWait
+                        let
+                            returnDronesAndEnterAnomaly { ifNoAcceptableAnomalyAvailable } =
+                                returnDronesToBay context
+                                    |> Maybe.withDefault
+                                        (describeBranch "No drones to return."
+                                            (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable } context)
+                                        )
 
-                    Just anomalyID ->
-                        case memoryOfAnomalyWithID anomalyID context.memory of
+                            returnDronesAndEnterAnomalyOrWait =
+                                returnDronesAndEnterAnomaly
+                                    { ifNoAcceptableAnomalyAvailable =
+                                        describeBranch "Wait for a matching anomaly to appear." waitForProgressInGame
+                                    }
+                        in
+                        case context.readingFromGameClient |> getCurrentAnomalyIDAsSeenInProbeScanner of
                             Nothing ->
-                                describeBranch
-                                    ("Program error: Did not find memory of anomaly " ++ anomalyID)
-                                    waitForProgressInGame
+                                describeBranch "Looks like we are not in an anomaly." returnDronesAndEnterAnomalyOrWait
 
-                            Just memoryOfAnomaly ->
-                                let
-                                    arrivalInAnomalyAgeSeconds =
-                                        (context.eventContext.timeInMilliseconds - memoryOfAnomaly.arrivalTime.milliseconds) // 1000
-                                in
-                                describeBranch ("We are in anomaly '" ++ anomalyID ++ "' since " ++ String.fromInt arrivalInAnomalyAgeSeconds ++ " seconds.")
-                                    (case findReasonToAvoidAnomalyFromMemory context { anomalyID = anomalyID } of
-                                        Just reasonToAvoidAnomaly ->
-                                            describeBranch
-                                                ("Found a reason to avoid this anomaly: "
-                                                    ++ describeReasonToAvoidAnomaly reasonToAvoidAnomaly
-                                                )
-                                                (returnDronesAndEnterAnomaly
-                                                    { ifNoAcceptableAnomalyAvailable =
-                                                        describeBranch "Get out of this anomaly."
-                                                            (dockAtRandomStationOrStructure context)
-                                                    }
-                                                )
+                            Just anomalyID ->
+                                case memoryOfAnomalyWithID anomalyID context.memory of
+                                    Nothing ->
+                                        describeBranch
+                                            ("Program error: Did not find memory of anomaly " ++ anomalyID)
+                                            waitForProgressInGame
 
-                                        Nothing ->
-                                            decideActionInAnomaly
-                                                { arrivalInAnomalyAgeSeconds = arrivalInAnomalyAgeSeconds }
-                                                context
-                                                seeUndockingComplete
-                                                returnDronesAndEnterAnomalyOrWait
-                                    )
+                                    Just memoryOfAnomaly ->
+                                        let
+                                            arrivalInAnomalyAgeSeconds =
+                                                (context.eventContext.timeInMilliseconds - memoryOfAnomaly.arrivalTime.milliseconds) // 1000
+                                        in
+                                        describeBranch ("We are in anomaly '" ++ anomalyID ++ "' since " ++ String.fromInt arrivalInAnomalyAgeSeconds ++ " seconds.")
+                                            (case findReasonToAvoidAnomalyFromMemory context { anomalyID = anomalyID } of
+                                                Just reasonToAvoidAnomaly ->
+                                                    describeBranch
+                                                        ("Found a reason to avoid this anomaly: "
+                                                            ++ describeReasonToAvoidAnomaly reasonToAvoidAnomaly
+                                                        )
+                                                        (returnDronesAndEnterAnomaly
+                                                            { ifNoAcceptableAnomalyAvailable =
+                                                                describeBranch "Get out of this anomaly."
+                                                                    (dockAtRandomStationOrStructure context)
+                                                            }
+                                                        )
+
+                                                Nothing ->
+                                                    decideActionInAnomaly
+                                                        { arrivalInAnomalyAgeSeconds = arrivalInAnomalyAgeSeconds }
+                                                        context
+                                                        seeUndockingComplete
+                                                        returnDronesAndEnterAnomalyOrWait
+                                            )
+            )
 
 
 undockUsingStationWindow :

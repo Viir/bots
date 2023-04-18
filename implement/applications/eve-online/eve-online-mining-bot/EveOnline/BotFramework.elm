@@ -946,30 +946,21 @@ operateBotExceptRenewingVolatileProcess botConfiguration botEventContext stateBe
                         |> Maybe.withDefault 0
 
                 nextReadingLowerBoundByLast =
-                    case stateBefore.setup.lastReadingFromGame of
-                        Nothing ->
-                            0
+                    stateBefore.setup.lastReadingFromGame
+                        |> Maybe.andThen
+                            (\lastReadingFromGame ->
+                                case lastReadingFromGame.stage of
+                                    ReadingFromGameInProgress _ ->
+                                        Just (lastReadingFromGame.timeInMilliseconds + 3000)
 
-                        Just startedReading ->
-                            let
-                                lastReadingCompleted =
-                                    case stateBefore.setup.lastReadingFromGame of
-                                        Nothing ->
-                                            False
-
-                                        Just lastReadingFromGame ->
-                                            startedReading.timeInMilliseconds < lastReadingFromGame.timeInMilliseconds
-                            in
-                            if lastReadingCompleted then
-                                0
-
-                            else
-                                startedReading.timeInMilliseconds + 3000
+                                    ReadingFromGameCompleted _ ->
+                                        Nothing
+                            )
 
                 timeForNextReadingFromGame =
                     timeForNextReadingFromGameFromBot
                         |> min timeForNextReadingFromGameGeneral
-                        |> max nextReadingLowerBoundByLast
+                        |> max (Maybe.withDefault 0 nextReadingLowerBoundByLast)
 
                 remainingTimeToNextReadingFromGame =
                     timeForNextReadingFromGame - stateBefore.timeInMilliseconds

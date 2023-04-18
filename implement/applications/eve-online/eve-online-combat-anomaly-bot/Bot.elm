@@ -1,4 +1,4 @@
-{- EVE Online bot version j2288 2023-04-16
+{- EVE Online bot version j2288 2023-04-18
 
    Adapted to use-case from <https://forum.botlab.org/t/eve-online-anomaly-ratting-bot-release/87/352>
 

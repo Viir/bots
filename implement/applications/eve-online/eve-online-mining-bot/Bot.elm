@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-04-18
+{- EVE Online mining bot test compression version 2023-04-23
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -89,6 +89,7 @@ import EveOnline.ParseUserInterface
     exposing
         ( OverviewWindowEntry
         , centerFromDisplayRegion
+        , getAllContainedDisplayTextsWithRegion
         )
 import Maybe.Extra
 import Regex
@@ -116,6 +117,7 @@ defaultBotSettings =
     , botStepDelayMilliseconds = 1300
     , selectInstancePilotName = Nothing
     , includeAsteroidPatterns = []
+    , compressFromMiningHold = Nothing
     }
 
 
@@ -224,6 +226,13 @@ parseBotSettings =
                     )
              }
            )
+         , ( "compress-from-mining-hold"
+           , { description = "Compress items from the mining hold, when the mining hold is filled at least 75 %. The only supported values are `no` and `yes`."
+             , valueParser =
+                AppSettings.valueTypeYesOrNo
+                    (\compress settings -> { settings | compressFromMiningHold = Just compress })
+             }
+           )
          ]
             |> Dict.fromList
         )
@@ -255,6 +264,7 @@ type alias BotSettings =
     , botStepDelayMilliseconds : Int
     , selectInstancePilotName : Maybe String
     , includeAsteroidPatterns : List String
+    , compressFromMiningHold : Maybe AppSettings.YesOrNo
     }
 
 
@@ -675,7 +685,11 @@ checkAndRepairBeforeUndockingUsingContextMenu context inventoryWindowWithMiningH
                             )
 
 
-inSpaceWithMiningHoldSelected : BotDecisionContext -> SeeUndockingComplete -> EveOnline.ParseUserInterface.InventoryWindow -> DecisionPathNode
+inSpaceWithMiningHoldSelected :
+    BotDecisionContext
+    -> SeeUndockingComplete
+    -> EveOnline.ParseUserInterface.InventoryWindow
+    -> DecisionPathNode
 inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMiningHoldSelected =
     if seeUndockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
         describeBranch "I see we are warping."
@@ -694,90 +708,162 @@ inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMi
                     (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
 
             Nothing ->
-                case inventoryWindowWithMiningHoldSelected |> capacityGaugeUsedPercent of
-                    Nothing ->
-                        describeBranch "I do not see the mining hold capacity gauge." askForHelpToGetUnstuck
+                modulesToActivateAlwaysActivated
+                    context
+                    inventoryWindowWithMiningHoldSelected
 
-                    Just fillPercent ->
-                        let
-                            describeThresholdToUnload =
-                                (context.eventContext.botSettings.unloadMiningHoldPercent |> String.fromInt) ++ "%"
 
-                            describeThresholdToUnloadFleetHangar =
-                                (context.eventContext.botSettings.unloadFleetHangarPercent |> String.fromInt) ++ "%"
+modulesToActivateAlwaysActivated :
+    BotDecisionContext
+    -> EveOnline.ParseUserInterface.InventoryWindow
+    -> DecisionPathNode
+modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
+    case inventoryWindowWithMiningHoldSelected |> capacityGaugeUsedPercent of
+        Nothing ->
+            describeBranch "I do not see the mining hold capacity gauge." askForHelpToGetUnstuck
 
-                            knownMiningModules =
-                                knownMiningModulesFromContext context
-                        in
-                        if context.eventContext.botSettings.unloadMiningHoldPercent <= fillPercent then
-                            describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
-                                (returnDronesToBay context
-                                    |> Maybe.withDefault (dockToUnloadOre context)
-                                )
+        Just miningHoldFillPercent ->
+            let
+                describeThresholdToUnload =
+                    (context.eventContext.botSettings.unloadMiningHoldPercent |> String.fromInt) ++ "%"
 
-                        else if context.eventContext.botSettings.unloadFleetHangarPercent > 0 && context.eventContext.botSettings.unloadFleetHangarPercent <= fillPercent then
-                            describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnloadFleetHangar ++ ". Unload the ore on fleet hangar.")
-                                (ensureMiningHoldIsSelectedInInventoryWindow
-                                    context.readingFromGameClient
-                                    (inSpaceWithMiningHoldSelectedWithFleetHangar context)
+                describeThresholdToUnloadFleetHangar =
+                    (context.eventContext.botSettings.unloadFleetHangarPercent |> String.fromInt) ++ "%"
+
+                knownMiningModules =
+                    knownMiningModulesFromContext context
+            in
+            if context.eventContext.botSettings.unloadMiningHoldPercent <= miningHoldFillPercent then
+                describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnload ++ ". Unload the ore.")
+                    (returnDronesToBay context
+                        |> Maybe.withDefault (dockToUnloadOre context)
+                    )
+
+            else if
+                (context.eventContext.botSettings.unloadFleetHangarPercent > 0)
+                    && (context.eventContext.botSettings.unloadFleetHangarPercent <= miningHoldFillPercent)
+            then
+                describeBranch ("The mining hold is filled at least " ++ describeThresholdToUnloadFleetHangar ++ ". Unload the ore on fleet hangar.")
+                    (ensureMiningHoldIsSelectedInInventoryWindow
+                        context.readingFromGameClient
+                        (inSpaceWithMiningHoldSelectedWithFleetHangar context)
+                    )
+
+            else
+                case selectAsteroidsFromOverview context of
+                    Err err ->
+                        describeBranch ("Failed to select asteroids from overview: " ++ err)
+                            (dockToUnloadOre context)
+
+                    Ok selectedAsteroids ->
+                        if
+                            (selectedAsteroids.asteroidMatchingSettings
+                                |> Maybe.map (Tuple.second >> .closeEnoughForMining)
+                                |> Maybe.withDefault False
+                            )
+                                && shipManeuverIsApproaching context.readingFromGameClient
+                        then
+                            describeBranch "Minable asteroid is close enough to stop the ship"
+                                (decideActionForCurrentStep
+                                    [ EffectOnWindow.KeyDown EffectOnWindow.vkey_CONTROL
+                                    , EffectOnWindow.KeyDown EffectOnWindow.vkey_SPACE
+                                    , EffectOnWindow.KeyUp EffectOnWindow.vkey_CONTROL
+                                    , EffectOnWindow.KeyUp EffectOnWindow.vkey_SPACE
+                                    ]
                                 )
 
                         else
-                            case selectAsteroidsFromOverview context of
-                                Err err ->
-                                    describeBranch ("Failed to select asteroids from overview: " ++ err)
-                                        (dockToUnloadOre context)
+                            describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
+                                (case context.readingFromGameClient.targets |> List.head of
+                                    Nothing ->
+                                        describeBranch "I see no locked target."
+                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid selectedAsteroids context)
 
-                                Ok selectedAsteroids ->
-                                    if
-                                        (selectedAsteroids.asteroidMatchingSettings
-                                            |> Maybe.map (Tuple.second >> .closeEnoughForMining)
-                                            |> Maybe.withDefault False
-                                        )
-                                            && shipManeuverIsApproaching context.readingFromGameClient
-                                    then
-                                        describeBranch "Minable asteroid is close enough to stop the ship"
-                                            (decideActionForCurrentStep
-                                                [ EffectOnWindow.KeyDown EffectOnWindow.vkey_CONTROL
-                                                , EffectOnWindow.KeyDown EffectOnWindow.vkey_SPACE
-                                                , EffectOnWindow.KeyUp EffectOnWindow.vkey_CONTROL
-                                                , EffectOnWindow.KeyUp EffectOnWindow.vkey_SPACE
-                                                ]
-                                            )
+                                    Just _ ->
+                                        {- Depending on the UI configuration, the game client might automatically target rats.
+                                           To avoid these targets interfering with mining, unlock them here.
+                                        -}
+                                        unlockTargetsNotForMining context
+                                            |> Maybe.withDefault
+                                                (describeBranch "I see a locked target."
+                                                    (case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                        Nothing ->
+                                                            describeBranch
+                                                                (if knownMiningModules == [] then
+                                                                    "Found no mining modules so far."
 
-                                    else
-                                        describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
-                                            (case context.readingFromGameClient.targets |> List.head of
-                                                Nothing ->
-                                                    describeBranch "I see no locked target."
-                                                        (travelToMiningSiteAndLaunchDronesAndTargetAsteroid selectedAsteroids context)
-
-                                                Just _ ->
-                                                    {- Depending on the UI configuration, the game client might automatically target rats.
-                                                       To avoid these targets interfering with mining, unlock them here.
-                                                    -}
-                                                    unlockTargetsNotForMining context
-                                                        |> Maybe.withDefault
-                                                            (describeBranch "I see a locked target."
-                                                                (case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                                                    Nothing ->
-                                                                        describeBranch
-                                                                            (if knownMiningModules == [] then
-                                                                                "Found no mining modules so far."
-
-                                                                             else
-                                                                                "All known mining modules found so far are active."
-                                                                            )
-                                                                            (readShipUIModuleButtonTooltips context
-                                                                                |> Maybe.withDefault waitForProgressInGame
-                                                                            )
-
-                                                                    Just inactiveModule ->
-                                                                        describeBranch "I see an inactive mining module. Activate it."
-                                                                            (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                                                                 else
+                                                                    "All known mining modules found so far are active."
                                                                 )
-                                                            )
-                                            )
+                                                                (readShipUIModuleButtonTooltips context
+                                                                    |> Maybe.withDefault
+                                                                        (compressIfConditionsMet
+                                                                            context
+                                                                            inventoryWindowWithMiningHoldSelected
+                                                                            { miningHoldFillPercent = miningHoldFillPercent
+                                                                            , ifNothingToCompress = waitForProgressInGame
+                                                                            }
+                                                                        )
+                                                                )
+
+                                                        Just inactiveModule ->
+                                                            describeBranch "I see an inactive mining module. Activate it."
+                                                                (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                                                    )
+                                                )
+                                )
+
+
+compressIfConditionsMet :
+    BotDecisionContext
+    -> EveOnline.ParseUserInterface.InventoryWindow
+    -> { miningHoldFillPercent : Int, ifNothingToCompress : DecisionPathNode }
+    -> DecisionPathNode
+compressIfConditionsMet context inventoryWindowWithMiningHold { miningHoldFillPercent, ifNothingToCompress } =
+    if context.eventContext.botSettings.compressFromMiningHold /= Just AppSettings.Yes then
+        ifNothingToCompress
+
+    else
+        case
+            inventoryWindowWithMiningHold
+                |> selectedContainerItemsFromInventoryWindow
+                |> Maybe.withDefault []
+                |> List.filter inventoryItemIsCandidateForCompression
+                |> List.head
+        of
+            Nothing ->
+                ifNothingToCompress
+
+            Just itemToCompress ->
+                describeBranch "I see at least one item to compress"
+                    (if miningHoldFillPercent < 75 then
+                        ifNothingToCompress
+
+                     else
+                        case context.readingFromGameClient.compressionWindow of
+                            Nothing ->
+                                useContextMenuCascade
+                                    ( "item to compress", itemToCompress )
+                                    (useMenuEntryWithTextContaining "compress" menuCascadeCompleted)
+                                    context
+
+                            Just compressionWindow ->
+                                case compressionWindow.compressButton of
+                                    Nothing ->
+                                        describeBranch "Compress button is missing" askForHelpToGetUnstuck
+
+                                    Just compressButton ->
+                                        mouseClickOnUIElement MouseButtonLeft compressButton
+                                            |> Result.Extra.unpack
+                                                (always (describeBranch "Failed click on compress button" askForHelpToGetUnstuck))
+                                                decideActionForCurrentStep
+                    )
+
+
+inventoryItemIsCandidateForCompression : UIElement -> Bool
+inventoryItemIsCandidateForCompression =
+    getAllContainedDisplayTextsWithRegion
+        >> List.all (Tuple.first >> String.toLower >> String.contains "compressed" >> not)
 
 
 unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode
@@ -1596,6 +1682,12 @@ inventoryWindowSelectedContainerIsMiningHold_pre_PhotonUI =
 
 selectedContainerFirstItemFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe UIElement
 selectedContainerFirstItemFromInventoryWindow =
+    selectedContainerItemsFromInventoryWindow
+        >> Maybe.andThen List.head
+
+
+selectedContainerItemsFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe (List UIElement)
+selectedContainerItemsFromInventoryWindow =
     .selectedContainerInventory
         >> Maybe.andThen .itemsView
         >> Maybe.map
@@ -1607,7 +1699,6 @@ selectedContainerFirstItemFromInventoryWindow =
                     EveOnline.ParseUserInterface.InventoryItemsNotListView { items } ->
                         items
             )
-        >> Maybe.andThen List.head
 
 
 miningHoldFromInventoryWindowShipEntry :

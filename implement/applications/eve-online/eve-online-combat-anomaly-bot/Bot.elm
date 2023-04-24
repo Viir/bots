@@ -534,57 +534,62 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                     (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
 
             Nothing ->
-                let
-                    returnDronesAndEnterAnomaly { ifNoAcceptableAnomalyAvailable } =
-                        returnDronesToBay context
-                            |> Maybe.withDefault
-                                (describeBranch "No drones to return."
-                                    (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable } context)
-                                )
+                modulesToActivateAlwaysActivated context seeUndockingComplete
 
-                    returnDronesAndEnterAnomalyOrWait =
-                        returnDronesAndEnterAnomaly
-                            { ifNoAcceptableAnomalyAvailable =
-                                describeBranch "Wait for a matching anomaly to appear." waitForProgressInGame
-                            }
-                in
-                case context.readingFromGameClient |> getCurrentAnomalyIDAsSeenInProbeScanner of
-                    Nothing ->
-                        describeBranch "Looks like we are not in an anomaly." returnDronesAndEnterAnomalyOrWait
 
-                    Just anomalyID ->
-                        case memoryOfAnomalyWithID anomalyID context.memory of
-                            Nothing ->
+modulesToActivateAlwaysActivated : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
+modulesToActivateAlwaysActivated context seeUndockingComplete =
+    let
+        returnDronesAndEnterAnomaly { ifNoAcceptableAnomalyAvailable } =
+            returnDronesToBay context
+                |> Maybe.withDefault
+                    (describeBranch "No drones to return."
+                        (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable } context)
+                    )
+
+        returnDronesAndEnterAnomalyOrWait =
+            returnDronesAndEnterAnomaly
+                { ifNoAcceptableAnomalyAvailable =
+                    describeBranch "Wait for a matching anomaly to appear." waitForProgressInGame
+                }
+    in
+    case context.readingFromGameClient |> getCurrentAnomalyIDAsSeenInProbeScanner of
+        Nothing ->
+            describeBranch "Looks like we are not in an anomaly." returnDronesAndEnterAnomalyOrWait
+
+        Just anomalyID ->
+            case memoryOfAnomalyWithID anomalyID context.memory of
+                Nothing ->
+                    describeBranch
+                        ("Program error: Did not find memory of anomaly " ++ anomalyID)
+                        waitForProgressInGame
+
+                Just memoryOfAnomaly ->
+                    let
+                        arrivalInAnomalyAgeSeconds =
+                            (context.eventContext.timeInMilliseconds - memoryOfAnomaly.arrivalTime.milliseconds) // 1000
+                    in
+                    describeBranch ("We are in anomaly '" ++ anomalyID ++ "' since " ++ String.fromInt arrivalInAnomalyAgeSeconds ++ " seconds.")
+                        (case findReasonToAvoidAnomalyFromMemory context { anomalyID = anomalyID } of
+                            Just reasonToAvoidAnomaly ->
                                 describeBranch
-                                    ("Program error: Did not find memory of anomaly " ++ anomalyID)
-                                    waitForProgressInGame
-
-                            Just memoryOfAnomaly ->
-                                let
-                                    arrivalInAnomalyAgeSeconds =
-                                        (context.eventContext.timeInMilliseconds - memoryOfAnomaly.arrivalTime.milliseconds) // 1000
-                                in
-                                describeBranch ("We are in anomaly '" ++ anomalyID ++ "' since " ++ String.fromInt arrivalInAnomalyAgeSeconds ++ " seconds.")
-                                    (case findReasonToAvoidAnomalyFromMemory context { anomalyID = anomalyID } of
-                                        Just reasonToAvoidAnomaly ->
-                                            describeBranch
-                                                ("Found a reason to avoid this anomaly: "
-                                                    ++ describeReasonToAvoidAnomaly reasonToAvoidAnomaly
-                                                )
-                                                (returnDronesAndEnterAnomaly
-                                                    { ifNoAcceptableAnomalyAvailable =
-                                                        describeBranch "Get out of this anomaly."
-                                                            (dockAtRandomStationOrStructure context)
-                                                    }
-                                                )
-
-                                        Nothing ->
-                                            decideActionInAnomaly
-                                                { arrivalInAnomalyAgeSeconds = arrivalInAnomalyAgeSeconds }
-                                                context
-                                                seeUndockingComplete
-                                                returnDronesAndEnterAnomalyOrWait
+                                    ("Found a reason to avoid this anomaly: "
+                                        ++ describeReasonToAvoidAnomaly reasonToAvoidAnomaly
                                     )
+                                    (returnDronesAndEnterAnomaly
+                                        { ifNoAcceptableAnomalyAvailable =
+                                            describeBranch "Get out of this anomaly."
+                                                (dockAtRandomStationOrStructure context)
+                                        }
+                                    )
+
+                            Nothing ->
+                                decideActionInAnomaly
+                                    { arrivalInAnomalyAgeSeconds = arrivalInAnomalyAgeSeconds }
+                                    context
+                                    seeUndockingComplete
+                                    returnDronesAndEnterAnomalyOrWait
+                        )
 
 
 undockUsingStationWindow :

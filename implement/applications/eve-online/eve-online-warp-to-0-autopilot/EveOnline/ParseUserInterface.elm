@@ -567,6 +567,14 @@ type alias KeyActivationWindow =
 type alias CompressionWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , compressButton : Maybe UITreeNodeWithDisplayRegion
+    , windowControls : Maybe WindowControls
+    }
+
+
+type alias WindowControls =
+    { uiNode : UITreeNodeWithDisplayRegion
+    , minimizeButton : Maybe UITreeNodeWithDisplayRegion
+    , closeButton : Maybe UITreeNodeWithDisplayRegion
     }
 
 
@@ -2133,6 +2141,7 @@ parseInventory inventoryNode =
             inventoryNode
                 |> listDescendantsWithDisplayRegion
                 |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "Item")
+                |> subsequenceNotContainedInAnyOtherWithDisplayRegion
 
         scrollNode =
             inventoryNode
@@ -2171,6 +2180,7 @@ parseInventory inventoryNode =
             inventoryNode
                 |> listDescendantsWithDisplayRegion
                 |> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "InvItem")
+                |> subsequenceNotContainedInAnyOtherWithDisplayRegion
 
         itemsView =
             if 0 < (listViewItemNodes |> List.length) then
@@ -2953,11 +2963,45 @@ parseCompressionWindow : UITreeNodeWithDisplayRegion -> CompressionWindow
 parseCompressionWindow windowUiNode =
     let
         compressButton =
-            windowUiNode
-                |> findButtonInDescendantsContainingDisplayText "Compress"
+            findButtonInDescendantsContainingDisplayText "Compress" windowUiNode
     in
     { uiNode = windowUiNode
+    , windowControls = parseWindowControlsFromWindow windowUiNode
     , compressButton = compressButton
+    }
+
+
+parseWindowControlsFromWindow : UITreeNodeWithDisplayRegion -> Maybe WindowControls
+parseWindowControlsFromWindow =
+    listDescendantsWithDisplayRegion
+        >> List.filter (.uiNode >> .pythonObjectTypeName >> String.contains "WindowControls")
+        >> List.head
+        >> Maybe.map parseWindowControls
+
+
+parseWindowControls : UITreeNodeWithDisplayRegion -> WindowControls
+parseWindowControls controlsNode =
+    let
+        nodeFromTexturePathContains texturePathSubstring =
+            controlsNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter
+                    (.uiNode
+                        >> getTexturePathFromDictEntries
+                        >> Maybe.map (String.toLower >> String.contains (String.toLower texturePathSubstring))
+                        >> Maybe.withDefault False
+                    )
+                |> List.head
+
+        minimizeButton =
+            nodeFromTexturePathContains "eveicon/window/minimize"
+
+        closeButton =
+            nodeFromTexturePathContains "eveicon/window/close"
+    in
+    { uiNode = controlsNode
+    , minimizeButton = minimizeButton
+    , closeButton = closeButton
     }
 
 
@@ -3195,8 +3239,9 @@ getHintTextFromDictEntries =
 
 
 getTexturePathFromDictEntries : EveOnline.MemoryReading.UITreeNode -> Maybe String
-getTexturePathFromDictEntries =
-    getStringPropertyFromDictEntries "texturePath"
+getTexturePathFromDictEntries node =
+    getStringPropertyFromDictEntries "texturePath" node
+        |> Maybe.Extra.or (getStringPropertyFromDictEntries "_texturePath" node)
 
 
 getStringPropertyFromDictEntries : String -> EveOnline.MemoryReading.UITreeNode -> Maybe String
@@ -3287,10 +3332,38 @@ getVerticalOffsetFromParent =
         >> Maybe.map round
 
 
-predicateAny : List (a -> Bool) -> a -> Bool
-predicateAny predicates candidate =
-    predicates
-        |> List.any (\predicate -> predicate candidate)
+{-| Returns the subsequence of items not contained in any of the other ones
+-}
+subsequenceNotContainedInAnyOtherWithDisplayRegion :
+    List UITreeNodeWithDisplayRegion
+    -> List UITreeNodeWithDisplayRegion
+subsequenceNotContainedInAnyOtherWithDisplayRegion original =
+    original
+        |> List.filter
+            (\item ->
+                original
+                    |> List.any (\other -> item /= other && nodeDescendantsContainWithDisplayRegion item other)
+                    |> not
+            )
+
+
+nodeDescendantsContainWithDisplayRegion : UITreeNodeWithDisplayRegion -> UITreeNodeWithDisplayRegion -> Bool
+nodeDescendantsContainWithDisplayRegion =
+    treeNodeDescendantsContain listChildrenWithDisplayRegion
+
+
+{-| Returns True if the set of descendants of the second node contains the first node.
+(Order of arguments is same as in `List.member`)
+To learn more about these kinds of trees, see <https://en.wikipedia.org/wiki/Tree_(graph_theory)>
+-}
+treeNodeDescendantsContain : (node -> List node) -> node -> node -> Bool
+treeNodeDescendantsContain childrenFromNode contained containing =
+    let
+        children =
+            childrenFromNode containing
+    in
+    List.member contained children
+        || List.any (treeNodeDescendantsContain childrenFromNode contained) children
 
 
 getMostPopulousDescendantWithDisplayRegionMatchingPredicate :
@@ -3470,6 +3543,12 @@ regionsOverlap regionA regionB =
         , subtrahend = regionB
         }
         /= [ regionA ]
+
+
+predicateAny : List (a -> Bool) -> a -> Bool
+predicateAny predicates candidate =
+    predicates
+        |> List.any (\predicate -> predicate candidate)
 
 
 {-| Remove duplicate values, keeping the first instance of each element which appears more than once.

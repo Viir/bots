@@ -1,40 +1,6 @@
-{- EVE Online mining bot test compression version 2023-04-24
+{- EVE Online mining and compression bot version 2023-04-24
 
-   The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
-   If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
-
-   Setup instructions for the EVE Online client:
-
-   + Set the UI language to English.
-   + In the ship UI in the 'Options' menu, tick the checkbox for 'Display Module Tooltips'.
-   + In Overview window, make asteroids visible.
-   + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
-   + Open one inventory window.
-   + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
-
-   ## Configuration Settings
-
-   All settings are optional; you only need them in case the defaults don't fit your use-case.
-
-   + `unload-station-name` : Name of a station to dock to when the mining hold is full.
-   + `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
-   + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
-   + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
-   + `unload-fleet-hangar-percent` : This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
-   + `dock-when-without-drones` : This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`.
-   + `repair-before-undocking` : Repair the ship at the station before undocking. The only supported values are `no` and `yes`.
-
-   When using more than one setting, start a new line for each setting in the text input field.
-   Here is an example of a complete settings string:
-
-   ```
-   unload-station-name = Noghere VII - Moon 15
-   activate-module-always = shield hardener
-   activate-module-always = afterburner
-   ```
-
-   To learn more about the mining bot, see <https://to.botlab.org/guide/app/eve-online-mining-bot>
-
+   Functionality as discussed with Nacho_Vega today
 -}
 {-
    catalog-tags:eve-online,mining
@@ -117,7 +83,7 @@ defaultBotSettings =
     , botStepDelayMilliseconds = 1300
     , selectInstancePilotName = Nothing
     , includeAsteroidPatterns = []
-    , compressFromMiningHold = Nothing
+    , compressFromMiningHold = AppSettings.Yes
     }
 
 
@@ -230,7 +196,7 @@ parseBotSettings =
            , { description = "Compress items from the mining hold, when the mining hold is filled at least 75 %. The only supported values are `no` and `yes`."
              , valueParser =
                 AppSettings.valueTypeYesOrNo
-                    (\compress settings -> { settings | compressFromMiningHold = Just compress })
+                    (\compress settings -> { settings | compressFromMiningHold = compress })
              }
            )
          ]
@@ -264,7 +230,7 @@ type alias BotSettings =
     , botStepDelayMilliseconds : Int
     , selectInstancePilotName : Maybe String
     , includeAsteroidPatterns : List String
-    , compressFromMiningHold : Maybe AppSettings.YesOrNo
+    , compressFromMiningHold : AppSettings.YesOrNo
     }
 
 
@@ -841,7 +807,7 @@ compressIfConditionsMet context inventoryWindowWithMiningHold config =
                                     (always (describeBranch "Failed click on close button" askForHelpToGetUnstuck))
                                     decideActionForCurrentStep
     in
-    if context.eventContext.botSettings.compressFromMiningHold /= Just AppSettings.Yes then
+    if context.eventContext.botSettings.compressFromMiningHold /= AppSettings.Yes then
         closeCompressionWindow
 
     else

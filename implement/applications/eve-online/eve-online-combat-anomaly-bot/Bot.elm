@@ -528,13 +528,21 @@ decideNextActionWhenInSpace context seeUndockingComplete =
             )
 
     else
-        case context |> knownModulesToActivateAlways |> List.filter (Tuple.second >> moduleIsActiveOrReloading >> not) |> List.head of
-            Just ( inactiveModuleMatchingText, inactiveModule ) ->
-                describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
-                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+        readShipUIModuleButtonTooltips context
+            |> Maybe.withDefault
+                (case
+                    context
+                        |> knownModulesToActivateAlways
+                        |> List.filter (Tuple.second >> moduleIsActiveOrReloading >> not)
+                        |> List.head
+                 of
+                    Just ( inactiveModuleMatchingText, inactiveModule ) ->
+                        describeBranch ("I see inactive module '" ++ inactiveModuleMatchingText ++ "' to activate always. Activate it.")
+                            (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
 
-            Nothing ->
-                modulesToActivateAlwaysActivated context seeUndockingComplete
+                    Nothing ->
+                        modulesToActivateAlwaysActivated context seeUndockingComplete
+                )
 
 
 modulesToActivateAlwaysActivated : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode

@@ -819,9 +819,30 @@ compressIfConditionsMet :
     -> EveOnline.ParseUserInterface.InventoryWindow
     -> { miningHoldFillPercent : Int, ifNothingToCompress : DecisionPathNode }
     -> DecisionPathNode
-compressIfConditionsMet context inventoryWindowWithMiningHold { miningHoldFillPercent, ifNothingToCompress } =
+compressIfConditionsMet context inventoryWindowWithMiningHold config =
+    let
+        closeCompressionWindow =
+            case context.readingFromGameClient.compressionWindow of
+                Nothing ->
+                    config.ifNothingToCompress
+
+                Just compressionWindow ->
+                    case compressionWindow.windowControls |> Maybe.andThen .closeButton of
+                        Nothing ->
+                            describeBranch "Close window button is missing"
+                                -- Assume buttons appear on mouse hover
+                                (decideActionForCurrentStep
+                                    (EveOnline.BotFramework.mouseMoveToUIElement compressionWindow.uiNode)
+                                )
+
+                        Just closeButton ->
+                            mouseClickOnUIElement MouseButtonLeft closeButton
+                                |> Result.Extra.unpack
+                                    (always (describeBranch "Failed click on close button" askForHelpToGetUnstuck))
+                                    decideActionForCurrentStep
+    in
     if context.eventContext.botSettings.compressFromMiningHold /= Just AppSettings.Yes then
-        ifNothingToCompress
+        closeCompressionWindow
 
     else
         case
@@ -832,12 +853,12 @@ compressIfConditionsMet context inventoryWindowWithMiningHold { miningHoldFillPe
                 |> List.head
         of
             Nothing ->
-                ifNothingToCompress
+                closeCompressionWindow
 
             Just itemToCompress ->
                 describeBranch "I see at least one item to compress"
-                    (if miningHoldFillPercent < 75 then
-                        ifNothingToCompress
+                    (if config.miningHoldFillPercent < 75 then
+                        closeCompressionWindow
 
                      else
                         case context.readingFromGameClient.compressionWindow of
@@ -850,7 +871,7 @@ compressIfConditionsMet context inventoryWindowWithMiningHold { miningHoldFillPe
                             Just compressionWindow ->
                                 case compressionWindow.compressButton of
                                     Nothing ->
-                                        describeBranch "Compress button is missing" askForHelpToGetUnstuck
+                                        describeBranch "Compress button is missing" closeCompressionWindow
 
                                     Just compressButton ->
                                         mouseClickOnUIElement MouseButtonLeft compressButton

@@ -1,6 +1,6 @@
-{- EVE Online mining and compression bot version 2023-04-24
+{- EVE Online mining and compression bot version 2023-04-25
 
-   Functionality as discussed with Nacho_Vega today
+   Functionality as discussed with Nacho_Vega
 -}
 {-
    catalog-tags:eve-online,mining
@@ -57,6 +57,7 @@ import EveOnline.ParseUserInterface
         , centerFromDisplayRegion
         , getAllContainedDisplayTextsWithRegion
         )
+import List.Extra
 import Maybe.Extra
 import Regex
 import Result.Extra
@@ -763,7 +764,7 @@ modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
                                                                 )
                                                                 (readShipUIModuleButtonTooltips context
                                                                     |> Maybe.withDefault
-                                                                        (compressIfConditionsMet
+                                                                        (compressAndStackAllIfConditionsMet
                                                                             context
                                                                             inventoryWindowWithMiningHoldSelected
                                                                             { miningHoldFillPercent = miningHoldFillPercent
@@ -780,17 +781,19 @@ modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
                                 )
 
 
-compressIfConditionsMet :
+compressAndStackAllIfConditionsMet :
     BotDecisionContext
     -> EveOnline.ParseUserInterface.InventoryWindow
     -> { miningHoldFillPercent : Int, ifNothingToCompress : DecisionPathNode }
     -> DecisionPathNode
-compressIfConditionsMet context inventoryWindowWithMiningHold config =
+compressAndStackAllIfConditionsMet context inventoryWindowWithMiningHold config =
     let
         closeCompressionWindow =
             case context.readingFromGameClient.compressionWindow of
                 Nothing ->
-                    config.ifNothingToCompress
+                    stackAllIfSeeingStackableItems
+                        inventoryWindowWithMiningHold
+                        { ifNotSeeingStackableItems = config.ifNothingToCompress }
 
                 Just compressionWindow ->
                     case compressionWindow.windowControls |> Maybe.andThen .closeButton of
@@ -845,6 +848,59 @@ compressIfConditionsMet context inventoryWindowWithMiningHold config =
                                                 (always (describeBranch "Failed click on compress button" askForHelpToGetUnstuck))
                                                 decideActionForCurrentStep
                     )
+
+
+stackAllIfSeeingStackableItems :
+    EveOnline.ParseUserInterface.InventoryWindow
+    -> { ifNotSeeingStackableItems : DecisionPathNode }
+    -> DecisionPathNode
+stackAllIfSeeingStackableItems inventoryWindow { ifNotSeeingStackableItems } =
+    let
+        inventoryItemsWithLongestDisplayText =
+            inventoryWindow
+                |> selectedContainerItemsFromInventoryWindow
+                |> Maybe.withDefault []
+                |> List.filterMap
+                    (\itemNode ->
+                        itemNode
+                            |> getAllContainedDisplayTextsWithRegion
+                            |> List.map Tuple.first
+                            |> List.sortBy String.length
+                            |> List.reverse
+                            |> List.head
+                            |> Maybe.map (Tuple.pair itemNode)
+                    )
+
+        inventoryItemsGroupedByDisplayText =
+            inventoryItemsWithLongestDisplayText
+                |> List.Extra.gatherEqualsBy Tuple.second
+
+        stackableItems =
+            inventoryItemsGroupedByDisplayText
+                |> List.filter (Tuple.second >> List.length >> (<) 1)
+    in
+    if stackableItems == [] then
+        ifNotSeeingStackableItems
+
+    else
+        describeBranch
+            ("Seeing "
+                ++ String.fromInt (List.sum (List.map (Tuple.second >> List.length) stackableItems))
+                ++ " stackable items in "
+                ++ String.fromInt (List.length stackableItems)
+                ++ " groups"
+            )
+            (case inventoryWindow.buttonToStackAll of
+                Nothing ->
+                    describeBranch "Missing button to stack all"
+                        ifNotSeeingStackableItems
+
+                Just buttonToStackAll ->
+                    mouseClickOnUIElement MouseButtonLeft buttonToStackAll
+                        |> Result.Extra.unpack
+                            (always (describeBranch "Failed click on button" askForHelpToGetUnstuck))
+                            decideActionForCurrentStep
+            )
 
 
 inventoryItemIsCandidateForCompression : UIElement -> Bool

@@ -1,4 +1,4 @@
-{- EVE Online mining and compression bot version 2023-04-25
+{- Nacho_Vega mining and compression bot version 2023-04-25
 
    Functionality as discussed with Nacho_Vega
 -}
@@ -76,7 +76,7 @@ defaultBotSettings =
     , unloadFleetHangarPercent = -1
     , unloadMiningHoldPercent = 99
     , activateModulesAlways = []
-    , hideWhenNeutralInLocal = Nothing
+    , hideWhenNeutralInLocal = Just AppSettings.Yes
     , dockWhenWithoutDrones = Nothing
     , repairBeforeUndocking = Nothing
     , targetingRange = 8000

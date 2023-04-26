@@ -34,7 +34,7 @@ import Random.List
 
 mouseClickLocationOffsetFromCoin : Location2d
 mouseClickLocationOffsetFromCoin =
-    { x = 0, y = 50 }
+    { x = 0, y = 65 }
 
 
 readFromWindowIntervalMilliseconds : Int

@@ -282,30 +282,64 @@ coinPattern =
                             && (centerColor.blue < centerColor.red // 2)
         , testOnBinned2x2 =
             \getPixelColor ->
-                case
-                    ( getPixelColor { x = 0, y = 0 }
-                    , ( getPixelColor { x = -2, y = 0 }, getPixelColor { x = 0, y = -2 } )
-                    , getPixelColor { x = 2, y = 0 }
-                    )
-                of
-                    ( Just centerColor, ( Just leftColor, Just topColor ), Just rightColor ) ->
-                        (centerColor.red > 240)
-                            && (centerColor.green > 190 && centerColor.green < 235)
-                            && (centerColor.blue > 90 && centerColor.blue < 150)
-                            && (leftColor.red > 150 && leftColor.red < 220)
-                            && (leftColor.green > 90 && leftColor.green < 190)
-                            && (leftColor.blue > 20 && leftColor.blue < 100)
-                            && (topColor.red > 140 && topColor.red < 200)
-                            && (topColor.green > 90 && topColor.red < 170)
-                            && (topColor.blue > 10 && topColor.blue < 80)
-                            && (rightColor.red > 150 && rightColor.red < 240)
-                            && (rightColor.green > 90 && rightColor.green < 200)
-                            && (rightColor.blue > 10 && rightColor.blue < 100)
-
-                    _ ->
-                        False
+                coinTestOnBinned2x2_100 getPixelColor
+                    || coinTestOnBinned2x2_125 getPixelColor
         , testOnOriginalResolution = always True
         }
+
+
+coinTestOnBinned2x2_125 : ({ x : Int, y : Int } -> Maybe SimpleBotFramework.PixelValueRGB) -> Bool
+coinTestOnBinned2x2_125 =
+    \getPixelColor ->
+        case
+            ( getPixelColor { x = 0, y = 0 }
+            , ( getPixelColor { x = -2, y = 0 }, getPixelColor { x = 0, y = -3 } )
+            , getPixelColor { x = 3, y = 0 }
+            )
+        of
+            ( Just centerColor, ( Just leftColor, Just topColor ), Just rightColor ) ->
+                (centerColor.red > 220)
+                    && (centerColor.green > 190 && centerColor.green < 235)
+                    && (centerColor.blue > 90 && centerColor.blue < 150)
+                    && (leftColor.red > 155 && leftColor.red < 200)
+                    && (leftColor.green > 90 && leftColor.green < 190)
+                    && (leftColor.blue > 20 && leftColor.blue < 100)
+                    && (topColor.red > 140 && topColor.red < 200)
+                    && (topColor.green > 90 && topColor.red < 170)
+                    && (topColor.blue > 10 && topColor.blue < 70)
+                    && (rightColor.red > 150 && rightColor.red < 220)
+                    && (rightColor.green > 90 && rightColor.green < 160)
+                    && (rightColor.blue > 10 && rightColor.blue < 70)
+
+            _ ->
+                False
+
+
+coinTestOnBinned2x2_100 : ({ x : Int, y : Int } -> Maybe SimpleBotFramework.PixelValueRGB) -> Bool
+coinTestOnBinned2x2_100 =
+    \getPixelColor ->
+        case
+            ( getPixelColor { x = 0, y = 0 }
+            , ( getPixelColor { x = -2, y = 0 }, getPixelColor { x = 0, y = -2 } )
+            , getPixelColor { x = 2, y = 0 }
+            )
+        of
+            ( Just centerColor, ( Just leftColor, Just topColor ), Just rightColor ) ->
+                (centerColor.red > 240)
+                    && (centerColor.green > 190 && centerColor.green < 235)
+                    && (centerColor.blue > 90 && centerColor.blue < 150)
+                    && (leftColor.red > 150 && leftColor.red < 220)
+                    && (leftColor.green > 90 && leftColor.green < 190)
+                    && (leftColor.blue > 20 && leftColor.blue < 100)
+                    && (topColor.red > 140 && topColor.red < 200)
+                    && (topColor.green > 90 && topColor.red < 170)
+                    && (topColor.blue > 10 && topColor.blue < 80)
+                    && (rightColor.red > 150 && rightColor.red < 240)
+                    && (rightColor.green > 90 && rightColor.green < 200)
+                    && (rightColor.blue > 10 && rightColor.blue < 100)
+
+            _ ->
+                False
 
 
 filterRemoveCloseLocations : Int -> List { x : Int, y : Int } -> List { x : Int, y : Int }

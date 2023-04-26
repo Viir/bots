@@ -7,12 +7,16 @@ import BotLab.SimpleBotFramework exposing (Location2d, PixelValueRGB)
 import DecodeBMPImage
 import Expect
 import Sample_2022_03_07
+import Sample_2023_04_26
 import Test
 
 
 locate_coin_in_image : Test.Test
 locate_coin_in_image =
-    Sample_2022_03_07.sample_2022_03_07_coins
+    [ Sample_2022_03_07.sample_2022_03_07_coins
+    , Sample_2023_04_26.sample_2023_04_26_coins
+    ]
+        |> List.concat
         |> List.indexedMap
             (\scenarioIndex scenario ->
                 scenario

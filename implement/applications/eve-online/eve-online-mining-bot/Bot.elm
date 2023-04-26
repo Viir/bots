@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-04-24
+{- EVE Online mining bot version 2023-04-26
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -8,7 +8,6 @@
    + Set the UI language to English.
    + In the ship UI in the 'Options' menu, tick the checkbox for 'Display Module Tooltips'.
    + In Overview window, make asteroids visible.
-   + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + Open one inventory window.
    + If you want to use drones for defense against rats, place them in the drone bay, and open the 'Drones' window.
 
@@ -56,6 +55,7 @@ import Dict
 import EveOnline.BotFramework
     exposing
         ( ModuleButtonTooltipMemory
+        , OverviewWindowsMemory
         , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
@@ -80,6 +80,7 @@ import EveOnline.BotFrameworkSeparatingMemory
         , clickModuleButtonButWaitIfClickedInPreviousStep
         , decideActionForCurrentStep
         , ensureInfoPanelLocationInfoIsExpanded
+        , ensureOverviewsSortedByDistance
         , useContextMenuCascade
         , useContextMenuCascadeOnListSurroundingsButton
         , useContextMenuCascadeOnOverviewEntry
@@ -264,6 +265,7 @@ type alias BotMemory =
     , volumeUnloadedCubicMeters : Int
     , lastUsedCapacityInMiningHold : Maybe Int
     , shipModules : ShipModulesMemory
+    , overviewWindows : OverviewWindowsMemory
     , lastReadingsInSpaceDronesWindowWasVisible : List Bool
     }
 
@@ -294,7 +296,7 @@ miningBotDecisionRoot context =
 miningBotDecisionRootBeforeApplyingSettings : BotDecisionContext -> DecisionPathNode
 miningBotDecisionRootBeforeApplyingSettings context =
     generalSetupInUserInterface
-        context.readingFromGameClient
+        context
         |> Maybe.withDefault
             (branchDependingOnDockedOrInSpace
                 { ifDocked =
@@ -442,13 +444,18 @@ returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones context shipUI =
         Nothing
 
 
-generalSetupInUserInterface : ReadingFromGameClient -> Maybe DecisionPathNode
-generalSetupInUserInterface readingFromGameClient =
-    [ closeMessageBox, ensureInfoPanelLocationInfoIsExpanded ]
-        |> List.filterMap
-            (\maybeSetupDecisionFromGameReading ->
-                maybeSetupDecisionFromGameReading readingFromGameClient
+generalSetupInUserInterface : BotDecisionContext -> Maybe DecisionPathNode
+generalSetupInUserInterface context =
+    [ closeMessageBox
+    , ensureInfoPanelLocationInfoIsExpanded
+    , ensureOverviewsSortedByDistance context.memory.overviewWindows
+        >> List.filterMap
+            (\( _, ( description, maybeAction ) ) ->
+                maybeAction |> Maybe.map (describeBranch description)
             )
+        >> List.head
+    ]
+        |> List.filterMap ((|>) context.readingFromGameClient)
         |> List.head
 
 
@@ -1356,6 +1363,7 @@ initBotMemory =
     , volumeUnloadedCubicMeters = 0
     , lastUsedCapacityInMiningHold = Nothing
     , shipModules = EveOnline.BotFramework.initShipModulesMemory
+    , overviewWindows = EveOnline.BotFramework.initOverviewWindowsMemory
     , lastReadingsInSpaceDronesWindowWasVisible = []
     }
 
@@ -1503,6 +1511,9 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
     , shipModules =
         botMemoryBefore.shipModules
             |> EveOnline.BotFramework.integrateCurrentReadingsIntoShipModulesMemory context.readingFromGameClient
+    , overviewWindows =
+        botMemoryBefore.overviewWindows
+            |> EveOnline.BotFramework.integrateCurrentReadingsIntoOverviewWindowsMemory context.readingFromGameClient
     , lastReadingsInSpaceDronesWindowWasVisible = lastReadingsInSpaceDronesWindowWasVisible
     }
 

@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2023-04-24
+{- EVE Online combat anomaly bot version 2023-04-26
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -15,7 +15,6 @@
 
    + Set the UI language to English.
    + Undock, open probe scanner, overview window and drones window.
-   + Set the Overview window to sort objects in space by distance with the nearest entry at the top.
    + In the ship UI, arrange the modules:
      + Place the modules to use in combat (to activate on targets) in the top row.
      + Hide passive modules by disabling the check-box `Display Passive Modules`.
@@ -66,6 +65,7 @@ import Dict
 import EveOnline.BotFramework
     exposing
         ( ModuleButtonTooltipMemory
+        , OverviewWindowsMemory
         , ReadingFromGameClient
         , SeeUndockingComplete
         , ShipModulesMemory
@@ -89,6 +89,7 @@ import EveOnline.BotFrameworkSeparatingMemory
         , clickModuleButtonButWaitIfClickedInPreviousStep
         , decideActionForCurrentStep
         , ensureInfoPanelLocationInfoIsExpanded
+        , ensureOverviewsSortedByDistance
         , useContextMenuCascade
         , useContextMenuCascadeOnListSurroundingsButton
         , useContextMenuCascadeOnOverviewEntry
@@ -222,6 +223,7 @@ type alias State =
 type alias BotMemory =
     { lastDockedStationNameFromInfoPanel : Maybe String
     , shipModules : ShipModulesMemory
+    , overviewWindows : OverviewWindowsMemory
     , shipWarpingInLastReading : Maybe Bool
     , visitedAnomalies : Dict.Dict String MemoryOfAnomaly
     , notEnoughBandwidthToLaunchDrone : Bool
@@ -353,7 +355,7 @@ anomalyBotDecisionRoot context =
 
 anomalyBotDecisionRootBeforeApplyingSettings : BotDecisionContext -> DecisionPathNode
 anomalyBotDecisionRootBeforeApplyingSettings context =
-    generalSetupInUserInterface context.readingFromGameClient
+    generalSetupInUserInterface context
         |> Maybe.withDefault
             (branchDependingOnDockedOrInSpace
                 { ifDocked =
@@ -385,13 +387,18 @@ anomalyBotDecisionRootBeforeApplyingSettings context =
             )
 
 
-generalSetupInUserInterface : ReadingFromGameClient -> Maybe DecisionPathNode
-generalSetupInUserInterface readingFromGameClient =
-    [ closeMessageBox, ensureInfoPanelLocationInfoIsExpanded ]
-        |> List.filterMap
-            (\maybeSetupDecisionFromGameReading ->
-                maybeSetupDecisionFromGameReading readingFromGameClient
+generalSetupInUserInterface : BotDecisionContext -> Maybe DecisionPathNode
+generalSetupInUserInterface context =
+    [ closeMessageBox
+    , ensureInfoPanelLocationInfoIsExpanded
+    , ensureOverviewsSortedByDistance context.memory.overviewWindows
+        >> List.filterMap
+            (\( _, ( description, maybeAction ) ) ->
+                maybeAction |> Maybe.map (describeBranch description)
             )
+        >> List.head
+    ]
+        |> List.filterMap ((|>) context.readingFromGameClient)
         |> List.head
 
 
@@ -1017,6 +1024,7 @@ initBotMemory : BotMemory
 initBotMemory =
     { lastDockedStationNameFromInfoPanel = Nothing
     , shipModules = EveOnline.BotFramework.initShipModulesMemory
+    , overviewWindows = EveOnline.BotFramework.initOverviewWindowsMemory
     , shipWarpingInLastReading = Nothing
     , visitedAnomalies = Dict.empty
     , notEnoughBandwidthToLaunchDrone = False
@@ -1224,6 +1232,9 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
     , shipModules =
         botMemoryBefore.shipModules
             |> EveOnline.BotFramework.integrateCurrentReadingsIntoShipModulesMemory context.readingFromGameClient
+    , overviewWindows =
+        botMemoryBefore.overviewWindows
+            |> EveOnline.BotFramework.integrateCurrentReadingsIntoOverviewWindowsMemory context.readingFromGameClient
     , shipWarpingInLastReading = shipIsWarping
     , visitedAnomalies = visitedAnomalies
     , notEnoughBandwidthToLaunchDrone = notEnoughBandwidthToLaunchDrone

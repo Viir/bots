@@ -38,7 +38,8 @@ import EveOnline.BotFramework
         )
 import EveOnline.ParseUserInterface
     exposing
-        ( centerFromDisplayRegion
+        ( OverviewWindow
+        , centerFromDisplayRegion
         , subtractRegionsFromRegion
         )
 import List.Extra
@@ -566,6 +567,68 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
                     )
 
 
+ensureOverviewsSortedByDistance :
+    EveOnline.BotFramework.OverviewWindowsMemory
+    -> ReadingFromGameClient
+    -> List ( OverviewWindow, ( String, Maybe DecisionPathNode ) )
+ensureOverviewsSortedByDistance overviewWindowsMemory readingFromGameClient =
+    readingFromGameClient.overviewWindows
+        |> List.map
+            (\overviewWindow ->
+                overviewWindow
+                    |> ensureOverviewSortedByDistance overviewWindowsMemory
+                    |> Tuple.pair overviewWindow
+            )
+
+
+ensureOverviewSortedByDistance :
+    EveOnline.BotFramework.OverviewWindowsMemory
+    -> OverviewWindow
+    -> ( String, Maybe DecisionPathNode )
+ensureOverviewSortedByDistance overviewWindowsMemory overviewWindow =
+    let
+        ( _, overviewWindowMemory ) =
+            EveOnline.BotFramework.integrateCurrentReadingsIntoOverviewWindowMemory overviewWindow overviewWindowsMemory
+
+        bubbleSortDistanceFromSnapshot =
+            .entriesDistancesInMeters
+                >> List.filterMap Result.toMaybe
+                >> bubbleSortCountingIterations identity
+                >> Tuple.second
+
+        bubbleSortDistanceMinimum =
+            overviewWindowMemory.previousSnapshots
+                |> List.map bubbleSortDistanceFromSnapshot
+                |> List.minimum
+                |> Maybe.withDefault 0
+    in
+    case
+        overviewWindow.entriesHeaders
+            |> List.filter (Tuple.first >> String.toLower >> (==) "distance")
+            |> List.head
+    of
+        Nothing ->
+            ( "Sort header for distance not found", Nothing )
+
+        Just distanceHeader ->
+            if bubbleSortDistanceMinimum < 1 then
+                ( "Already sorted", Nothing )
+
+            else
+                ( "The bubble-sort distance of overview entries was at least "
+                    ++ String.fromInt bubbleSortDistanceMinimum
+                    ++ " in each of the last "
+                    ++ String.fromInt (List.length overviewWindowMemory.previousSnapshots)
+                    ++ " readings"
+                , Just
+                    (mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft (Tuple.second distanceHeader)
+                        |> Result.Extra.unpack
+                            (always (Common.DecisionPath.describeBranch "Failed to click" askForHelpToGetUnstuck))
+                            decideActionForCurrentStep
+                    )
+                )
+
+
 branchDependingOnDockedOrInSpace :
     { ifDocked : DecisionPathNode
     , ifSeeShipUI : EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
@@ -694,3 +757,41 @@ decideActionForCurrentStep effects =
             , millisecondsToNextReadingFromGameModifierPercent = 0
             }
         )
+
+
+bubbleSortCountingIterations : (a -> comparable) -> List a -> ( List a, Int )
+bubbleSortCountingIterations toComparable list =
+    let
+        sortedWithCount currentList iterations =
+            let
+                newList =
+                    bubbleSortSingleIteration toComparable currentList
+            in
+            if newList == currentList then
+                ( newList, iterations )
+
+            else
+                sortedWithCount newList (iterations + 1)
+    in
+    sortedWithCount list 0
+
+
+bubbleSortSingleIteration : (a -> comparable) -> List a -> List a
+bubbleSortSingleIteration toComparable list =
+    let
+        iter xs =
+            case xs of
+                [] ->
+                    []
+
+                [ x ] ->
+                    [ x ]
+
+                x :: y :: rest ->
+                    if toComparable x > toComparable y then
+                        y :: iter (x :: rest)
+
+                    else
+                        x :: iter (y :: rest)
+    in
+    iter list

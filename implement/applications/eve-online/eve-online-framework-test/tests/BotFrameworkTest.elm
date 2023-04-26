@@ -1,11 +1,43 @@
 module BotFrameworkTest exposing (..)
 
-import Base64
-import DecodeBMPImage
-import EveOnline.BotFramework exposing (Location2d, PixelValueRGB)
+import EveOnline.BotFramework
+import EveOnline.BotFrameworkSeparatingMemory
 import Expect
-import Result.Extra
 import Test
+
+
+bubbleSortCountingIterations_test : Test.Test
+bubbleSortCountingIterations_test =
+    [ { input = [ 0, 1, 3 ]
+      , expected = ( [ 0, 1, 3 ], 0 )
+      }
+    , { input = [ 0, 3, 1 ]
+      , expected = ( [ 0, 1, 3 ], 1 )
+      }
+    , { input = [ 30, -10, -100 ]
+      , expected = ( [ -100, -10, 30 ], 2 )
+      }
+    , { input = [ 0, 1, 2, 4, 3, 5, 7, 6 ]
+      , expected = ( [ 0, 1, 2, 3, 4, 5, 6, 7 ], 1 )
+      }
+    , { input = [ 0, 1, 2, 4, 3, 7, 6, 5 ]
+      , expected = ( [ 0, 1, 2, 3, 4, 5, 6, 7 ], 2 )
+      }
+    ]
+        |> List.indexedMap
+            (\i testCase ->
+                Test.test ("Scenario " ++ String.fromInt i) <|
+                    \_ ->
+                        let
+                            output =
+                                EveOnline.BotFrameworkSeparatingMemory.bubbleSortCountingIterations
+                                    identity
+                                    testCase.input
+                        in
+                        output
+                            |> Expect.equal testCase.expected
+            )
+        |> Test.describe "bubble sort counting iterations"
 
 
 test_closestPointOnRectangleEdge : Test.Test

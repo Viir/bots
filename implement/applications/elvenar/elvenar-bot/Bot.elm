@@ -1,4 +1,4 @@
-{- Elvenar Bot version 2023-04-07
+{- Elvenar Bot version 2023-04-26
 
    This bot collects coins in the Elvenar game client window.
 
@@ -40,6 +40,16 @@ mouseClickLocationOffsetFromCoin =
 readFromWindowIntervalMilliseconds : Int
 readFromWindowIntervalMilliseconds =
     4000
+
+
+{-| The maximum of how much we assume the statistics bar at the top of the game viewport to extend from the top of the screenshot.
+We use this to separate the coin icon shown in the statistics bar from the coin icons that represent collectibles in the game world.
+Since the overall screenshot region can also contain parts of the web browser UI outside the page viewport, this height can depend on the web browser used. I observed a value of 145 with Google Chrome on Windows.
+Mid-term, we will make this more precise by having a more accurate screenshotting or detecting the actual extent of the statistics bar using image processing.
+-}
+topStatsBarBottomMaximum : Int
+topStatsBarBottomMaximum =
+    145
 
 
 type alias SimpleState =
@@ -131,8 +141,12 @@ simpleProcessEvent _ event stateBeforeUpdateTime =
                                 lastReadFromWindowResult =
                                     computeReadFromWindowResult readFromWindowResult image stateBefore
 
-                                reachableCoinLocations =
+                                collectibleCoinLocations =
                                     lastReadFromWindowResult.coinFoundLocations
+                                        |> List.filter (.y >> (<) topStatsBarBottomMaximum)
+
+                                reachableCoinLocations =
+                                    collectibleCoinLocations
                                         |> List.filter
                                             (\location ->
                                                 location.y
@@ -150,7 +164,7 @@ simpleProcessEvent _ event stateBeforeUpdateTime =
                                     of
                                         [] ->
                                             activityContinueWaiting
-                                                |> Tuple.mapSecond ((++) "Did not find any coin with reachable interactive area to click on. ")
+                                                |> Tuple.mapSecond ((++) "Found no collectible coin with a reachable interactive area to click on. ")
 
                                         coinFoundLocation :: _ ->
                                             let

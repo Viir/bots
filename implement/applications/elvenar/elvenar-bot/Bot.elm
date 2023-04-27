@@ -1,4 +1,4 @@
-{- Elvenar Bot version 2023-04-26
+{- Elvenar Bot version 2023-04-27
 
    This bot collects coins in the Elvenar game client window.
 
@@ -52,9 +52,9 @@ topStatsBarBottomMaximum =
     145
 
 
-type alias SimpleState =
+type alias BotState =
     { timeInMilliseconds : Int
-    , lastReadFromWindowResult : Maybe ReadFromWindowResult
+    , lastReadingsFromWindow : List ReadFromWindowResult
     }
 
 
@@ -66,7 +66,7 @@ type alias ReadFromWindowResult =
 
 
 type alias State =
-    SimpleBotFramework.State BotSettings SimpleState
+    SimpleBotFramework.State BotSettings BotState
 
 
 type alias BotSettings =
@@ -78,19 +78,23 @@ botMain =
     SimpleBotFramework.composeSimpleBotMain
         { parseBotSettings = AppSettings.parseAllowOnlyEmpty {}
         , init = initState
-        , processEvent = simpleProcessEvent
+        , processEvent = processEvent
         }
 
 
-initState : SimpleState
+initState : BotState
 initState =
     { timeInMilliseconds = 0
-    , lastReadFromWindowResult = Nothing
+    , lastReadingsFromWindow = []
     }
 
 
-simpleProcessEvent : BotSettings -> SimpleBotFramework.BotEvent -> SimpleState -> ( SimpleState, SimpleBotFramework.BotResponse )
-simpleProcessEvent _ event stateBeforeUpdateTime =
+processEvent :
+    BotSettings
+    -> SimpleBotFramework.BotEvent
+    -> BotState
+    -> ( BotState, SimpleBotFramework.BotResponse )
+processEvent _ event stateBeforeUpdateTime =
     let
         stateBefore =
             { stateBeforeUpdateTime | timeInMilliseconds = event.timeInMilliseconds }
@@ -101,11 +105,11 @@ simpleProcessEvent _ event stateBeforeUpdateTime =
         continueWaitingOrRead stateToContinueWaitingOrRead =
             let
                 timeToTakeNewReadingFromGameWindow =
-                    case stateToContinueWaitingOrRead.lastReadFromWindowResult of
-                        Nothing ->
+                    case stateToContinueWaitingOrRead.lastReadingsFromWindow of
+                        [] ->
                             True
 
-                        Just lastReadFromWindowResult ->
+                        lastReadFromWindowResult :: _ ->
                             readFromWindowIntervalMilliseconds
                                 < (stateToContinueWaitingOrRead.timeInMilliseconds - lastReadFromWindowResult.timeInMilliseconds)
 
@@ -143,7 +147,11 @@ simpleProcessEvent _ event stateBeforeUpdateTime =
 
                                 collectibleCoinLocations =
                                     lastReadFromWindowResult.coinFoundLocations
-                                        |> List.filter (.y >> (<) topStatsBarBottomMaximum)
+                                        |> List.filter
+                                            (assumeCoinIconRepresentsCollectible
+                                                stateBefore.lastReadingsFromWindow
+                                                image.bounds
+                                            )
 
                                 reachableCoinLocations =
                                     collectibleCoinLocations
@@ -190,7 +198,8 @@ simpleProcessEvent _ event stateBeforeUpdateTime =
                                             )
                             in
                             ( { stateBefore
-                                | lastReadFromWindowResult = Just lastReadFromWindowResult
+                                | lastReadingsFromWindow =
+                                    lastReadFromWindowResult :: List.take 3 stateBefore.lastReadingsFromWindow
                               }
                             , activityFromReadResult
                             )
@@ -213,10 +222,34 @@ simpleProcessEvent _ event stateBeforeUpdateTime =
     )
 
 
+assumeCoinIconRepresentsCollectible :
+    List ReadFromWindowResult
+    -> InterfaceToHost.WinApiRectStruct
+    -> Location2d
+    -> Bool
+assumeCoinIconRepresentsCollectible lastReadingsFromWindow gameClientViewport iconLocation =
+    let
+        coinLocationAgeGreaterThanOrEqual ageBound location =
+            lastReadingsFromWindow
+                |> List.take ageBound
+                |> List.all (.coinFoundLocations >> List.any (distanceSquared location >> (>) 10))
+    in
+    if iconLocation.y < topStatsBarBottomMaximum then
+        -- There is always a coin icon in the upper statistics bar
+        False
+
+    else if iconLocation.y < topStatsBarBottomMaximum + 110 && iconLocation.x > gameClientViewport.right - 140 then
+        -- There is sometimes an advert in the upper right corner, which can have a yellowish texture.
+        False
+
+    else
+        coinLocationAgeGreaterThanOrEqual 2 iconLocation
+
+
 computeReadFromWindowResult :
     SimpleBotFramework.ReadFromWindowResultStruct
     -> SimpleBotFramework.ReadingFromGameClientScreenshot
-    -> SimpleState
+    -> BotState
     -> ReadFromWindowResult
 computeReadFromWindowResult readFromWindowResult image stateBefore =
     let
@@ -233,13 +266,13 @@ computeReadFromWindowResult readFromWindowResult image stateBefore =
     }
 
 
-lastReadingDescription : SimpleState -> String
+lastReadingDescription : BotState -> String
 lastReadingDescription stateBefore =
-    case stateBefore.lastReadFromWindowResult of
-        Nothing ->
+    case stateBefore.lastReadingsFromWindow of
+        [] ->
             "Taking the first reading from the window..."
 
-        Just lastReadFromWindowResult ->
+        lastReadFromWindowResult :: _ ->
             let
                 coinFoundLocationsToDescribe =
                     lastReadFromWindowResult.coinFoundLocations
@@ -358,6 +391,11 @@ filterRemoveCloseLocations distanceMin locations =
                     nextLocation :: aggregate
             )
             []
+
+
+distanceSquared : Location2d -> Location2d -> Int
+distanceSquared a b =
+    (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)
 
 
 describeLocation : Location2d -> String

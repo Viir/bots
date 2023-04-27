@@ -1,14 +1,26 @@
-{- Elvenar Bot version 2023-04-27
+{- Elvenar coin collecting bot version 2023-04-27
 
    This bot collects coins in the Elvenar game client window.
+   It locates the coins over residential buildings in the Elvenar window and then clicks on them to collect them 🪙
+
+   ## Setup and starting the bot
+
+   Follow these steps to start a new bot session:
+
+   + Load Elvenar in a web browser.
+   + Ensure the product of the display 'scale' setting in Windows and the 'zoom' setting in the web browser is 125%. If the 'scale' in Windows settings is 100%, zoom the web browser tab to 125%. If the 'scale' in Windows settings is 125%, zoom the web browser tab to 100%.
+   + Elvenar offers you five different zoom levels. Zoom to the middle level to ensure the bot will correctly recognize the icons in the game. (You can change zoom levels using the mouse wheel or via the looking glass icons in the settings menu)
+   + Start the bot and immediately click on the web browser containing Elvenar.
 
    The bot picks the topmost window in the display order, the one in the front. This selection happens once when starting the bot. The bot then remembers the window address and continues working on the same window.
    To use this bot, bring the Elvenar game client window to the foreground after pressing the button to run the bot. When the bot displays the window title in the status text, it has completed the selection of the game window.
 
-   You can test this bot by placing a screenshot in a paint app like MS Paint or Paint.NET, where you can change its location within the window easily.
+   You can test this bot by placing a screenshot in a paint app like MS Paint or Paint.NET, where you can quickly change its location within the window.
 
-   You can see the training data samples used to develop this bot at <https://github.com/Viir/bots/tree/8b955f4035a9a202ba8450f12f4c38be8a2b8d7e/implement/applications/elvenar/training-data>
+   You can see the training data samples used to develop this bot at <https://github.com/Viir/bots/tree/71d857d01597a3dfa36c5724be79e85c44dfd3ae/implement/applications/elvenar/training-data>
+
    If the bot does not recognize all coins with your setup, post it on GitHub issues at <https://github.com/Viir/bots/issues> or on the forum at <https://forum.botlab.org>
+
 -}
 {-
    catalog-tags:elvenar

@@ -62,6 +62,10 @@ Wondering what outcome you can expect from following the guides? Below is a list
   + User guide: <https://to.botlab.org/guide/app/tribal-wars-2-farmbot>
   + Program code: <https://github.com/Viir/bots/tree/main/implement/applications/tribal-wars-2/tribal-wars-2-farmbot>
 
++ Elvenar bot
+  + User guide: <https://to.botlab.org/guide/app/elvenar-bot>
+  + Program code: <https://github.com/Viir/bots/tree/main/implement/applications/elvenar>
+
 ## Related Guides
 
 + Learn to make online games using the Elm programming language: <https://github.com/onlinegamemaker/making-online-games>

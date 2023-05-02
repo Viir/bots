@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-04-26
+{- EVE Online mining bot version 2023-05-02
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -766,37 +766,101 @@ modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
 
                         else
                             describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
-                                (case context.readingFromGameClient.targets |> List.head of
+                                (case
+                                    context.readingFromGameClient.targets
+                                        |> List.sortBy
+                                            (\target ->
+                                                if target.isActiveTarget then
+                                                    0
+
+                                                else
+                                                    1
+                                            )
+                                        |> List.head
+                                 of
                                     Nothing ->
                                         describeBranch "I see no locked target."
                                             (travelToMiningSiteAndLaunchDronesAndTargetAsteroid selectedAsteroids context)
 
-                                    Just _ ->
+                                    Just nextTarget ->
                                         {- Depending on the UI configuration, the game client might automatically target rats.
                                            To avoid these targets interfering with mining, unlock them here.
                                         -}
                                         unlockTargetsNotForMining context
                                             |> Maybe.withDefault
                                                 (describeBranch "I see a locked target."
-                                                    (case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                                        Nothing ->
-                                                            describeBranch
-                                                                (if knownMiningModules == [] then
-                                                                    "Found no mining modules so far."
+                                                    (ensureTargetIsInMiningRange
+                                                        context
+                                                        nextTarget
+                                                        { whenInRange =
+                                                            case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                                Nothing ->
+                                                                    describeBranch
+                                                                        (if knownMiningModules == [] then
+                                                                            "Found no mining modules so far."
 
-                                                                 else
-                                                                    "All known mining modules found so far are active."
-                                                                )
-                                                                (readShipUIModuleButtonTooltips context
-                                                                    |> Maybe.withDefault waitForProgressInGame
-                                                                )
+                                                                         else
+                                                                            "All known mining modules found so far are active."
+                                                                        )
+                                                                        (readShipUIModuleButtonTooltips context
+                                                                            |> Maybe.withDefault waitForProgressInGame
+                                                                        )
 
-                                                        Just inactiveModule ->
-                                                            describeBranch "I see an inactive mining module. Activate it."
-                                                                (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                                                                Just inactiveModule ->
+                                                                    describeBranch "I see an inactive mining module. Activate it."
+                                                                        (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                                                        }
                                                     )
                                                 )
                                 )
+
+
+ensureTargetIsInMiningRange :
+    BotDecisionContext
+    -> EveOnline.ParseUserInterface.Target
+    -> { whenInRange : DecisionPathNode }
+    -> DecisionPathNode
+ensureTargetIsInMiningRange context target { whenInRange } =
+    case readDistanceOfTargetInMeters target of
+        Err err ->
+            describeBranch ("Failed to read distance of target: " ++ err)
+                askForHelpToGetUnstuck
+
+        Ok distanceMeters ->
+            if distanceMeters <= context.eventContext.botSettings.miningModuleRange then
+                whenInRange
+
+            else
+                describeBranch ("Target is " ++ String.fromInt distanceMeters ++ " meters away. Approach it.")
+                    (useContextMenuCascade
+                        ( "targeted object", target.uiNode )
+                        (useMenuEntryWithTextContaining "approach" menuCascadeCompleted)
+                        context
+                    )
+
+
+readDistanceOfTargetInMeters : EveOnline.ParseUserInterface.Target -> Result String Int
+readDistanceOfTargetInMeters target =
+    {- Example seen in session-recording-2023-04-22T21-26-45.zip:
+       0 = "<center>Asteroid (Golden"
+       1 = "<center>Omber)"
+       2 = "<center>23 km"
+    -}
+    target.textsTopToBottom
+        |> List.reverse
+        |> List.concatMap (String.split ">")
+        |> List.filterMap (EveOnline.ParseUserInterface.parseOverviewEntryDistanceInMetersFromText >> Result.toMaybe)
+        |> List.head
+        |> Maybe.map Ok
+        |> Maybe.withDefault
+            (Err
+                ("Found no matching text in "
+                    ++ String.fromInt (List.length target.textsTopToBottom)
+                    ++ " lines ("
+                    ++ String.join ", " target.textsTopToBottom
+                    ++ ")."
+                )
+            )
 
 
 unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode

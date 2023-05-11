@@ -12,6 +12,8 @@ On operating systems like Windows, we can simultaneously run multiple apps. Each
 
 Before sending inputs, a bot switches the input focus to the right window if necessary. Most bots have no problem if a user takes over for a second and interrupts the input flow. The bot will automatically switch back to the right window. In case one of the inputs planned by the bot got lost, the bot will see the effect was not achieved yet and plan the input again. (This is in contrast to a macro, which blindly sends inputs without checking the current state of the target app)
 
+![BotLab coordinates input scheduling between bots](./image/2023-05-11-botlab-input-scheduling-illustration.png)
+
 Such interference will slow down the bot as it has to repeat the inputs more often. When we run multiple bots that send inputs often, this can become a problem.
 
 ## Avoiding Interference Through Input Focus Scheduling
@@ -24,12 +26,11 @@ From the user's perspective, there is no big difference to running just one bot 
 
 This design means there is no need to start or stop the bots together. And we can use any mixture of bots since all the scheduling program is on the host side.
 
-When two or more bots run on the same machine, they display information about the scheduling functionality. The BotLab client window lists the other client instances found on a line starting with `Found X BotLab client instances:`
+When running a bot, the BotLab client displays information on the input scheduling in the 'Play Session' view.
 
-The screenshot below is an example with two bots running:
+The screenshot below is an example with two bots running, each on their own instance of the BotLab client:
 
-![two botlab client instances coordinating for input scheduling](./image/2020-12-08-input-focus-scheduling-runtime-engine-windows.png)
+![two botlab client instances coordinating for input scheduling](./image/2023-05-11-botlab-input-scheduling-two-client-instances-gui.png)
 
-For each found instance, it lists their process ID and the TCP port they use for communicating. The number left of the `ms` label is the number of milliseconds it took the displaying instance to get a response from the displayed instance. In the screenshot above, we can see it was less than two milliseconds for all the directions.
-At the label `Scheduling via`, the BotLab client window also shows which instance currently has the scheduler role.
+At the label `scheduling via`, the BotLab client window also shows which instance currently has the scheduler role.
 

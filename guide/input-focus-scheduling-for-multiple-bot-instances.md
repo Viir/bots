@@ -32,5 +32,19 @@ The screenshot below is an example with two bots running, each on their own inst
 
 ![two botlab client instances coordinating for input scheduling](./image/2023-05-11-botlab-input-scheduling-two-client-instances-gui.png)
 
-At the label `scheduling via`, the BotLab client window also shows which instance currently has the scheduler role.
+This view shows the count of other instances currently running bots that require input focus. Bots that run entirely in the background, like inside a web browser, do not increase the count here.
 
+At the label `scheduling via`, the BotLab client window also shows the process ID of the instance that currently has the scheduler role.
+
+In the screenshot above, we see that every instance connects to the same BotLab client instance to coordinate the scheduling of inputs to the game clients.
+
+## RDP as Alternative to Input Focus Scheduling
+
+Input focus scheduling is not the only way to run multiple bots on the same machine. Another option is to use a remote desktop connection to the machine. When we connect to a machine via RDP, we get a separate desktop session. This session has its input focus. We can run bots in this session without interference from other bots running on the same machine.
+
+The more bots you run on the desktop, the greater the average delay for a bot to wait for its turn. The RDP approach avoids these delays by enabling multiple desktop sessions on the same machine.
+
+### How to Allow Multiple RDP Sessions in Windows 10 and 11?
+
+Compared to input focus scheduling, the RDP solution has the disadvantage of requiring a setup on the machine.
+There is a guide on setting up RDP at <https://woshub.com/how-to-allow-multiple-rdp-sessions-in-windows-10/>

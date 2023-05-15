@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2023-04-07
+{- Tribal Wars 2 farmbot version 2023-05-15
 
    This bot farms barbarian villages in Tribal Wars 2. It automatically detects barbarian villages, available troops and configured army presets to attack.
 
@@ -1227,13 +1227,13 @@ integrateWebBrowserBotEventRunJavascriptInCurrentPageResponse runtimeEvaluateRes
                                     InFarmCycle cycleBeginTime
                                         { inFarmCycle | getArmyPresetsResult = Just armyPresets }
                     in
-                    { stateBefore | farmState = farmState }
+                    { stateAfterParseSuccess | farmState = farmState }
 
                 ActivatedVillageResponse ->
-                    { stateBefore | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
+                    { stateAfterParseSuccess | lastActivatedVillageTimeInMilliseconds = Just stateBefore.timeInMilliseconds }
 
                 RequestReportListResponse requestReportList ->
-                    { stateBefore | lastRequestReportListResult = Just requestReportList }
+                    { stateAfterParseSuccess | lastRequestReportListResult = Just requestReportList }
 
 
 maintainGameClientActionFromState : EventContext -> BotState -> Maybe ( String, MaintainGameClientAction )

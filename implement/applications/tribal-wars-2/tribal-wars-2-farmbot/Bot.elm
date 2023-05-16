@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2023-05-15
+{- Tribal Wars 2 farmbot version 2023-05-16
 
    This bot farms barbarian villages in Tribal Wars 2. It automatically detects barbarian villages, available troops and configured army presets to attack.
 
@@ -63,7 +63,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
 import Common.AppSettings as AppSettings
 import Common.Basics exposing (stringContainsIgnoringCase)
 import Common.DecisionTree

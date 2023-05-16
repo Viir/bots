@@ -15,7 +15,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
 
 
 type alias State =

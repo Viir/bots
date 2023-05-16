@@ -1,4 +1,4 @@
-{- Elvenar coin collecting bot version 2023-04-27
+{- Elvenar coin collecting bot version 2023-05-16
 
    This bot collects coins in the Elvenar game client window.
    It locates the coins over residential buildings in the Elvenar window and then clicks on them to collect them 🪙
@@ -36,7 +36,7 @@ module Bot exposing
     , filterRemoveCloseLocations
     )
 
-import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework
 import Common.AppSettings as AppSettings
 import Common.EffectOnWindow

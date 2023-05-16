@@ -16,7 +16,7 @@ module BotLab.SimpleBotFramework exposing (..)
 
 import Array
 import Bitwise
-import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
 import Common.EffectOnWindow exposing (MouseButton(..))
 import CompilationInterface.SourceFiles
 import Dict

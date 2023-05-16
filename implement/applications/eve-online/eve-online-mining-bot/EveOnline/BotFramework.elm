@@ -18,7 +18,7 @@ To learn more about developing for EVE Online, see the guide at <https://to.botl
 
 import Array
 import Bitwise
-import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
 import Common.Basics
 import Common.EffectOnWindow
 import CompilationInterface.SourceFiles

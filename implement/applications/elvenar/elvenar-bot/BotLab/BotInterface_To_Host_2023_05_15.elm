@@ -1,4 +1,4 @@
-module BotLab.BotInterface_To_Host_2023_02_06 exposing (..)
+module BotLab.BotInterface_To_Host_2023_05_15 exposing (..)
 
 {-| This module contains types for the interface between a bot and the botlab client.
 The structures in these types reflect the standard interface for player agents to observe their environment and act in their environment.
@@ -106,6 +106,7 @@ type Task
 type MethodOnWindow
     = CloseWindowMethod
     | ChromeDevToolsProtocolRuntimeEvaluateMethod ChromeDevToolsProtocolRuntimeEvaluateParams
+    | SetZoomFactorOnWebViewMethod SetZoomFactorOnWebViewMethodParams
     | ReadFromWindowMethod
 
 
@@ -135,6 +136,7 @@ type alias ReadFromWindowCompleteStruct =
 
     -- https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-clienttoscreen
     , clientRectLeftUpperToScreen : WinApiPointStruct
+    , windowDpi : Int
     , imageData : ImageDataFromReadingCompleteStruct
     }
 
@@ -156,6 +158,11 @@ type alias ImageCrop =
 type alias ChromeDevToolsProtocolRuntimeEvaluateParams =
     { expression : String
     , awaitPromise : Bool
+    }
+
+
+type alias SetZoomFactorOnWebViewMethodParams =
+    { zoomFactorMikro : Int
     }
 
 

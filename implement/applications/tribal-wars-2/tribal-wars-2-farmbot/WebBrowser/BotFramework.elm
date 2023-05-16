@@ -6,7 +6,7 @@
 
 module WebBrowser.BotFramework exposing (..)
 
-import BotLab.BotInterface_To_Host_2023_02_06 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
 import Dict
 import Json.Decode
 import Json.Encode

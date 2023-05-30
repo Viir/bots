@@ -19,7 +19,7 @@ When programming an app, we use functions to reach into the UI tree and extract 
 
 To find things faster and automatically detect program code errors, we also use types adapted to the user interface's shape. We use the type system of the Elm programming language to assign names to parts of the UI tree describe the values that we expect in certain parts of the UI. The types provide us with names more closely related to players' experience, such as the overview window or ship modules.
 
-To help find these functions and types, we collect the most popular ones in the [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/eca3adf93f2b6fd31ff0c38e4118a4e31759d9c6/implement/applications/eve-online/eve-online-mining-bot/EveOnline/ParseUserInterface.elm) Elm module.
+To help find these functions and types, we collect the most popular ones in the [`EveOnline.ParseUserInterface`](https://github.com/Viir/bots/blob/c7f7c4d015e08746c4103c713441103a786caa52/implement/applications/eve-online/eve-online-mining-bot/EveOnline/ParseUserInterface.elm) Elm module.
 
 If you are not sure how to read the type definitions in that module, see the ["Reading Types"](https://guide.elm-lang.org/types/reading_types.html) and ["Type Aliases"](https://guide.elm-lang.org/types/type_aliases.html) sections in the Elm programming language guide.
 
@@ -54,8 +54,9 @@ type alias ParsedUserInterface =
     , heatStatusTooltip : Maybe HeatStatusTooltip
     , neocom : Maybe Neocom
     , messageBoxes : List MessageBox
-    , layerAbovemain : Maybe UITreeNodeWithDisplayRegion
+    , layerAbovemain : Maybe LayerAbovemain
     , keyActivationWindow : Maybe KeyActivationWindow
+    , compressionWindow : Maybe CompressionWindow
     }
 ```
 
@@ -156,6 +157,7 @@ type alias InventoryWindow =
     , selectedContainerCapacityGauge : Maybe (Result String InventoryWindowCapacityGauge)
     , selectedContainerInventory : Maybe Inventory
     , buttonToSwitchToListView : Maybe UITreeNodeWithDisplayRegion
+    , buttonToStackAll : Maybe UITreeNodeWithDisplayRegion
     }
 ```
 
@@ -224,9 +226,8 @@ In the 'Repairshop'/'Repair Facilities' window, you can repair your ship.
 type alias RepairShopWindow =
     { uiNode : UITreeNodeWithDisplayRegion
     , items : List UITreeNodeWithDisplayRegion
-    , repairItemButton : Maybe UITreeNodeWithDisplayRegion
-    , pickNewItemButton : Maybe UITreeNodeWithDisplayRegion
-    , repairAllButton : Maybe UITreeNodeWithDisplayRegion
+    , buttonGroup : Maybe UITreeNodeWithDisplayRegion
+    , buttons : List { uiNode : UITreeNodeWithDisplayRegion, mainText : Maybe String }
     }
 ```
 

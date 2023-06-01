@@ -34,7 +34,7 @@ https://youtu.be/yzkernqechE
 
 Following are the first steps shown in the video:
 
-+ Download the file from <https://botlabs.blob.core.windows.net/blob-library/by-name/2022-12-02-tribal-wars-2-farmbot.zip>
++ Download the file from <https://botlabs.blob.core.windows.net/blob-library/by-name/2023-06-01-tribal-wars-2-farmbot.zip>
 + Extract the downloaded zip archive. The extraction will give you a file named `tribal-wars-2-farmbot.exe`.
 + Run the `tribal-wars-2-farmbot.exe` program.
 + Click on 'Continue without Installing'

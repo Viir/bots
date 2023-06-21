@@ -76,6 +76,6 @@ Wondering what outcome you can expect from following the guides? Below is a list
 
 + Explore Elm syntax and core library with the Elm Explorer: <https://botlabs.blob.core.windows.net/blob-library/by-name/ElmExplorer.html>
 
-+ Inspection tool to explore the structure of EVE Online memory readings: <https://botlabs.blob.core.windows.net/blob-library/by-name/2022-12-12-eve-online-alternate-ui.html>
++ Inspection tool to explore the structure of EVE Online memory readings: <https://botlabs.blob.core.windows.net/blob-library/by-name/2023-06-21-eve-online-alternate-ui.html>
 
 + How to Allow Multiple RDP Sessions in Windows 10: <https://woshub.com/how-to-allow-multiple-rdp-sessions-in-windows-10/>

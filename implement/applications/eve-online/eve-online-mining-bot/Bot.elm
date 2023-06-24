@@ -1,4 +1,6 @@
-{- EVE Online mining bot version 2023-05-16
+{- EVE Online Thors bot version 2023-06-24
+
+   This bot is adapted for the game client shared by Thor with session-recording-2023-06-21T20-41-23 (1).zip
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -1198,7 +1200,7 @@ dockToStationOrStructureUsingSurroundingsButtonMenu :
     }
     -> BotDecisionContext
     -> DecisionPathNode
-dockToStationOrStructureUsingSurroundingsButtonMenu { prioritizeStructures, describeChoice, chooseEntry } =
+dockToStationOrStructureUsingSurroundingsButtonMenu { prioritizeStructures, describeChoice, chooseEntry } context =
     useContextMenuCascadeOnListSurroundingsButton
         (useMenuEntryWithTextContainingFirstOf
             ([ "stations", "structures" ]
@@ -1209,10 +1211,20 @@ dockToStationOrStructureUsingSurroundingsButtonMenu { prioritizeStructures, desc
                         identity
                    )
             )
-            (useMenuEntryInLastContextMenuInCascade { describeChoice = describeChoice, chooseEntry = chooseEntry }
-                (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+            {-
+               adapted for the game client shared by Thor with session-recording-2023-06-21T20-41-23 (1).zip:
+               In event 2652 of that session, we see an additional intermediate menu with random entries.
+            -}
+            (useMenuEntryInLastContextMenuInCascade
+                { describeChoice = "Navigate according to session-recording-2023-06-21T20-41-23 (1).zip"
+                , chooseEntry = listElementAtWrappedIndex (context.randomIntegers |> List.head |> Maybe.withDefault 0)
+                }
+                (useMenuEntryInLastContextMenuInCascade { describeChoice = describeChoice, chooseEntry = chooseEntry }
+                    (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+                )
             )
         )
+        context
 
 
 warpToMiningSite : BotDecisionContext -> DecisionPathNode

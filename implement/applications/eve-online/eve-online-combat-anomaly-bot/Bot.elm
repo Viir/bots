@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2023-05-16
+{- EVE Online combat anomaly bot version 2023-07-26
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -89,7 +89,7 @@ import EveOnline.BotFrameworkSeparatingMemory
         , clickModuleButtonButWaitIfClickedInPreviousStep
         , decideActionForCurrentStep
         , ensureInfoPanelLocationInfoIsExpanded
-        , ensureOverviewsSortedByDistance
+        , ensureOverviewsSorted
         , useContextMenuCascade
         , useContextMenuCascadeOnListSurroundingsButton
         , useContextMenuCascadeOnOverviewEntry
@@ -116,6 +116,7 @@ defaultBotSettings =
     , anomalyWaitTimeSeconds = 15
     , orbitInCombat = AppSettings.Yes
     , warpToAnomalyDistance = "Within 0 m"
+    , sortOverviewBy = Nothing
     }
 
 
@@ -183,6 +184,15 @@ parseBotSettings =
                     )
              }
            )
+         , ( "sort-overview-by"
+           , { description = "Name of the overview column to use for sorting. For example: 'distance' or 'size'"
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\columnName settings ->
+                        { settings | sortOverviewBy = Just columnName }
+                    )
+             }
+           )
          , ( "bot-step-delay"
            , { description = "Minimum time between starting bot steps in milliseconds"
              , valueParser =
@@ -213,6 +223,7 @@ type alias BotSettings =
     , botStepDelayMilliseconds : Int
     , orbitInCombat : AppSettings.YesOrNo
     , warpToAnomalyDistance : String
+    , sortOverviewBy : Maybe String
     }
 
 
@@ -391,12 +402,17 @@ generalSetupInUserInterface : BotDecisionContext -> Maybe DecisionPathNode
 generalSetupInUserInterface context =
     [ closeMessageBox
     , ensureInfoPanelLocationInfoIsExpanded
-    , ensureOverviewsSortedByDistance context.memory.overviewWindows
-        >> List.filterMap
-            (\( _, ( description, maybeAction ) ) ->
-                maybeAction |> Maybe.map (describeBranch description)
-            )
-        >> List.head
+    , case context.eventContext.botSettings.sortOverviewBy of
+        Nothing ->
+            always Nothing
+
+        Just sortOverviewBy ->
+            ensureOverviewsSorted { sortColumnName = sortOverviewBy } context.memory.overviewWindows
+                >> List.filterMap
+                    (\( _, ( description, maybeAction ) ) ->
+                        maybeAction |> Maybe.map (describeBranch description)
+                    )
+                >> List.head
     ]
         |> List.filterMap ((|>) context.readingFromGameClient)
         |> List.head

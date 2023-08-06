@@ -47,7 +47,7 @@ module Bot exposing
     )
 
 import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
-import Common.AppSettings as AppSettings
+import Common.AppSettings as AppSettings exposing (IntervalInt)
 import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
@@ -114,7 +114,7 @@ defaultBotSettings =
     , repairBeforeUndocking = Nothing
     , targetingRange = 8000
     , miningModuleRange = 5000
-    , botStepDelayMilliseconds = 1300
+    , botStepDelayMilliseconds = { minimum = 1300, maximum = 1500 }
     , selectInstancePilotName = Nothing
     , includeAsteroidPatterns = []
     }
@@ -208,12 +208,11 @@ parseBotSettings =
              }
            )
          , ( "bot-step-delay"
-           , { description = "Minimum time between starting bot steps in milliseconds"
+           , { description = "Minimum time between starting bot steps in milliseconds. You can also specify a range like `1000 - 2000`. The bot then picks a random value in this range."
              , valueParser =
-                AppSettings.valueTypeInteger
-                    (\delay settings ->
-                        { settings | botStepDelayMilliseconds = delay }
-                    )
+                AppSettings.parseIntervalIntFromPointOrIntervalString
+                    >> Result.map
+                        (\delay settings -> { settings | botStepDelayMilliseconds = delay })
              }
            )
          , ( "include-asteroid-pattern"
@@ -253,7 +252,7 @@ type alias BotSettings =
     , repairBeforeUndocking : Maybe AppSettings.YesOrNo
     , targetingRange : Int
     , miningModuleRange : Int
-    , botStepDelayMilliseconds : Int
+    , botStepDelayMilliseconds : IntervalInt
     , selectInstancePilotName : Maybe String
     , includeAsteroidPatterns : List String
     }
@@ -288,7 +287,7 @@ miningBotDecisionRoot : BotDecisionContext -> DecisionPathNode
 miningBotDecisionRoot context =
     miningBotDecisionRootBeforeApplyingSettings context
         |> EveOnline.BotFrameworkSeparatingMemory.setMillisecondsToNextReadingFromGameBase
-            context.eventContext.botSettings.botStepDelayMilliseconds
+            (randomIntFromInterval context context.eventContext.botSettings.botStepDelayMilliseconds)
 
 
 {-| A first outline of the decision tree for a mining bot came from <https://forum.botlab.org/t/how-to-automate-mining-asteroids-in-eve-online/628/109?u=viir>
@@ -1760,3 +1759,21 @@ nothingFromIntIfGreaterThan limit originalInt =
 
     else
         Just originalInt
+
+
+randomIntFromInterval : BotDecisionContext -> IntervalInt -> Int
+randomIntFromInterval context interval =
+    let
+        randomInteger =
+            context.randomIntegers
+                |> List.head
+                |> Maybe.withDefault 0
+
+        intervalLength =
+            interval.maximum - interval.minimum
+    in
+    if intervalLength < 1 then
+        interval.minimum
+
+    else
+        interval.minimum + (randomInteger |> modBy intervalLength)

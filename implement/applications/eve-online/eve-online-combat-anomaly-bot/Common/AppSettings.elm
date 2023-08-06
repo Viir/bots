@@ -29,6 +29,10 @@ type alias SettingValueType appSettings =
     String -> Result String (appSettings -> appSettings)
 
 
+type alias IntervalInt =
+    { minimum : Int, maximum : Int }
+
+
 messageOnlyAcceptEmptyAppSettings : String
 messageOnlyAcceptEmptyAppSettings =
     "I got a settings string that is not empty, but I only accept an empty settings string. I am not programmed to support any settings. Maybe there is another program that better suits your use case?"
@@ -285,3 +289,24 @@ listAllSupportedValues { supportedValues, ignoreCase } integrateSettingValue =
 
             Just ( _, settingValue ) ->
                 Ok (integrateSettingValue settingValue)
+
+
+parseIntervalIntFromPointOrIntervalString : String -> Result String IntervalInt
+parseIntervalIntFromPointOrIntervalString intervalAsString =
+    let
+        boundsParseResults =
+            intervalAsString
+                |> String.split "-"
+                |> List.map (\boundString -> boundString |> String.trim |> String.toInt |> Result.fromMaybe ("Failed to parse '" ++ boundString ++ "'"))
+    in
+    boundsParseResults
+        |> Result.Extra.combine
+        |> Result.andThen
+            (\bounds ->
+                case ( bounds |> List.minimum, bounds |> List.maximum ) of
+                    ( Just minimum, Just maximum ) ->
+                        Ok { minimum = minimum, maximum = maximum }
+
+                    _ ->
+                        Err "Missing value"
+            )

@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2023-07-26
+{- EVE Online combat anomaly bot version 2023-08-06
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -57,7 +57,7 @@ module Bot exposing
     )
 
 import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
-import Common.AppSettings as AppSettings
+import Common.AppSettings as AppSettings exposing (IntervalInt)
 import Common.Basics exposing (listElementAtWrappedIndex, resultFirstSuccessOrFirstError, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
@@ -112,7 +112,7 @@ defaultBotSettings =
     , avoidRats = []
     , activateModulesAlways = []
     , maxTargetCount = 3
-    , botStepDelayMilliseconds = 1400
+    , botStepDelayMilliseconds = { minimum = 1300, maximum = 1500 }
     , anomalyWaitTimeSeconds = 15
     , orbitInCombat = AppSettings.Yes
     , warpToAnomalyDistance = "Within 0 m"
@@ -194,12 +194,11 @@ parseBotSettings =
              }
            )
          , ( "bot-step-delay"
-           , { description = "Minimum time between starting bot steps in milliseconds"
+           , { description = "Minimum time between starting bot steps in milliseconds. You can also specify a range like `1000 - 2000`. The bot then picks a random value in this range."
              , valueParser =
-                AppSettings.valueTypeInteger
-                    (\delay settings ->
-                        { settings | botStepDelayMilliseconds = delay }
-                    )
+                AppSettings.parseIntervalIntFromPointOrIntervalString
+                    >> Result.map
+                        (\delay settings -> { settings | botStepDelayMilliseconds = delay })
              }
            )
          ]
@@ -220,7 +219,7 @@ type alias BotSettings =
     , activateModulesAlways : List String
     , maxTargetCount : Int
     , anomalyWaitTimeSeconds : Int
-    , botStepDelayMilliseconds : Int
+    , botStepDelayMilliseconds : IntervalInt
     , orbitInCombat : AppSettings.YesOrNo
     , warpToAnomalyDistance : String
     , sortOverviewBy : Maybe String
@@ -361,7 +360,7 @@ anomalyBotDecisionRoot : BotDecisionContext -> DecisionPathNode
 anomalyBotDecisionRoot context =
     anomalyBotDecisionRootBeforeApplyingSettings context
         |> EveOnline.BotFrameworkSeparatingMemory.setMillisecondsToNextReadingFromGameBase
-            context.eventContext.botSettings.botStepDelayMilliseconds
+            (randomIntFromInterval context context.eventContext.botSettings.botStepDelayMilliseconds)
 
 
 anomalyBotDecisionRootBeforeApplyingSettings : BotDecisionContext -> DecisionPathNode
@@ -1347,3 +1346,21 @@ abovemainMessageSaysNotEnoughBandwidthToLaunchDrone message =
        <center>You don't have enough bandwidth to launch Berserker II. You need 25.0 Mbit/s but only have 0.0 Mbit/s available.
     -}
     String.contains "don't have enough bandwidth to launch" message
+
+
+randomIntFromInterval : BotDecisionContext -> IntervalInt -> Int
+randomIntFromInterval context interval =
+    let
+        randomInteger =
+            context.randomIntegers
+                |> List.head
+                |> Maybe.withDefault 0
+
+        intervalLength =
+            interval.maximum - interval.minimum
+    in
+    if intervalLength < 1 then
+        interval.minimum
+
+    else
+        interval.minimum + (randomInteger |> modBy intervalLength)

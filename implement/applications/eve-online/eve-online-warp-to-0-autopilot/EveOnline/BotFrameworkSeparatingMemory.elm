@@ -18,9 +18,11 @@ To learn more about developing for EVE Online, see the guide at <https://to.botl
 import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
 import Common.DecisionPath
 import Common.EffectOnWindow
+import Dict
 import EveOnline.BotFramework
     exposing
-        ( ReadingFromGameClient
+        ( OverviewWindowMemorySnapshot
+        , ReadingFromGameClient
         , ReadingFromGameClientMemory
         , ReadingFromGameClientScreenshot
         , SeeUndockingComplete
@@ -567,34 +569,49 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
                     )
 
 
-ensureOverviewsSortedByDistance :
-    EveOnline.BotFramework.OverviewWindowsMemory
+ensureOverviewsSorted :
+    { sortColumnName : String }
+    -> EveOnline.BotFramework.OverviewWindowsMemory
     -> ReadingFromGameClient
     -> List ( OverviewWindow, ( String, Maybe DecisionPathNode ) )
-ensureOverviewsSortedByDistance overviewWindowsMemory readingFromGameClient =
+ensureOverviewsSorted config overviewWindowsMemory readingFromGameClient =
     readingFromGameClient.overviewWindows
         |> List.map
             (\overviewWindow ->
                 overviewWindow
-                    |> ensureOverviewSortedByDistance overviewWindowsMemory
+                    |> ensureOverviewSorted config overviewWindowsMemory
                     |> Tuple.pair overviewWindow
             )
 
 
-ensureOverviewSortedByDistance :
-    EveOnline.BotFramework.OverviewWindowsMemory
+ensureOverviewSorted :
+    { sortColumnName : String }
+    -> EveOnline.BotFramework.OverviewWindowsMemory
     -> OverviewWindow
     -> ( String, Maybe DecisionPathNode )
-ensureOverviewSortedByDistance overviewWindowsMemory overviewWindow =
+ensureOverviewSorted config overviewWindowsMemory overviewWindow =
     let
         ( _, overviewWindowMemory ) =
             EveOnline.BotFramework.integrateCurrentReadingsIntoOverviewWindowMemory overviewWindow overviewWindowsMemory
 
-        bubbleSortDistanceFromSnapshot =
-            .entriesDistancesInMeters
-                >> List.filterMap Result.toMaybe
+        bubbleSortDistanceFromListOfLengths : List (Result String Int) -> Int
+        bubbleSortDistanceFromListOfLengths =
+            List.filterMap Result.toMaybe
                 >> bubbleSortCountingIterations identity
                 >> Tuple.second
+
+        bubbleSortDistanceFromSnapshot : OverviewWindowMemorySnapshot -> Int
+        bubbleSortDistanceFromSnapshot =
+            .entriesSortedFromTop
+                >> List.map
+                    (.cellsTexts
+                        >> Dict.toList
+                        >> List.Extra.find (Tuple.first >> String.toLower >> (==) (String.toLower config.sortColumnName))
+                        >> Maybe.map Tuple.second
+                        >> Maybe.map EveOnline.ParseUserInterface.parseOverviewEntryDistanceInMetersFromText
+                        >> Maybe.withDefault (Err ("Sort column '" ++ config.sortColumnName ++ "' not found"))
+                    )
+                >> bubbleSortDistanceFromListOfLengths
 
         bubbleSortDistanceMinimum =
             overviewWindowMemory.previousSnapshots
@@ -604,13 +621,13 @@ ensureOverviewSortedByDistance overviewWindowsMemory overviewWindow =
     in
     case
         overviewWindow.entriesHeaders
-            |> List.filter (Tuple.first >> String.toLower >> (==) "distance")
+            |> List.filter (Tuple.first >> String.toLower >> (==) (String.toLower config.sortColumnName))
             |> List.head
     of
         Nothing ->
             ( "Sort header for distance not found", Nothing )
 
-        Just distanceHeader ->
+        Just sortColumnHeader ->
             if bubbleSortDistanceMinimum < 1 then
                 ( "Already sorted", Nothing )
 
@@ -621,7 +638,7 @@ ensureOverviewSortedByDistance overviewWindowsMemory overviewWindow =
                     ++ String.fromInt (List.length overviewWindowMemory.previousSnapshots)
                     ++ " readings"
                 , Just
-                    (mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft (Tuple.second distanceHeader)
+                    (mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft (Tuple.second sortColumnHeader)
                         |> Result.Extra.unpack
                             (always (Common.DecisionPath.describeBranch "Failed to click" askForHelpToGetUnstuck))
                             decideActionForCurrentStep

@@ -198,7 +198,12 @@ type alias OverviewWindowMemory =
 
 
 type alias OverviewWindowMemorySnapshot =
-    { entriesDistancesInMeters : List (Result String Int)
+    { entriesSortedFromTop : List OverviewWindowEntryMemorySnapshot
+    }
+
+
+type alias OverviewWindowEntryMemorySnapshot =
+    { cellsTexts : Dict.Dict String String
     }
 
 
@@ -389,9 +394,9 @@ deriveOverviewWindowMemorySnapshot overviewWindow =
             overviewWindow.entries
                 |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
     in
-    { entriesDistancesInMeters =
+    { entriesSortedFromTop =
         entriesSortedFromTop
-            |> List.map .objectDistanceInMeters
+            |> List.map (\entry -> { cellsTexts = entry.cellsTexts })
     }
 
 

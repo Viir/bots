@@ -64,7 +64,7 @@ Wondering what outcome you can expect from following the guides? Below is a list
 
 + Elvenar bot
   + User guide: <https://to.botlab.org/guide/app/elvenar-bot>
-  + Program code: <https://github.com/Viir/bots/tree/main/implement/applications/elvenar>
+  + Program code: <https://github.com/Viir/bots/tree/main/implement/applications/elvenar/elvenar-bot>
 
 ## Related Guides
 

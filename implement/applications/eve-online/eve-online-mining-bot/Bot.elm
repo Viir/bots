@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-08-06
+{- EVE Online mining bot version 2023-10-06
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -117,6 +117,7 @@ defaultBotSettings =
     , botStepDelayMilliseconds = { minimum = 1300, maximum = 1500 }
     , selectInstancePilotName = Nothing
     , includeAsteroidPatterns = []
+    , miningSiteLocation = Nothing
     }
 
 
@@ -224,6 +225,15 @@ parseBotSettings =
                     )
              }
            )
+         , ( "mining-site-location"
+           , { description = "Name of a mining site as it appears in the solar system surroundings menu of the game client."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\location settings ->
+                        { settings | miningSiteLocation = Just location }
+                    )
+             }
+           )
          ]
             |> Dict.fromList
         )
@@ -255,6 +265,7 @@ type alias BotSettings =
     , botStepDelayMilliseconds : IntervalInt
     , selectInstancePilotName : Maybe String
     , includeAsteroidPatterns : List String
+    , miningSiteLocation : Maybe String
     }
 
 
@@ -1217,12 +1228,22 @@ dockToStationOrStructureUsingSurroundingsButtonMenu { prioritizeStructures, desc
 warpToMiningSite : BotDecisionContext -> DecisionPathNode
 warpToMiningSite context =
     useContextMenuCascadeOnListSurroundingsButton
-        (useMenuEntryWithTextContaining "asteroid belts"
-            (useRandomMenuEntry (context.randomIntegers |> List.head |> Maybe.withDefault 0)
-                (useMenuEntryWithTextContaining "Warp to Within"
-                    (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
-                )
-            )
+        (case context.eventContext.botSettings.miningSiteLocation of
+            Nothing ->
+                useMenuEntryWithTextContaining "asteroid belts"
+                    (useRandomMenuEntry (context.randomIntegers |> List.head |> Maybe.withDefault 0)
+                        (useMenuEntryWithTextContaining "Warp to"
+                            (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
+                        )
+                    )
+
+            Just miningSiteLocation ->
+                useMenuEntryWithTextContaining "location"
+                    (useMenuEntryWithTextContaining miningSiteLocation
+                        (useMenuEntryWithTextContaining "Warp to"
+                            (useMenuEntryWithTextContaining "Within" menuCascadeCompleted)
+                        )
+                    )
         )
         context
 

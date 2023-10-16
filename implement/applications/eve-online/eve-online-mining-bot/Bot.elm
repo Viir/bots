@@ -1054,6 +1054,15 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
                                             )
                         )
 
+--Function for returning the inventor button in the neocom (Ready to be clicked on)
+findInventoryButtonInNeocom : ReadingFromGameClient -> Maybe UIElement
+findInventoryButtonInNeocom readingFromGameClient =
+    case readingFromGameClient.neocom of
+        Nothing ->
+            Nothing 
+        Just insideNeoCom ->
+            insideNeoCom.inventoryButton
+
 
 lockTargetFromOverviewEntryAndEnsureIsInRange : BotDecisionContext -> Int -> OverviewWindowEntry -> DecisionPathNode
 lockTargetFromOverviewEntryAndEnsureIsInRange context rangeInMeters overviewEntry =

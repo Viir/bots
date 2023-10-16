@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2023-10-06
+{- EVE Online mining bot version 2023-10-16
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -1054,12 +1054,15 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
                                             )
                         )
 
---Function for returning the inventor button in the neocom (Ready to be clicked on)
+
+{-| Returns the inventory button in the neocom (Ready to be clicked on)
+-}
 findInventoryButtonInNeocom : ReadingFromGameClient -> Maybe UIElement
 findInventoryButtonInNeocom readingFromGameClient =
     case readingFromGameClient.neocom of
         Nothing ->
-            Nothing 
+            Nothing
+
         Just insideNeoCom ->
             insideNeoCom.inventoryButton
 

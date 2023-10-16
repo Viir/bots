@@ -2857,11 +2857,11 @@ parseStandaloneBookmarkWindow windowUINode =
 
 parseNeocomFromUITreeRoot : UITreeNodeWithDisplayRegion -> Maybe Neocom
 parseNeocomFromUITreeRoot uiTreeRoot =
-        uiTreeRoot
-            |> listDescendantsWithDisplayRegion
-            |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "NeocomContainer")
-            |> List.head
-            |> Maybe.map parseNeocom
+    uiTreeRoot
+        |> listDescendantsWithDisplayRegion
+        |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "NeocomContainer")
+        |> List.head
+        |> Maybe.map parseNeocom
 
 
 parseNeocom : UITreeNodeWithDisplayRegion -> Neocom
@@ -2883,6 +2883,7 @@ parseNeocom neocomUiNode =
                         , parsedText = parseNeocomClockText clockText
                         }
                     )
+
         inventoryButton =
             neocomUiNode
                 |> listDescendantsWithDisplayRegion

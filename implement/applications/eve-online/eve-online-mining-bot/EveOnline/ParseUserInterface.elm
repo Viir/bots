@@ -491,7 +491,19 @@ type alias HeatStatusTooltip =
 
 type alias Neocom =
     { uiNode : UITreeNodeWithDisplayRegion
+    , airCareerProgramButton : Maybe UITreeNodeWithDisplayRegion
+    , agencyButton : Maybe UITreeNodeWithDisplayRegion
+    , mailButton : Maybe UITreeNodeWithDisplayRegion
     , inventoryButton : Maybe UITreeNodeWithDisplayRegion
+    , assetsButton : Maybe UITreeNodeWithDisplayRegion
+    , walletButton : Maybe UITreeNodeWithDisplayRegion
+    , marketButton : Maybe UITreeNodeWithDisplayRegion
+    , fittingButton : Maybe UITreeNodeWithDisplayRegion
+    , mapButton : Maybe UITreeNodeWithDisplayRegion
+    , helpButton : Maybe UITreeNodeWithDisplayRegion
+    , projectDiscoveryButton : Maybe UITreeNodeWithDisplayRegion
+    , chatButton : Maybe UITreeNodeWithDisplayRegion
+    , jobBoardButton : Maybe UITreeNodeWithDisplayRegion
     , clock : Maybe NeocomClock
     }
 
@@ -2888,9 +2900,87 @@ parseNeocom neocomUiNode =
                 |> listDescendantsWithDisplayRegion
                 |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "ButtonInventory")
                 |> List.head
+
+        airCareerProgramButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "airCareerProgram"))
+                |> List.head
+        agencyButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "agency"))
+                |> List.head
+        
+        mailButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "mail"))
+                |> List.head
+        assetsButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "assets"))
+                |> List.head
+        walletButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "wallet"))
+                |> List.head
+        marketButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "market"))
+                |> List.head
+        fittingButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "fitting"))
+                |> List.head
+        mapButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "map_beta"))
+                |> List.head
+
+        helpButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "help"))
+                |> List.head
+        projectDiscoveryButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "ProjectDiscovery"))
+                |> List.head
+        
+        chatButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> .pythonObjectTypeName >> (==) "ButtonChat")
+                |> List.head
+        
+        jobBoardButton =
+            neocomUiNode
+                |> listDescendantsWithDisplayRegion
+                |> List.filter (.uiNode >> getNameFromDictEntries >> (==) (Just "job_board"))
+                |> List.head
+
     in
     { uiNode = neocomUiNode
+    , airCareerProgramButton = airCareerProgramButton
+    , agencyButton = agencyButton
+    , mailButton = mailButton
     , inventoryButton = inventoryButton
+    , assetsButton = assetsButton
+    , walletButton = walletButton
+    , marketButton = marketButton
+    , fittingButton = fittingButton
+    , mapButton = mapButton
+    , helpButton = helpButton
+    , projectDiscoveryButton = projectDiscoveryButton
+    , chatButton = chatButton
+    , jobBoardButton = jobBoardButton
     , clock = clock
     }
 

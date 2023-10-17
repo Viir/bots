@@ -1013,7 +1013,17 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
         Nothing ->
             case readingFromGameClient.inventoryWindows |> List.head of
                 Nothing ->
-                    describeBranch "I do not see an inventory window. Please open an inventory window." askForHelpToGetUnstuck
+                        case findInventoryButtonInNeocom readingFromGameClient of
+                            Nothing ->
+                                describeBranch ("I do not see an inventory window. Please open an inventory window.") askForHelpToGetUnstuck
+
+                            Just buttonInNeocom ->
+                                describeBranch "I see the button from the Neocom. Clicking on the button"
+                                (mouseClickOnUIElement MouseButtonLeft buttonInNeocom
+                                    |> Result.Extra.unpack
+                                    (always (describeBranch "Failed to click the inventory button in the Neocom" askForHelpToGetUnstuck))
+                                    decideActionForCurrentStep
+                                )
 
                 Just inventoryWindow ->
                     describeBranch

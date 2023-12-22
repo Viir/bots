@@ -567,6 +567,46 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                 )
 
 
+deactivateModulesBeforeWarp : BotDecisionContext -> Maybe DecisionPathNode
+deactivateModulesBeforeWarp context =
+    context
+        |> modulesToDeactivateBeforeWarp
+        |> List.filter (Tuple.second >> moduleIsActiveOrReloading)
+        |> List.head
+        |> Maybe.map
+            (\( moduleMatchingText, moduleToDeactivate ) ->
+                describeBranch ("I see active module '" ++ moduleMatchingText ++ "' to deactivate before warp. Deactivate it.")
+                    (clickModuleButtonButWaitIfClickedInPreviousStep context moduleToDeactivate)
+            )
+
+
+modulesToDeactivateBeforeWarp :
+    BotDecisionContext
+    -> List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
+modulesToDeactivateBeforeWarp context =
+    context.readingFromGameClient.shipUI
+        |> Maybe.map .moduleButtons
+        |> Maybe.withDefault []
+        |> List.filterMap
+            (\moduleButton ->
+                moduleButton
+                    |> EveOnline.BotFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                    |> Maybe.andThen
+                        (.allContainedDisplayTextsWithRegion
+                            >> List.filterMap
+                                (\( tooltipText, _ ) ->
+                                    if tooltipText |> stringContainsIgnoringCase "afterburner" then
+                                        Just tooltipText
+
+                                    else
+                                        Nothing
+                                )
+                            >> List.head
+                        )
+                    |> Maybe.map (\moduleName -> ( moduleName, moduleButton ))
+            )
+
+
 modulesToActivateAlwaysActivated : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
 modulesToActivateAlwaysActivated context seeUndockingComplete =
     let
@@ -802,15 +842,18 @@ enterAnomaly { ifNoAcceptableAnomalyAvailable } context =
 
                 Just anomalyScanResult ->
                     describeBranch "Warp to anomaly."
-                        (useContextMenuCascade
-                            ( "Scan result", anomalyScanResult.uiNode )
-                            (useMenuEntryWithTextContaining "Warp to Within"
-                                (useMenuEntryWithTextContaining
-                                    context.eventContext.botSettings.warpToAnomalyDistance
-                                    menuCascadeCompleted
+                        (deactivateModulesBeforeWarp context
+                            |> Maybe.withDefault
+                                (useContextMenuCascade
+                                    ( "Scan result", anomalyScanResult.uiNode )
+                                    (useMenuEntryWithTextContaining "Warp to Within"
+                                        (useMenuEntryWithTextContaining
+                                            context.eventContext.botSettings.warpToAnomalyDistance
+                                            menuCascadeCompleted
+                                        )
+                                    )
+                                    context
                                 )
-                            )
-                            context
                         )
 
 

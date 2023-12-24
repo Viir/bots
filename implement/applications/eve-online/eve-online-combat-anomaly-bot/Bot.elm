@@ -1,4 +1,5 @@
-{- EVE Online combat anomaly bot version 2023-08-06
+{- EVE Online combat anomaly bot version Moom 2023-12-24
+   Adapted to the use-case from <https://forum.botlab.org/t/turn-off-one-module-before-each-warp/4814>
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -386,7 +387,10 @@ anomalyBotDecisionRootBeforeApplyingSettings context =
                                     |> Maybe.withDefault
                                         (describeBranch
                                             "Dock to station or structure."
-                                            (dockAtRandomStationOrStructure context)
+                                            (deactivateModulesBeforeWarp context
+                                                |> Maybe.withDefault
+                                                    (dockAtRandomStationOrStructure context)
+                                            )
                                         )
                             }
                             context

@@ -191,22 +191,18 @@ Start a new instance of the bot for each account. This separation also means the
 
 The challenge with using multiple Tribal Wars 2 accounts simultaneously is that the game website does not support logging into two accounts simultaneously.
 This constraint of the game client applies to a whole browser user profile. With most common browsers, like Chrome, Firefox, and Safari, all browser windows/tabs we open on the same machine share the same user profile. When logging into the Tribal Wars account in one browser window, the other browser windows share the same session by default.
+
 To prevent this sharing of game session state between multiple bot instances, we set up our bot to use a separate browser user profile for each instance.
-Currently, the only way to do this is to copy the 'BotLab.exe' file into a separate directory. This works because the bot's user profile is located under the executable file's directory.
 
-TODO: Engineering: Expand API to support the bot specifying a separate browser user profile. Future versions should support this way:
+To specify a web browser profile for a new bot instance, use the `web-browser-user-data-dir` setting. Here is an example of a complete bot-settings string:
 
-> To use multiple instances simultaneously, you need to expand the bot-settings in the configuration of each instance. When the bot starts, it opens a new browser window and will also close other browser windows. To avoid it closing the browser window of another instance, we need to assign it a scope of browser instances in bot-settings explicitly.
-> 
-> To configure this scope, use the new `web-browser-user-profile-id` bot-setting like this:
-> 
-> ```
-> web-browser-user-profile-id = profile-beta
-> ```
-> 
-> While running, the bot displays the profile ID, so you can check that each running instance has a unique value:
-> ![bot displays the web-browser-user-profile-id setting](./image/2021-12-02-tribal-wars-2-farmbot-browser-profile-id.png)
-> 
+```text
+web-browser-user-data-dir = profile-beta
+```
+
+After the bot has opened a web browser, we can see the profile name in the web browser tab at the 'user data folder' label. This way, we can check that each running instance has a unique value.
+
+![bot displays the web-browser-user-data-folder setting](./../image/2024-01-03-botlab-client-webbrowser-user-data-folder-indication.png)
 
 Note that browser state like bookmarks and cookies belong to that web browser profile. That means you need to log in to the game for each new profile that you create.
 

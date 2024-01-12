@@ -1,6 +1,7 @@
-{- Tribal Wars 2 farmbot version 2023-05-16
+{- Tribal Wars 2 farmbot version 2024-01-11
 
-   This bot farms barbarian villages in Tribal Wars 2. It automatically detects barbarian villages, available troops and configured army presets to attack.
+   This bot farms barbarian villages in Tribal Wars 2.
+   It automatically detects barbarian villages, available troops and configured army presets to attack.
 
    ## Getting Started
 
@@ -1460,7 +1461,11 @@ decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gam
                                     |> Dict.toList
                                     |> List.filter
                                         (\( _, ( _, otherVillageDecisionPath ) ) ->
-                                            case otherVillageDecisionPath |> unpackToDecisionStagesDescriptionsAndLeaf |> Tuple.second of
+                                            case
+                                                otherVillageDecisionPath
+                                                    |> unpackToDecisionStagesDescriptionsAndLeaf
+                                                    |> Tuple.second
+                                            of
                                                 CompletedThisVillage _ ->
                                                     False
 
@@ -1697,12 +1702,11 @@ decideNextActionForVillageAfterChoosingPreset botSettings botState farmCycleStat
 
     else
         let
+            sentAttackToCoordinates : VillageCoordinates -> Bool
             sentAttackToCoordinates coordinates =
-                (farmCycleState.sentAttackByCoordinates
-                    |> Dict.get ( coordinates.x, coordinates.y )
-                )
-                    /= Nothing
+                Dict.member ( coordinates.x, coordinates.y ) farmCycleState.sentAttackByCoordinates
 
+            firstMatchFromRelativeCoordinates : List VillageCoordinates -> Maybe VillageCoordinates
             firstMatchFromRelativeCoordinates =
                 List.map (offsetVillageCoordinates villageDetails.coordinates)
                     >> List.filter
@@ -1732,15 +1736,7 @@ decideNextActionForVillageAfterChoosingPreset botSettings botState farmCycleStat
                 -}
                 botState.cache_relativeCoordinatesToSearchForFarmsPartitions
                     |> Tuple.second
-                    |> List.foldl
-                        (\coordinatesPartition result ->
-                            if result /= Nothing then
-                                result
-
-                            else
-                                firstMatchFromRelativeCoordinates coordinatesPartition
-                        )
-                        Nothing
+                    |> List.Extra.findMap firstMatchFromRelativeCoordinates
         in
         nextRemainingCoordinates
             |> Maybe.map
@@ -2143,7 +2139,7 @@ startVillagesByCoordinatesScript villages =
 })(""" ++ argumentJson ++ ")"
 
 
-jsonEncodeCoordinates : { x : Int, y : Int } -> Json.Encode.Value
+jsonEncodeCoordinates : VillageCoordinates -> Json.Encode.Value
 jsonEncodeCoordinates { x, y } =
     [ ( "x", x ), ( "y", y ) ] |> List.map (Tuple.mapSecond Json.Encode.int) |> Json.Encode.object
 
@@ -2262,7 +2258,7 @@ decodePreset =
         (Json.Decode.field "assigned_villages" (Json.Decode.list Json.Decode.int))
 
 
-startSendPresetAttackToCoordinatesScript : { x : Int, y : Int } -> { presetId : Int } -> String
+startSendPresetAttackToCoordinatesScript : VillageCoordinates -> { presetId : Int } -> String
 startSendPresetAttackToCoordinatesScript coordinates { presetId } =
     let
         argumentJson =
@@ -2727,7 +2723,7 @@ describeRunJavascriptInCurrentPageResponseStructure response =
 
 describeString : Int -> String -> String
 describeString maxLength =
-    stringEllipsis maxLength "..."
+    String.Extra.ellipsisWith maxLength "..."
         >> Json.Encode.string
         >> Json.Encode.encode 0
 
@@ -2740,15 +2736,6 @@ describeMaybe describeJust maybe =
 
         Just just ->
             describeJust just
-
-
-stringEllipsis : Int -> String -> String -> String
-stringEllipsis howLong append string =
-    if String.length string <= howLong then
-        string
-
-    else
-        String.left (howLong - String.length append) string ++ append
 
 
 jsonDecodeOptionalField : String -> Json.Decode.Decoder a -> Json.Decode.Decoder (Maybe a)

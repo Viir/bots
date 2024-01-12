@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2024-01-11
+{- Tribal Wars 2 farmbot version 2024-01-12
 
    This bot farms barbarian villages in Tribal Wars 2.
    It automatically detects barbarian villages, available troops and configured army presets to attack.
@@ -298,6 +298,15 @@ type alias EventContext =
 type alias FarmCycleState =
     { getArmyPresetsResult : Maybe (List ArmyPreset)
     , sentAttackByCoordinates : Dict.Dict ( Int, Int ) ()
+
+    {-
+       2024-01-12:
+       Adapt to issue observed on accounts with many villages:
+       When there were no more barbarian villages, the bot could get stuck requesting new information about villages instead of finishing the farm cycle.
+       This happened because information obtained for a village is only considered for a limited time.
+       To avoid this issue, store the completion status of each village here and do not anymore request information about this village in the current cycle.
+    -}
+    , villagesCompletions : Dict.Dict Int VillageCompletedStructure
     }
 
 
@@ -454,7 +463,7 @@ type alias VillageCoordinates =
 
 
 type InFarmCycleResponse
-    = ContinueFarmCycle ContinueFarmCycleStructure
+    = ContinueFarmCycle FarmCycleState ContinueFarmCycleStructure
     | FinishFarmCycle { villagesResults : Dict.Dict Int VillageCompletedStructure }
 
 
@@ -549,6 +558,7 @@ initFarmCycle : FarmCycleState
 initFarmCycle =
     { getArmyPresetsResult = Nothing
     , sentAttackByCoordinates = Dict.empty
+    , villagesCompletions = Dict.empty
     }
 
 
@@ -824,22 +834,30 @@ decideNextAction botSettings stateBefore =
                 , stateBefore
                 )
 
-        InFarmCycle farmCycleBegin farmCycleState ->
+        InFarmCycle farmCycleBegin farmCycleStateBefore ->
             let
                 decisionInFarmCycle =
-                    decideInFarmCycle botSettings stateBefore farmCycleState
+                    decideInFarmCycle botSettings stateBefore farmCycleStateBefore
 
                 ( _, decisionInFarmCycleLeaf ) =
                     unpackToDecisionStagesDescriptionsAndLeaf decisionInFarmCycle
 
                 ( newLeaf, maybeActivityInFarmCycle, updatedStateInFarmCycle ) =
                     case decisionInFarmCycleLeaf of
-                        ContinueFarmCycle continueFarmCycleActivity ->
+                        ContinueFarmCycle farmCycleState continueFarmCycleActivity ->
                             let
+                                state : BotState
+                                state =
+                                    { stateBefore
+                                        | farmState = InFarmCycle farmCycleBegin farmCycleState
+                                    }
+
                                 ( maybeRequest, updatedStateFromContinueCycle ) =
                                     case continueFarmCycleActivity of
                                         Nothing ->
-                                            ( Nothing, stateBefore )
+                                            ( Nothing
+                                            , state
+                                            )
 
                                         Just activity ->
                                             let
@@ -860,7 +878,7 @@ decideNextAction botSettings stateBefore =
                                                                 { expression = requestComponents.expression
                                                                 , requestId = requestToPageIdString
                                                                 }
-                                                            , { stateBefore
+                                                            , { state
                                                                 | lastRequestToPageId = requestToPageId
                                                                 , pendingRequestToPageRequestId = Just requestToPageIdString
                                                               }
@@ -886,7 +904,7 @@ decideNextAction botSettings stateBefore =
                                 completedFarmCycles =
                                     { beginTime = farmCycleBegin.beginTimeSeconds
                                     , completionTime = stateBefore.timeInMilliseconds // 1000
-                                    , attacksCount = farmCycleState.sentAttackByCoordinates |> Dict.size
+                                    , attacksCount = farmCycleStateBefore.sentAttackByCoordinates |> Dict.size
                                     , villagesResults = villagesResults
                                     }
                                         :: stateBefore.completedFarmCycles
@@ -1308,7 +1326,7 @@ decideInFarmCycle botSettings botState farmCycleState =
     case sufficientlyNewGameRootInformation of
         Err error ->
             describeBranch ("Read game root info (" ++ error ++ ")")
-                (endDecisionPath (ContinueFarmCycle (Just ReadRootInformationRequest)))
+                (endDecisionPath (ContinueFarmCycle farmCycleState (Just ReadRootInformationRequest)))
 
         Ok gameRootInformation ->
             decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gameRootInformation
@@ -1320,7 +1338,7 @@ decideInFarmCycleWithGameRootInformation :
     -> FarmCycleState
     -> TribalWars2RootInformation
     -> DecisionPathNode InFarmCycleResponse
-decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gameRootInformation =
+decideInFarmCycleWithGameRootInformation botSettings botState farmCycleStateBefore gameRootInformation =
     let
         ownVillageUpdateTimeMinimumMilli =
             botState.timeInMilliseconds - (ownVillageInfoMaxAge * 1000)
@@ -1395,6 +1413,7 @@ decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gam
                         ("Search for village at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
                         (endDecisionPath
                             (ContinueFarmCycle
+                                farmCycleStateBefore
                                 (Just (requestToPageStructureToReadMapChunkContainingCoordinates coordinates))
                             )
                         )
@@ -1406,13 +1425,14 @@ decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gam
                             Just jumpToVillageRequest ->
                                 describeBranch
                                     ("Jump to village at " ++ (coordinates |> villageCoordinatesDisplayText) ++ ".")
-                                    (endDecisionPath (ContinueFarmCycle (Just jumpToVillageRequest)))
+                                    (endDecisionPath (ContinueFarmCycle farmCycleStateBefore (Just jumpToVillageRequest)))
 
                             Nothing ->
                                 describeBranch
                                     ("Send attack using preset '" ++ armyPreset.name ++ "'.")
                                     (endDecisionPath
                                         (ContinueFarmCycle
+                                            farmCycleStateBefore
                                             (Just
                                                 (SendPresetAttackToCoordinatesRequest
                                                     { coordinates = coordinates, presetId = armyPreset.id }
@@ -1429,6 +1449,16 @@ decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gam
                             ++ ")."
                         )
                         (let
+                            villagesCompletions =
+                                farmCycleStateBefore.villagesCompletions
+                                    |> Dict.insert gameRootInformation.selectedVillageId currentVillageCompletion
+
+                            farmCycleState =
+                                { farmCycleStateBefore
+                                    | villagesCompletions = villagesCompletions
+                                }
+
+                            otherVillagesWithDetails : Dict.Dict Int VillageDetails
                             otherVillagesWithDetails =
                                 gameRootInformation.readyVillages
                                     |> List.filterMap
@@ -1445,6 +1475,8 @@ decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gam
 
                             otherVillagesDetailsAndDecisions =
                                 otherVillagesWithDetails
+                                    |> Dict.filter
+                                        (\otherVillageId _ -> not (Dict.member otherVillageId villagesCompletions))
                                     |> Dict.map
                                         (\otherVillageId otherVillageDetails ->
                                             ( otherVillageDetails
@@ -1473,33 +1505,17 @@ decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gam
                                                     switchToOtherVillageCommandCapacityMinimum <= conditions.remainingCapacityCommands
                                         )
                          in
-                         case otherVillagesWithAvailableAction |> List.head of
+                         case List.head otherVillagesWithAvailableAction of
                             Nothing ->
-                                let
-                                    villagesResults =
-                                        otherVillagesDetailsAndDecisions
-                                            |> Dict.map (always Tuple.second)
-                                            |> Dict.toList
-                                            |> List.filterMap
-                                                (\( otherVillageId, otherVillageDecisionPath ) ->
-                                                    case otherVillageDecisionPath |> unpackToDecisionStagesDescriptionsAndLeaf |> Tuple.second of
-                                                        CompletedThisVillage otherVillageCompletion ->
-                                                            Just ( otherVillageId, otherVillageCompletion )
-
-                                                        ContinueWithThisVillage _ _ ->
-                                                            Nothing
-                                                )
-                                            |> Dict.fromList
-                                            |> Dict.insert gameRootInformation.selectedVillageId currentVillageCompletion
-                                in
                                 describeBranch "All villages completed."
-                                    (endDecisionPath (FinishFarmCycle { villagesResults = villagesResults }))
+                                    (endDecisionPath (FinishFarmCycle { villagesResults = villagesCompletions }))
 
                             Just ( villageToActivateId, ( villageToActivateDetails, _ ) ) ->
                                 describeBranch
                                     ("Switch to village " ++ (villageToActivateId |> String.fromInt) ++ " at " ++ (villageToActivateDetails.coordinates |> villageCoordinatesDisplayText) ++ ".")
                                     (endDecisionPath
                                         (ContinueFarmCycle
+                                            farmCycleState
                                             (Just
                                                 (requestToJumpToVillageIfNotYetDone botState villageToActivateDetails.coordinates
                                                     |> Maybe.withDefault VillageMenuActivateVillageRequest
@@ -1511,7 +1527,7 @@ decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gam
 
         readBattleReportList =
             describeBranch "Read report list"
-                (endDecisionPath (ContinueFarmCycle (Just ReadBattleReportListRequest)))
+                (endDecisionPath (ContinueFarmCycle farmCycleStateBefore (Just ReadBattleReportListRequest)))
     in
     {-
        Disable reading battle report list for to clean up status message.
@@ -1527,6 +1543,7 @@ decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gam
                 ("Read status of own village " ++ (ownVillageNeedingDetailsUpdate |> String.fromInt) ++ ".")
                 (endDecisionPath
                     (ContinueFarmCycle
+                        farmCycleStateBefore
                         (Just (ReadSelectedCharacterVillageDetailsRequest { villageId = ownVillageNeedingDetailsUpdate }))
                     )
                 )
@@ -1539,12 +1556,13 @@ decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gam
                             ("Read status of current selected village (" ++ (gameRootInformation.selectedVillageId |> String.fromInt) ++ ")")
                             (endDecisionPath
                                 (ContinueFarmCycle
+                                    farmCycleStateBefore
                                     (Just (ReadSelectedCharacterVillageDetailsRequest { villageId = gameRootInformation.selectedVillageId }))
                                 )
                             )
 
                     Just selectedVillageDetails ->
-                        case farmCycleState.getArmyPresetsResult |> Maybe.withDefault [] of
+                        case farmCycleStateBefore.getArmyPresetsResult |> Maybe.withDefault [] of
                             [] ->
                                 {- 2020-01-28 Observation: We get an empty list here at least sometimes at the beginning of a session.
                                    The number of presets we get can increase with the next query.
@@ -1555,14 +1573,14 @@ decideInFarmCycleWithGameRootInformation botSettings botState farmCycleState gam
                                     "Did not find any army presets. Maybe loading is not completed yet."
                                     (describeBranch
                                         "Read army presets."
-                                        (endDecisionPath (ContinueFarmCycle (Just ReadArmyPresets)))
+                                        (endDecisionPath (ContinueFarmCycle farmCycleStateBefore (Just ReadArmyPresets)))
                                     )
 
                             _ ->
                                 decideNextActionForVillage
                                     botSettings
                                     botState
-                                    farmCycleState
+                                    farmCycleStateBefore
                                     ( gameRootInformation.selectedVillageId, selectedVillageDetails )
                                     |> continueDecisionTree continueFromDecisionInVillage
                 )
@@ -2498,6 +2516,21 @@ statusMessageFromState botSettings state { activityDecisionStages } =
                    )
                 ++ "."
 
+        currentCycleLines : List String
+        currentCycleLines =
+            case state.farmState of
+                InBreak _ ->
+                    [ "No farm cycle in progress (Break)" ]
+
+                InFarmCycle _ farmCycleState ->
+                    [ "Current farm cycle:"
+                    , "Sent "
+                        ++ (farmCycleState.sentAttackByCoordinates |> Dict.size |> String.fromInt)
+                        ++ " attacks and completed "
+                        ++ (farmCycleState.villagesCompletions |> Dict.size |> String.fromInt)
+                        ++ " villages."
+                    ]
+
         sentAttacksReportPartCurrentCycle =
             case sentAttacks.inCurrentCycle of
                 Nothing ->
@@ -2602,7 +2635,7 @@ statusMessageFromState botSettings state { activityDecisionStages } =
     in
     [ [ "Session performance: " ++ describeSessionPerformance ]
     , completedFarmCyclesReportLines
-    , sentAttacksReportPartCurrentCycle
+    , currentCycleLines
     , [ coordinatesChecksReport ]
     , [ inGameReport ]
     , [ readBattleReportsReport ]

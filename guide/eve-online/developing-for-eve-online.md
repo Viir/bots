@@ -12,7 +12,7 @@ In part, this is a summary of my learnings from development projects. But more i
 In this exercise, we take the fastest way to a custom bot, starting with an open-source bot we find published on the internet.
 Let's run this autopilot bot:
 
-<https://github.com/Viir/bots/tree/eca3adf93f2b6fd31ff0c38e4118a4e31759d9c6/implement/applications/eve-online/eve-online-warp-to-0-autopilot>
+<https://github.com/Viir/bots/tree/9567e5b6d7982c4feeed05fef1a24705e8510bfc/implement/applications/eve-online/eve-online-warp-to-0-autopilot>
 
 The easiest way to run this bot is by entering the address above into the BotLab client in the 'Select Bot' view.
 
@@ -37,14 +37,14 @@ You can use the 'Project' -> 'Load from Git Repository' dialog in Elm Editor to 
 After loading the program files into Elm Editor, select the `Bot.elm` file to open in the code editor.
 
 Here is a link that brings you directly into the `Bot.elm` file in Elm Editor, automating the import steps described above:
-<https://elm-editor.com/?project-state=https%3A%2F%2Fgithub.com%2FViir%2Fbots%2Ftree%2Feca3adf93f2b6fd31ff0c38e4118a4e31759d9c6%2Fimplement%2Fapplications%2Feve-online%2Feve-online-warp-to-0-autopilot&file-path-to-open=Bot.elm>
+<https://elm-editor.com/?project-state=https%3A%2F%2Fgithub.com%2FViir%2Fbots%2Ftree%2F9567e5b6d7982c4feeed05fef1a24705e8510bfc%2Fimplement%2Fapplications%2Feve-online%2Feve-online-warp-to-0-autopilot&file-path-to-open=Bot.elm>
 
 After making changes to the program code, we can use the 'Project' -> 'Export to Zip Archive' dialog in Elm Editor to download all the files in the project with their new content.
 In the BotLab client, we can load the bot directly from that zip archive by entering the path to the archive as the source. We don't need to extract the archive, as that happens automatically.
 
 Now that we know how to run a program code from the editor, let's change it to make it our own.
 
-In the `Bot.elm` file on line 154, we find the text that we saw in the bots status message earlier, enclosed in double-quotes:
+In the `Bot.elm` file on line 156, we find the text that we saw in the bots status message earlier, enclosed in double-quotes:
 
 ![EVE Online autopilot bot code in Elm Editor](./image/2021-08-29-eve-online-autopilot-bot-code-in-elm-editor-in-space.png)
 
@@ -115,13 +115,13 @@ These three modules contain hundreds of building blocks to compose your bot.
 
 ### Entry Point - `botMain`
 
-In the `Bot.elm` file of each bot program code, you can find a declaration named [`botMain`](https://github.com/Viir/bots/blob/eca3adf93f2b6fd31ff0c38e4118a4e31759d9c6/implement/applications/eve-online/eve-online-warp-to-0-autopilot/Bot.elm#L258-L269).
+In the `Bot.elm` file of each bot program code, you can find a declaration named [`botMain`](https://github.com/Viir/bots/blob/9567e5b6d7982c4feeed05fef1a24705e8510bfc/implement/applications/eve-online/eve-online-warp-to-0-autopilot/Bot.elm#L258-L269).
 
 In contrast to other declarations in that file, `botMain` has a unique role. Any other declaration can contribute to the bots behavior only if it is somehow referenced by `botMain`, directly or indirectly. Because of its unique role, we also call it the 'entry point'.
 
 The type of `botMain` is not specific to EVE Online. Bots for other games use the same structure. Program codes for the EVE Online client use functions from `EveOnline.BotFrameworkSeparatingMemory` module to build the more general `botMain` value. We can see this in the example projects, no matter if it is a mining bot, ratting bot, or just a monitor that watches local chat and alerts the user when a hostile pilot enters. 
 
-Here is how the [autopilot example bot code](https://github.com/Viir/bots/blob/eca3adf93f2b6fd31ff0c38e4118a4e31759d9c6/implement/applications/eve-online/eve-online-warp-to-0-autopilot/Bot.elm#L258-L269) uses framework functions to configure the bot:
+Here is how the [autopilot example bot code](https://github.com/Viir/bots/blob/9567e5b6d7982c4feeed05fef1a24705e8510bfc/implement/applications/eve-online/eve-online-warp-to-0-autopilot/Bot.elm#L258-L269) uses framework functions to configure the bot:
 
 ```Elm
 botMain : InterfaceToHost.BotConfig State

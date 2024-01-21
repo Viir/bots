@@ -31,7 +31,7 @@ If the BotLab client is not already installed on your machine, follow the guide 
 The BotLab client is a tool for developing bots and also makes running bots easier with graphical user interfaces for configuration.
 
 In the BotLab client, load the bot by entering the following link in the 'Select Bot' view:
-<https://catalog.botlab.org/ad09c9ace1e216cf>
+<https://catalog.botlab.org/a023889820380856>
 
 There is a detailed walkthrough video on how to load and run a bot at <https://to.botlab.org/guide/video/how-to-run-a-bot-live>
 

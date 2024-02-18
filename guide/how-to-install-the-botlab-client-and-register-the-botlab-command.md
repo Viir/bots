@@ -13,6 +13,10 @@ The BotLab client program is a tool for developing and running bots, and many gu
 
 + Download the file from <https://botlabs.blob.core.windows.net/blob-library/by-name/2024-02-18-botlab-client.zip>
 + Extract the downloaded zip archive. The extraction will give you a file named `BotLab.exe`.
+
+![BotLab client executable file in Windows Explorer](./image/2024-02-18-botlab-client-executable-file-in-explorer.png)
+
+
 + Run the `BotLab.exe` program, for example by double clicking the file in the Windows Explorer. It will open a window like in this screenshot:
 
 ![BotLab client offers to install](./image/2022-10-07-botlab-client-offer-install.png)
@@ -22,9 +26,9 @@ The BotLab client program is a tool for developing and running bots, and many gu
 
 ![BotLab client completed installation](./image/2022-10-07-botlab-client-completed-installation.png)
 
-That's it; the installation is complete. Now you can run bots by using the 'Run Bot' button in the BotLab client GUI:
+That's it; the installation is complete. Now you can run bots by using the 'Run Bot' button in the BotLab client window:
 
-![The first view visible in the BotLab client after installing](./image/2022-12-10-botlab-client-main-menu.png)
+![The first view visible in the BotLab client after installing](./image/2024-02-18-botlab-client-initial-main-menu.png)
 
 If you have any questions, the [BotLab forum](https://forum.botlab.org) is a good place to learn more.
 

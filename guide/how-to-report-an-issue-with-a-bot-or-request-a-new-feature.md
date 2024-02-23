@@ -1,71 +1,45 @@
 # How to Report an Issue with a Bot or Request a New Feature
 
-Have you used a bot that should be improved?
-This guide helps you report bugs and communicate ideas for new features.
+Did you see something to improve in a bot?
+This guide helps you report bugs and communicate ideas for new features to developers.
 
-Improving a bot starts with documenting the scenario(s) in which we want the bot to behave differently than it did so far. This applies to both fixing bugs and adding features.
+Improving a bot starts with identifying a scenario in which we want it to behave differently than it did so far. This approach applies to both fixing bugs and adding features.
 
-These scenarios are the fuel for bot development. Developing bots is very much an incremental process. A bot evolves as we collect more scenarios describing the desired behavior.
+These scenarios are the fuel for bot development. Developing bots is an incremental process. A bot evolves as we collect more training data describing the game environment and the desired behavior.
 
-Explaining your use-case in human language is a good start, but a developer will usually ask for more data.
+Explaining your use case in human language is a good start, but a developer will usually ask for more data.
 
 ## Session Recording and Archive
 
-The most common way to describe your scenario or use-case is to share a recording of a play session using the bot.
+The most common way to describe the bot's situation is to share a recording of a play session.
 
-The artifact of the session recording allows us to:
+The session recording allows us to:
 
-+ See which bot program was used in the session and how it was configured (including bot-settings).
++ See which bot was used in the session and how it was instructed.
 + Travel back in time and see what the bot saw in the past.
-+ Understand why our bot did what it did.
-+ Create simulation environments to test new bot programs: https://to.botlab.org/guide/testing-a-bot-using-simulated-environments
-+ Extract training data used to adapt bot program codes to new users and their setups.
++ Understand why the bot did what it did.
++ Create simulation environments to test bot programs: <https://to.botlab.org/guide/testing-a-bot-using-simulated-environments>
++ Collect training data to adapt bot programs to changes in the game world and game clients.
 
-In summary, sharing a session recording is a fast and efficient way to answer many questions from people who want to help you.
+## Exporting a Play Session Recording
 
-### Getting the Session Recording Archive
+How do we get a session recording that we can share with others?
 
-How do you get a session recording that you can share with others?
-
-By default, the BotLab client automatically creates that recording every time you run a bot. That means saving the session recording is already taken care of unless you chose to disable it for that session.
+The BotLab client automatically saves a recording for every play session by default. That means saving the session recording is already taken care of unless you choose to deactivate it for that session.
 
 (If you have set the `--detailed-session-recording` switch to `off` on a session, the recording will not be available for that session)
 
-To export a recording after running a bot, we use the `Devtools` in the BotLab client:
+The main menu of the BotLab client shows a list of recent play sessions; we can open any of these for review and further analysis:
 
-![Opening DevTools from the main menu](./image/2021-12-09-botlab-client-main-menu-enter-devtools.png)
+![List of recent play sessions in the main menu](./image/2024-02-18-botlab-client-main-menu-with-recent-sessions.png)
 
-A button in the main menu brings us into the `Devtools` view:
+By selecting a play session in the main menu, we switch to the tools to explore and analyze that particular session.
+To export the play session recording into a transportable zip archive, use the button 'Export play session' above the summary view:
 
-![DevTools view in the botlab client](./image/2021-12-09-botlab-client-devtools-default.png)
+![Play session summary page](./image/2024-02-18-botlab-client-play-session-summary-export.png)
 
-Here we see a link to a web page on the `localhost` domain. Clicking that link brings opens a web browser. The actual graphical user interface for the Devtools is on this web page.
+**Note**: After clicking that button, the software might take a few seconds to respond, depending on how many events are in the play session.
 
-![DevTools - choose a session to inspect](./image/2021-12-09-botlab-devtools-select-session.png)
+Sessions exported this way are saved into the 'Downloads' folder of your Windows user account, with file names like `session-recording-2024-02-18T16-25-34.zip`
 
-You find a list of recent play sessions on that web page, the last one at the top.
-
-When you run a bot, the BotLab client window also displays the session's name, so you can find it again in this list later, even if you started other sessions in the meantime.
-
-Clicking on one of the sessions' names brings us into the view of this particular session:
-
-![DevTools - initial view of a session](./image/2021-12-09-botlab-devtools-session-summary.png)
-
-To export the session recording, use the `Download session recording archive` button. This gets you a zip archive that you can then share with other people. Now you can get help from other developers for your exact situation, no matter if the solution requires a change in program code or just different bot-settings.
-
-### Inspecting a Session and Identifying the Time of Interest
-
-Besides the session archive, a developer might ask you at which time the bot should have behaved differently. The longer the session, the more likely you will be asked to clarify this.
-
-A precise way to communicate the time range of interest is to note the events indices for this range. Each action that a bot sends to a game client belongs to one event in the session timeline.
-
-In the session view, there is a timeline of events in that session. The events are numbered so that we can identify them; each has its index.
-
-A play session can easily contain thousands of events, and we want to find out what subsequence of events is related to the current problem or feature request.
-
-Clicking on an event in the timeline opens the details for this event. Here you can see what the game looked like at that time and what the bot did. The event details contain the complete bot's response to this event, including the inputs to send to a game client.
-
-![DevTools - view of play session event details](./image/2021-12-09-botlab-devtools-session-event-details.png)
-
-Bot authors often use the status text to inform about what action the bot takes and how it decided to prefer this action. The bot generates a new status text for each event. The status texts for consecutive events can be very similar or even the same, especially if the bot was waiting for a process in the game to complete and did not take any action in the event.
-
+With the export, you can share the play session recording like any other file. This way, other people can do an analysis as detailed as necessary. When required, it also enables distilling the training data to adapt the bot to the specifics of your game client.

@@ -40,9 +40,18 @@ In the screenshot above, we see that every instance connects to the same BotLab 
 
 ## RDP as Alternative to Input Focus Scheduling
 
-Input focus scheduling is not the only way to run multiple bots on the same machine. Another option is to use a remote desktop connection to the machine. When we connect to a machine via RDP, we get a separate desktop session. This session has its input focus. We can run bots in this session without interference from other bots running on the same machine.
+Input-focus scheduling is not the only way to prevent interference between multiple bots on the same machine. Another option is to use a remote desktop connection to the machine. We get a separate desktop session by connecting to a machine via RDP. Each desktop has a separate input focus, so we can run a bot in an RDP session without interference from other bots running on the same machine.
 
 The more bots you run on the desktop, the greater the average delay for a bot to wait for its turn. The RDP approach avoids these delays by enabling multiple desktop sessions on the same machine.
+
+When using RDP or another approach to isolate a bot instance, turn off that session's input focus scheduling feature to avoid unnecessary delays of the bot's inputs to the game.
+You can turn off input focus scheduling in the 'Configure Session' view before starting a new play session:
+
+![Configure Session - input focus scheduling disabled](./image/2024-03-30-botlab-client-configure-session-input-focus-scheduling-disabled.png)
+
+In the active play session view, the software then shows the text "scheduling disabled by session config":
+
+![Play Session - input focus scheduling disabled](./image/2024-03-30-botlab-client-play-session-input-focus-scheduling-disabled.png)
 
 ### How to Allow Multiple RDP Sessions in Windows 10 and 11?
 

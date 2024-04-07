@@ -58,10 +58,10 @@ module Bot exposing
     )
 
 import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
-import Common.AppSettings as AppSettings exposing (IntervalInt)
 import Common.Basics exposing (listElementAtWrappedIndex, resultFirstSuccessOrFirstError, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
+import Common.PromptParser as PromptParser exposing (IntervalInt)
 import Dict
 import EveOnline.BotFramework
     exposing
@@ -108,7 +108,7 @@ import Set
 
 defaultBotSettings : BotSettings
 defaultBotSettings =
-    { hideWhenNeutralInLocal = AppSettings.No
+    { hideWhenNeutralInLocal = PromptParser.No
     , anomalyNames = []
     , avoidRats = []
     , prioritizeRats = []
@@ -116,7 +116,7 @@ defaultBotSettings =
     , maxTargetCount = 3
     , botStepDelayMilliseconds = { minimum = 1300, maximum = 1500 }
     , anomalyWaitTimeSeconds = 15
-    , orbitInCombat = AppSettings.Yes
+    , orbitInCombat = PromptParser.Yes
     , warpToAnomalyDistance = "Within 0 m"
     , sortOverviewBy = Nothing
     }
@@ -124,90 +124,100 @@ defaultBotSettings =
 
 parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
-    AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
+    PromptParser.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "hide-when-neutral-in-local"
-           , { description = "Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat."
+           , { alternativeNames = []
+             , description = "Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat."
              , valueParser =
-                AppSettings.valueTypeYesOrNo
+                PromptParser.valueTypeYesOrNo
                     (\hide settings -> { settings | hideWhenNeutralInLocal = hide })
              }
            )
          , ( "anomaly-name"
-           , { description = "Name of anomalies to select. Use this setting multiple times to select multiple names."
+           , { alternativeNames = []
+             , description = "Name of anomalies to select. Use this setting multiple times to select multiple names."
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\anomalyName settings ->
                         { settings | anomalyNames = String.trim anomalyName :: settings.anomalyNames }
                     )
              }
            )
          , ( "avoid-rat"
-           , { description = "Name of a rat to avoid by warping away. Enter the name as it appears in the overview. Use this setting multiple times to select multiple names."
+           , { alternativeNames = []
+             , description = "Name of a rat to avoid by warping away. Enter the name as it appears in the overview. Use this setting multiple times to select multiple names."
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\ratToAvoid settings ->
                         { settings | avoidRats = String.trim ratToAvoid :: settings.avoidRats }
                     )
              }
            )
          , ( "prioritize-rat"
-           , { description = "Name of a rat to prioritize when locking targets. Enter the name as it appears in the overview. Use this setting multiple times to select multiple names."
+           , { alternativeNames = [ "prio-rat", "priority-rat" ]
+             , description = "Name of a rat to prioritize when locking targets. Enter the name as it appears in the overview. Use this setting multiple times to select multiple names."
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\ratToPrioritize settings ->
                         { settings | prioritizeRats = String.trim ratToPrioritize :: settings.prioritizeRats }
                     )
              }
            )
          , ( "activate-module-always"
-           , { description = "Text found in tooltips of ship modules that should always be active. For example: 'shield hardener'."
+           , { alternativeNames = []
+             , description = "Text found in tooltips of ship modules that should always be active. For example: 'shield hardener'."
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\moduleName settings ->
                         { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways }
                     )
              }
            )
          , ( "anomaly-wait-time"
-           , { description = "Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid."
+           , { alternativeNames = []
+             , description = "Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid."
              , valueParser =
-                AppSettings.valueTypeInteger
+                PromptParser.valueTypeInteger
                     (\anomalyWaitTimeSeconds settings ->
                         { settings | anomalyWaitTimeSeconds = anomalyWaitTimeSeconds }
                     )
              }
            )
          , ( "orbit-in-combat"
-           , { description = "Whether to keep the ship orbiting during combat"
+           , { alternativeNames = []
+             , description = "Whether to keep the ship orbiting during combat"
              , valueParser =
-                AppSettings.valueTypeYesOrNo
+                PromptParser.valueTypeYesOrNo
                     (\orbitInCombat settings ->
                         { settings | orbitInCombat = orbitInCombat }
                     )
              }
            )
          , ( "warp-to-anomaly-distance"
-           , { description = "Defaults to 'Within 0 m'"
+           , { alternativeNames = []
+             , description = "Defaults to 'Within 0 m'"
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\warpToAnomalyDistance settings ->
                         { settings | warpToAnomalyDistance = warpToAnomalyDistance }
                     )
              }
            )
          , ( "sort-overview-by"
-           , { description = "Name of the overview column to use for sorting. For example: 'distance' or 'size'"
+           , { alternativeNames = []
+             , description = "Name of the overview column to use for sorting. For example: 'distance' or 'size'"
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\columnName settings ->
                         { settings | sortOverviewBy = Just columnName }
                     )
              }
            )
          , ( "bot-step-delay"
-           , { description = "Minimum time between starting bot steps in milliseconds. You can also specify a range like `1000 - 2000`. The bot then picks a random value in this range."
+           , { alternativeNames = [ "step-delay" ]
+             , description = "Minimum time between starting bot steps in milliseconds. You can also specify a range like `1000 - 2000`. The bot then picks a random value in this range."
              , valueParser =
-                AppSettings.parseIntervalIntFromPointOrIntervalString
+                PromptParser.parseIntervalIntFromPointOrIntervalString
                     >> Result.map
                         (\delay settings -> { settings | botStepDelayMilliseconds = delay })
              }
@@ -224,7 +234,7 @@ goodStandingPatterns =
 
 
 type alias BotSettings =
-    { hideWhenNeutralInLocal : AppSettings.YesOrNo
+    { hideWhenNeutralInLocal : PromptParser.YesOrNo
     , anomalyNames : List String
     , avoidRats : List String
     , prioritizeRats : List String
@@ -232,7 +242,7 @@ type alias BotSettings =
     , maxTargetCount : Int
     , anomalyWaitTimeSeconds : Int
     , botStepDelayMilliseconds : IntervalInt
-    , orbitInCombat : AppSettings.YesOrNo
+    , orbitInCombat : PromptParser.YesOrNo
     , warpToAnomalyDistance : String
     , sortOverviewBy : Maybe String
     }
@@ -470,7 +480,7 @@ continueIfShouldHide config context =
                 )
 
         Nothing ->
-            if context.eventContext.botSettings.hideWhenNeutralInLocal /= AppSettings.Yes then
+            if context.eventContext.botSettings.hideWhenNeutralInLocal /= PromptParser.Yes then
                 Nothing
 
             else
@@ -791,7 +801,7 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                                             (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                                 )
     in
-    if context.eventContext.botSettings.orbitInCombat == AppSettings.Yes then
+    if context.eventContext.botSettings.orbitInCombat == PromptParser.Yes then
         ensureShipIsOrbitingDecision
             |> Maybe.withDefault (Ok decisionToKillRats)
             |> Result.Extra.unpack

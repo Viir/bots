@@ -27,7 +27,7 @@ If the BotLab client is not already installed on your machine, follow the guide 
 The BotLab client is a tool for developing bots and also makes running bots easier with graphical user interfaces for configuration.
 
 In the BotLab client, load the bot by entering the following link in the 'Select Bot' view:
-<https://catalog.botlab.org/12d565847a5fcce8>
+<https://catalog.botlab.org/f3e0387c82de599e>
 
 There is a detailed walkthrough video on how to load and run a bot at <https://to.botlab.org/guide/video/how-to-run-a-bot-live>
 
@@ -41,9 +41,10 @@ From here on, the bot works automatically. It detects the topmost game client wi
 
 All settings are optional; you only need them in case the defaults don't fit your use-case.
 
-+ `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
++ `anomaly-name` : Name of anomalies to select. Use this setting multiple times to select multiple names.
 + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
-+ `avoid-rat` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
++ `avoid-rat` : Name of a rat to avoid by warping away. Enter the name as it appears in the overview. Use this setting multiple times to select multiple names.
++ `prioritize-rat` : Name of a rat to prioritize when locking targets. Enter the name as it appears in the overview. Use this setting multiple times to select multiple names.
 + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
 + `anomaly-wait-time`: Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid.
 + `warp-to-anomaly-distance`: Defaults to 'Within 0 m'

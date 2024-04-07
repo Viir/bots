@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-01-03
+{- EVE Online combat anomaly bot version 2024-04-07
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -24,9 +24,10 @@
 
    All settings are optional; you only need them in case the defaults don't fit your use-case.
 
-   + `anomaly-name` : Choose the name of anomalies to take. You can use this setting multiple times to select multiple names.
+   + `anomaly-name` : Name of anomalies to select. Use this setting multiple times to select multiple names.
    + `hide-when-neutral-in-local` : Set this to 'yes' to make the bot dock in a station or structure when a neutral or hostile appears in the 'local' chat.
-   + `avoid-rat` : Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names.
+   + `avoid-rat` : Name of a rat to avoid by warping away. Enter the name as it appears in the overview. Use this setting multiple times to select multiple names.
+   + `prioritize-rat` : Name of a rat to prioritize when locking targets. Enter the name as it appears in the overview. Use this setting multiple times to select multiple names.
    + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
    + `anomaly-wait-time`: Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid.
    + `warp-to-anomaly-distance`: Defaults to 'Within 0 m'
@@ -110,6 +111,7 @@ defaultBotSettings =
     { hideWhenNeutralInLocal = AppSettings.No
     , anomalyNames = []
     , avoidRats = []
+    , prioritizeRats = []
     , activateModulesAlways = []
     , maxTargetCount = 3
     , botStepDelayMilliseconds = { minimum = 1300, maximum = 1500 }
@@ -131,7 +133,7 @@ parseBotSettings =
              }
            )
          , ( "anomaly-name"
-           , { description = "Choose the name of anomalies to take. You can use this setting multiple times to select multiple names."
+           , { description = "Name of anomalies to select. Use this setting multiple times to select multiple names."
              , valueParser =
                 AppSettings.valueTypeString
                     (\anomalyName settings ->
@@ -140,11 +142,20 @@ parseBotSettings =
              }
            )
          , ( "avoid-rat"
-           , { description = "Name of a rat to avoid, as it appears in the overview. You can use this setting multiple times to select multiple names."
+           , { description = "Name of a rat to avoid by warping away. Enter the name as it appears in the overview. Use this setting multiple times to select multiple names."
              , valueParser =
                 AppSettings.valueTypeString
                     (\ratToAvoid settings ->
                         { settings | avoidRats = String.trim ratToAvoid :: settings.avoidRats }
+                    )
+             }
+           )
+         , ( "prioritize-rat"
+           , { description = "Name of a rat to prioritize when locking targets. Enter the name as it appears in the overview. Use this setting multiple times to select multiple names."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\ratToPrioritize settings ->
+                        { settings | prioritizeRats = String.trim ratToPrioritize :: settings.prioritizeRats }
                     )
              }
            )
@@ -216,6 +227,7 @@ type alias BotSettings =
     { hideWhenNeutralInLocal : AppSettings.YesOrNo
     , anomalyNames : List String
     , avoidRats : List String
+    , prioritizeRats : List String
     , activateModulesAlways : List String
     , maxTargetCount : Int
     , anomalyWaitTimeSeconds : Int
@@ -658,6 +670,26 @@ decideActionInAnomaly :
     -> DecisionPathNode
 decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplete continueIfCombatComplete =
     let
+        prioritizedRatsPatterns : List String
+        prioritizedRatsPatterns =
+            List.map String.toLower context.eventContext.botSettings.prioritizeRats
+
+        isPriorityRat overviewEntry =
+            prioritizedRatsPatterns
+                |> List.any
+                    (\priorityRat ->
+                        overviewEntry.objectName
+                            |> Maybe.map (String.toLower >> String.contains priorityRat)
+                            |> Maybe.withDefault False
+                    )
+
+        attackPriority overviewEntry =
+            if isPriorityRat overviewEntry then
+                0
+
+            else
+                1
+
         overviewEntriesToAttack =
             seeUndockingComplete.overviewWindows
                 |> List.concatMap .entries
@@ -667,6 +699,7 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                    |> List.sortBy (.objectDistanceInMeters >> Result.withDefault 999999)
                 -}
                 |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
+                |> List.sortBy attackPriority
                 |> List.filter shouldAttackOverviewEntry
 
         overviewEntriesToLock =

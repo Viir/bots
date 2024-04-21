@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-04-07
+{- EVE Online combat anomaly bot version 2024-04-21
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -84,6 +84,7 @@ import EveOnline.BotFramework
 import EveOnline.BotFrameworkSeparatingMemory
     exposing
         ( DecisionPathNode
+        , EndDecisionPathStructure
         , UpdateMemoryContext
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
@@ -286,6 +287,10 @@ type ReasonToAvoidAnomaly
     | FoundRatToAvoid String
 
 
+type alias DecisionPathNodeGeneric end =
+    Common.DecisionPath.DecisionPathNode end
+
+
 describeReasonToAvoidAnomaly : ReasonToAvoidAnomaly -> String
 describeReasonToAvoidAnomaly reason =
     case reason of
@@ -398,21 +403,40 @@ anomalyBotDecisionRootBeforeApplyingSettings context =
                         context
                         |> Maybe.withDefault
                             (undockUsingStationWindow context
-                                { ifCannotReachButton = describeBranch "No alternative for undocking" askForHelpToGetUnstuck }
+                                { ifCannotReachButton =
+                                    describeBranch "No alternative for undocking" askForHelpToGetUnstuck
+                                }
                             )
                 , ifSeeShipUI =
-                    always
-                        (continueIfShouldHide
+                    \shipUI ->
+                        continueIfShouldHide
                             { ifShouldHide =
                                 returnDronesToBay context
                                     |> Maybe.withDefault
-                                        (describeBranch
+                                        (let
+                                            continueInAnomaly : () -> DecisionPathNode
+                                            continueInAnomaly () =
+                                                decideActionInAnomaly
+                                                    { arrivalInAnomalyAgeSeconds = 0 }
+                                                    context
+                                                    { shipUI = shipUI
+                                                    , overviewWindows = context.readingFromGameClient.overviewWindows
+                                                    }
+                                                    (describeBranch "Cannot see what is preventing warp"
+                                                        askForHelpToGetUnstuck
+                                                    )
+                                         in
+                                         describeBranch
                                             "Dock to station or structure."
-                                            (dockAtRandomStationOrStructure context)
+                                            (dockAtRandomStationOrStructure
+                                                { success = identity
+                                                , warpingBlocked = continueInAnomaly
+                                                }
+                                                context
+                                            )
                                         )
                             }
                             context
-                        )
                 , ifUndockingComplete = decideNextActionWhenInSpace context
                 }
                 context.readingFromGameClient
@@ -516,47 +540,58 @@ continueIfShouldHide config context =
 The entries for structures in the menu from the SurroundingsButton can be nested one level deeper than the ones for stations.
 In other words, not all structures appear directly under the "structures" entry.
 -}
-dockAtRandomStationOrStructure : BotDecisionContext -> DecisionPathNode
-dockAtRandomStationOrStructure context =
-    let
-        withTextContainingIgnoringCase textToSearch =
-            List.filter (.text >> String.toLower >> (==) (textToSearch |> String.toLower)) >> List.head
+dockAtRandomStationOrStructure :
+    { success : EndDecisionPathStructure -> end
+    , warpingBlocked : () -> DecisionPathNodeGeneric end
+    }
+    -> BotDecisionContext
+    -> DecisionPathNodeGeneric end
+dockAtRandomStationOrStructure config context =
+    if assumeSelfShipIsPointed context.readingFromGameClient then
+        config.warpingBlocked ()
 
-        menuEntryIsSuitable menuEntry =
-            [ "cyno beacon", "jump gate" ]
-                |> List.any (\toAvoid -> menuEntry.text |> stringContainsIgnoringCase toAvoid)
-                |> not
+    else
+        let
+            withTextContainingIgnoringCase textToSearch =
+                List.filter (.text >> String.toLower >> (==) (textToSearch |> String.toLower)) >> List.head
 
-        chooseNextMenuEntry =
-            { describeChoice = "Use 'Dock' if available or a random entry."
-            , chooseEntry =
-                pickEntryFromLastContextMenuInCascade
-                    (\menuEntries ->
-                        let
-                            suitableMenuEntries =
-                                List.filter menuEntryIsSuitable menuEntries
-                        in
-                        [ withTextContainingIgnoringCase "dock"
-                        , List.filter (.text >> stringContainsIgnoringCase "station")
-                            >> Common.Basics.listElementAtWrappedIndex
+            menuEntryIsSuitable menuEntry =
+                [ "cyno beacon", "jump gate" ]
+                    |> List.any (\toAvoid -> menuEntry.text |> stringContainsIgnoringCase toAvoid)
+                    |> not
+
+            chooseNextMenuEntry =
+                { describeChoice = "Use 'Dock' if available or a random entry."
+                , chooseEntry =
+                    pickEntryFromLastContextMenuInCascade
+                        (\menuEntries ->
+                            let
+                                suitableMenuEntries =
+                                    List.filter menuEntryIsSuitable menuEntries
+                            in
+                            [ withTextContainingIgnoringCase "dock"
+                            , List.filter (.text >> stringContainsIgnoringCase "station")
+                                >> Common.Basics.listElementAtWrappedIndex
+                                    (context.randomIntegers |> List.head |> Maybe.withDefault 0)
+                            , Common.Basics.listElementAtWrappedIndex
                                 (context.randomIntegers |> List.head |> Maybe.withDefault 0)
-                        , Common.Basics.listElementAtWrappedIndex
-                            (context.randomIntegers |> List.head |> Maybe.withDefault 0)
-                        ]
-                            |> List.filterMap (\priority -> suitableMenuEntries |> priority)
-                            |> List.head
+                            ]
+                                |> List.filterMap (\priority -> suitableMenuEntries |> priority)
+                                |> List.head
+                        )
+                }
+        in
+        Common.DecisionPath.mapEnd config.success
+            (useContextMenuCascadeOnListSurroundingsButton
+                (useMenuEntryWithTextContainingFirstOf [ "stations", "structures" ]
+                    (MenuEntryWithCustomChoice chooseNextMenuEntry
+                        (MenuEntryWithCustomChoice chooseNextMenuEntry
+                            (MenuEntryWithCustomChoice chooseNextMenuEntry MenuCascadeCompleted)
+                        )
                     )
-            }
-    in
-    useContextMenuCascadeOnListSurroundingsButton
-        (useMenuEntryWithTextContainingFirstOf [ "stations", "structures" ]
-            (MenuEntryWithCustomChoice chooseNextMenuEntry
-                (MenuEntryWithCustomChoice chooseNextMenuEntry
-                    (MenuEntryWithCustomChoice chooseNextMenuEntry MenuCascadeCompleted)
                 )
+                context
             )
-        )
-        context
 
 
 decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
@@ -620,6 +655,14 @@ modulesToActivateAlwaysActivated context seeUndockingComplete =
                     let
                         arrivalInAnomalyAgeSeconds =
                             (context.eventContext.timeInMilliseconds - memoryOfAnomaly.arrivalTime.milliseconds) // 1000
+
+                        continueInAnomaly : () -> DecisionPathNode
+                        continueInAnomaly () =
+                            decideActionInAnomaly
+                                { arrivalInAnomalyAgeSeconds = arrivalInAnomalyAgeSeconds }
+                                context
+                                seeUndockingComplete
+                                returnDronesAndEnterAnomalyOrWait
                     in
                     describeBranch ("We are in anomaly '" ++ anomalyID ++ "' since " ++ String.fromInt arrivalInAnomalyAgeSeconds ++ " seconds.")
                         (case findReasonToAvoidAnomalyFromMemory context { anomalyID = anomalyID } of
@@ -631,16 +674,17 @@ modulesToActivateAlwaysActivated context seeUndockingComplete =
                                     (returnDronesAndEnterAnomaly
                                         { ifNoAcceptableAnomalyAvailable =
                                             describeBranch "Get out of this anomaly."
-                                                (dockAtRandomStationOrStructure context)
+                                                (dockAtRandomStationOrStructure
+                                                    { success = identity
+                                                    , warpingBlocked = continueInAnomaly
+                                                    }
+                                                    context
+                                                )
                                         }
                                     )
 
                             Nothing ->
-                                decideActionInAnomaly
-                                    { arrivalInAnomalyAgeSeconds = arrivalInAnomalyAgeSeconds }
-                                    context
-                                    seeUndockingComplete
-                                    returnDronesAndEnterAnomalyOrWait
+                                continueInAnomaly ()
                         )
 
 
@@ -1380,6 +1424,21 @@ readingFromGameClientSaysNotEnoughBandwidthToLaunchDrone reading =
         |> Maybe.withDefault []
         |> List.map Tuple.first
         |> List.any abovemainMessageSaysNotEnoughBandwidthToLaunchDrone
+
+
+assumeSelfShipIsPointed : ReadingFromGameClient -> Bool
+assumeSelfShipIsPointed readingFromGameClient =
+    case readingFromGameClient.shipUI of
+        Nothing ->
+            False
+
+        Just shipUI ->
+            let
+                offensiveBuffButtonNames =
+                    List.map (String.trim >> String.toLower) shipUI.offensiveBuffButtonNames
+            in
+            List.any (String.contains "warpscrambler") offensiveBuffButtonNames
+                || List.member "webify" offensiveBuffButtonNames
 
 
 abovemainMessageSaysNotEnoughBandwidthToLaunchDrone : String -> Bool

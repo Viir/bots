@@ -379,7 +379,11 @@ expressionToLoadContent content =
             "window.location = \"" ++ location ++ "\""
 
         HtmlContent html ->
-            "window.document.documentElement.innerHTML = \"" ++ html ++ "\""
+            let
+                htmlEncoded =
+                    Json.Encode.encode 0 (Json.Encode.string html)
+            in
+            "window.document.documentElement.innerHTML = " ++ htmlEncoded
 
 
 browserDefaultContent : BrowserPageContent

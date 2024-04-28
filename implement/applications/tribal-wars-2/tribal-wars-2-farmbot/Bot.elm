@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2024-01-13
+{- Tribal Wars 2 farmbot version 2024-04-28
 
    This bot farms barbarian villages in Tribal Wars 2.
    It automatically detects barbarian villages, available troops and configured army presets to attack.
@@ -782,12 +782,19 @@ maintainGameClientAndDecideNextAction eventContext stateBefore =
                 InBreak _ ->
                     False
 
+        webBrowserLocationIfRestart : Maybe String
         webBrowserLocationIfRestart =
-            [ eventContext.gameLastPageLocation
-            , eventContext.settings.openWebsiteOnStart
-            ]
-                |> List.filterMap identity
-                |> List.head
+            case eventContext.gameLastPageLocation of
+                Just gameLastPageLocation ->
+                    Just gameLastPageLocation
+
+                Nothing ->
+                    case eventContext.settings.openWebsiteOnStart of
+                        Just openWebsiteOnStart ->
+                            Just openWebsiteOnStart
+
+                        Nothing ->
+                            Nothing
     in
     if not isInFarmCycle then
         ( actionPath, botState )
@@ -820,6 +827,8 @@ maintainGameClientAndDecideNextAction eventContext stateBefore =
                                                                         { content =
                                                                             webBrowserLocationIfRestart
                                                                                 |> Maybe.map BotFramework.WebSiteContent
+                                                                                |> Maybe.withDefault (BotFramework.HtmlContent webBrowserDefaultContentHtml)
+                                                                                |> Just
                                                                         , language = Nothing
                                                                         , userDataDir = eventContext.settings.webBrowserUserDataDir
                                                                         }
@@ -2826,6 +2835,139 @@ describeRunJavascriptInCurrentPageResponseStructure response =
     "{ returnValueJsonSerialized = "
         ++ describeString 300 response.returnValueJsonSerialized
         ++ "\n}"
+
+
+webBrowserDefaultContentHtml : String
+webBrowserDefaultContentHtml =
+    -- https://superuser.com/questions/895917/is-there-a-way-to-display-unicode-flags-by-installing-a-specific-font-if-so-wh
+    """
+<!DOCTYPE html>
+<head>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap" rel="stylesheet">
+
+<style>
+body { font-family: Arial, sans-serif; }
+
+.noto-color-emoji-regular {
+  font-family: "Noto Color Emoji", sans-serif;
+  font-weight: 400;
+  font-style: normal;
+}
+
+</style>
+</head>
+<body>
+
+<h3>🤖 Welcome to the Tribal Wars 2 Farmbot!</h3>
+
+<br>
+To enter your Tribal Wars 2 server, use one of the links below or enter the location in the address bar above.
+
+To learn more about the bot, see the guide at
+<a href='https://to.botlab.org/guide/app/tribal-wars-2-farmbot' target='_blank'>
+https://to.botlab.org/guide/app/tribal-wars-2-farmbot
+</a>
+
+"""
+        ++ gameServersListHtml
+        ++ """
+</body>
+</html>
+"""
+
+
+gameServersListHtml : String
+gameServersListHtml =
+    String.join ""
+        [ "<ul>"
+        , gameServersLinkedOnDefaultPage
+            |> List.map
+                (\gameServerInfo ->
+                    String.join ""
+                        [ "<li>"
+                        , "<a href='https://"
+                        , gameServerInfo.hostname
+                        , "' target='_self'>"
+                        , "<span class='noto-color-emoji-regular' style='width: 2em; display: inline-block;'>"
+                        , gameServerInfo.symbolText
+                        , "</span><span style='margin-left: 1em'>"
+                        , gameServerInfo.hostname
+                        , "</span>"
+                        , "</a>"
+                        , "</li>"
+                        ]
+                )
+            |> String.join "\n"
+        , "</ul>"
+        ]
+
+
+type alias GameServerInfo =
+    { hostname : String
+    , symbolText : String
+    }
+
+
+gameServersLinkedOnDefaultPage : List GameServerInfo
+gameServersLinkedOnDefaultPage =
+    [ { hostname = "beta.tribalwars2.com"
+      , symbolText = "β"
+      }
+    , { hostname = "br.tribalwars2.com"
+      , symbolText = "🇧🇷"
+      }
+    , { hostname = "cz.tribalwars2.com"
+      , symbolText = "🇨🇿"
+      }
+    , { hostname = "de.tribalwars2.com"
+      , symbolText = "🇩🇪"
+      }
+    , { hostname = "en.tribalwars2.com"
+      , symbolText = "🇬🇧"
+      }
+    , { hostname = "es.tribalwars2.com"
+      , symbolText = "🇪🇸"
+      }
+    , { hostname = "fr.tribalwars2.com"
+      , symbolText = "🇫🇷"
+      }
+    , { hostname = "gr.tribalwars2.com"
+      , symbolText = "🇬🇷"
+      }
+    , { hostname = "hu.tribalwars2.com"
+      , symbolText = "🇭🇺"
+      }
+    , { hostname = "it.tribalwars2.com"
+      , symbolText = "🇮🇹"
+      }
+    , { hostname = "nl.tribalwars2.com"
+      , symbolText = "🇳🇱"
+      }
+    , { hostname = "pl.tribalwars2.com"
+      , symbolText = "🇵🇱"
+      }
+    , { hostname = "pt.tribalwars2.com"
+      , symbolText = "🇵🇹"
+      }
+    , { hostname = "ro.tribalwars2.com"
+      , symbolText = "🇷🇴"
+      }
+    , { hostname = "ru.tribalwars2.com"
+      , symbolText = "🇷🇺"
+      }
+    , { hostname = "sk.tribalwars2.com"
+      , symbolText = "🇸🇰"
+      }
+    , { hostname = "tr.tribalwars2.com"
+      , symbolText = "🇹🇷"
+      }
+    , { hostname = "us.tribalwars2.com"
+      , symbolText = "🇺🇸"
+      }
+    ]
 
 
 describeString : Int -> String -> String

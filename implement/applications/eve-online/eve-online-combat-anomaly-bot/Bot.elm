@@ -408,20 +408,7 @@ anomalyBotDecisionRootBeforeApplyingSettings context =
                             { ifShouldHide =
                                 returnDronesToBay context
                                     |> Maybe.withDefault
-                                        (let
-                                            continueInAnomaly : () -> DecisionPathNode
-                                            continueInAnomaly () =
-                                                decideActionInAnomaly
-                                                    { arrivalInAnomalyAgeSeconds = 0 }
-                                                    context
-                                                    { shipUI = shipUI
-                                                    , overviewWindows = context.readingFromGameClient.overviewWindows
-                                                    }
-                                                    (describeBranch "Cannot see what is preventing warp"
-                                                        askForHelpToGetUnstuck
-                                                    )
-                                         in
-                                         describeBranch
+                                        (describeBranch
                                             "Dock to station or structure."
                                             (dockAtRandomStationOrStructure
                                                 context

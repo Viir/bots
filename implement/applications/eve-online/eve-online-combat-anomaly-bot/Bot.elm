@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-04-21
+{- EVE Online combat anomaly bot version 2024-05-03
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -84,7 +84,6 @@ import EveOnline.BotFramework
 import EveOnline.BotFrameworkSeparatingMemory
     exposing
         ( DecisionPathNode
-        , EndDecisionPathStructure
         , UpdateMemoryContext
         , askForHelpToGetUnstuck
         , branchDependingOnDockedOrInSpace
@@ -287,10 +286,6 @@ type ReasonToAvoidAnomaly
     | FoundRatToAvoid String
 
 
-type alias DecisionPathNodeGeneric end =
-    Common.DecisionPath.DecisionPathNode end
-
-
 describeReasonToAvoidAnomaly : ReasonToAvoidAnomaly -> String
 describeReasonToAvoidAnomaly reason =
     case reason of
@@ -429,10 +424,10 @@ anomalyBotDecisionRootBeforeApplyingSettings context =
                                          describeBranch
                                             "Dock to station or structure."
                                             (dockAtRandomStationOrStructure
-                                                { success = identity
-                                                , warpingBlocked = continueInAnomaly
-                                                }
                                                 context
+                                                { shipUI = shipUI
+                                                , overviewWindows = context.readingFromGameClient.overviewWindows
+                                                }
                                             )
                                         )
                             }
@@ -541,48 +536,46 @@ The entries for structures in the menu from the SurroundingsButton can be nested
 In other words, not all structures appear directly under the "structures" entry.
 -}
 dockAtRandomStationOrStructure :
-    { success : EndDecisionPathStructure -> end
-    , warpingBlocked : () -> DecisionPathNodeGeneric end
-    }
-    -> BotDecisionContext
-    -> DecisionPathNodeGeneric end
-dockAtRandomStationOrStructure config context =
-    if assumeSelfShipIsPointed context.readingFromGameClient then
-        config.warpingBlocked ()
+    BotDecisionContext
+    -> SeeUndockingComplete
+    -> DecisionPathNode
+dockAtRandomStationOrStructure context seeUndockingComplete =
+    case fightRatsIfShipIsPointed context seeUndockingComplete of
+        Just fightPointingRats ->
+            fightPointingRats
 
-    else
-        let
-            withTextContainingIgnoringCase textToSearch =
-                List.filter (.text >> String.toLower >> (==) (textToSearch |> String.toLower)) >> List.head
+        Nothing ->
+            let
+                withTextContainingIgnoringCase textToSearch =
+                    List.filter (.text >> String.toLower >> (==) (textToSearch |> String.toLower)) >> List.head
 
-            menuEntryIsSuitable menuEntry =
-                [ "cyno beacon", "jump gate" ]
-                    |> List.any (\toAvoid -> menuEntry.text |> stringContainsIgnoringCase toAvoid)
-                    |> not
+                menuEntryIsSuitable menuEntry =
+                    [ "cyno beacon", "jump gate" ]
+                        |> List.any (\toAvoid -> menuEntry.text |> stringContainsIgnoringCase toAvoid)
+                        |> not
 
-            chooseNextMenuEntry =
-                { describeChoice = "Use 'Dock' if available or a random entry."
-                , chooseEntry =
-                    pickEntryFromLastContextMenuInCascade
-                        (\menuEntries ->
-                            let
-                                suitableMenuEntries =
-                                    List.filter menuEntryIsSuitable menuEntries
-                            in
-                            [ withTextContainingIgnoringCase "dock"
-                            , List.filter (.text >> stringContainsIgnoringCase "station")
-                                >> Common.Basics.listElementAtWrappedIndex
+                chooseNextMenuEntry =
+                    { describeChoice = "Use 'Dock' if available or a random entry."
+                    , chooseEntry =
+                        pickEntryFromLastContextMenuInCascade
+                            (\menuEntries ->
+                                let
+                                    suitableMenuEntries =
+                                        List.filter menuEntryIsSuitable menuEntries
+                                in
+                                [ withTextContainingIgnoringCase "dock"
+                                , List.filter (.text >> stringContainsIgnoringCase "station")
+                                    >> Common.Basics.listElementAtWrappedIndex
+                                        (context.randomIntegers |> List.head |> Maybe.withDefault 0)
+                                , Common.Basics.listElementAtWrappedIndex
                                     (context.randomIntegers |> List.head |> Maybe.withDefault 0)
-                            , Common.Basics.listElementAtWrappedIndex
-                                (context.randomIntegers |> List.head |> Maybe.withDefault 0)
-                            ]
-                                |> List.filterMap (\priority -> suitableMenuEntries |> priority)
-                                |> List.head
-                        )
-                }
-        in
-        Common.DecisionPath.mapEnd config.success
-            (useContextMenuCascadeOnListSurroundingsButton
+                                ]
+                                    |> List.filterMap (\priority -> suitableMenuEntries |> priority)
+                                    |> List.head
+                            )
+                    }
+            in
+            useContextMenuCascadeOnListSurroundingsButton
                 (useMenuEntryWithTextContainingFirstOf [ "stations", "structures" ]
                     (MenuEntryWithCustomChoice chooseNextMenuEntry
                         (MenuEntryWithCustomChoice chooseNextMenuEntry
@@ -591,7 +584,6 @@ dockAtRandomStationOrStructure config context =
                     )
                 )
                 context
-            )
 
 
 decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
@@ -631,7 +623,10 @@ modulesToActivateAlwaysActivated context seeUndockingComplete =
             returnDronesToBay context
                 |> Maybe.withDefault
                     (describeBranch "No drones to return."
-                        (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable } context)
+                        (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable }
+                            context
+                            seeUndockingComplete
+                        )
                     )
 
         returnDronesAndEnterAnomalyOrWait =
@@ -675,10 +670,8 @@ modulesToActivateAlwaysActivated context seeUndockingComplete =
                                         { ifNoAcceptableAnomalyAvailable =
                                             describeBranch "Get out of this anomaly."
                                                 (dockAtRandomStationOrStructure
-                                                    { success = identity
-                                                    , warpingBlocked = continueInAnomaly
-                                                    }
                                                     context
+                                                    seeUndockingComplete
                                                 )
                                         }
                                     )
@@ -807,43 +800,25 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                         )
 
         decisionToKillRats =
-            case targetsToUnlock |> List.head of
-                Just targetToUnlock ->
+            case targetsToUnlock of
+                targetToUnlock :: _ ->
                     describeBranch "I see a target to unlock."
                         (useContextMenuCascade
-                            ( "locked target", targetToUnlock.barAndImageCont |> Maybe.withDefault targetToUnlock.uiNode )
+                            ( "locked target"
+                            , targetToUnlock.barAndImageCont |> Maybe.withDefault targetToUnlock.uiNode
+                            )
                             (useMenuEntryWithTextContaining "unlock" menuCascadeCompleted)
                             context
                         )
 
-                Nothing ->
-                    case context.readingFromGameClient.targets |> List.head of
-                        Nothing ->
-                            describeBranch "I see no locked target."
-                                (continueLockOverviewEntries { ifNoEntryToLock = decisionIfNoEnemyToAttack })
-
-                        Just _ ->
-                            describeBranch "I see a locked target."
-                                (case seeUndockingComplete |> shipUIModulesToActivateOnTarget |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
-                                    Nothing ->
-                                        describeBranch "All attack modules are active."
-                                            (launchAndEngageDrones context
-                                                |> Maybe.withDefault
-                                                    (describeBranch "No idling drones."
-                                                        (if context.eventContext.botSettings.maxTargetCount <= (context.readingFromGameClient.targets |> List.length) then
-                                                            describeBranch "Enough locked targets." waitForProgressInGame
-
-                                                         else
-                                                            continueLockOverviewEntries
-                                                                { ifNoEntryToLock = waitForProgressInGame }
-                                                        )
-                                                    )
-                                            )
-
-                                    Just inactiveModule ->
-                                        describeBranch "I see an inactive module to activate on targets. Activate it."
-                                            (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
-                                )
+                [] ->
+                    fightUsingDronesAndModules
+                        { ifNoTarget = continueLockOverviewEntries { ifNoEntryToLock = decisionIfNoEnemyToAttack }
+                        , lockNextTarget = continueLockOverviewEntries { ifNoEntryToLock = waitForProgressInGame }
+                        , waitForProgress = waitForProgressInGame
+                        }
+                        context
+                        seeUndockingComplete
     in
     if context.eventContext.botSettings.orbitInCombat == PromptParser.Yes then
         ensureShipIsOrbitingDecision
@@ -856,49 +831,144 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
         decisionToKillRats
 
 
-enterAnomaly : { ifNoAcceptableAnomalyAvailable : DecisionPathNode } -> BotDecisionContext -> DecisionPathNode
-enterAnomaly { ifNoAcceptableAnomalyAvailable } context =
-    case context.readingFromGameClient.probeScannerWindow of
+enterAnomaly :
+    { ifNoAcceptableAnomalyAvailable : DecisionPathNode }
+    -> BotDecisionContext
+    -> SeeUndockingComplete
+    -> DecisionPathNode
+enterAnomaly { ifNoAcceptableAnomalyAvailable } context seeUndockingComplete =
+    case fightRatsIfShipIsPointed context seeUndockingComplete of
+        Just fightPointingRats ->
+            fightPointingRats
+
         Nothing ->
-            describeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
-
-        Just probeScannerWindow ->
-            let
-                scanResultsWithReasonToIgnore =
-                    probeScannerWindow.scanResults
-                        |> List.map
-                            (\scanResult ->
-                                ( scanResult
-                                , findReasonToIgnoreProbeScanResult context scanResult
-                                )
-                            )
-            in
-            case
-                scanResultsWithReasonToIgnore
-                    |> List.filter (Tuple.second >> (==) Nothing)
-                    |> List.map Tuple.first
-                    |> listElementAtWrappedIndex (context.randomIntegers |> List.head |> Maybe.withDefault 0)
-            of
+            case context.readingFromGameClient.probeScannerWindow of
                 Nothing ->
-                    describeBranch
-                        ("I see "
-                            ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt)
-                            ++ " scan results, and no matching anomaly. Wait for a matching anomaly to appear."
-                        )
-                        ifNoAcceptableAnomalyAvailable
+                    describeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
 
-                Just anomalyScanResult ->
-                    describeBranch "Warp to anomaly."
-                        (useContextMenuCascade
-                            ( "Scan result", anomalyScanResult.uiNode )
-                            (useMenuEntryWithTextContaining "Warp to Within"
-                                (useMenuEntryWithTextContaining
-                                    context.eventContext.botSettings.warpToAnomalyDistance
-                                    menuCascadeCompleted
+                Just probeScannerWindow ->
+                    let
+                        scanResultsWithReasonToIgnore =
+                            probeScannerWindow.scanResults
+                                |> List.map
+                                    (\scanResult ->
+                                        ( scanResult
+                                        , findReasonToIgnoreProbeScanResult context scanResult
+                                        )
+                                    )
+                    in
+                    case
+                        scanResultsWithReasonToIgnore
+                            |> List.filter (Tuple.second >> (==) Nothing)
+                            |> List.map Tuple.first
+                            |> listElementAtWrappedIndex (context.randomIntegers |> List.head |> Maybe.withDefault 0)
+                    of
+                        Nothing ->
+                            describeBranch
+                                ("I see "
+                                    ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt)
+                                    ++ " scan results, and no matching anomaly. Wait for a matching anomaly to appear."
                                 )
+                                ifNoAcceptableAnomalyAvailable
+
+                        Just anomalyScanResult ->
+                            describeBranch "Warp to anomaly."
+                                (useContextMenuCascade
+                                    ( "Scan result", anomalyScanResult.uiNode )
+                                    (useMenuEntryWithTextContaining "Warp to Within"
+                                        (useMenuEntryWithTextContaining
+                                            context.eventContext.botSettings.warpToAnomalyDistance
+                                            menuCascadeCompleted
+                                        )
+                                    )
+                                    context
+                                )
+
+
+fightRatsIfShipIsPointed : BotDecisionContext -> SeeUndockingComplete -> Maybe DecisionPathNode
+fightRatsIfShipIsPointed context seeUndockingComplete =
+    {- Based on observation from 2024-04-24:
+
+       [...] "f" is the command to order the drones to fight the rat that is targeted.
+
+       1.  If a human is playing the game, he will hold the "ctrl" key while left clicking the "pointed" symbol. THis will cause the game to target the rat that is pointing you.
+       2.  once target is locked he will then hit the 'f' key to make the drones fight that rat. OR he can do the same by right clicking the drones bar and engage.
+       3.  In the case of being targeted by multiple points, the above gets repeated.
+
+    -}
+    case offensiveBuffButtonsIndicatingSelfShipIsPointed seeUndockingComplete of
+        [] ->
+            Nothing
+
+        firstPointingBuffButton :: _ ->
+            let
+                lockTarget =
+                    case mouseClickOnUIElement MouseButtonLeft firstPointingBuffButton of
+                        Err _ ->
+                            describeBranch "Failed to click"
+                                askForHelpToGetUnstuck
+
+                        Ok effectToClick ->
+                            describeBranch "hold the 'ctrl' key while left clicking the 'pointed' symbol"
+                                (decideActionForCurrentStep
+                                    (List.concat
+                                        [ [ EffectOnWindow.KeyDown EffectOnWindow.vkey_CONTROL ]
+                                        , effectToClick
+                                        , [ EffectOnWindow.KeyUp EffectOnWindow.vkey_CONTROL ]
+                                        ]
+                                    )
+                                )
+            in
+            Just
+                (describeBranch "I see a buff indicating the ship is pointed."
+                    (fightUsingDronesAndModules
+                        { ifNoTarget = lockTarget
+                        , lockNextTarget = lockTarget
+                        , waitForProgress = waitForProgressInGame
+                        }
+                        context
+                        seeUndockingComplete
+                    )
+                )
+
+
+fightUsingDronesAndModules :
+    { ifNoTarget : DecisionPathNode, lockNextTarget : DecisionPathNode, waitForProgress : DecisionPathNode }
+    -> BotDecisionContext
+    -> SeeUndockingComplete
+    -> DecisionPathNode
+fightUsingDronesAndModules config context seeUndockingComplete =
+    case context.readingFromGameClient.targets of
+        [] ->
+            describeBranch "I see no locked target."
+                config.ifNoTarget
+
+        _ :: _ ->
+            describeBranch "I see a locked target."
+                (case
+                    seeUndockingComplete
+                        |> shipUIModulesToActivateOnTarget
+                        |> List.filter (.isActive >> Maybe.withDefault False >> not)
+                        |> List.head
+                 of
+                    Nothing ->
+                        describeBranch "All attack modules are active."
+                            (launchAndEngageDrones context
+                                |> Maybe.withDefault
+                                    (describeBranch "No idling drones."
+                                        (if context.eventContext.botSettings.maxTargetCount <= (context.readingFromGameClient.targets |> List.length) then
+                                            describeBranch "Enough locked targets." config.waitForProgress
+
+                                         else
+                                            config.lockNextTarget
+                                        )
+                                    )
                             )
-                            context
-                        )
+
+                    Just inactiveModule ->
+                        describeBranch "I see an inactive module to activate on targets. Activate it."
+                            (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                )
 
 
 ensureShipIsOrbiting : ShipUI -> OverviewWindowEntry -> Maybe (Result String DecisionPathNode)
@@ -1426,19 +1496,39 @@ readingFromGameClientSaysNotEnoughBandwidthToLaunchDrone reading =
         |> List.any abovemainMessageSaysNotEnoughBandwidthToLaunchDrone
 
 
-assumeSelfShipIsPointed : ReadingFromGameClient -> Bool
-assumeSelfShipIsPointed readingFromGameClient =
-    case readingFromGameClient.shipUI of
-        Nothing ->
-            False
+{-| Returns the subsequence of offensive buff buttons from the ship UI that indicated that our own ship is pointed.
 
-        Just shipUI ->
-            let
-                offensiveBuffButtonNames =
-                    List.map (String.trim >> String.toLower) shipUI.offensiveBuffButtonNames
-            in
-            List.any (String.contains "warpscrambler") offensiveBuffButtonNames
-                || List.member "webify" offensiveBuffButtonNames
+Classifation sources:
+
+  - Discussion of session-recording-2024-04-05T17
+
+-}
+offensiveBuffButtonsIndicatingSelfShipIsPointed :
+    SeeUndockingComplete
+    -> List EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
+offensiveBuffButtonsIndicatingSelfShipIsPointed undockingComplete =
+    List.filterMap
+        (\offensiveBuffButton ->
+            if offensiveBuffButtonNameIndicatesSelfShipIsPointed offensiveBuffButton.name then
+                Just offensiveBuffButton.uiNode
+
+            else
+                Nothing
+        )
+        undockingComplete.shipUI.offensiveBuffButtons
+
+
+offensiveBuffButtonNameIndicatesSelfShipIsPointed : String -> Bool
+offensiveBuffButtonNameIndicatesSelfShipIsPointed offensiveBuffButtonName =
+    case String.toLower offensiveBuffButtonName of
+        "warpscrambler" ->
+            True
+
+        "webify" ->
+            True
+
+        _ ->
+            False
 
 
 abovemainMessageSaysNotEnoughBandwidthToLaunchDrone : String -> Bool

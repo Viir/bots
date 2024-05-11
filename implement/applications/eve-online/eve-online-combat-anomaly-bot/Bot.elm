@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-05-03
+{- EVE Online combat anomaly bot version 2024-05-11
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -704,37 +704,13 @@ decideActionInAnomaly :
     -> DecisionPathNode
 decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplete continueIfCombatComplete =
     let
-        prioritizedRatsPatterns : List String
-        prioritizedRatsPatterns =
-            List.map String.toLower context.eventContext.botSettings.prioritizeRats
+        ratsToAttackByPriority =
+            ratsToAttackByPriorityFromContext context
 
-        isPriorityRat overviewEntry =
-            prioritizedRatsPatterns
-                |> List.any
-                    (\priorityRat ->
-                        overviewEntry.objectName
-                            |> Maybe.map (String.toLower >> String.contains priorityRat)
-                            |> Maybe.withDefault False
-                    )
-
-        attackPriority overviewEntry =
-            if isPriorityRat overviewEntry then
-                0
-
-            else
-                1
-
+        overviewEntriesToAttack : List OverviewWindowEntry
         overviewEntriesToAttack =
-            seeUndockingComplete.overviewWindows
-                |> List.concatMap .entries
-                {-
-                   2023-03-30
-                   Change to sort by display location after Wombat shared his experience in EVE Online at https://forum.botlab.org/t/eve-online-anomaly-ratting-bot-release/87/340
-                   |> List.sortBy (.objectDistanceInMeters >> Result.withDefault 999999)
-                -}
-                |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
-                |> List.sortBy attackPriority
-                |> List.filter shouldAttackOverviewEntry
+            ratsToAttackByPriority.overviewEntriesByPrio
+                |> List.concatMap (\( first, rest ) -> first :: rest)
 
         overviewEntriesToLock =
             overviewEntriesToAttack
@@ -932,30 +908,136 @@ fightUsingDronesAndModules config context seeUndockingComplete =
 
         _ :: _ ->
             describeBranch "I see a locked target."
-                (case
-                    seeUndockingComplete
-                        |> shipUIModulesToActivateOnTarget
-                        |> List.filter (.isActive >> Maybe.withDefault False >> not)
-                        |> List.head
-                 of
+                (case checkActiveTargetIsOfHighestPriority context of
+                    Just selectHighPrio ->
+                        selectHighPrio
+
                     Nothing ->
-                        describeBranch "All attack modules are active."
-                            (launchAndEngageDrones context
-                                |> Maybe.withDefault
-                                    (describeBranch "No idling drones."
-                                        (if context.eventContext.botSettings.maxTargetCount <= (context.readingFromGameClient.targets |> List.length) then
-                                            describeBranch "Enough locked targets." config.waitForProgress
+                        case
+                            seeUndockingComplete
+                                |> shipUIModulesToActivateOnTarget
+                                |> List.filter (.isActive >> Maybe.withDefault False >> not)
+                                |> List.head
+                        of
+                            Nothing ->
+                                describeBranch "All attack modules are active."
+                                    (launchAndEngageDrones context
+                                        |> Maybe.withDefault
+                                            (describeBranch "No idling drones."
+                                                (if context.eventContext.botSettings.maxTargetCount <= (context.readingFromGameClient.targets |> List.length) then
+                                                    describeBranch "Enough locked targets." config.waitForProgress
 
-                                         else
-                                            config.lockNextTarget
-                                        )
+                                                 else
+                                                    config.lockNextTarget
+                                                )
+                                            )
                                     )
-                            )
 
-                    Just inactiveModule ->
-                        describeBranch "I see an inactive module to activate on targets. Activate it."
-                            (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                            Just inactiveModule ->
+                                describeBranch "I see an inactive module to activate on targets. Activate it."
+                                    (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
                 )
+
+
+checkActiveTargetIsOfHighestPriority : BotDecisionContext -> Maybe DecisionPathNode
+checkActiveTargetIsOfHighestPriority context =
+    case (ratsToAttackByPriorityFromContext context).targetsByPrio of
+        [] ->
+            Nothing
+
+        highestPrioGroup :: lowerPrioGroups ->
+            let
+                targetsNotHighestPrio : List EveOnline.ParseUserInterface.Target
+                targetsNotHighestPrio =
+                    lowerPrioGroups
+                        |> List.concatMap (\( first, rest ) -> first :: rest)
+            in
+            case List.filter .isActiveTarget targetsNotHighestPrio of
+                [] ->
+                    Nothing
+
+                _ :: _ ->
+                    let
+                        ( firstHighPrio, _ ) =
+                            highestPrioGroup
+                    in
+                    Just
+                        (describeBranch "The active target is not the highest priority. Activating highest priority target."
+                            {-
+                               As shared 2024-05-08:
+                               > [...] Once a rat is targeted, a player will left click the targeted rat from the target list [...]
+                            -}
+                            (case mouseClickOnUIElement MouseButtonLeft firstHighPrio.uiNode of
+                                Err _ ->
+                                    describeBranch "Failed to click"
+                                        askForHelpToGetUnstuck
+
+                                Ok effectToClick ->
+                                    decideActionForCurrentStep effectToClick
+                            )
+                        )
+
+
+ratsToAttackByPriorityFromContext :
+    BotDecisionContext
+    ->
+        { overviewEntriesByPrio : List ( OverviewWindowEntry, List OverviewWindowEntry )
+        , targetsByPrio : List ( EveOnline.ParseUserInterface.Target, List EveOnline.ParseUserInterface.Target )
+        }
+ratsToAttackByPriorityFromContext context =
+    let
+        prioritizedRatsPatterns : List String
+        prioritizedRatsPatterns =
+            List.map String.toLower context.eventContext.botSettings.prioritizeRats
+
+        isPriorityRat : { a | labelText : String } -> Bool
+        isPriorityRat objectInSpace =
+            prioritizedRatsPatterns
+                |> List.any
+                    (\priorityRat ->
+                        String.contains
+                            priorityRat
+                            (String.toLower objectInSpace.labelText)
+                    )
+
+        attackPriority : { a | labelText : String } -> Int
+        attackPriority objectInSpace =
+            if isPriorityRat objectInSpace then
+                0
+
+            else
+                1
+
+        overviewEntriesToAttack =
+            context.readingFromGameClient.overviewWindows
+                |> List.concatMap .entries
+                |> List.filter shouldAttackOverviewEntry
+
+        overviewEntriesByPrio : List ( OverviewWindowEntry, List OverviewWindowEntry )
+        overviewEntriesByPrio =
+            overviewEntriesToAttack
+                {-
+                   2023-03-30
+                   Change to sort by display location after Wombat shared his experience in EVE Online at https://forum.botlab.org/t/eve-online-anomaly-ratting-bot-release/87/340
+                   |> List.sortBy (.objectDistanceInMeters >> Result.withDefault 999999)
+                -}
+                |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
+                |> Common.Basics.listGatherEqualsBy
+                    (\overviewEntry -> attackPriority { labelText = Maybe.withDefault "" overviewEntry.objectName })
+                |> List.sortBy Tuple.first
+                |> List.map Tuple.second
+
+        targetsByPrio : List ( EveOnline.ParseUserInterface.Target, List EveOnline.ParseUserInterface.Target )
+        targetsByPrio =
+            context.readingFromGameClient.targets
+                |> Common.Basics.listGatherEqualsBy
+                    (\target -> attackPriority { labelText = String.join " " target.textsTopToBottom })
+                |> List.sortBy Tuple.first
+                |> List.map Tuple.second
+    in
+    { overviewEntriesByPrio = overviewEntriesByPrio
+    , targetsByPrio = targetsByPrio
+    }
 
 
 ensureShipIsOrbiting : ShipUI -> OverviewWindowEntry -> Maybe (Result String DecisionPathNode)

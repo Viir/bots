@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-05-11
+{- EVE Online combat anomaly bot version 2024-05-12
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -284,6 +284,12 @@ type ReasonToAvoidAnomaly
     | DoesNotMatchAnomalyNameFromSettings
     | FoundOtherPilotOnArrival String
     | FoundRatToAvoid String
+
+
+type alias RatsByAttackPriority =
+    { overviewEntriesByPrio : List ( OverviewWindowEntry, List OverviewWindowEntry )
+    , targetsByPrio : List ( EveOnline.ParseUserInterface.Target, List EveOnline.ParseUserInterface.Target )
+    }
 
 
 describeReasonToAvoidAnomaly : ReasonToAvoidAnomaly -> String
@@ -901,6 +907,19 @@ fightUsingDronesAndModules :
     -> SeeUndockingComplete
     -> DecisionPathNode
 fightUsingDronesAndModules config context seeUndockingComplete =
+    let
+        ratsToAttackByPriority =
+            ratsToAttackByPriorityFromContext context
+
+        highPrioTargets : List EveOnline.ParseUserInterface.Target
+        highPrioTargets =
+            case ratsToAttackByPriority.targetsByPrio of
+                [] ->
+                    []
+
+                ( first, rest ) :: _ ->
+                    first :: rest
+    in
     case context.readingFromGameClient.targets of
         [] ->
             describeBranch "I see no locked target."
@@ -908,7 +927,7 @@ fightUsingDronesAndModules config context seeUndockingComplete =
 
         _ :: _ ->
             describeBranch "I see a locked target."
-                (case checkActiveTargetIsOfHighestPriority context of
+                (case checkActiveTargetIsOfHighestPriority ratsToAttackByPriority context.readingFromGameClient of
                     Just selectHighPrio ->
                         selectHighPrio
 
@@ -921,7 +940,7 @@ fightUsingDronesAndModules config context seeUndockingComplete =
                         of
                             Nothing ->
                                 describeBranch "All attack modules are active."
-                                    (launchAndEngageDrones context
+                                    (launchAndEngageDrones { redirectToTargets = Just highPrioTargets } context
                                         |> Maybe.withDefault
                                             (describeBranch "No idling drones."
                                                 (if context.eventContext.botSettings.maxTargetCount <= (context.readingFromGameClient.targets |> List.length) then
@@ -939,51 +958,7 @@ fightUsingDronesAndModules config context seeUndockingComplete =
                 )
 
 
-checkActiveTargetIsOfHighestPriority : BotDecisionContext -> Maybe DecisionPathNode
-checkActiveTargetIsOfHighestPriority context =
-    case (ratsToAttackByPriorityFromContext context).targetsByPrio of
-        [] ->
-            Nothing
-
-        highestPrioGroup :: lowerPrioGroups ->
-            let
-                targetsNotHighestPrio : List EveOnline.ParseUserInterface.Target
-                targetsNotHighestPrio =
-                    lowerPrioGroups
-                        |> List.concatMap (\( first, rest ) -> first :: rest)
-            in
-            case List.filter .isActiveTarget targetsNotHighestPrio of
-                [] ->
-                    Nothing
-
-                _ :: _ ->
-                    let
-                        ( firstHighPrio, _ ) =
-                            highestPrioGroup
-                    in
-                    Just
-                        (describeBranch "The active target is not the highest priority. Activating highest priority target."
-                            {-
-                               As shared 2024-05-08:
-                               > [...] Once a rat is targeted, a player will left click the targeted rat from the target list [...]
-                            -}
-                            (case mouseClickOnUIElement MouseButtonLeft firstHighPrio.uiNode of
-                                Err _ ->
-                                    describeBranch "Failed to click"
-                                        askForHelpToGetUnstuck
-
-                                Ok effectToClick ->
-                                    decideActionForCurrentStep effectToClick
-                            )
-                        )
-
-
-ratsToAttackByPriorityFromContext :
-    BotDecisionContext
-    ->
-        { overviewEntriesByPrio : List ( OverviewWindowEntry, List OverviewWindowEntry )
-        , targetsByPrio : List ( EveOnline.ParseUserInterface.Target, List EveOnline.ParseUserInterface.Target )
-        }
+ratsToAttackByPriorityFromContext : BotDecisionContext -> RatsByAttackPriority
 ratsToAttackByPriorityFromContext context =
     let
         prioritizedRatsPatterns : List String
@@ -1066,69 +1041,178 @@ ensureShipIsOrbiting shipUI overviewEntryToOrbit =
             )
 
 
-launchAndEngageDrones : BotDecisionContext -> Maybe DecisionPathNode
-launchAndEngageDrones context =
-    context.readingFromGameClient.dronesWindow
-        |> Maybe.andThen
-            (\dronesWindow ->
-                case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInSpace ) of
-                    ( Just droneGroupInBay, Just droneGroupInSpace ) ->
-                        let
-                            idlingDrones =
-                                droneGroupInSpace
-                                    |> EveOnline.ParseUserInterface.enumerateAllDronesFromDronesGroup
-                                    |> List.filter
-                                        (.uiNode
-                                            >> .uiNode
-                                            >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts
-                                            >> List.any (stringContainsIgnoringCase "idle")
-                                        )
+launchAndEngageDrones :
+    { redirectToTargets : Maybe (List EveOnline.ParseUserInterface.Target) }
+    -> BotDecisionContext
+    -> Maybe DecisionPathNode
+launchAndEngageDrones config context =
+    case context.readingFromGameClient.dronesWindow of
+        Nothing ->
+            Nothing
 
-                            dronesInBayQuantity =
-                                droneGroupInBay.header.quantityFromTitle
-                                    |> Maybe.map .current
-                                    |> Maybe.withDefault 0
-
-                            dronesInSpaceQuantityCurrent =
-                                droneGroupInSpace.header.quantityFromTitle
-                                    |> Maybe.map .current
-                                    |> Maybe.withDefault 0
-
-                            dronesInSpaceQuantityLimit =
-                                droneGroupInSpace.header.quantityFromTitle
-                                    |> Maybe.andThen .maximum
-                                    |> Maybe.withDefault 2
-                        in
-                        if 0 < (idlingDrones |> List.length) then
-                            Just
-                                (describeBranch "Engage idling drone(s)"
-                                    (useContextMenuCascade
-                                        ( "drones group", droneGroupInSpace.header.uiNode )
-                                        (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
-                                        context
+        Just dronesWindow ->
+            case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInSpace ) of
+                ( Just droneGroupInBay, Just droneGroupInSpace ) ->
+                    let
+                        idlingDrones =
+                            droneGroupInSpace
+                                |> EveOnline.ParseUserInterface.enumerateAllDronesFromDronesGroup
+                                |> List.filter
+                                    (.uiNode
+                                        >> .uiNode
+                                        >> EveOnline.ParseUserInterface.getAllContainedDisplayTexts
+                                        >> List.any (stringContainsIgnoringCase "idle")
                                     )
-                                )
 
-                        else if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
-                            if assumeNotEnoughBandwidthToLaunchDrone context then
-                                Nothing
+                        dronesInBayQuantity =
+                            droneGroupInBay.header.quantityFromTitle
+                                |> Maybe.map .current
+                                |> Maybe.withDefault 0
+
+                        dronesInSpaceQuantityCurrent =
+                            droneGroupInSpace.header.quantityFromTitle
+                                |> Maybe.map .current
+                                |> Maybe.withDefault 0
+
+                        dronesInSpaceQuantityLimit =
+                            droneGroupInSpace.header.quantityFromTitle
+                                |> Maybe.andThen .maximum
+                                |> Maybe.withDefault 2
+
+                        {-
+                           Observation from session-recording-2024-05-07T11-55-13.zip-event-482-eve-online-memory-reading:
+                           The 'Sprite' UI node referenced from 'assignedIcons' has the following property we can use as indication:
+                           _hint = "Drones\nWasp II: 5"
+                        -}
+                        targetsWithDronesAssigned : List EveOnline.ParseUserInterface.Target
+                        targetsWithDronesAssigned =
+                            context.readingFromGameClient.targets
+                                |> List.filter
+                                    (\target ->
+                                        target.assignedIcons
+                                            |> List.any
+                                                (\assignedIcon ->
+                                                    assignedIcon.uiNode
+                                                        |> EveOnline.ParseUserInterface.getHintTextFromDictEntries
+                                                        |> Maybe.map (stringContainsIgnoringCase "drone")
+                                                        |> Maybe.withDefault False
+                                                )
+                                    )
+
+                        engageDrones =
+                            useContextMenuCascade
+                                ( "drones group", droneGroupInSpace.header.uiNode )
+                                (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
+                                context
+
+                        considerLaunch () =
+                            if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
+                                if assumeNotEnoughBandwidthToLaunchDrone context then
+                                    Nothing
+
+                                else
+                                    Just
+                                        (describeBranch "Launch drones"
+                                            (useContextMenuCascade
+                                                ( "drones group", droneGroupInBay.header.uiNode )
+                                                (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
+                                                context
+                                            )
+                                        )
 
                             else
-                                Just
-                                    (describeBranch "Launch drones"
-                                        (useContextMenuCascade
-                                            ( "drones group", droneGroupInBay.header.uiNode )
-                                            (useMenuEntryWithTextContaining "Launch drone" menuCascadeCompleted)
-                                            context
+                                Nothing
+                    in
+                    if 0 < List.length idlingDrones then
+                        Just
+                            (describeBranch "Engage idling drone(s)" engageDrones)
+
+                    else
+                        case config.redirectToTargets of
+                            Nothing ->
+                                considerLaunch ()
+
+                            Just redirectToTargets ->
+                                let
+                                    targetsWithDronesAssignedLowPrio : List EveOnline.ParseUserInterface.Target
+                                    targetsWithDronesAssignedLowPrio =
+                                        List.filter
+                                            (\target -> List.member target redirectToTargets)
+                                            targetsWithDronesAssigned
+                                in
+                                if 0 < List.length targetsWithDronesAssignedLowPrio then
+                                    Just
+                                        (describeBranch "Redirect drones to high prio target"
+                                            (case checkActiveTargetIsInGroup redirectToTargets context.readingFromGameClient of
+                                                Just selectHighPrio ->
+                                                    selectHighPrio
+
+                                                Nothing ->
+                                                    engageDrones
+                                            )
                                         )
-                                    )
 
-                        else
-                            Nothing
+                                else
+                                    considerLaunch ()
 
-                    _ ->
-                        Nothing
-            )
+                _ ->
+                    Nothing
+
+
+checkActiveTargetIsOfHighestPriority :
+    RatsByAttackPriority
+    -> ReadingFromGameClient
+    -> Maybe DecisionPathNode
+checkActiveTargetIsOfHighestPriority ratsToAttackByPriority readingFromGameClient =
+    case ratsToAttackByPriority.targetsByPrio of
+        [] ->
+            Nothing
+
+        ( first, rest ) :: _ ->
+            checkActiveTargetIsInGroup
+                (first :: rest)
+                readingFromGameClient
+
+
+checkActiveTargetIsInGroup :
+    List EveOnline.ParseUserInterface.Target
+    -> ReadingFromGameClient
+    -> Maybe DecisionPathNode
+checkActiveTargetIsInGroup priorityTargets readingFromGameClient =
+    case priorityTargets of
+        [] ->
+            Nothing
+
+        firstHighPrio :: _ ->
+            let
+                activeTargets : List EveOnline.ParseUserInterface.Target
+                activeTargets =
+                    List.filter .isActiveTarget readingFromGameClient.targets
+
+                activeTargetsLowPrio : List EveOnline.ParseUserInterface.Target
+                activeTargetsLowPrio =
+                    List.filter (\target -> not (List.member target priorityTargets)) activeTargets
+            in
+            case activeTargetsLowPrio of
+                [] ->
+                    Nothing
+
+                _ :: _ ->
+                    Just
+                        (describeBranch "The active target is not the highest priority. Activating highest priority target."
+                            {-
+                               As shared 2024-05-08:
+                               > [...] Once a rat is targeted, a player will left click the targeted rat from the target list [...]
+                            -}
+                            (case mouseClickOnUIElement MouseButtonLeft firstHighPrio.uiNode of
+                                Err _ ->
+                                    describeBranch "Failed to click"
+                                        askForHelpToGetUnstuck
+
+                                Ok effectToClick ->
+                                    decideActionForCurrentStep effectToClick
+                            )
+                        )
 
 
 assumeNotEnoughBandwidthToLaunchDrone : BotDecisionContext -> Bool

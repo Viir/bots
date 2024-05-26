@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2024-01-03
+{- EVE Online mining bot version 2024-05-12
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -47,10 +47,10 @@ module Bot exposing
     )
 
 import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
-import Common.AppSettings as AppSettings exposing (IntervalInt)
 import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
+import Common.PromptParser as PromptParser exposing (IntervalInt)
 import Dict
 import EveOnline.BotFramework
     exposing
@@ -123,112 +123,127 @@ defaultBotSettings =
 
 parseBotSettings : String -> Result String BotSettings
 parseBotSettings =
-    AppSettings.parseSimpleListOfAssignmentsSeparatedByNewlines
+    PromptParser.parseSimpleListOfAssignmentsSeparatedByNewlines
         ([ ( "run-away-shield-hitpoints-threshold-percent"
-           , { description = "Threshold of shield hitpoints in percent to trigger running away."
+           , { alternativeNames = []
+             , description = "Threshold of shield hitpoints in percent to trigger running away."
              , valueParser =
-                AppSettings.valueTypeInteger
+                PromptParser.valueTypeInteger
                     (\threshold settings -> { settings | runAwayShieldHitpointsThresholdPercent = threshold })
              }
            )
          , ( "unload-station-name"
-           , { description = "Name of a station to dock to when the mining hold is full."
+           , { alternativeNames = []
+             , description = "Name of a station to dock to when the mining hold is full."
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\stationName settings -> { settings | unloadStationName = Just stationName })
              }
            )
          , ( "unload-structure-name"
-           , { description = "Name of a structure to dock to when the mining hold is full."
+           , { alternativeNames = []
+             , description = "Name of a structure to dock to when the mining hold is full."
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\structureName settings -> { settings | unloadStructureName = Just structureName })
              }
            )
          , ( "unload-fleet-hangar-percent"
-           , { description = "This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window."
+           , { alternativeNames = []
+             , description = "This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window."
              , valueParser =
-                AppSettings.valueTypeInteger
+                PromptParser.valueTypeInteger
                     (\fleetHangarPercent settings -> { settings | unloadFleetHangarPercent = fleetHangarPercent })
              }
            )
          , ( "unload-mining-hold-percent"
-           , { description = "When the mining hold is filled at least this much, we start unloading the ore."
+           , { alternativeNames = []
+             , description = "When the mining hold is filled at least this much, we start unloading the ore."
              , valueParser =
-                AppSettings.valueTypeInteger
+                PromptParser.valueTypeInteger
                     (\percent settings -> { settings | unloadMiningHoldPercent = percent })
              }
            )
          , ( "activate-module-always"
-           , { description = "Text found in tooltips of ship modules that should always be active. For example: 'shield hardener'."
+           , { alternativeNames = []
+             , description = "Text found in tooltips of ship modules that should always be active. For example: 'shield hardener'."
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\moduleName settings -> { settings | activateModulesAlways = moduleName :: settings.activateModulesAlways })
              }
            )
          , ( "hide-when-neutral-in-local"
-           , { description = "Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`."
+           , { alternativeNames = []
+             , description = "Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`."
              , valueParser =
-                AppSettings.valueTypeYesOrNo
+                PromptParser.valueTypeYesOrNo
                     (\hide settings -> { settings | hideWhenNeutralInLocal = Just hide })
              }
            )
          , ( "dock-when-without-drones"
-           , { description = "This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`."
+           , { alternativeNames = []
+             , description = "This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`."
              , valueParser =
-                AppSettings.valueTypeYesOrNo
+                PromptParser.valueTypeYesOrNo
                     (\without settings -> { settings | dockWhenWithoutDrones = Just without })
              }
            )
          , ( "repair-before-undocking"
-           , { description = "Repair the ship at the station before undocking. The only supported values are `no` and `yes`."
+           , { alternativeNames = []
+             , description = "Repair the ship at the station before undocking. The only supported values are `no` and `yes`."
              , valueParser =
-                AppSettings.valueTypeYesOrNo
+                PromptParser.valueTypeYesOrNo
                     (\repair settings -> { settings | repairBeforeUndocking = Just repair })
              }
            )
          , ( "targeting-range"
-           , { description = "Distance under which we try to target an object in space."
+           , { alternativeNames = []
+             , description = "Distance under which we try to target an object in space."
              , valueParser =
-                AppSettings.valueTypeInteger
+                PromptParser.valueTypeInteger
                     (\range settings -> { settings | targetingRange = range })
              }
            )
          , ( "mining-module-range"
-           , { description = "Range of the mining modules in the current ship fitting."
+           , { alternativeNames = []
+             , description = "Range of the mining modules in the current ship fitting."
              , valueParser =
-                AppSettings.valueTypeInteger
+                PromptParser.valueTypeInteger
                     (\range settings -> { settings | miningModuleRange = range })
              }
            )
          , ( "select-instance-pilot-name"
-           , { description = "Name of EVE Online character to search for when selecting an instance of the game client."
+           , { alternativeNames = []
+             , description = "Name of EVE Online character to search for when selecting an instance of the game client."
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\pilotName settings -> { settings | selectInstancePilotName = Just pilotName })
              }
            )
          , ( "bot-step-delay"
-           , { description = "Minimum time between starting bot steps in milliseconds. You can also specify a range like `1000 - 2000`. The bot then picks a random value in this range."
+           , { alternativeNames = []
+             , description = "Minimum time between starting bot steps in milliseconds. You can also specify a range like `1000 - 2000`. The bot then picks a random value in this range."
              , valueParser =
-                AppSettings.parseIntervalIntFromPointOrIntervalString
+                PromptParser.parseIntervalIntFromPointOrIntervalString
                     >> Result.map
                         (\delay settings -> { settings | botStepDelayMilliseconds = delay })
              }
            )
          , ( "include-asteroid-pattern"
-           , { description = "Names of asteroids to select for mining. Can be used multiple times. If the setting is used zero times, we mine all kinds of asteroids."
+           , { alternativeNames = []
+             , description = "Names of asteroids to select for mining. Can be used multiple times. If the setting is used zero times, we mine all kinds of asteroids."
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\pattern settings ->
                         { settings | includeAsteroidPatterns = pattern :: settings.includeAsteroidPatterns }
                     )
              }
            )
          , ( "mining-site-location"
-           , { description = "Name of a mining site as it appears in the solar system surroundings menu of the game client."
+           , { alternativeNames = []
+             , description = "Name of a mining site as it appears in the solar system surroundings menu of the game client."
              , valueParser =
-                AppSettings.valueTypeString
+                PromptParser.valueTypeString
                     (\location settings ->
                         { settings | miningSiteLocation = Just location }
                     )
@@ -257,9 +272,9 @@ type alias BotSettings =
     , unloadFleetHangarPercent : Int
     , unloadMiningHoldPercent : Int
     , activateModulesAlways : List String
-    , hideWhenNeutralInLocal : Maybe AppSettings.YesOrNo
-    , dockWhenWithoutDrones : Maybe AppSettings.YesOrNo
-    , repairBeforeUndocking : Maybe AppSettings.YesOrNo
+    , hideWhenNeutralInLocal : Maybe PromptParser.YesOrNo
+    , dockWhenWithoutDrones : Maybe PromptParser.YesOrNo
+    , repairBeforeUndocking : Maybe PromptParser.YesOrNo
     , targetingRange : Int
     , miningModuleRange : Int
     , botStepDelayMilliseconds : IntervalInt
@@ -395,10 +410,10 @@ continueIfShouldHide config context =
 shouldHideWhenNeutralInLocal : BotDecisionContext -> Bool
 shouldHideWhenNeutralInLocal context =
     case context.eventContext.botSettings.hideWhenNeutralInLocal of
-        Just AppSettings.No ->
+        Just PromptParser.No ->
             False
 
-        Just AppSettings.Yes ->
+        Just PromptParser.Yes ->
             True
 
         Nothing ->
@@ -412,12 +427,12 @@ shouldHideWhenNeutralInLocal context =
 
 shouldDockWhenWithoutDrones : BotDecisionContext -> Bool
 shouldDockWhenWithoutDrones context =
-    context.eventContext.botSettings.dockWhenWithoutDrones == Just AppSettings.Yes
+    context.eventContext.botSettings.dockWhenWithoutDrones == Just PromptParser.Yes
 
 
 shouldRepairBeforeUndocking : BotDecisionContext -> Bool
 shouldRepairBeforeUndocking context =
-    context.eventContext.botSettings.repairBeforeUndocking == Just AppSettings.Yes
+    context.eventContext.botSettings.repairBeforeUndocking == Just PromptParser.Yes
 
 
 returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode

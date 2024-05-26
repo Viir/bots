@@ -1,15 +1,16 @@
-module Common.AppSettings exposing (..)
+module Common.PromptParser exposing (..)
 
-{-| This module helps you build settings-string parsers with the following three goals:
+{-| This module helps you build bot prompt parsers.
+We prevent confusion and ambiguity about interpreting the prompt text by listing a concrete set of known and understood terms and parsing it into a structured representation.
+If the given bot prompt text does not conform with the configured format, the functions in this framework generate specific messages for the user to explain available settings and how to use them.
 
-  - Mapping an unstructured settings string into a structured representation for easy consumption by other program parts.
-  - If the given settings string does not conform with the configured format, generate specific error messages for the user to explain available settings and how to use them.
-  - Provide additional commands, 'list settings' and 'explain setting', to make it easy for users to list all supported settings and their descriptions.
+    The parsers built with this framework also provide additional commands, 'list settings' and 'explain setting', to make it easy for users to list all supported settings and their descriptions.
 
 -}
 
 import Dict
 import JaroWinkler
+import List.Extra
 import Result.Extra
 import String.Extra
 
@@ -20,7 +21,8 @@ type YesOrNo
 
 
 type alias SettingConfig appSettings =
-    { description : String
+    { alternativeNames : List String
+    , description : String
     , valueParser : SettingValueType appSettings
     }
 
@@ -87,7 +89,11 @@ Use the dictionary argument to specify the settings to support in the settings s
 This framework expects to find an equals sign (`=`) in each setting, separating the setting name and the assigned value.
 
 -}
-parseSimpleListOfAssignmentsSeparatedByNewlines : Dict.Dict String (SettingConfig appSettings) -> appSettings -> String -> Result String appSettings
+parseSimpleListOfAssignmentsSeparatedByNewlines :
+    Dict.Dict String (SettingConfig appSettings)
+    -> appSettings
+    -> String
+    -> Result String appSettings
 parseSimpleListOfAssignmentsSeparatedByNewlines =
     parseSimpleListOfAssignments { assignmentsSeparators = [ "\n" ] }
 
@@ -102,7 +108,12 @@ Use the dictionary argument to specify the settings to support in the settings s
 This framework expects to find an equals sign (`=`) in each setting, separating the setting name and the assigned value.
 
 -}
-parseSimpleListOfAssignments : { assignmentsSeparators : List String } -> Dict.Dict String (SettingConfig appSettings) -> appSettings -> String -> Result String appSettings
+parseSimpleListOfAssignments :
+    { assignmentsSeparators : List String }
+    -> Dict.Dict String (SettingConfig appSettings)
+    -> appSettings
+    -> String
+    -> Result String appSettings
 parseSimpleListOfAssignments { assignmentsSeparators } namedSettings defaultSettings settingsString =
     case guideOnSettingsHandler settingsString of
         Just guideHandler ->
@@ -204,43 +215,66 @@ explainSettingHandler settingName namedSettings =
             (\selectedSetting -> "Description of setting '" ++ settingName ++ "':\n" ++ selectedSetting.description)
 
 
-getSettingByNameOrGuide : String -> Dict.Dict String (SettingConfig appSettings) -> Result String (SettingConfig appSettings)
+getSettingByNameOrGuide :
+    String
+    -> Dict.Dict String (SettingConfig appSettings)
+    -> Result String (SettingConfig appSettings)
 getSettingByNameOrGuide settingName namedSettings =
-    case namedSettings |> Dict.get settingName of
-        Nothing ->
-            let
-                settingsNamesWithSimilarity =
-                    namedSettings
-                        |> Dict.keys
-                        |> List.map
-                            (\supportedSettingName ->
-                                ( supportedSettingName
-                                , JaroWinkler.similarity supportedSettingName settingName
-                                )
-                            )
-                        |> List.sortBy (Tuple.second >> negate)
-
-                pointOutSimilarSettingNameLines =
-                    case
-                        settingsNamesWithSimilarity
-                            |> List.filter (Tuple.second >> (<=) 0.5)
-                    of
-                        ( mostSimilarSettingName, _ ) :: _ ->
-                            [ "Did you mean '" ++ mostSimilarSettingName ++ "'?" ]
-
-                        _ ->
-                            []
-            in
-            [ [ "Unknown setting name '" ++ settingName ++ "'." ]
-            , pointOutSimilarSettingNameLines
-            , [ listSettingsTextWithHeading namedSettings ]
-            ]
-                |> List.concat
-                |> String.join "\n"
-                |> Err
-
+    case Dict.get settingName namedSettings of
         Just settingConfig ->
             Ok settingConfig
+
+        Nothing ->
+            case
+                namedSettings
+                    |> Dict.toList
+                    |> List.Extra.find
+                        (\( _, settingConfig ) ->
+                            settingConfig.alternativeNames
+                                |> List.member settingName
+                        )
+            of
+                Just ( _, settingConfig ) ->
+                    Ok settingConfig
+
+                Nothing ->
+                    let
+                        settingsNamesWithSimilarity : List ( String, Int )
+                        settingsNamesWithSimilarity =
+                            namedSettings
+                                |> Dict.foldl
+                                    (\primaryName settingConfig aggregate ->
+                                        settingConfig.alternativeNames
+                                            ++ [ primaryName ]
+                                            ++ aggregate
+                                    )
+                                    []
+                                |> List.map
+                                    (\supportedSettingName ->
+                                        ( supportedSettingName
+                                        , round (1000 * JaroWinkler.similarity supportedSettingName settingName)
+                                        )
+                                    )
+                                |> List.sortBy (Tuple.second >> negate)
+
+                        pointOutSimilarSettingNameLines =
+                            case
+                                settingsNamesWithSimilarity
+                                    |> List.filter (Tuple.second >> (<=) 500)
+                            of
+                                ( mostSimilarSettingName, _ ) :: _ ->
+                                    [ "Did you mean '" ++ mostSimilarSettingName ++ "'?" ]
+
+                                _ ->
+                                    []
+                    in
+                    [ [ "Unknown setting name '" ++ settingName ++ "'." ]
+                    , pointOutSimilarSettingNameLines
+                    , [ listSettingsTextWithHeading namedSettings ]
+                    ]
+                        |> List.concat
+                        |> String.join "\n"
+                        |> Err
 
 
 respondToCommandListSettings : Dict.Dict String (SettingConfig appSettings) -> String

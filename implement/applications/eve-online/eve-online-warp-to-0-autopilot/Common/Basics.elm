@@ -1,5 +1,6 @@
 module Common.Basics exposing (..)
 
+import List.Extra
 import Maybe.Extra
 import Result.Extra
 
@@ -43,3 +44,10 @@ listUnique =
 stringContainsIgnoringCase : String -> String -> Bool
 stringContainsIgnoringCase pattern =
     String.toLower >> String.contains (String.toLower pattern)
+
+
+listGatherEqualsBy : (a -> derived) -> List a -> List ( derived, ( a, List a ) )
+listGatherEqualsBy derive list =
+    List.map
+        (\( first, rest ) -> ( derive first, ( first, rest ) ))
+        (List.Extra.gatherEqualsBy derive list)

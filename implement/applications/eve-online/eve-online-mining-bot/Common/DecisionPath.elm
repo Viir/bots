@@ -16,6 +16,16 @@ describeBranch =
     DescribeBranch
 
 
+mapEnd : (oldEnd -> newEnd) -> DecisionPathNode oldEnd -> DecisionPathNode newEnd
+mapEnd f node =
+    case node of
+        DescribeBranch branch childNode ->
+            DescribeBranch branch (mapEnd f childNode)
+
+        EndDecisionPath pathEnd ->
+            EndDecisionPath (f pathEnd)
+
+
 unpackToDecisionStagesDescriptionsAndLeaf : DecisionPathNode pathEnd -> ( List String, pathEnd )
 unpackToDecisionStagesDescriptionsAndLeaf node =
     case node of

@@ -94,6 +94,7 @@ type alias BotMemory =
     { lastSolarSystemName : Maybe String
     , jumpsCompleted : Int
     , shipModules : ShipModulesMemory
+    , didTravelEnRoute : Bool
     }
 
 
@@ -111,6 +112,7 @@ initBotMemory =
     { lastSolarSystemName = Nothing
     , jumpsCompleted = 0
     , shipModules = EveOnline.BotFramework.initShipModulesMemory
+    , didTravelEnRoute = False
     }
 
 
@@ -141,44 +143,64 @@ statusTextFromDecisionContext context =
 
 autopilotBotDecisionRoot : BotDecisionContext -> DecisionPathNode
 autopilotBotDecisionRoot context =
-    branchDependingOnDockedOrInSpace
-        { ifDocked = describeBranch "To continue, undock manually." waitForProgressInGame
-        , ifSeeShipUI = always Nothing
-        , ifUndockingComplete = decideStepWhenInSpace context
-        }
-        context.readingFromGameClient
+    (case infoPanelRouteFirstMarkerFromReadingFromGameClient context.readingFromGameClient of
+        Nothing ->
+            if context.memory.didTravelEnRoute then
+                describeBranch
+                    "I see no route in the info panel. We finished traveling the route."
+                    (Common.DecisionPath.endDecisionPath
+                        EveOnline.BotFrameworkSeparatingMemory.FinishSession
+                    )
+
+            else
+                describeBranch
+                    "I see no route in the info panel. I will start when a route is set."
+                    (decideStepWhenInSpaceWaiting context)
+
+        Just infoPanelRouteFirstMarker ->
+            branchDependingOnDockedOrInSpace
+                { ifDocked =
+                    describeBranch
+                        "To continue, undock manually."
+                        waitForProgressInGame
+                , ifSeeShipUI = always Nothing
+                , ifUndockingComplete =
+                    decideStepWhenInSpace
+                        context
+                        { infoPanelRouteFirstMarker = infoPanelRouteFirstMarker }
+                }
+                context.readingFromGameClient
+    )
         |> EveOnline.BotFrameworkSeparatingMemory.setMillisecondsToNextReadingFromGameBase 2000
 
 
-decideStepWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
-decideStepWhenInSpace context undockingComplete =
-    case context.readingFromGameClient |> infoPanelRouteFirstMarkerFromReadingFromGameClient of
-        Nothing ->
-            describeBranch "I see no route in the info panel. I will start when a route is set."
-                (decideStepWhenInSpaceWaiting context)
+decideStepWhenInSpace :
+    BotDecisionContext
+    -> { infoPanelRouteFirstMarker : EveOnline.ParseUserInterface.InfoPanelRouteRouteElementMarker }
+    -> SeeUndockingComplete
+    -> DecisionPathNode
+decideStepWhenInSpace context { infoPanelRouteFirstMarker } undockingComplete =
+    if undockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
+        describeBranch
+            "I see the ship is warping or jumping. I wait until that maneuver ends."
+            (decideStepWhenInSpaceWaiting context)
 
-        Just infoPanelRouteFirstMarker ->
-            if undockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
-                describeBranch
-                    "I see the ship is warping or jumping. I wait until that maneuver ends."
-                    (decideStepWhenInSpaceWaiting context)
+    else
+        useContextMenuCascade
+            ( "route element icon", infoPanelRouteFirstMarker.uiNode )
+            (useMenuEntryWithTextContainingFirstOf
+                [ "dock"
 
-            else
-                useContextMenuCascade
-                    ( "route element icon", infoPanelRouteFirstMarker.uiNode )
-                    (useMenuEntryWithTextContainingFirstOf
-                        [ "dock"
+                -- https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370/14
+                , "도킹"
+                , "jump"
 
-                        -- https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370/14
-                        , "도킹"
-                        , "jump"
-
-                        -- https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370
-                        , "점프 - 스타게이트 사용"
-                        ]
-                        menuCascadeCompleted
-                    )
-                    context
+                -- https://forum.botlab.org/t/i-want-to-add-korean-support-on-eve-online-bot-what-should-i-do/4370
+                , "점프 - 스타게이트 사용"
+                ]
+                menuCascadeCompleted
+            )
+            context
 
 
 decideStepWhenInSpaceWaiting : BotDecisionContext -> DecisionPathNode
@@ -213,6 +235,19 @@ updateMemoryForNewReadingFromGame context memoryBefore =
                       else
                         0
                     )
+
+        doesTravelEnRoute =
+            case infoPanelRouteFirstMarkerFromReadingFromGameClient context.readingFromGameClient of
+                Nothing ->
+                    False
+
+                Just _ ->
+                    case context.readingFromGameClient.shipUI of
+                        Nothing ->
+                            False
+
+                        Just shipUI ->
+                            shipUIIndicatesShipIsWarpingOrJumping shipUI
     in
     { jumpsCompleted = memoryBefore.jumpsCompleted + newJumpsCompleted
     , lastSolarSystemName = lastSolarSystemName
@@ -220,6 +255,7 @@ updateMemoryForNewReadingFromGame context memoryBefore =
         EveOnline.BotFramework.integrateCurrentReadingsIntoShipModulesMemory
             context.readingFromGameClient
             memoryBefore.shipModules
+    , didTravelEnRoute = memoryBefore.didTravelEnRoute || doesTravelEnRoute
     }
 
 

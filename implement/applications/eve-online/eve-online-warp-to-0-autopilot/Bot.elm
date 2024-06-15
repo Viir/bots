@@ -1,4 +1,4 @@
-{- EVE Online warp-to-0 auto-pilot version 2024-05-28
+{- EVE Online warp-to-0 auto-pilot version 2024-06-15
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
@@ -95,6 +95,7 @@ type alias BotMemory =
     , jumpsCompleted : Int
     , shipModules : ShipModulesMemory
     , didTravelEnRoute : Bool
+    , lastReadingsWithoutRoute : Int
     }
 
 
@@ -113,6 +114,7 @@ initBotMemory =
     , jumpsCompleted = 0
     , shipModules = EveOnline.BotFramework.initShipModulesMemory
     , didTravelEnRoute = False
+    , lastReadingsWithoutRoute = 0
     }
 
 
@@ -145,7 +147,11 @@ autopilotBotDecisionRoot : BotDecisionContext -> DecisionPathNode
 autopilotBotDecisionRoot context =
     (case infoPanelRouteFirstMarkerFromReadingFromGameClient context.readingFromGameClient of
         Nothing ->
-            if context.memory.didTravelEnRoute then
+            {-
+               Adapt to observation from session-recording-2024-06-02T13-10-35, as discussed on Discord — 03/06/2024 18:44:
+               > Looks like in event 1101 the list of route markers was empty in the memory reading. Might be a sporadic fail to read that part of the UI. Probably the solution is not rely only on the last reading but consider previous readings as well.
+            -}
+            if context.memory.didTravelEnRoute && 3 < context.memory.lastReadingsWithoutRoute then
                 describeBranch
                     "I see no route in the info panel. We finished traveling the route."
                     (Common.DecisionPath.endDecisionPath
@@ -236,6 +242,7 @@ updateMemoryForNewReadingFromGame context memoryBefore =
                         0
                     )
 
+        doesTravelEnRoute : Bool
         doesTravelEnRoute =
             case infoPanelRouteFirstMarkerFromReadingFromGameClient context.readingFromGameClient of
                 Nothing ->
@@ -248,6 +255,13 @@ updateMemoryForNewReadingFromGame context memoryBefore =
 
                         Just shipUI ->
                             shipUIIndicatesShipIsWarpingOrJumping shipUI
+
+        lastReadingsWithoutRoute =
+            if doesTravelEnRoute then
+                0
+
+            else
+                memoryBefore.lastReadingsWithoutRoute + 1
     in
     { jumpsCompleted = memoryBefore.jumpsCompleted + newJumpsCompleted
     , lastSolarSystemName = lastSolarSystemName
@@ -256,6 +270,7 @@ updateMemoryForNewReadingFromGame context memoryBefore =
             context.readingFromGameClient
             memoryBefore.shipModules
     , didTravelEnRoute = memoryBefore.didTravelEnRoute || doesTravelEnRoute
+    , lastReadingsWithoutRoute = lastReadingsWithoutRoute
     }
 
 

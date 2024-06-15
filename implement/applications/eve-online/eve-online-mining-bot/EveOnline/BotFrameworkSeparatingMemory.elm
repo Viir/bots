@@ -570,7 +570,7 @@ ensureInfoPanelLocationInfoIsExpanded readingFromGameClient =
 
 
 ensureOverviewsSorted :
-    { sortColumnName : String }
+    { sortColumnName : String, skipSortingWhenNotScrollable : Bool }
     -> EveOnline.BotFramework.OverviewWindowsMemory
     -> ReadingFromGameClient
     -> List ( OverviewWindow, ( String, Maybe DecisionPathNode ) )
@@ -578,9 +578,16 @@ ensureOverviewsSorted config overviewWindowsMemory readingFromGameClient =
     readingFromGameClient.overviewWindows
         |> List.map
             (\overviewWindow ->
-                overviewWindow
-                    |> ensureOverviewSorted config overviewWindowsMemory
-                    |> Tuple.pair overviewWindow
+                ( overviewWindow
+                , if config.skipSortingWhenNotScrollable && not (overviewWindowIsScrollable overviewWindow) then
+                    ( "Overview window is not scrollable", Nothing )
+
+                  else
+                    ensureOverviewSorted
+                        { sortColumnName = config.sortColumnName }
+                        overviewWindowsMemory
+                        overviewWindow
+                )
             )
 
 
@@ -628,8 +635,8 @@ ensureOverviewSorted config overviewWindowsMemory overviewWindow =
             ( "Sort header for distance not found", Nothing )
 
         Just sortColumnHeader ->
-            if bubbleSortDistanceMinimum < 1 then
-                ( "Already sorted", Nothing )
+            if bubbleSortDistanceMinimum <= 1 then
+                ( "Already sorted enough", Nothing )
 
             else
                 ( "The bubble-sort distance of overview entries was at least "
@@ -644,6 +651,21 @@ ensureOverviewSorted config overviewWindowsMemory overviewWindow =
                             decideActionForCurrentStep
                     )
                 )
+
+
+overviewWindowIsScrollable : OverviewWindow -> Bool
+overviewWindowIsScrollable overviewWindow =
+    case overviewWindow.scrollControls of
+        Nothing ->
+            False
+
+        Just scrollControls ->
+            case scrollControls.scrollHandle of
+                Nothing ->
+                    False
+
+                Just _ ->
+                    True
 
 
 branchDependingOnDockedOrInSpace :

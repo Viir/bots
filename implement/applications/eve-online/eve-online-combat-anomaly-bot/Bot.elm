@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-05-28
+{- EVE Online combat anomaly bot version 2024-06-15
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -440,7 +440,9 @@ generalSetupInUserInterface context =
             always Nothing
 
         Just sortOverviewBy ->
-            ensureOverviewsSorted { sortColumnName = sortOverviewBy } context.memory.overviewWindows
+            ensureOverviewsSorted
+                { sortColumnName = sortOverviewBy, skipSortingWhenNotScrollable = False }
+                context.memory.overviewWindows
                 >> List.filterMap
                     (\( _, ( description, maybeAction ) ) ->
                         maybeAction |> Maybe.map (describeBranch description)

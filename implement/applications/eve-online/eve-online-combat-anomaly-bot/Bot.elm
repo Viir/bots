@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-06-15
+{- EVE Online combat anomaly bot version 2024-07-07
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -613,67 +613,78 @@ decideNextActionWhenInSpace context seeUndockingComplete =
 
 modulesToActivateAlwaysActivated : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
 modulesToActivateAlwaysActivated context seeUndockingComplete =
-    let
-        returnDronesAndEnterAnomaly { ifNoAcceptableAnomalyAvailable } =
-            returnDronesToBay context
-                |> Maybe.withDefault
-                    (describeBranch "No drones to return."
-                        (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable }
-                            context
-                            seeUndockingComplete
-                        )
-                    )
+    case fightRatsIfShipIsPointed context seeUndockingComplete of
+        Just fightPointingRats ->
+            {-
+               Adapt to observation shared with session-recording-2024-05-15T13-11-03:
+               The anomaly is not visible anymore, since 'site has despawned',
+               but there are still rats pointing the player ship.
+               Therefore, we increase priority of fighting pointing rats to be independent of an anomaly.
+            -}
+            fightPointingRats
 
-        returnDronesAndEnterAnomalyOrWait =
-            returnDronesAndEnterAnomaly
-                { ifNoAcceptableAnomalyAvailable =
-                    describeBranch "Wait for a matching anomaly to appear." waitForProgressInGame
-                }
-    in
-    case context.readingFromGameClient |> getCurrentAnomalyIDAsSeenInProbeScanner of
         Nothing ->
-            describeBranch "Looks like we are not in an anomaly." returnDronesAndEnterAnomalyOrWait
+            let
+                returnDronesAndEnterAnomaly { ifNoAcceptableAnomalyAvailable } =
+                    returnDronesToBay context
+                        |> Maybe.withDefault
+                            (describeBranch "No drones to return."
+                                (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable }
+                                    context
+                                    seeUndockingComplete
+                                )
+                            )
 
-        Just anomalyID ->
-            case memoryOfAnomalyWithID anomalyID context.memory of
+                returnDronesAndEnterAnomalyOrWait =
+                    returnDronesAndEnterAnomaly
+                        { ifNoAcceptableAnomalyAvailable =
+                            describeBranch "Wait for a matching anomaly to appear." waitForProgressInGame
+                        }
+            in
+            case context.readingFromGameClient |> getCurrentAnomalyIDAsSeenInProbeScanner of
                 Nothing ->
-                    describeBranch
-                        ("Program error: Did not find memory of anomaly " ++ anomalyID)
-                        waitForProgressInGame
+                    describeBranch "Looks like we are not in an anomaly." returnDronesAndEnterAnomalyOrWait
 
-                Just memoryOfAnomaly ->
-                    let
-                        arrivalInAnomalyAgeSeconds =
-                            (context.eventContext.timeInMilliseconds - memoryOfAnomaly.arrivalTime.milliseconds) // 1000
+                Just anomalyID ->
+                    case memoryOfAnomalyWithID anomalyID context.memory of
+                        Nothing ->
+                            describeBranch
+                                ("Program error: Did not find memory of anomaly " ++ anomalyID)
+                                waitForProgressInGame
 
-                        continueInAnomaly : () -> DecisionPathNode
-                        continueInAnomaly () =
-                            decideActionInAnomaly
-                                { arrivalInAnomalyAgeSeconds = arrivalInAnomalyAgeSeconds }
-                                context
-                                seeUndockingComplete
-                                returnDronesAndEnterAnomalyOrWait
-                    in
-                    describeBranch ("We are in anomaly '" ++ anomalyID ++ "' since " ++ String.fromInt arrivalInAnomalyAgeSeconds ++ " seconds.")
-                        (case findReasonToAvoidAnomalyFromMemory context { anomalyID = anomalyID } of
-                            Just reasonToAvoidAnomaly ->
-                                describeBranch
-                                    ("Found a reason to avoid this anomaly: "
-                                        ++ describeReasonToAvoidAnomaly reasonToAvoidAnomaly
-                                    )
-                                    (returnDronesAndEnterAnomaly
-                                        { ifNoAcceptableAnomalyAvailable =
-                                            describeBranch "Get out of this anomaly."
-                                                (dockAtRandomStationOrStructure
-                                                    context
-                                                    seeUndockingComplete
-                                                )
-                                        }
-                                    )
+                        Just memoryOfAnomaly ->
+                            let
+                                arrivalInAnomalyAgeSeconds =
+                                    (context.eventContext.timeInMilliseconds - memoryOfAnomaly.arrivalTime.milliseconds) // 1000
 
-                            Nothing ->
-                                continueInAnomaly ()
-                        )
+                                continueInAnomaly : () -> DecisionPathNode
+                                continueInAnomaly () =
+                                    decideActionInAnomaly
+                                        { arrivalInAnomalyAgeSeconds = arrivalInAnomalyAgeSeconds }
+                                        context
+                                        seeUndockingComplete
+                                        returnDronesAndEnterAnomalyOrWait
+                            in
+                            describeBranch ("We are in anomaly '" ++ anomalyID ++ "' since " ++ String.fromInt arrivalInAnomalyAgeSeconds ++ " seconds.")
+                                (case findReasonToAvoidAnomalyFromMemory context { anomalyID = anomalyID } of
+                                    Just reasonToAvoidAnomaly ->
+                                        describeBranch
+                                            ("Found a reason to avoid this anomaly: "
+                                                ++ describeReasonToAvoidAnomaly reasonToAvoidAnomaly
+                                            )
+                                            (returnDronesAndEnterAnomaly
+                                                { ifNoAcceptableAnomalyAvailable =
+                                                    describeBranch "Get out of this anomaly."
+                                                        (dockAtRandomStationOrStructure
+                                                            context
+                                                            seeUndockingComplete
+                                                        )
+                                                }
+                                            )
+
+                                    Nothing ->
+                                        continueInAnomaly ()
+                                )
 
 
 undockUsingStationWindow :
@@ -808,52 +819,47 @@ enterAnomaly :
     -> SeeUndockingComplete
     -> DecisionPathNode
 enterAnomaly { ifNoAcceptableAnomalyAvailable } context seeUndockingComplete =
-    case fightRatsIfShipIsPointed context seeUndockingComplete of
-        Just fightPointingRats ->
-            fightPointingRats
-
+    case context.readingFromGameClient.probeScannerWindow of
         Nothing ->
-            case context.readingFromGameClient.probeScannerWindow of
+            describeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
+
+        Just probeScannerWindow ->
+            let
+                scanResultsWithReasonToIgnore =
+                    probeScannerWindow.scanResults
+                        |> List.map
+                            (\scanResult ->
+                                ( scanResult
+                                , findReasonToIgnoreProbeScanResult context scanResult
+                                )
+                            )
+            in
+            case
+                scanResultsWithReasonToIgnore
+                    |> List.filter (Tuple.second >> (==) Nothing)
+                    |> List.map Tuple.first
+                    |> listElementAtWrappedIndex (context.randomIntegers |> List.head |> Maybe.withDefault 0)
+            of
                 Nothing ->
-                    describeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
+                    describeBranch
+                        ("I see "
+                            ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt)
+                            ++ " scan results, and no matching anomaly. Wait for a matching anomaly to appear."
+                        )
+                        ifNoAcceptableAnomalyAvailable
 
-                Just probeScannerWindow ->
-                    let
-                        scanResultsWithReasonToIgnore =
-                            probeScannerWindow.scanResults
-                                |> List.map
-                                    (\scanResult ->
-                                        ( scanResult
-                                        , findReasonToIgnoreProbeScanResult context scanResult
-                                        )
-                                    )
-                    in
-                    case
-                        scanResultsWithReasonToIgnore
-                            |> List.filter (Tuple.second >> (==) Nothing)
-                            |> List.map Tuple.first
-                            |> listElementAtWrappedIndex (context.randomIntegers |> List.head |> Maybe.withDefault 0)
-                    of
-                        Nothing ->
-                            describeBranch
-                                ("I see "
-                                    ++ (probeScannerWindow.scanResults |> List.length |> String.fromInt)
-                                    ++ " scan results, and no matching anomaly. Wait for a matching anomaly to appear."
+                Just anomalyScanResult ->
+                    describeBranch "Warp to anomaly."
+                        (useContextMenuCascade
+                            ( "Scan result", anomalyScanResult.uiNode )
+                            (useMenuEntryWithTextContaining "Warp to Within"
+                                (useMenuEntryWithTextContaining
+                                    context.eventContext.botSettings.warpToAnomalyDistance
+                                    menuCascadeCompleted
                                 )
-                                ifNoAcceptableAnomalyAvailable
-
-                        Just anomalyScanResult ->
-                            describeBranch "Warp to anomaly."
-                                (useContextMenuCascade
-                                    ( "Scan result", anomalyScanResult.uiNode )
-                                    (useMenuEntryWithTextContaining "Warp to Within"
-                                        (useMenuEntryWithTextContaining
-                                            context.eventContext.botSettings.warpToAnomalyDistance
-                                            menuCascadeCompleted
-                                        )
-                                    )
-                                    context
-                                )
+                            )
+                            context
+                        )
 
 
 fightRatsIfShipIsPointed : BotDecisionContext -> SeeUndockingComplete -> Maybe DecisionPathNode

@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-01-03
+{- EVE Online combat anomaly bot version 2024-01-03 plus orbit named
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -101,6 +101,7 @@ import EveOnline.ParseUserInterface
         , ShipUI
         , ShipUIModuleButton
         )
+import List.Extra
 import Result.Extra
 import Set
 
@@ -115,6 +116,7 @@ defaultBotSettings =
     , botStepDelayMilliseconds = { minimum = 1300, maximum = 1500 }
     , anomalyWaitTimeSeconds = 15
     , orbitInCombat = AppSettings.Yes
+    , orbitObjectNames = []
     , warpToAnomalyDistance = "Within 0 m"
     , sortOverviewBy = Nothing
     }
@@ -201,6 +203,18 @@ parseBotSettings =
                         (\delay settings -> { settings | botStepDelayMilliseconds = delay })
              }
            )
+         , ( "orbit-object-name"
+           , { description = "Choose the name of large collidable objects to orbit. You can use this setting multiple times to select multiple objects."
+             , valueParser =
+                AppSettings.valueTypeString
+                    (\orbitObjectName settings ->
+                        { settings
+                            | orbitObjectNames = String.trim orbitObjectName :: settings.orbitObjectNames
+                            , orbitInCombat = AppSettings.Yes
+                        }
+                    )
+             }
+           )
          ]
             |> Dict.fromList
         )
@@ -221,6 +235,7 @@ type alias BotSettings =
     , anomalyWaitTimeSeconds : Int
     , botStepDelayMilliseconds : IntervalInt
     , orbitInCombat : AppSettings.YesOrNo
+    , orbitObjectNames : List String
     , warpToAnomalyDistance : String
     , sortOverviewBy : Maybe String
     }
@@ -658,7 +673,7 @@ decideActionInAnomaly :
     -> DecisionPathNode
 decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplete continueIfCombatComplete =
     let
-        overviewEntriesToAttack =
+        overviewsAllEntries =
             seeUndockingComplete.overviewWindows
                 |> List.concatMap .entries
                 {-
@@ -667,6 +682,9 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                    |> List.sortBy (.objectDistanceInMeters >> Result.withDefault 999999)
                 -}
                 |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
+
+        overviewEntriesToAttack =
+            overviewsAllEntries
                 |> List.filter shouldAttackOverviewEntry
 
         overviewEntriesToLock =
@@ -681,11 +699,21 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
             else
                 context.readingFromGameClient.targets |> List.filter .isActiveTarget
 
+        maybeObjectToOrbit =
+            case findObjectToOrbitByName context.eventContext.botSettings.orbitObjectNames overviewsAllEntries of
+                Just fromName ->
+                    Just fromName
+
+                Nothing ->
+                    List.Extra.last overviewEntriesToAttack
+
         ensureShipIsOrbitingDecision =
-            overviewEntriesToAttack
-                |> List.reverse
-                |> List.head
-                |> Maybe.andThen (\overviewEntryToAttack -> ensureShipIsOrbiting seeUndockingComplete.shipUI overviewEntryToAttack)
+            case maybeObjectToOrbit of
+                Nothing ->
+                    Nothing
+
+                Just objectToOrbit ->
+                    ensureShipIsOrbiting seeUndockingComplete.shipUI objectToOrbit
 
         waitTimeRemainingSeconds =
             context.eventContext.botSettings.anomalyWaitTimeSeconds - arrivalInAnomalyAgeSeconds
@@ -767,6 +795,28 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
 
     else
         decisionToKillRats
+
+
+findObjectToOrbitByName : List String -> List OverviewWindowEntry -> Maybe OverviewWindowEntry
+findObjectToOrbitByName orbitObjectNames overviewEntries =
+    overviewEntries
+        |> List.Extra.find
+            (\entry ->
+                case entry.objectName of
+                    Nothing ->
+                        False
+
+                    Just objectName ->
+                        let
+                            objectNameLower =
+                                String.toLower objectName
+                        in
+                        List.any
+                            (\objectNamePattern ->
+                                String.contains (String.toLower objectNamePattern) objectName
+                            )
+                            orbitObjectNames
+            )
 
 
 enterAnomaly : { ifNoAcceptableAnomalyAvailable : DecisionPathNode } -> BotDecisionContext -> DecisionPathNode

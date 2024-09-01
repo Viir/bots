@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2024-06-15
+{- EVE Online mining bot version 2024-09-01
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -1130,40 +1130,57 @@ lockTargetFromOverviewEntry overviewEntry context =
 
 
 dockToStationOrStructureWithMatchingName :
-    { prioritizeStructures : Bool, nameFromSettingOrInfoPanel : String }
+    { nameFromSettingOrInfoPanel : String }
     -> BotDecisionContext
-    -> DecisionPathNode
-dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSettingOrInfoPanel } context =
+    ->
+        { viaOverview : Maybe DecisionPathNode
+        , viaSurroundingsMenu : { prioritizeStructures : Bool } -> DecisionPathNode
+        }
+dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context =
     let
         {-
            2023-01-11 Observation by Dean: Text in surroundings context menu entry sometimes wraps station name in XML tags:
            <color=#FF58A7BF>Niyabainen IV - M1 - Caldari Navy Assembly Plant</color>
         -}
+        displayTextRepresentsMatchingStation : String -> Bool
         displayTextRepresentsMatchingStation =
             simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
-                >> String.contains (nameFromSettingOrInfoPanel |> simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry)
+                >> String.contains (simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry nameFromSettingOrInfoPanel)
 
+        matchingOverviewEntry : Maybe OverviewWindowEntry
         matchingOverviewEntry =
             context.readingFromGameClient.overviewWindows
                 |> List.concatMap .entries
-                |> List.filter (.objectName >> Maybe.map displayTextRepresentsMatchingStation >> Maybe.withDefault False)
+                |> List.filter
+                    (.objectName
+                        >> Maybe.map displayTextRepresentsMatchingStation
+                        >> Maybe.withDefault False
+                    )
                 |> List.head
 
-        overviewWindowScrollControls =
-            context.readingFromGameClient.overviewWindows
-                |> List.filterMap .scrollControls
-                |> List.head
+        viaOverview =
+            case matchingOverviewEntry of
+                Just overviewEntry ->
+                    Just
+                        (EveOnline.BotFrameworkSeparatingMemory.useContextMenuCascadeOnOverviewEntry
+                            (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+                            overviewEntry
+                            context
+                        )
+
+                Nothing ->
+                    Nothing
     in
-    matchingOverviewEntry
-        |> Maybe.map
-            (\entry ->
-                EveOnline.BotFrameworkSeparatingMemory.useContextMenuCascadeOnOverviewEntry
-                    (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
-                    entry
-                    context
-            )
-        |> Maybe.withDefault
-            (overviewWindowScrollControls
+    { viaOverview = viaOverview
+    , viaSurroundingsMenu =
+        \{ prioritizeStructures } ->
+            let
+                overviewWindowScrollControls =
+                    context.readingFromGameClient.overviewWindows
+                        |> List.filterMap .scrollControls
+                        |> List.head
+            in
+            overviewWindowScrollControls
                 |> Maybe.andThen scrollDown
                 |> Maybe.withDefault
                     (describeBranch "I do not see the station in the overview window. I use the menu from the surroundings button."
@@ -1176,7 +1193,7 @@ dockToStationOrStructureWithMatchingName { prioritizeStructures, nameFromSetting
                             context
                         )
                     )
-            )
+    }
 
 
 scrollDown : EveOnline.ParseUserInterface.ScrollControls -> Maybe DecisionPathNode
@@ -1228,7 +1245,11 @@ scrollDown scrollControls =
 -}
 simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry : String -> String
 simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry =
-    String.toLower >> String.replace "moon " "m" >> String.replace "," "" >> String.replace "." "" >> String.trim
+    String.toLower
+        >> String.replace "moon " "m"
+        >> String.replace "," ""
+        >> String.replace "." ""
+        >> String.trim
 
 
 dockToStationOrStructureUsingSurroundingsButtonMenu :
@@ -1279,34 +1300,74 @@ warpToMiningSite context =
 
 
 runAway : BotDecisionContext -> DecisionPathNode
-runAway =
-    dockToRandomStationOrStructure
+runAway context =
+    let
+        defaultRoute () =
+            dockToRandomStationOrStructure context
+    in
+    case unloadStationOrStructureName context of
+        Just unloadStationName ->
+            {-
+               Prioritize unload station and overview entry, because that will be faster than using the surroundings button menu. If that fails, fall back to surroundings menu.
+               <https://forum.botlab.org/t/the-mining-robot-cant-find-its-way-home/4922/4>
+            -}
+            let
+                routesToStation =
+                    dockToStationOrStructureWithMatchingName
+                        { nameFromSettingOrInfoPanel = unloadStationName }
+                        context
+            in
+            case routesToStation.viaOverview of
+                Just viaOverview ->
+                    viaOverview
+
+                Nothing ->
+                    defaultRoute ()
+
+        Nothing ->
+            defaultRoute ()
 
 
 dockToUnloadOre : BotDecisionContext -> DecisionPathNode
 dockToUnloadOre context =
+    case unloadStationOrStructureName context of
+        Just unloadStationName ->
+            let
+                routesToStation =
+                    dockToStationOrStructureWithMatchingName
+                        { nameFromSettingOrInfoPanel = unloadStationName }
+                        context
+            in
+            case routesToStation.viaOverview of
+                Just viaOverview ->
+                    viaOverview
+
+                Nothing ->
+                    routesToStation.viaSurroundingsMenu
+                        { prioritizeStructures = False }
+
+        Nothing ->
+            describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
+
+
+unloadStationOrStructureName : BotDecisionContext -> Maybe String
+unloadStationOrStructureName context =
     case context.eventContext.botSettings.unloadStationName of
         Just unloadStationName ->
-            dockToStationOrStructureWithMatchingName
-                { prioritizeStructures = False, nameFromSettingOrInfoPanel = unloadStationName }
-                context
+            Just unloadStationName
 
         Nothing ->
             case context.eventContext.botSettings.unloadStructureName of
                 Just unloadStructureName ->
-                    dockToStationOrStructureWithMatchingName
-                        { prioritizeStructures = True, nameFromSettingOrInfoPanel = unloadStructureName }
-                        context
+                    Just unloadStructureName
 
                 Nothing ->
                     case context.memory.lastDockedStationNameFromInfoPanel of
-                        Just unloadStationName ->
-                            dockToStationOrStructureWithMatchingName
-                                { prioritizeStructures = False, nameFromSettingOrInfoPanel = unloadStationName }
-                                context
+                        Just lastDocked ->
+                            Just lastDocked
 
                         Nothing ->
-                            describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
+                            Nothing
 
 
 dockToRandomStationOrStructure : BotDecisionContext -> DecisionPathNode

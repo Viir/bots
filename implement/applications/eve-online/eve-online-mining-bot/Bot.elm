@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2024-09-01
+{- EVE Online mining bot version 2024-09-02
 
    The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
@@ -31,6 +31,10 @@
    activate-module-always = shield hardener
    activate-module-always = afterburner
    ```
+
+   The bot searches the configured structure or station name in the 'Locations' window and all overview windows.
+   If the destination is not visible in the locations and overview windows, it opens the 'surroundings' menu to search for it.
+   When using the 'Locations' window, enter the unload station/structure name as it appears in the 'Label' column.
 
    To learn more about the mining bot, see <https://to.botlab.org/guide/app/eve-online-mining-bot>
 
@@ -1133,7 +1137,8 @@ dockToStationOrStructureWithMatchingName :
     { nameFromSettingOrInfoPanel : String }
     -> BotDecisionContext
     ->
-        { viaOverview : Maybe DecisionPathNode
+        { viaLocations : Maybe DecisionPathNode
+        , viaOverview : Maybe DecisionPathNode
         , viaSurroundingsMenu : { prioritizeStructures : Bool } -> DecisionPathNode
         }
 dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context =
@@ -1146,6 +1151,29 @@ dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context 
         displayTextRepresentsMatchingStation =
             simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
                 >> String.contains (simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry nameFromSettingOrInfoPanel)
+
+        viaLocations : Maybe DecisionPathNode
+        viaLocations =
+            case context.readingFromGameClient.locationsWindow of
+                Nothing ->
+                    Nothing
+
+                Just locationsWindow ->
+                    case
+                        locationsWindow.placeEntries
+                            |> List.filter (.mainText >> displayTextRepresentsMatchingStation)
+                            |> List.head
+                    of
+                        Nothing ->
+                            Nothing
+
+                        Just placeEntry ->
+                            Just
+                                (EveOnline.BotFrameworkSeparatingMemory.useContextMenuCascade
+                                    ( placeEntry.mainText, placeEntry.uiNode )
+                                    (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+                                    context
+                                )
 
         matchingOverviewEntry : Maybe OverviewWindowEntry
         matchingOverviewEntry =
@@ -1171,7 +1199,8 @@ dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context 
                 Nothing ->
                     Nothing
     in
-    { viaOverview = viaOverview
+    { viaLocations = viaLocations
+    , viaOverview = viaOverview
     , viaSurroundingsMenu =
         \{ prioritizeStructures } ->
             let
@@ -1317,12 +1346,17 @@ runAway context =
                         { nameFromSettingOrInfoPanel = unloadStationName }
                         context
             in
-            case routesToStation.viaOverview of
-                Just viaOverview ->
-                    viaOverview
+            case routesToStation.viaLocations of
+                Just viaLocations ->
+                    viaLocations
 
                 Nothing ->
-                    defaultRoute ()
+                    case routesToStation.viaOverview of
+                        Just viaOverview ->
+                            viaOverview
+
+                        Nothing ->
+                            defaultRoute ()
 
         Nothing ->
             defaultRoute ()
@@ -1338,13 +1372,18 @@ dockToUnloadOre context =
                         { nameFromSettingOrInfoPanel = unloadStationName }
                         context
             in
-            case routesToStation.viaOverview of
-                Just viaOverview ->
-                    viaOverview
+            case routesToStation.viaLocations of
+                Just viaLocations ->
+                    viaLocations
 
                 Nothing ->
-                    routesToStation.viaSurroundingsMenu
-                        { prioritizeStructures = False }
+                    case routesToStation.viaOverview of
+                        Just viaOverview ->
+                            viaOverview
+
+                        Nothing ->
+                            routesToStation.viaSurroundingsMenu
+                                { prioritizeStructures = False }
 
         Nothing ->
             describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck

@@ -1,6 +1,11 @@
-{- EVE Online mining bot version 2024-09-02
+{- EVE Online mining bot version 2024-09-03
 
-   The bot warps to an asteroid belt, mines there until the mining hold is full, and then docks at a station or structure to unload the ore. It then repeats this cycle until you stop it.
+   This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
+
+   In addition to the automation, the bot reports performance statistics such as the number of completed cycles and the aggregate volume of mined ore in a standardized format.
+
+   This bot supports configuring multiple mining sites. It picks a random asteroid belt from the solar system menu if no mining site is configured. When the bot settings contain at least one mining site, the bot searches the 'Locations' window and overview windows to find one of the sites and initiate warping the ship there.
+
    If no station name or structure name is given with the bot-settings, the bot docks again at the station where it was last docked.
 
    Setup instructions for the EVE Online client:
@@ -15,6 +20,7 @@
 
    All settings are optional; you only need them in case the defaults don't fit your use-case.
 
+   + `mining-site` : Name of a mining location, as it appears in the 'Label' column of the 'Locations' window.
    + `unload-station-name` : Name of a station to dock to when the mining hold is full.
    + `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
    + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
@@ -27,13 +33,14 @@
    Here is an example of a complete settings string:
 
    ```
+   mining-site = mining bookmark label
    unload-station-name = Noghere VII - Moon 15
    activate-module-always = shield hardener
    activate-module-always = afterburner
    ```
 
    The bot searches the configured structure or station name in the 'Locations' window and all overview windows.
-   If the destination is not visible in the locations and overview windows, it opens the 'surroundings' menu to search for it.
+   If the destination is not visible in the locations and overview windows, it opens the solar system menu to search for it.
    When using the 'Locations' window, enter the unload station/structure name as it appears in the 'Label' column.
 
    To learn more about the mining bot, see <https://to.botlab.org/guide/app/eve-online-mining-bot>
@@ -121,7 +128,7 @@ defaultBotSettings =
     , botStepDelayMilliseconds = { minimum = 1300, maximum = 1500 }
     , selectInstancePilotName = Nothing
     , includeAsteroidPatterns = []
-    , miningSiteLocation = Nothing
+    , miningSites = []
     }
 
 
@@ -243,13 +250,13 @@ parseBotSettings =
                     )
              }
            )
-         , ( "mining-site-location"
-           , { alternativeNames = []
-             , description = "Name of a mining site as it appears in the solar system surroundings menu of the game client."
+         , ( "mining-site"
+           , { alternativeNames = [ "mining-site-location" ]
+             , description = "Name of a mining site as it appears in the 'Locations' window or under 'Locations' in the solar system surroundings menu."
              , valueParser =
                 PromptParser.valueTypeString
-                    (\location settings ->
-                        { settings | miningSiteLocation = Just location }
+                    (\miningSite settings ->
+                        { settings | miningSites = List.concat [ settings.miningSites, [ miningSite ] ] }
                     )
              }
            )
@@ -284,7 +291,7 @@ type alias BotSettings =
     , botStepDelayMilliseconds : IntervalInt
     , selectInstancePilotName : Maybe String
     , includeAsteroidPatterns : List String
-    , miningSiteLocation : Maybe String
+    , miningSites : List String
     }
 
 
@@ -1137,9 +1144,9 @@ dockToStationOrStructureWithMatchingName :
     { nameFromSettingOrInfoPanel : String }
     -> BotDecisionContext
     ->
-        { viaLocations : Maybe DecisionPathNode
+        { viaLocationsWindow : Maybe DecisionPathNode
         , viaOverview : Maybe DecisionPathNode
-        , viaSurroundingsMenu : { prioritizeStructures : Bool } -> DecisionPathNode
+        , viaSolarSystemMenu : () -> DecisionPathNode
         }
 dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context =
     let
@@ -1151,9 +1158,26 @@ dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context 
         displayTextRepresentsMatchingStation =
             simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
                 >> String.contains (simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry nameFromSettingOrInfoPanel)
+    in
+    useContextMenuOnLocationWithMatchingName
+        displayTextRepresentsMatchingStation
+        (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+        context
 
-        viaLocations : Maybe DecisionPathNode
-        viaLocations =
+
+useContextMenuOnLocationWithMatchingName :
+    (String -> Bool)
+    -> EveOnline.BotFramework.UseContextMenuCascadeNode
+    -> BotDecisionContext
+    ->
+        { viaLocationsWindow : Maybe DecisionPathNode
+        , viaOverview : Maybe DecisionPathNode
+        , viaSolarSystemMenu : () -> DecisionPathNode
+        }
+useContextMenuOnLocationWithMatchingName nameMatches useMenu context =
+    let
+        viaLocationsWindow : Maybe DecisionPathNode
+        viaLocationsWindow =
             case context.readingFromGameClient.locationsWindow of
                 Nothing ->
                     Nothing
@@ -1161,7 +1185,7 @@ dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context 
                 Just locationsWindow ->
                     case
                         locationsWindow.placeEntries
-                            |> List.filter (.mainText >> displayTextRepresentsMatchingStation)
+                            |> List.filter (.mainText >> nameMatches)
                             |> List.head
                     of
                         Nothing ->
@@ -1171,7 +1195,7 @@ dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context 
                             Just
                                 (EveOnline.BotFrameworkSeparatingMemory.useContextMenuCascade
                                     ( placeEntry.mainText, placeEntry.uiNode )
-                                    (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+                                    useMenu
                                     context
                                 )
 
@@ -1181,7 +1205,7 @@ dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context 
                 |> List.concatMap .entries
                 |> List.filter
                     (.objectName
-                        >> Maybe.map displayTextRepresentsMatchingStation
+                        >> Maybe.map nameMatches
                         >> Maybe.withDefault False
                     )
                 |> List.head
@@ -1191,7 +1215,7 @@ dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context 
                 Just overviewEntry ->
                     Just
                         (EveOnline.BotFrameworkSeparatingMemory.useContextMenuCascadeOnOverviewEntry
-                            (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+                            useMenu
                             overviewEntry
                             context
                         )
@@ -1199,10 +1223,10 @@ dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context 
                 Nothing ->
                     Nothing
     in
-    { viaLocations = viaLocations
+    { viaLocationsWindow = viaLocationsWindow
     , viaOverview = viaOverview
-    , viaSurroundingsMenu =
-        \{ prioritizeStructures } ->
+    , viaSolarSystemMenu =
+        \() ->
             let
                 overviewWindowScrollControls =
                     context.readingFromGameClient.overviewWindows
@@ -1212,15 +1236,19 @@ dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context 
             overviewWindowScrollControls
                 |> Maybe.andThen scrollDown
                 |> Maybe.withDefault
-                    (describeBranch "I do not see the station in the overview window. I use the menu from the surroundings button."
-                        (dockToStationOrStructureUsingSurroundingsButtonMenu
-                            { prioritizeStructures = prioritizeStructures
-                            , describeChoice = "representing the station or structure '" ++ nameFromSettingOrInfoPanel ++ "'."
-                            , chooseEntry =
-                                List.filter (.text >> displayTextRepresentsMatchingStation) >> List.head
-                            }
-                            context
+                    (useContextMenuCascadeOnListSurroundingsButton
+                        (useMenuEntryWithTextContainingFirstOf
+                            [ "locations" ]
+                            (useMenuEntryInLastContextMenuInCascade
+                                { describeChoice = "select using the configured predicate"
+                                , chooseEntry =
+                                    List.filter (.text >> nameMatches)
+                                        >> List.head
+                                }
+                                useMenu
+                            )
                         )
+                        context
                     )
     }
 
@@ -1307,23 +1335,59 @@ dockToStationOrStructureUsingSurroundingsButtonMenu { prioritizeStructures, desc
 
 warpToMiningSite : BotDecisionContext -> DecisionPathNode
 warpToMiningSite context =
-    useContextMenuCascadeOnListSurroundingsButton
-        (case context.eventContext.botSettings.miningSiteLocation of
-            Nothing ->
-                useMenuEntryWithTextContaining "asteroid belts"
-                    (useRandomMenuEntry (context.randomIntegers |> List.head |> Maybe.withDefault 0)
+    case context.eventContext.botSettings.miningSites of
+        [] ->
+            warpToRandomAsteroidBelt context
+
+        miningSites ->
+            let
+                miningSitesSimplified : List String
+                miningSitesSimplified =
+                    List.map
+                        simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
+                        miningSites
+
+                travelOptions =
+                    useContextMenuOnLocationWithMatchingName
+                        (\displayName ->
+                            List.any
+                                (\miningSite ->
+                                    String.contains
+                                        miningSite
+                                        (simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
+                                            displayName
+                                        )
+                                )
+                                miningSitesSimplified
+                        )
                         (useMenuEntryWithTextContaining "Warp to"
                             (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
                         )
-                    )
+                        context
+            in
+            case travelOptions.viaLocationsWindow of
+                Just viaLocationsWindow ->
+                    viaLocationsWindow
 
-            Just miningSiteLocation ->
-                useMenuEntryWithTextContaining "location"
-                    (useMenuEntryWithTextContaining miningSiteLocation
-                        (useMenuEntryWithTextContaining "Warp to"
-                            (useMenuEntryWithTextContaining "Within" menuCascadeCompleted)
-                        )
-                    )
+                Nothing ->
+                    case travelOptions.viaOverview of
+                        Just viaOverview ->
+                            viaOverview
+
+                        Nothing ->
+                            describeBranch "I do not see a matching name in the Locations or overview windows. Therefore, we are falling back to the solar system menu."
+                                (travelOptions.viaSolarSystemMenu ())
+
+
+warpToRandomAsteroidBelt : BotDecisionContext -> DecisionPathNode
+warpToRandomAsteroidBelt context =
+    useContextMenuCascadeOnListSurroundingsButton
+        (useMenuEntryWithTextContaining "asteroid belts"
+            (useRandomMenuEntry (context.randomIntegers |> List.head |> Maybe.withDefault 0)
+                (useMenuEntryWithTextContaining "Warp to"
+                    (useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted)
+                )
+            )
         )
         context
 
@@ -1346,9 +1410,9 @@ runAway context =
                         { nameFromSettingOrInfoPanel = unloadStationName }
                         context
             in
-            case routesToStation.viaLocations of
-                Just viaLocations ->
-                    viaLocations
+            case routesToStation.viaLocationsWindow of
+                Just viaLocationsWindow ->
+                    viaLocationsWindow
 
                 Nothing ->
                     case routesToStation.viaOverview of
@@ -1372,9 +1436,9 @@ dockToUnloadOre context =
                         { nameFromSettingOrInfoPanel = unloadStationName }
                         context
             in
-            case routesToStation.viaLocations of
-                Just viaLocations ->
-                    viaLocations
+            case routesToStation.viaLocationsWindow of
+                Just viaLocationsWindow ->
+                    viaLocationsWindow
 
                 Nothing ->
                     case routesToStation.viaOverview of
@@ -1382,8 +1446,8 @@ dockToUnloadOre context =
                             viaOverview
 
                         Nothing ->
-                            routesToStation.viaSurroundingsMenu
-                                { prioritizeStructures = False }
+                            describeBranch "I do not see a matching name in the Locations or overview windows. Therefore, we are falling back to the solar system menu."
+                                (routesToStation.viaSolarSystemMenu ())
 
         Nothing ->
             describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck

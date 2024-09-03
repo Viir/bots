@@ -12,7 +12,7 @@ Here is a video showing how to start a live run of a bot, also covering the init
 
 After following the installation guide, our Windows system is ready to run bots. When we open the BotLab client that we installed in the previous step, we see this screen:
 
-![The first view visible in the BotLab client after installing](./image/2022-12-10-botlab-client-main-menu.png)
+![The first view visible in the BotLab client after installing](./image/2024-02-18-botlab-client-initial-main-menu.png)
 
 The most common way to run a bot is to use this graphical interface. For expert users and developers, a command-line interface offers another route to run a bot, but this guide only covers the graphical interface.
 

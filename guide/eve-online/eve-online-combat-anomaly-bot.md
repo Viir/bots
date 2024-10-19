@@ -15,7 +15,6 @@ Despite being quite robust, this bot is less intelligent than a human. For examp
 
 + Set the UI language to English.
 + Undock, open probe scanner, overview window and drones window.
-+ Set the Overview window to sort objects in space by distance with the nearest entry at the top.
 + In the ship UI, arrange the modules:
   + Place the modules to use in combat (to activate on targets) in the top row.
   + Hide passive modules by disabling the check-box `Display Passive Modules`.
@@ -27,7 +26,7 @@ If the BotLab client is not already installed on your machine, follow the guide 
 The BotLab client is a tool for developing bots and also makes running bots easier with graphical user interfaces for configuration.
 
 In the BotLab client, load the bot by entering the following link in the 'Select Bot' view:
-<https://catalog.botlab.org/f3e0387c82de599e>
+<https://catalog.botlab.org/ad7c1aee87858a5c>
 
 There is a detailed walkthrough video on how to load and run a bot at <https://to.botlab.org/guide/video/how-to-run-a-bot-live>
 

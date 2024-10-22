@@ -8,6 +8,8 @@ type EffectOnWindowStructure
     = SetMouseCursorPositionEffect Location2d
     | KeyDownEffect VirtualKeyCode
     | KeyUpEffect VirtualKeyCode
+    | ButtonDownEffect MouseButton
+    | ButtonUpEffect MouseButton
 
 
 type alias MouseClickAtLocation =
@@ -32,8 +34,8 @@ type MouseButton
 effectsMouseClickAtPosition : MouseButton -> Location2d -> List EffectOnWindowStructure
 effectsMouseClickAtPosition mouseButton position =
     [ SetMouseCursorPositionEffect position
-    , KeyDownEffect (virtualKeyCodeFromMouseButton mouseButton)
-    , KeyUpEffect (virtualKeyCodeFromMouseButton mouseButton)
+    , ButtonDownEffect mouseButton
+    , ButtonUpEffect mouseButton
     ]
 
 
@@ -46,11 +48,11 @@ effectsForMouseDragAndDrop :
     -> List EffectOnWindowStructure
 effectsForMouseDragAndDrop { startPosition, mouseButton, waypointsPositionsInBetween, endPosition } =
     [ SetMouseCursorPositionEffect startPosition
-    , KeyDownEffect (virtualKeyCodeFromMouseButton mouseButton)
+    , ButtonDownEffect mouseButton
     ]
         ++ List.map SetMouseCursorPositionEffect waypointsPositionsInBetween
         ++ [ SetMouseCursorPositionEffect endPosition
-           , KeyUpEffect (virtualKeyCodeFromMouseButton mouseButton)
+           , ButtonUpEffect mouseButton
            ]
 
 

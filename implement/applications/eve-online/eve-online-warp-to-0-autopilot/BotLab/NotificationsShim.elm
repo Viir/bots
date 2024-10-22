@@ -12,7 +12,7 @@ The framework derives the notifications from your bot's status text, according t
 
 -}
 
-import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
 import BotLab.NotificationsShim.VolatileProcessInterface as VolatileProcessInterface
 import CompilationInterface.SourceFiles
 import Dict
@@ -178,6 +178,9 @@ processEventNotificationsSetup event stateBefore =
                                 intermediateState
 
                             InterfaceToHost.InvokeMethodOnWindowResponse _ _ ->
+                                intermediateState
+
+                            InterfaceToHost.WindowsInputResponse _ ->
                                 intermediateState
 
                             InterfaceToHost.CompleteWithoutResult ->

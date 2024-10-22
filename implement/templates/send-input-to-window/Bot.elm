@@ -14,7 +14,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework
     exposing
         ( bringWindowToForeground
@@ -117,9 +117,11 @@ simpleProcessEvent _ event stateBeforeIntegratingEvent =
                               }
                             , { taskId = SimpleBotFramework.taskIdFromString "send-input"
                               , task =
-                                    [ nextInputEffect ]
-                                        |> SimpleBotFramework.effectSequenceTask
-                                            { delayBetweenEffectsMilliseconds = 100 }
+                                    SimpleBotFramework.EffectSequenceOnWindowTask
+                                        { waitBeforeEffectsMs = 300
+                                        , waitBetweenEffectsMs = 100
+                                        }
+                                        [ nextInputEffect ]
                               }
                             ]
                         , statusDescription =

@@ -15,7 +15,7 @@ To learn more about developing for EVE Online, see the guide at <https://to.botl
 
 -}
 
-import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
 import Common.DecisionPath
 import Common.EffectOnWindow
 import Dict
@@ -54,7 +54,7 @@ type EndDecisionPathStructure
 
 
 type alias ContinueSessionStructure =
-    { effectsOnGameClient : List Common.EffectOnWindow.EffectOnWindowStructure
+    { effectsOnGameClient : List Common.EffectOnWindow.EffectOnWindowStruct
     , millisecondsToNextReadingFromGameBase : Maybe Int
     , millisecondsToNextReadingFromGameModifierPercent : Int
     }
@@ -76,7 +76,7 @@ type alias StepDecisionContext botSettings botMemory =
     , readingFromGameClient : ReadingFromGameClient
     , screenshot : ReadingFromGameClientScreenshot
     , memory : botMemory
-    , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
+    , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStruct
     , previousReadingsFromGameClient : List ReadingFromGameClientMemory
     , contextMenuCascadeLevel : Int
     , randomIntegers : List Int
@@ -89,7 +89,7 @@ type alias StateIncludingFramework botSettings botMemory =
 
 type alias BotState botMemory =
     { botMemory : botMemory
-    , lastStepEffects : List Common.EffectOnWindow.EffectOnWindowStructure
+    , lastStepEffects : List Common.EffectOnWindow.EffectOnWindowStruct
     , lastReadingsFromGameClient : List ReadingFromGameClientMemory
     }
 
@@ -771,7 +771,10 @@ setMillisecondsToNextReadingFromGameBase millisecondsToNextReadingFromGameBase d
         decisionPath
 
 
-updateDecisionPathEndContinueSession : (ContinueSessionStructure -> ContinueSessionStructure) -> DecisionPathNode -> DecisionPathNode
+updateDecisionPathEndContinueSession :
+    (ContinueSessionStructure -> ContinueSessionStructure)
+    -> DecisionPathNode
+    -> DecisionPathNode
 updateDecisionPathEndContinueSession updateContinueSession decisionPath =
     Common.DecisionPath.continueDecisionPath
         (\pathEnd ->
@@ -787,7 +790,7 @@ updateDecisionPathEndContinueSession updateContinueSession decisionPath =
         decisionPath
 
 
-decideActionForCurrentStep : List Common.EffectOnWindow.EffectOnWindowStructure -> DecisionPathNode
+decideActionForCurrentStep : List Common.EffectOnWindow.EffectOnWindowStruct -> DecisionPathNode
 decideActionForCurrentStep effects =
     Common.DecisionPath.endDecisionPath
         (ContinueSession

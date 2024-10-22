@@ -16,7 +16,7 @@ module BotLab.SimpleBotFramework exposing (..)
 
 import Array
 import Bitwise
-import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
 import Common.EffectOnWindow exposing (MouseButton(..))
 import CompilationInterface.SourceFiles
 import Dict
@@ -120,7 +120,13 @@ type alias Location2d =
 type Task
     = BringWindowToForeground
     | ReadFromWindow
-    | EffectSequenceOnWindowTask (List VolatileProcessInterface.EffectSequenceOnWindowElement)
+    | EffectSequenceOnWindowTask EffectSequenceConfig (List Common.EffectOnWindow.EffectOnWindowStructure)
+
+
+type alias EffectSequenceConfig =
+    { waitBeforeEffectsMs : Int
+    , waitBetweenEffectsMs : Int
+    }
 
 
 type alias BotConfig botSettings botState =
@@ -135,7 +141,10 @@ type alias State botSettings botState =
     , createVolatileProcessResponse :
         Maybe
             { timeInMilliseconds : Int
-            , result : Result InterfaceToHost.CreateVolatileProcessErrorStructure InterfaceToHost.CreateVolatileProcessComplete
+            , result :
+                Result
+                    InterfaceToHost.CreateVolatileProcessErrorStructure
+                    InterfaceToHost.CreateVolatileProcessComplete
             }
     , targetWindow : Maybe { windowId : String, windowTitle : String }
     , tasksInProgress : Dict.Dict String TaskInProgress
@@ -144,6 +153,8 @@ type alias State botSettings botState =
     , botSettings : Maybe botSettings
     , simpleBot : botState
     , simpleBotAggregateQueueResponse : Maybe BotResponse
+    , lastReadFromWindowSuccess :
+        Maybe { timeInMilliseconds : Int, reading : InterfaceToHost.ReadFromWindowCompleteStruct }
     }
 
 
@@ -220,6 +231,7 @@ initState simpleBotInitState =
     , botSettings = Nothing
     , simpleBot = simpleBotInitState
     , simpleBotAggregateQueueResponse = Nothing
+    , lastReadFromWindowSuccess = Nothing
     }
 
 
@@ -544,7 +556,7 @@ deriveTasksAfterIntegrateBotEvents stateBefore =
                                         (\simpleBotTaskWithId ->
                                             ( { taskId = simpleBotTaskWithId.taskId |> taskIdFromSimpleBotTaskId
                                               , task =
-                                                    taskOnWindowFromSimpleBotTask operateSimpleBot simpleBotTaskWithId.task
+                                                    taskOnWindowFromSimpleBotTask operateSimpleBot simpleBotTaskWithId.task stateBefore
                                               , taskOrigin = BotOrigin simpleBotTaskWithId.taskId simpleBotTaskWithId.task
                                               }
                                             , simpleBotTaskWithId
@@ -686,6 +698,12 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                 InterfaceToHost.RandomBytesResponse _ ->
                                     Err "RandomBytesResponse"
 
+                                InterfaceToHost.WindowsInputResponse _ ->
+                                    Ok
+                                        ( stateBefore
+                                        , NoResultValue
+                                        )
+
                                 InterfaceToHost.CompleteWithoutResult ->
                                     Err "CompleteWithoutResult"
 
@@ -723,7 +741,7 @@ simpleBotEventsFromHostEventAtTime event maybeCompletedBotTask stateBefore =
                                                                 BringWindowToForeground ->
                                                                     Ok ( stateBefore, NoResultValue )
 
-                                                                EffectSequenceOnWindowTask _ ->
+                                                                EffectSequenceOnWindowTask _ _ ->
                                                                     Ok ( stateBefore, NoResultValue )
 
                                                                 ReadFromWindow ->
@@ -981,8 +999,9 @@ taskIdFromSimpleBotTaskId simpleBotTaskId =
 taskOnWindowFromSimpleBotTask :
     OperateSimpleBotStruct
     -> Task
+    -> State botSettings botState
     -> InterfaceToHost.Task
-taskOnWindowFromSimpleBotTask config simpleBotTask =
+taskOnWindowFromSimpleBotTask config simpleBotTask state =
     let
         continueWithTaskOnWindow taskOnWindow =
             { windowId = config.windowId, task = taskOnWindow }
@@ -991,16 +1010,21 @@ taskOnWindowFromSimpleBotTask config simpleBotTask =
     in
     case simpleBotTask of
         BringWindowToForeground ->
-            VolatileProcessInterface.BringWindowToForeground
-                |> continueWithTaskOnWindow
+            case state.targetWindow of
+                Nothing ->
+                    InterfaceToHost.WindowsInputRequest []
+
+                Just targetWindow ->
+                    InterfaceToHost.WindowsInputRequest
+                        [ InterfaceToHost.BringWindowToForeground
+                            ("winapi/" ++ targetWindow.windowId)
+                        ]
 
         ReadFromWindow ->
             config.buildHostTaskToReadFromWindow
 
-        EffectSequenceOnWindowTask effectSequence ->
-            effectSequence
-                |> VolatileProcessInterface.EffectSequenceOnWindowRequest
-                |> continueWithTaskOnWindow
+        EffectSequenceOnWindowTask effectConfig effectSequence ->
+            effectSequenceTask effectConfig effectSequence state
 
 
 integrateEvent :
@@ -1108,10 +1132,22 @@ integrateEventTaskComplete _ taskResult stateBefore =
         InterfaceToHost.OpenWindowResponse _ ->
             stateBefore
 
+        InterfaceToHost.InvokeMethodOnWindowResponse _ (Ok (InterfaceToHost.ReadFromWindowMethodResult readFromWindowComplete)) ->
+            { stateBefore
+                | lastReadFromWindowSuccess =
+                    Just
+                        { timeInMilliseconds = stateBefore.timeInMilliseconds
+                        , reading = readFromWindowComplete
+                        }
+            }
+
         InterfaceToHost.InvokeMethodOnWindowResponse _ _ ->
             stateBefore
 
         InterfaceToHost.RandomBytesResponse _ ->
+            stateBefore
+
+        InterfaceToHost.WindowsInputResponse _ ->
             stateBefore
 
         InterfaceToHost.CompleteWithoutResult ->
@@ -1200,26 +1236,40 @@ getNextSetupStepWithDescriptionFromState state =
                             continueWithListWindows
 
                         Just targetWindow ->
-                            OperateSimpleBot
-                                { windowId = targetWindow.windowId
-                                , buildHostTaskFromRequest =
-                                    \request ->
-                                        InterfaceToHost.RequestToVolatileProcess
-                                            (InterfaceToHost.RequestRequiringInputFocus
-                                                { acquireInputFocus = { maximumDelayMilliseconds = 500 }
-                                                , request =
-                                                    { processId = createVolatileProcessCompleted.processId
-                                                    , request =
-                                                        request
-                                                            |> VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
-                                                    }
-                                                }
-                                            )
-                                , buildHostTaskToReadFromWindow =
+                            let
+                                buildHostTaskToReadFromWindow =
                                     InterfaceToHost.InvokeMethodOnWindowRequest
                                         ("winapi-" ++ targetWindow.windowId)
                                         InterfaceToHost.ReadFromWindowMethod
-                                }
+                            in
+                            case state.lastReadFromWindowSuccess of
+                                Nothing ->
+                                    ContinueSetupWithTask
+                                        { task =
+                                            { taskId = "read_from_window"
+                                            , task = buildHostTaskToReadFromWindow
+                                            }
+                                        , taskDescription = "Read from window"
+                                        }
+
+                                Just _ ->
+                                    OperateSimpleBot
+                                        { windowId = targetWindow.windowId
+                                        , buildHostTaskFromRequest =
+                                            \request ->
+                                                InterfaceToHost.RequestToVolatileProcess
+                                                    (InterfaceToHost.RequestRequiringInputFocus
+                                                        { acquireInputFocus = { maximumDelayMilliseconds = 500 }
+                                                        , request =
+                                                            { processId = createVolatileProcessCompleted.processId
+                                                            , request =
+                                                                request
+                                                                    |> VolatileProcessInterface.buildRequestStringToGetResponseFromVolatileProcess
+                                                            }
+                                                        }
+                                                    )
+                                        , buildHostTaskToReadFromWindow = buildHostTaskToReadFromWindow
+                                        }
 
 
 taskIdFromString : String -> TaskId
@@ -1239,14 +1289,12 @@ setMouseCursorPositionEffect =
 
 mouseButtonDownEffect : MouseButton -> Common.EffectOnWindow.EffectOnWindowStructure
 mouseButtonDownEffect =
-    Common.EffectOnWindow.virtualKeyCodeFromMouseButton
-        >> Common.EffectOnWindow.KeyDownEffect
+    Common.EffectOnWindow.ButtonDownEffect
 
 
 mouseButtonUpEffect : MouseButton -> Common.EffectOnWindow.EffectOnWindowStructure
 mouseButtonUpEffect =
-    Common.EffectOnWindow.virtualKeyCodeFromMouseButton
-        >> Common.EffectOnWindow.KeyUpEffect
+    Common.EffectOnWindow.ButtonUpEffect
 
 
 keyboardKeyDownEffect : Common.EffectOnWindow.VirtualKeyCode -> Common.EffectOnWindow.EffectOnWindowStructure
@@ -1260,18 +1308,76 @@ keyboardKeyUpEffect =
 
 
 effectSequenceTask :
-    { delayBetweenEffectsMilliseconds : Int }
+    EffectSequenceConfig
     -> List Common.EffectOnWindow.EffectOnWindowStructure
-    -> Task
-effectSequenceTask config effects =
-    effects
-        |> List.concatMap
-            (\effect ->
-                [ VolatileProcessInterface.EffectElement effect
-                , VolatileProcessInterface.DelayInMillisecondsElement config.delayBetweenEffectsMilliseconds
-                ]
-            )
-        |> EffectSequenceOnWindowTask
+    -> State a b
+    -> InterfaceToHost.Task
+effectSequenceTask config effects state =
+    case state.targetWindow of
+        Nothing ->
+            InterfaceToHost.WindowsInputRequest []
+
+        Just targetWindow ->
+            case state.lastReadFromWindowSuccess of
+                Nothing ->
+                    InterfaceToHost.WindowsInputRequest []
+
+                Just readFromWindowEvent ->
+                    let
+                        mapInputItem : Common.EffectOnWindow.EffectOnWindowStructure -> InterfaceToHost.WindowsInputSequenceItem
+                        mapInputItem effect =
+                            case effect of
+                                Common.EffectOnWindow.SetMouseCursorPositionEffect location ->
+                                    let
+                                        clientRectLeftUpperToScreen =
+                                            readFromWindowEvent.reading.clientRectLeftUpperToScreen
+
+                                        x =
+                                            location.x + clientRectLeftUpperToScreen.x
+
+                                        y =
+                                            location.y + clientRectLeftUpperToScreen.y
+                                    in
+                                    InterfaceToHost.MouseMoveAbsolute x y
+
+                                Common.EffectOnWindow.KeyDownEffect (Common.EffectOnWindow.VirtualKeyCodeFromInt virtualKeyCode) ->
+                                    InterfaceToHost.KeyDown virtualKeyCode False
+
+                                Common.EffectOnWindow.KeyUpEffect (Common.EffectOnWindow.VirtualKeyCodeFromInt virtualKeyCode) ->
+                                    InterfaceToHost.KeyUp virtualKeyCode False
+
+                                Common.EffectOnWindow.ButtonDownEffect mouseButton ->
+                                    InterfaceToHost.ButtonDown (windowsMouseButtonIdFromMouseButton mouseButton)
+
+                                Common.EffectOnWindow.ButtonUpEffect mouseButton ->
+                                    InterfaceToHost.ButtonUp (windowsMouseButtonIdFromMouseButton mouseButton)
+
+                        inputItems =
+                            InterfaceToHost.WaitMilliseconds config.waitBeforeEffectsMs
+                                :: (effects
+                                        |> List.concatMap
+                                            (\effect ->
+                                                [ mapInputItem effect
+                                                , InterfaceToHost.WaitMilliseconds config.waitBetweenEffectsMs
+                                                ]
+                                            )
+                                   )
+                    in
+                    InterfaceToHost.WindowsInputRequest
+                        (List.concat
+                            [ [ InterfaceToHost.BringWindowToForeground
+                                    ("winapi/" ++ targetWindow.windowId)
+                              ]
+                            , inputItems
+                            ]
+                        )
+
+
+windowsMouseButtonIdFromMouseButton : MouseButton -> Int
+windowsMouseButtonIdFromMouseButton mouseButton =
+    case Common.EffectOnWindow.virtualKeyCodeFromMouseButton mouseButton of
+        Common.EffectOnWindow.VirtualKeyCodeFromInt code ->
+            code
 
 
 readFromWindow : Task

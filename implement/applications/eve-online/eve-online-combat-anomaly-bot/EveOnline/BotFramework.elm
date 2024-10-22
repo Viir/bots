@@ -18,7 +18,7 @@ To learn more about developing for EVE Online, see the guide at <https://to.botl
 
 import Array
 import Bitwise
-import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
 import Common.Basics
 import Common.EffectOnWindow
 import CompilationInterface.SourceFiles
@@ -78,7 +78,7 @@ type TaskType
 
 
 type alias ContinueSessionStructure =
-    { effects : List Common.EffectOnWindow.EffectOnWindowStructure
+    { effects : List Common.EffectOnWindow.EffectOnWindowStruct
     , millisecondsToNextReadingFromGame : Int
     , statusText : String
     }
@@ -128,6 +128,7 @@ type alias SetupState =
     , searchUIRootAddressResponse :
         Maybe { timeInMilliseconds : Int, response : VolatileProcessInterface.SearchUIRootAddressResponseStruct }
     , lastReadingFromGame : Maybe { timeInMilliseconds : Int, stage : ReadingFromGameState }
+    , lastReadFromGameComplete : Maybe InterfaceToHost.ReadFromWindowCompleteStruct
     , lastEffectFailedToAcquireInputFocus : Maybe String
     , randomIntegers : List Int
     }
@@ -151,7 +152,7 @@ type SetupTask
 
 
 type alias OperateBotConfiguration =
-    { buildTaskFromEffectSequence : List Common.EffectOnWindow.EffectOnWindowStructure -> InterfaceToHost.Task
+    { buildTaskFromEffectSequence : List Common.EffectOnWindow.EffectOnWindowStruct -> InterfaceToHost.Task
     , readFromWindowTasks : List InterfaceToHost.Task
     , releaseVolatileProcessTask : InterfaceToHost.Task
     }
@@ -474,6 +475,7 @@ initSetup =
     , gameClientProcesses = Nothing
     , searchUIRootAddressResponse = Nothing
     , lastReadingFromGame = Nothing
+    , lastReadFromGameComplete = Nothing
     , lastEffectFailedToAcquireInputFocus = Nothing
     , randomIntegers = []
     }
@@ -1166,6 +1168,9 @@ integrateTaskResult ( timeInMilliseconds, taskResult ) setupStateBefore =
                 _ ->
                     setupStateBefore
 
+        InterfaceToHost.WindowsInputResponse _ ->
+            setupStateBefore
+
         InterfaceToHost.RandomBytesResponse randomBytes ->
             { setupStateBefore
                 | randomIntegers = setupStateBefore.randomIntegers ++ randomIntegersFromRandomBytes randomBytes
@@ -1290,6 +1295,7 @@ integrateReadFromWindowComplete { timeInMilliseconds, readFromWindowComplete } s
                 { timeInMilliseconds = readingTimeInMilliseconds
                 , stage = ReadingFromGameInProgress inProgress
                 }
+        , lastReadFromGameComplete = Just readFromWindowComplete
     }
 
 
@@ -1491,15 +1497,22 @@ getSetupTaskWhenVolatileProcessSetupCompleted { timeInMilliseconds } botConfigur
                                                         OperateBot
                                                             { buildTaskFromEffectSequence =
                                                                 \effectSequenceOnWindow ->
-                                                                    { windowId = gameClientSelection.selectedProcess.mainWindowId
-                                                                    , task =
-                                                                        effectSequenceOnWindow
-                                                                            |> List.map (effectOnWindowAsVolatileProcessEffectOnWindow >> VolatileProcessInterface.Effect)
-                                                                            |> List.intersperse (VolatileProcessInterface.DelayMilliseconds effectSequenceSpacingMilliseconds)
-                                                                    , bringWindowToForeground = True
-                                                                    }
-                                                                        |> VolatileProcessInterface.EffectSequenceOnWindow
-                                                                        |> buildTaskFromRequestToVolatileProcess (Just { maximumDelayMilliseconds = 500 })
+                                                                    case stateBefore.lastReadFromGameComplete of
+                                                                        Nothing ->
+                                                                            InterfaceToHost.WindowsInputRequest []
+
+                                                                        Just lastReadFromGameComplete ->
+                                                                            InterfaceToHost.WindowsInputRequest
+                                                                                (List.concat
+                                                                                    [ [ InterfaceToHost.BringWindowToForeground
+                                                                                            ("winapi/" ++ gameClientSelection.selectedProcess.mainWindowId)
+                                                                                      , InterfaceToHost.WaitMilliseconds 100
+                                                                                      ]
+                                                                                    , effectSequenceOnWindow
+                                                                                        |> List.map (effectOnWindowAsWindowsInputSequenceItem lastReadFromGameComplete)
+                                                                                        |> List.intersperse (InterfaceToHost.WaitMilliseconds 210)
+                                                                                    ]
+                                                                                )
                                                             , readFromWindowTasks =
                                                                 [ readFromWindowRequest
                                                                     |> buildTaskFromRequestToVolatileProcess
@@ -1531,17 +1544,41 @@ getSetupTaskWhenVolatileProcessSetupCompleted { timeInMilliseconds } botConfigur
                                                                         continueNormalOperation
 
 
-effectOnWindowAsVolatileProcessEffectOnWindow : Common.EffectOnWindow.EffectOnWindowStructure -> VolatileProcessInterface.EffectOnWindowStructure
-effectOnWindowAsVolatileProcessEffectOnWindow effectOnWindow =
+effectOnWindowAsWindowsInputSequenceItem :
+    InterfaceToHost.ReadFromWindowCompleteStruct
+    -> Common.EffectOnWindow.EffectOnWindowStruct
+    -> InterfaceToHost.WindowsInputSequenceItem
+effectOnWindowAsWindowsInputSequenceItem readFromWindow effectOnWindow =
     case effectOnWindow of
         Common.EffectOnWindow.MouseMoveTo mouseMoveTo ->
-            VolatileProcessInterface.MouseMoveTo { location = mouseMoveTo }
+            let
+                clientRectOffset =
+                    readFromWindow.clientRectLeftUpperToScreen
 
-        Common.EffectOnWindow.KeyDown key ->
-            VolatileProcessInterface.KeyDown key
+                mouseMoveToInClientArea =
+                    { x = mouseMoveTo.x + clientRectOffset.x
+                    , y = mouseMoveTo.y + clientRectOffset.y
+                    }
+            in
+            InterfaceToHost.MouseMoveAbsolute
+                mouseMoveToInClientArea.x
+                mouseMoveToInClientArea.y
 
-        Common.EffectOnWindow.KeyUp key ->
-            VolatileProcessInterface.KeyUp key
+        Common.EffectOnWindow.ButtonDown button ->
+            case Common.EffectOnWindow.virtualKeyCodeFromMouseButton button of
+                Common.EffectOnWindow.VirtualKeyCodeFromInt virtualKeyCode ->
+                    InterfaceToHost.ButtonDown virtualKeyCode
+
+        Common.EffectOnWindow.ButtonUp button ->
+            case Common.EffectOnWindow.virtualKeyCodeFromMouseButton button of
+                Common.EffectOnWindow.VirtualKeyCodeFromInt virtualKeyCode ->
+                    InterfaceToHost.ButtonUp virtualKeyCode
+
+        Common.EffectOnWindow.KeyDown (Common.EffectOnWindow.VirtualKeyCodeFromInt key) ->
+            InterfaceToHost.KeyDown key False
+
+        Common.EffectOnWindow.KeyUp (Common.EffectOnWindow.VirtualKeyCodeFromInt key) ->
+            InterfaceToHost.KeyUp key False
 
 
 selectGameClientInstanceWithTopmostWindow :
@@ -1674,7 +1711,7 @@ With the switch to the new 'Photon UI' in the game client, the effects used to e
 -}
 unpackContextMenuTreeToListOfActionsDependingOnReadings :
     UseContextMenuCascadeNode
-    -> List (ReadingFromGameClient -> ( String, Maybe (Result () (List Common.EffectOnWindow.EffectOnWindowStructure)) ))
+    -> List (ReadingFromGameClient -> ( String, Maybe (Result () (List Common.EffectOnWindow.EffectOnWindowStruct)) ))
 unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
     let
         actionFromChoice { isLastElement } ( describeChoice, chooseEntry ) =
@@ -1723,7 +1760,7 @@ secondsToSessionEnd botEventContext =
         |> Maybe.map (\sessionTimeLimitInMilliseconds -> (sessionTimeLimitInMilliseconds - botEventContext.timeInMilliseconds) // 1000)
 
 
-mouseMoveToUIElement : UIElement -> List Common.EffectOnWindow.EffectOnWindowStructure
+mouseMoveToUIElement : UIElement -> List Common.EffectOnWindow.EffectOnWindowStruct
 mouseMoveToUIElement uiElement =
     Common.EffectOnWindow.effectsMouseMoveToLocation
         (uiElement.totalDisplayRegionVisible |> centerFromDisplayRegion)
@@ -1737,7 +1774,7 @@ In that case, different strategies will lead to an alternate solution to achieve
 mouseClickOnUIElement :
     Common.EffectOnWindow.MouseButton
     -> UIElement
-    -> Result () (List Common.EffectOnWindow.EffectOnWindowStructure)
+    -> Result () (List Common.EffectOnWindow.EffectOnWindowStruct)
 mouseClickOnUIElement mouseButton uiElement =
     if uiNodeVisibleRegionLargeEnoughForClicking uiElement then
         Ok
@@ -1887,13 +1924,19 @@ shipUIIndicatesShipIsWarpingOrJumping =
         >> Maybe.withDefault False
 
 
-doEffectsClickModuleButton : EveOnline.ParseUserInterface.ShipUIModuleButton -> List Common.EffectOnWindow.EffectOnWindowStructure -> Bool
+doEffectsClickModuleButton :
+    EveOnline.ParseUserInterface.ShipUIModuleButton
+    -> List Common.EffectOnWindow.EffectOnWindowStruct
+    -> Bool
 doEffectsClickModuleButton moduleButton =
     findMouseButtonClickLocationsInListOfEffects Common.EffectOnWindow.MouseButtonLeft
         >> List.any (isPointInRectangle moduleButton.uiNode.totalDisplayRegion)
 
 
-findMouseButtonClickLocationsInListOfEffects : Common.EffectOnWindow.MouseButton -> List Common.EffectOnWindow.EffectOnWindowStructure -> List Location2d
+findMouseButtonClickLocationsInListOfEffects :
+    Common.EffectOnWindow.MouseButton
+    -> List Common.EffectOnWindow.EffectOnWindowStruct
+    -> List Location2d
 findMouseButtonClickLocationsInListOfEffects mouseButton =
     List.foldl
         (\effect ( maybeLastMouseMoveLocation, leftClickLocations ) ->

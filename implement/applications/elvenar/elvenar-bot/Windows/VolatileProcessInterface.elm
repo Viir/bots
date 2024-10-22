@@ -77,12 +77,6 @@ type alias WindowId =
 
 type TaskOnWindowRequestStruct
     = BringWindowToForeground
-    | EffectSequenceOnWindowRequest (List EffectSequenceOnWindowElement)
-
-
-type EffectSequenceOnWindowElement
-    = EffectElement EffectOnWindowStructure
-    | DelayInMillisecondsElement Int
 
 
 type TaskOnWindowResponseStruct
@@ -193,62 +187,9 @@ encodeTaskOnWindowRequestStruct taskOnWindow =
     (case taskOnWindow of
         BringWindowToForeground ->
             ( "BringWindowToForeground", [] |> Json.Encode.object )
-
-        EffectSequenceOnWindowRequest effectSequenceOnWindowRequest ->
-            ( "EffectSequenceOnWindowRequest"
-            , effectSequenceOnWindowRequest |> Json.Encode.list jsonEncodeEffectSequenceOnWindowElement
-            )
     )
         |> List.singleton
         |> Json.Encode.object
-
-
-jsonEncodeEffectSequenceOnWindowElement : EffectSequenceOnWindowElement -> Json.Encode.Value
-jsonEncodeEffectSequenceOnWindowElement sequenceElement =
-    (case sequenceElement of
-        EffectElement effect ->
-            ( "EffectElement", jsonEncodeEffectOnWindowStructure effect )
-
-        DelayInMillisecondsElement milliseconds ->
-            ( "DelayInMillisecondsElement", Json.Encode.int milliseconds )
-    )
-        |> List.singleton
-        |> Json.Encode.object
-
-
-jsonDecodeEffectSequenceOnWindowElement : Json.Decode.Decoder EffectSequenceOnWindowElement
-jsonDecodeEffectSequenceOnWindowElement =
-    Json.Decode.oneOf
-        [ Json.Decode.field "EffectElement"
-            (jsonDecodeEffectOnWindowStructure |> Json.Decode.map EffectElement)
-        , Json.Decode.field "DelayInMillisecondsElement" Json.Decode.int
-            |> Json.Decode.map DelayInMillisecondsElement
-        ]
-
-
-jsonEncodeEffectOnWindowStructure : EffectOnWindowStructure -> Json.Encode.Value
-jsonEncodeEffectOnWindowStructure effectOnWindow =
-    (case effectOnWindow of
-        SetMouseCursorPositionEffect position ->
-            ( "SetMouseCursorPositionEffect", position |> jsonEncodeLocation2d )
-
-        KeyDownEffect virtualKeyCode ->
-            ( "KeyDownEffect", virtualKeyCode |> jsonEncodeVirtualKeyCode )
-
-        KeyUpEffect virtualKeyCode ->
-            ( "KeyUpEffect", virtualKeyCode |> jsonEncodeVirtualKeyCode )
-    )
-        |> List.singleton
-        |> Json.Encode.object
-
-
-jsonDecodeEffectOnWindowStructure : Json.Decode.Decoder EffectOnWindowStructure
-jsonDecodeEffectOnWindowStructure =
-    Json.Decode.oneOf
-        [ Json.Decode.field "SetMouseCursorPositionEffect" (jsonDecodeLocation2d |> Json.Decode.map SetMouseCursorPositionEffect)
-        , Json.Decode.field "KeyDownEffect" (jsonDecodeVirtualKeyCode |> Json.Decode.map KeyDownEffect)
-        , Json.Decode.field "KeyUpEffect" (jsonDecodeVirtualKeyCode |> Json.Decode.map KeyUpEffect)
-        ]
 
 
 jsonEncodeVirtualKeyCode : VirtualKeyCode -> Json.Encode.Value

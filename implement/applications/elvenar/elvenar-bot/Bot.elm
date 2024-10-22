@@ -36,7 +36,7 @@ module Bot exposing
     , filterRemoveCloseLocations
     )
 
-import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
 import BotLab.SimpleBotFramework as SimpleBotFramework
 import Common.AppSettings as AppSettings
 import Common.EffectOnWindow
@@ -195,15 +195,18 @@ processEvent _ event stateBeforeUpdateTime =
                                             ( [ { taskId =
                                                     SimpleBotFramework.taskIdFromString "collect-coin-input-sequence"
                                                 , task =
-                                                    Common.EffectOnWindow.effectsForMouseDragAndDrop
-                                                        { startPosition = mouseDownLocation
-                                                        , mouseButton = Common.EffectOnWindow.LeftMouseButton
-                                                        , waypointsPositionsInBetween =
-                                                            [ mouseDownLocation |> addOffset { x = 15, y = 30 } ]
-                                                        , endPosition = mouseDownLocation
+                                                    SimpleBotFramework.EffectSequenceOnWindowTask
+                                                        { waitBeforeEffectsMs = 300
+                                                        , waitBetweenEffectsMs = 500
                                                         }
-                                                        |> SimpleBotFramework.effectSequenceTask
-                                                            { delayBetweenEffectsMilliseconds = 100 }
+                                                        (Common.EffectOnWindow.effectsForMouseDragAndDrop
+                                                            { startPosition = mouseDownLocation
+                                                            , mouseButton = Common.EffectOnWindow.LeftMouseButton
+                                                            , waypointsPositionsInBetween =
+                                                                [ mouseDownLocation |> addOffset { x = 15, y = 30 } ]
+                                                            , endPosition = mouseDownLocation
+                                                            }
+                                                        )
                                                 }
                                               ]
                                             , "Collect coin at " ++ describeLocation coinFoundLocation

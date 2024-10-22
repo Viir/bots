@@ -1,4 +1,4 @@
-module BotLab.BotInterface_To_Host_2023_05_15 exposing (..)
+module BotLab.BotInterface_To_Host_2024_10_19 exposing (..)
 
 {-| This module contains types for the interface between a bot and the botlab client.
 The structures in these types reflect the standard interface for player agents to observe their environment and act in their environment.
@@ -45,6 +45,7 @@ type TaskResultStructure
     | OpenWindowResponse (Result String OpenWindowSuccess)
     | InvokeMethodOnWindowResponse String (Result InvokeMethodOnWindowError InvokeMethodOnWindowResult)
     | RandomBytesResponse (List Int)
+    | WindowsInputResponse WindowsInputResponseStruct
     | CompleteWithoutResult
 
 
@@ -100,6 +101,7 @@ type Task
     | ReleaseVolatileProcess ReleaseVolatileProcessStructure
     | OpenWindowRequest OpenWindowRequestStruct
     | InvokeMethodOnWindowRequest String MethodOnWindow
+    | WindowsInputRequest (List WindowsInputSequenceItem)
     | RandomBytesRequest Int
 
 
@@ -245,4 +247,82 @@ type alias WinApiRectStruct =
 type alias WinApiPointStruct =
     { x : Int
     , y : Int
+    }
+
+
+
+{-
+
+   [System.Text.Json.Serialization.JsonConverter(typeof(Pine.Json.JsonConverterForChoiceType))]
+   public abstract record WindowsInputSequenceItem
+   {
+       public record WaitMilliseconds(
+           int Milliseconds)
+           : WindowsInputSequenceItem;
+
+       public record KeyDown(
+           int KeyCode,
+           bool Extended)
+           : WindowsInputSequenceItem;
+
+       public record KeyUp(
+           int KeyCode,
+           bool Extended)
+           : WindowsInputSequenceItem;
+
+       public record MouseMoveAbsolute(
+           int X,
+           int Y)
+           : WindowsInputSequenceItem;
+
+       public record MouseMoveRelative(
+           int X,
+           int Y)
+           : WindowsInputSequenceItem;
+
+       public record ButtonDown(
+           int Button)
+           : WindowsInputSequenceItem;
+
+       public record ButtonUp(
+           int Button)
+           : WindowsInputSequenceItem;
+
+       public record ButtonScroll(
+           int Button,
+           int Direction,
+           int Offset)
+           : WindowsInputSequenceItem;
+
+       public record CharacterDown(
+           int Character)
+           : WindowsInputSequenceItem;
+
+       public record CharacterUp(
+           int Character)
+           : WindowsInputSequenceItem;
+   }
+-}
+
+
+type WindowsInputSequenceItem
+    = WaitMilliseconds Int
+    | KeyDown Int Bool
+    | KeyUp Int Bool
+    | MouseMoveAbsolute Int Int
+    | MouseMoveRelative Int Int
+    | ButtonDown Int
+    | ButtonUp Int
+    | ButtonScroll Int Int Int
+    | CharacterDown Int
+    | CharacterUp Int
+    | BringWindowToForeground String
+    | AbortIfWindowNotInForeground String
+
+
+type alias WindowsInputResponseStruct =
+    { completedStepsCount : Int
+    , abortedStepsCount : Int
+    , totalTimeMilliseconds : Int
+    , errorMessages : List String
     }

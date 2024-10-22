@@ -10,7 +10,6 @@ type RequestToVolatileHost
     = ListGameClientProcessesRequest
     | SearchUIRootAddress SearchUIRootAddressStructure
     | ReadFromWindow ReadFromWindowStructure
-    | EffectSequenceOnWindow (TaskOnWindowStructure (List EffectSequenceElement))
 
 
 type ResponseFromVolatileHost
@@ -81,30 +80,6 @@ type alias TaskOnWindowStructure task =
     }
 
 
-type EffectSequenceElement
-    = Effect EffectOnWindowStructure
-    | DelayMilliseconds Int
-
-
-{-| Using names from Windows API and <https://www.nuget.org/packages/InputSimulator/>
--}
-type
-    EffectOnWindowStructure
-    {-
-       = MouseMoveTo MouseMoveToStructure
-       | MouseButtonDown MouseButtonChangeStructure
-       | MouseButtonUp MouseButtonChangeStructure
-       | MouseHorizontalScroll Int
-       | MouseVerticalScroll Int
-       | KeyboardKeyDown VirtualKeyCode
-       | KeyboardKeyUp VirtualKeyCode
-       | TextEntry String
-    -}
-    = MouseMoveTo MouseMoveToStructure
-    | KeyDown VirtualKeyCode
-    | KeyUp VirtualKeyCode
-
-
 type alias MouseMoveToStructure =
     { location : Location2d }
 
@@ -148,13 +123,6 @@ encodeRequestToVolatileHost request =
         ReadFromWindow readFromWindow ->
             Json.Encode.object [ ( "ReadFromWindow", readFromWindow |> encodeReadFromWindow ) ]
 
-        EffectSequenceOnWindow taskOnWindow ->
-            Json.Encode.object
-                [ ( "EffectSequenceOnWindow"
-                  , taskOnWindow |> encodeTaskOnWindow (Json.Encode.list encodeEffectSequenceElement)
-                  )
-                ]
-
 
 decodeRequestToVolatileHost : Json.Decode.Decoder RequestToVolatileHost
 decodeRequestToVolatileHost =
@@ -162,25 +130,6 @@ decodeRequestToVolatileHost =
         [ Json.Decode.field "ListGameClientProcessesRequest" (jsonDecodeSucceedWhenNotNull ListGameClientProcessesRequest)
         , Json.Decode.field "SearchUIRootAddress" (decodeSearchUIRootAddress |> Json.Decode.map SearchUIRootAddress)
         , Json.Decode.field "ReadFromWindow" (decodeReadFromWindow |> Json.Decode.map ReadFromWindow)
-        , Json.Decode.field "EffectSequenceOnWindow" (decodeTaskOnWindow (Json.Decode.list decodeEffectSequenceElement) |> Json.Decode.map EffectSequenceOnWindow)
-        ]
-
-
-encodeEffectSequenceElement : EffectSequenceElement -> Json.Encode.Value
-encodeEffectSequenceElement sequenceElement =
-    case sequenceElement of
-        Effect effect ->
-            Json.Encode.object [ ( "effect", encodeEffectOnWindowStructure effect ) ]
-
-        DelayMilliseconds delayMilliseconds ->
-            Json.Encode.object [ ( "delayMilliseconds", Json.Encode.int delayMilliseconds ) ]
-
-
-decodeEffectSequenceElement : Json.Decode.Decoder EffectSequenceElement
-decodeEffectSequenceElement =
-    Json.Decode.oneOf
-        [ Json.Decode.field "effect" (decodeEffectOnWindowStructure |> Json.Decode.map Effect)
-        , Json.Decode.field "delayMilliseconds" (Json.Decode.int |> Json.Decode.map DelayMilliseconds)
         ]
 
 
@@ -208,34 +157,6 @@ decodeTaskOnWindow taskDecoder =
         (Json.Decode.field "windowId" Json.Decode.string)
         (Json.Decode.field "bringWindowToForeground" Json.Decode.bool)
         (Json.Decode.field "task" taskDecoder)
-
-
-encodeEffectOnWindowStructure : EffectOnWindowStructure -> Json.Encode.Value
-encodeEffectOnWindowStructure effectOnWindow =
-    case effectOnWindow of
-        MouseMoveTo mouseMoveTo ->
-            Json.Encode.object
-                [ ( "MouseMoveTo", mouseMoveTo |> encodeMouseMoveTo )
-                ]
-
-        KeyDown virtualKeyCode ->
-            Json.Encode.object
-                [ ( "KeyDown", virtualKeyCode |> encodeKey )
-                ]
-
-        KeyUp virtualKeyCode ->
-            Json.Encode.object
-                [ ( "KeyUp", virtualKeyCode |> encodeKey )
-                ]
-
-
-decodeEffectOnWindowStructure : Json.Decode.Decoder EffectOnWindowStructure
-decodeEffectOnWindowStructure =
-    Json.Decode.oneOf
-        [ Json.Decode.field "MouseMoveTo" (decodeMouseMoveTo |> Json.Decode.map MouseMoveTo)
-        , Json.Decode.field "KeyDown" (decodeKey |> Json.Decode.map KeyDown)
-        , Json.Decode.field "KeyUp" (decodeKey |> Json.Decode.map KeyUp)
-        ]
 
 
 encodeKey : VirtualKeyCode -> Json.Encode.Value

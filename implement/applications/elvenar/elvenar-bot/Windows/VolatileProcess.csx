@@ -14,9 +14,6 @@
 // "Newtonsoft.Json"
 #r "sha256:B9B4E633EA6C728BAD5F7CBBEF7F8B842F7E10181731DBE5EC3CD995A6F60287"
 
-//  "WindowsInput"
-#r "sha256:81110D44256397F0F3C572A20CA94BB4C669E5DE89F9348ABAD263FBD81C54B9"
-
 //  "System.Drawing.Common"
 #r "sha256:C5333AA60281006DFCFBBC0BC04C217C581EFF886890565E994900FB60448B02"
 
@@ -63,20 +60,6 @@ public class Request
         public object BringWindowToForeground;
 
         public ReadFromWindowStructure ReadFromWindowRequest;
-
-        public EffectSequenceOnWindowElement[] EffectSequenceOnWindowRequest;
-    }
-
-    public class EffectSequenceOnWindowElement
-    {
-        public EffectOnWindowStructure EffectElement;
-
-        public int? DelayInMillisecondsElement;
-    }
-
-    public class VirtualKeyCode
-    {
-        public int virtualKeyCode;
     }
 
     public class ReadFromWindowStructure
@@ -96,15 +79,6 @@ public class Request
         public Rect2d[] crops_1x1_r8g8b8;
 
         public Rect2d[] crops_2x2_r8g8b8;
-    }
-
-    public class EffectOnWindowStructure
-    {
-        public Location2d? SetMouseCursorPositionEffect;
-
-        public VirtualKeyCode KeyDownEffect;
-
-        public VirtualKeyCode KeyUpEffect;
     }
 }
 
@@ -386,8 +360,6 @@ Response performTaskOnWindow(
             });
     }
 
-    var inputSimulator = new WindowsInput.InputSimulator();
-
     var task = taskOnIdentifiedWindow.task;
 
     if (task.BringWindowToForeground != null)
@@ -462,24 +434,6 @@ Response performTaskOnWindow(
             });
     }
 
-    if (task.EffectSequenceOnWindowRequest != null)
-    {
-        foreach (var sequenceElement in task.EffectSequenceOnWindowRequest)
-        {
-            if (sequenceElement?.EffectElement != null)
-                ExecuteEffectOnWindow(
-                    sequenceElement.EffectElement,
-                    windowHandle: windowHandle,
-                    windowRect: windowRect,
-                    bringWindowToForeground: false);
-
-            if (sequenceElement?.DelayInMillisecondsElement != null)
-                System.Threading.Tasks.Task.Delay(TimeSpan.FromMilliseconds(sequenceElement.DelayInMillisecondsElement.Value)).Wait();
-        }
-
-        return new Response { NoReturnValue = new object() };
-    }
-
     throw new Exception("Unexpected task in request:\n" + Newtonsoft.Json.JsonConvert.SerializeObject(task));
 }
 
@@ -511,68 +465,6 @@ System.Collections.Generic.IReadOnlyList<Response.WindowSummaryStruct> ListWindo
         .ToList();
 
     return windows;
-}
-
-
-void ExecuteEffectOnWindow(
-    Request.EffectOnWindowStructure effectOnWindow,
-    IntPtr windowHandle,
-    WinApi.Rect windowRect,
-    bool bringWindowToForeground)
-{
-    if (bringWindowToForeground)
-    {
-        WinApi.SetForegroundWindow(windowHandle);
-        WinApi.ShowWindow(windowHandle, WinApi.SW_RESTORE);
-    }
-
-    if (effectOnWindow.SetMouseCursorPositionEffect != null)
-    {
-        WinApi.SetCursorPos(
-            effectOnWindow.SetMouseCursorPositionEffect.Value.x + windowRect.left,
-            effectOnWindow.SetMouseCursorPositionEffect.Value.y + windowRect.top);
-    }
-
-    if (effectOnWindow?.KeyDownEffect != null)
-    {
-        var virtualKeyCode = (WindowsInput.Native.VirtualKeyCode)effectOnWindow.KeyDownEffect.virtualKeyCode;
-
-        (MouseActionForKeyUpOrDown(keyCode: virtualKeyCode, buttonUp: false)
-        ??
-        (() => new WindowsInput.InputSimulator().Keyboard.KeyDown(virtualKeyCode)))();
-    }
-
-    if (effectOnWindow?.KeyUpEffect != null)
-    {
-        var virtualKeyCode = (WindowsInput.Native.VirtualKeyCode)effectOnWindow.KeyUpEffect.virtualKeyCode;
-
-        (MouseActionForKeyUpOrDown(keyCode: virtualKeyCode, buttonUp: true)
-        ??
-        (() => new WindowsInput.InputSimulator().Keyboard.KeyUp(virtualKeyCode)))();
-    }
-}
-
-static System.Action MouseActionForKeyUpOrDown(WindowsInput.Native.VirtualKeyCode keyCode, bool buttonUp)
-{
-    WindowsInput.IMouseSimulator mouseSimulator() => new WindowsInput.InputSimulator().Mouse;
-
-    var method = keyCode switch
-    {
-        WindowsInput.Native.VirtualKeyCode.LBUTTON =>
-            buttonUp ?
-            (System.Func<WindowsInput.IMouseSimulator>)mouseSimulator().LeftButtonUp
-            : mouseSimulator().LeftButtonDown,
-        WindowsInput.Native.VirtualKeyCode.RBUTTON =>
-            buttonUp ?
-            (System.Func<WindowsInput.IMouseSimulator>)mouseSimulator().RightButtonUp
-            : mouseSimulator().RightButtonDown,
-        _ => null
-    };
-
-    if (method != null)
-        return () => method();
-
-    return null;
 }
 
 string GetWindowTextFromHandle(IntPtr windowHandle)

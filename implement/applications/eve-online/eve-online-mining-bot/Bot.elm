@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2024-09-03
+{- EVE Online mining bot version 2024-10-21
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -57,7 +57,7 @@ module Bot exposing
     , botMain
     )
 
-import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
 import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
@@ -569,8 +569,9 @@ dockedWithMiningHoldSelected context inventoryWindowWithMiningHoldSelected =
                             (decideActionForCurrentStep
                                 (EffectOnWindow.effectsForDragAndDrop
                                     { startLocation = itemInInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
-                                    , endLocation = itemHangar.totalDisplayRegionVisible |> centerFromDisplayRegion
                                     , mouseButton = MouseButtonLeft
+                                    , waypointsPositionsInBetween = []
+                                    , endLocation = itemHangar.totalDisplayRegionVisible |> centerFromDisplayRegion
                                     }
                                 )
                             )
@@ -601,8 +602,9 @@ inSpaceWithMiningHoldSelectedWithFleetHangar _ inventoryWindowWithMiningHoldSele
                             (decideActionForCurrentStep
                                 (EffectOnWindow.effectsForDragAndDrop
                                     { startLocation = itemInInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
-                                    , endLocation = fleetHangarFromInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
                                     , mouseButton = MouseButtonLeft
+                                    , waypointsPositionsInBetween = []
+                                    , endLocation = fleetHangarFromInventory.totalDisplayRegionVisible |> centerFromDisplayRegion
                                     }
                                 )
                             )
@@ -1275,7 +1277,8 @@ scrollDown scrollControls =
                 Just
                     (describeBranch "Click at scroll control bottom"
                         (decideActionForCurrentStep
-                            (EffectOnWindow.effectsMouseClickAtLocation EffectOnWindow.MouseButtonLeft
+                            (EffectOnWindow.effectsMouseClickAtLocation
+                                EffectOnWindow.MouseButtonLeft
                                 { x = scrollControlsTotalDisplayRegion.x + 3
                                 , y = scrollControlsBottom - 8
                                 }

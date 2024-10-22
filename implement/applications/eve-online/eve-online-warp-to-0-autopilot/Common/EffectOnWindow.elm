@@ -4,10 +4,12 @@ module Common.EffectOnWindow exposing (..)
 -}
 
 
-type EffectOnWindowStructure
+type EffectOnWindowStruct
     = MouseMoveTo Location2d
     | KeyDown VirtualKeyCode
     | KeyUp VirtualKeyCode
+    | ButtonDown MouseButton
+    | ButtonUp MouseButton
 
 
 type alias MouseClickAtLocation =
@@ -29,27 +31,37 @@ type MouseButton
     | MouseButtonRight
 
 
-effectsMouseMoveToLocation : Location2d -> List EffectOnWindowStructure
+effectsMouseClickAtLocation : MouseButton -> Location2d -> List EffectOnWindowStruct
+effectsMouseClickAtLocation mouseButton location =
+    [ MouseMoveTo location
+    , ButtonDown mouseButton
+    , ButtonUp mouseButton
+    ]
+
+
+effectsMouseMoveToLocation : Location2d -> List EffectOnWindowStruct
 effectsMouseMoveToLocation location =
     [ MouseMoveTo location
     ]
 
 
-effectsMouseClickAtLocation : MouseButton -> Location2d -> List EffectOnWindowStructure
-effectsMouseClickAtLocation mouseButton location =
-    [ MouseMoveTo location
-    , KeyDown (virtualKeyCodeFromMouseButton mouseButton)
-    , KeyUp (virtualKeyCodeFromMouseButton mouseButton)
-    ]
-
-
-effectsForDragAndDrop : { startLocation : Location2d, mouseButton : MouseButton, endLocation : Location2d } -> List EffectOnWindowStructure
-effectsForDragAndDrop { startLocation, mouseButton, endLocation } =
-    [ MouseMoveTo startLocation
-    , KeyDown (virtualKeyCodeFromMouseButton mouseButton)
-    , MouseMoveTo endLocation
-    , KeyUp (virtualKeyCodeFromMouseButton mouseButton)
-    ]
+effectsForDragAndDrop :
+    { startLocation : Location2d
+    , mouseButton : MouseButton
+    , waypointsPositionsInBetween : List Location2d
+    , endLocation : Location2d
+    }
+    -> List EffectOnWindowStruct
+effectsForDragAndDrop { startLocation, mouseButton, waypointsPositionsInBetween, endLocation } =
+    List.concat
+        [ [ MouseMoveTo startLocation
+          , ButtonDown mouseButton
+          ]
+        , List.map MouseMoveTo waypointsPositionsInBetween
+        , [ MouseMoveTo endLocation
+          , ButtonUp mouseButton
+          ]
+        ]
 
 
 virtualKeyCodeFromMouseButton : MouseButton -> VirtualKeyCode
@@ -62,7 +74,7 @@ virtualKeyCodeFromMouseButton mouseButton =
             vkey_RBUTTON
 
 
-effectsToEnterString : String -> Result String (List EffectOnWindowStructure)
+effectsToEnterString : String -> Result String (List EffectOnWindowStruct)
 effectsToEnterString =
     getSequenceOfKeyboardKeysToEnterString
         >> Result.map
@@ -85,7 +97,9 @@ effectsToEnterString =
                                 [ effectType vkey_SHIFT ]
 
                         mainKeyEffects =
-                            [ KeyDown key.keyCode, KeyUp key.keyCode ]
+                            [ KeyDown key.keyCode
+                            , KeyUp key.keyCode
+                            ]
 
                         effects =
                             effectsBefore ++ shiftKeyEffects ++ mainKeyEffects
@@ -168,21 +182,29 @@ virtualKeyCodeAsInteger keyCode =
             asInt
 
 
+{-| Left mouse button
+-}
 vkey_LBUTTON : VirtualKeyCode
 vkey_LBUTTON =
     VirtualKeyCodeFromInt 0x01
 
 
+{-| Right mouse button
+-}
 vkey_RBUTTON : VirtualKeyCode
 vkey_RBUTTON =
     VirtualKeyCodeFromInt 0x02
 
 
+{-| Control-break processing
+-}
 vkey_CANCEL : VirtualKeyCode
 vkey_CANCEL =
     VirtualKeyCodeFromInt 0x03
 
 
+{-| Middle mouse button (three-button mouse)
+-}
 vkey_MBUTTON : VirtualKeyCode
 vkey_MBUTTON =
     VirtualKeyCodeFromInt 0x04
@@ -198,6 +220,8 @@ vkey_XBUTTON2 =
     VirtualKeyCodeFromInt 0x06
 
 
+{-| BACKSPACE key
+-}
 vkey_BACK : VirtualKeyCode
 vkey_BACK =
     VirtualKeyCodeFromInt 0x08
@@ -213,6 +237,8 @@ vkey_CLEAR =
     VirtualKeyCodeFromInt 0x0C
 
 
+{-| ENTER key
+-}
 vkey_RETURN : VirtualKeyCode
 vkey_RETURN =
     VirtualKeyCodeFromInt 0x0D
@@ -223,11 +249,15 @@ vkey_SHIFT =
     VirtualKeyCodeFromInt 0x10
 
 
+{-| CTRL key
+-}
 vkey_CONTROL : VirtualKeyCode
 vkey_CONTROL =
     VirtualKeyCodeFromInt 0x11
 
 
+{-| ALT key
+-}
 vkey_MENU : VirtualKeyCode
 vkey_MENU =
     VirtualKeyCodeFromInt 0x12
@@ -238,6 +268,8 @@ vkey_PAUSE =
     VirtualKeyCodeFromInt 0x13
 
 
+{-| CAPS LOCK key
+-}
 vkey_CAPITAL : VirtualKeyCode
 vkey_CAPITAL =
     VirtualKeyCodeFromInt 0x14
@@ -313,11 +345,15 @@ vkey_SPACE =
     VirtualKeyCodeFromInt 0x20
 
 
+{-| PAGE UP key
+-}
 vkey_PRIOR : VirtualKeyCode
 vkey_PRIOR =
     VirtualKeyCodeFromInt 0x21
 
 
+{-| PAGE DOWN key
+-}
 vkey_NEXT : VirtualKeyCode
 vkey_NEXT =
     VirtualKeyCodeFromInt 0x22

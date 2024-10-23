@@ -266,7 +266,8 @@ type alias BotSettings =
 
 
 type alias State =
-    EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory
+    EveOnline.UnstuckBot.UnstuckBotState
+        (EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory)
 
 
 type alias BotMemory =
@@ -1392,7 +1393,7 @@ tooltipLooksLikeModuleToActivateAlways context =
         >> List.head
 
 
-botMain : InterfaceToHost.BotConfig (EveOnline.UnstuckBot.UnstuckBotState State)
+botMain : InterfaceToHost.BotConfig State
 botMain =
     { init = EveOnline.BotFrameworkSeparatingMemory.initState initBotMemory
     , processEvent =

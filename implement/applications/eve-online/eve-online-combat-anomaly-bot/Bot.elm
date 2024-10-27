@@ -479,22 +479,31 @@ closeMessageBox readingFromGameClient =
             (\messageBox ->
                 describeBranch "I see a message box to close."
                     (let
-                        buttonCanBeUsedToClose =
-                            .mainText
-                                >> Maybe.map (String.trim >> String.toLower >> (\buttonText -> [ "close", "ok" ] |> List.member buttonText))
-                                >> Maybe.withDefault False
+                        buttonCanBeUsedToClose button =
+                            case button.mainText of
+                                Nothing ->
+                                    False
+
+                                Just buttonText ->
+                                    let
+                                        buttonTextLower =
+                                            String.toLower buttonText
+                                    in
+                                    List.member buttonTextLower [ "close", "ok" ]
                      in
-                     case messageBox.buttons |> List.filter buttonCanBeUsedToClose |> List.head of
-                        Nothing ->
+                     case List.filter buttonCanBeUsedToClose messageBox.buttons of
+                        [] ->
                             describeBranch "I see no way to close this message box." askForHelpToGetUnstuck
 
-                        Just buttonToUse ->
+                        buttonToUse :: _ ->
                             describeBranch
                                 ("Click on button '" ++ (buttonToUse.mainText |> Maybe.withDefault "") ++ "'.")
-                                (mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode
-                                    |> Result.Extra.unpack
-                                        (always (describeBranch "Failed to click" askForHelpToGetUnstuck))
-                                        decideActionForCurrentStep
+                                (case mouseClickOnUIElement MouseButtonLeft buttonToUse.uiNode of
+                                    Err _ ->
+                                        describeBranch "Failed to click" askForHelpToGetUnstuck
+
+                                    Ok clickAction ->
+                                        decideActionForCurrentStep clickAction
                                 )
                     )
             )

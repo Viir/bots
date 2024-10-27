@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-10-26
+{- EVE Online combat anomaly bot version 2024-10-27
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -31,6 +31,7 @@
    + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
    + `anomaly-wait-time`: Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid.
    + `warp-to-anomaly-distance`: Defaults to 'Within 0 m'
+   + `deactivate-module-on-warp` : Name of a module to deactivate when warping. Enter the name as it appears in the tooltip. Use this setting multiple times to select multiple modules.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -122,6 +123,7 @@ defaultBotSettings =
     , orbitObjectNames = []
     , warpToAnomalyDistance = "Within 0 m"
     , sortOverviewBy = Nothing
+    , deactivateModuleOnWarp = []
     }
 
 
@@ -238,6 +240,16 @@ parseBotSettings =
                     )
              }
            )
+         , ( "deactivate-module-on-warp"
+           , { alternativeNames = []
+             , description = "Name of a module to deactivate when warping. Enter the name as it appears in the tooltip. Use this setting multiple times to select multiple modules."
+             , valueParser =
+                PromptParser.valueTypeString
+                    (\moduleName settings ->
+                        { settings | deactivateModuleOnWarp = moduleName :: settings.deactivateModuleOnWarp }
+                    )
+             }
+           )
          ]
             |> Dict.fromList
         )
@@ -262,6 +274,7 @@ type alias BotSettings =
     , orbitObjectNames : List String
     , warpToAnomalyDistance : String
     , sortOverviewBy : Maybe String
+    , deactivateModuleOnWarp : List String
     }
 
 
@@ -613,6 +626,7 @@ decideNextActionWhenInSpace context seeUndockingComplete =
     if seeUndockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
         describeBranch "I see we are warping."
             ([ returnDronesToBay context
+             , deactivateModulesForWarp context
              , readShipUIModuleButtonTooltips context
              ]
                 |> List.filterMap identity
@@ -923,6 +937,60 @@ enterAnomaly { ifNoAcceptableAnomalyAvailable } context seeUndockingComplete =
                             )
                             context
                         )
+
+
+deactivateModulesForWarp : BotDecisionContext -> Maybe DecisionPathNode
+deactivateModulesForWarp context =
+    let
+        modulesToDeactivate : List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
+        modulesToDeactivate =
+            case context.readingFromGameClient.shipUI of
+                Nothing ->
+                    []
+
+                Just shipUI ->
+                    shipUI.moduleButtons
+                        |> List.filterMap
+                            (\moduleButton ->
+                                case moduleButton.isActive of
+                                    Nothing ->
+                                        Nothing
+
+                                    Just False ->
+                                        Nothing
+
+                                    Just True ->
+                                        moduleButton
+                                            |> EveOnline.BotFramework.getModuleButtonTooltipFromModuleButton
+                                                context.memory.shipModules
+                                            |> Maybe.andThen
+                                                (\tooltipMemory ->
+                                                    let
+                                                        tooltipText =
+                                                            tooltipMemory.allContainedDisplayTextsWithRegion
+                                                                |> List.map Tuple.first
+                                                                |> String.join " "
+                                                    in
+                                                    if
+                                                        context.eventContext.botSettings.deactivateModuleOnWarp
+                                                            |> List.any (\moduleName -> tooltipText |> stringContainsIgnoringCase moduleName)
+                                                    then
+                                                        Just ( tooltipText, moduleButton )
+
+                                                    else
+                                                        Nothing
+                                                )
+                            )
+    in
+    case modulesToDeactivate of
+        [] ->
+            Nothing
+
+        ( moduleName, moduleToDeactivate ) :: _ ->
+            Just
+                (describeBranch ("Click module to deactivate '" ++ moduleName ++ "' to speed up warp.")
+                    (clickModuleButtonButWaitIfClickedInPreviousStep context moduleToDeactivate)
+                )
 
 
 fightRatsIfShipIsPointed : BotDecisionContext -> SeeUndockingComplete -> Maybe DecisionPathNode

@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-10-21
+{- EVE Online combat anomaly bot version 2024-10-26
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -102,6 +102,7 @@ import EveOnline.ParseUserInterface
         , ShipUI
         , ShipUIModuleButton
         )
+import EveOnline.UnstuckBot
 import List.Extra
 import Result.Extra
 import Set
@@ -265,7 +266,8 @@ type alias BotSettings =
 
 
 type alias State =
-    EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory
+    EveOnline.UnstuckBot.UnstuckBotState
+        (EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory)
 
 
 type alias BotMemory =
@@ -1403,6 +1405,7 @@ botMain =
             , decideNextStep = anomalyBotDecisionRoot
             }
     }
+        |> EveOnline.UnstuckBot.botResolvingStuck
 
 
 initBotMemory : BotMemory

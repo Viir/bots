@@ -228,7 +228,6 @@ type alias UITreeNodeWithDisplayRegion =
 
 type alias SeeUndockingComplete =
     { shipUI : EveOnline.ParseUserInterface.ShipUI
-    , overviewWindows : List EveOnline.ParseUserInterface.OverviewWindow
     }
 
 

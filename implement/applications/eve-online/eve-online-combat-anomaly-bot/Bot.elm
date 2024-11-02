@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-10-27
+{- EVE Online combat anomaly bot version 2024-11-01
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -32,6 +32,7 @@
    + `anomaly-wait-time`: Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid.
    + `warp-to-anomaly-distance`: Defaults to 'Within 0 m'
    + `deactivate-module-on-warp` : Name of a module to deactivate when warping. Enter the name as it appears in the tooltip. Use this setting multiple times to select multiple modules.
+   + `hide-location-name` : Name of a location to hide. Enter the name as it appears in the 'Locations' window.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -42,6 +43,7 @@
    hide-when-neutral-in-local = yes
    avoid-rat = Infested Carrier
    activate-module-always = shield hardener
+   hide-location-name = Dock me here
    ```
 
    To learn more about the anomaly bot, see <https://to.botlab.org/guide/app/eve-online-combat-anomaly-bot>
@@ -69,7 +71,6 @@ import EveOnline.BotFramework
         ( ModuleButtonTooltipMemory
         , OverviewWindowsMemory
         , ReadingFromGameClient
-        , SeeUndockingComplete
         , ShipModulesMemory
         , UseContextMenuCascadeNode(..)
         , localChatWindowFromUserInterface
@@ -78,6 +79,7 @@ import EveOnline.BotFramework
         , pickEntryFromLastContextMenuInCascade
         , shipUIIndicatesShipIsWarpingOrJumping
         , uiNodeVisibleRegionLargeEnoughForClicking
+        , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
         , useMenuEntryWithTextContainingFirstOf
         , useMenuEntryWithTextEqual
@@ -124,6 +126,7 @@ defaultBotSettings =
     , warpToAnomalyDistance = "Within 0 m"
     , sortOverviewBy = Nothing
     , deactivateModuleOnWarp = []
+    , hideLocationName = Nothing
     }
 
 
@@ -250,6 +253,16 @@ parseBotSettings =
                     )
              }
            )
+         , ( "hide-location-name"
+           , { alternativeNames = []
+             , description = "Name of a location to hide. Enter the name as it appears in the 'Locations' window."
+             , valueParser =
+                PromptParser.valueTypeString
+                    (\locationName settings ->
+                        { settings | hideLocationName = Just locationName }
+                    )
+             }
+           )
          ]
             |> Dict.fromList
         )
@@ -275,6 +288,7 @@ type alias BotSettings =
     , warpToAnomalyDistance : String
     , sortOverviewBy : Maybe String
     , deactivateModuleOnWarp : List String
+    , hideLocationName : Maybe String
     }
 
 
@@ -428,35 +442,23 @@ anomalyBotDecisionRootBeforeApplyingSettings context =
         |> Maybe.withDefault
             (branchDependingOnDockedOrInSpace
                 { ifDocked =
-                    continueIfShouldHide
-                        { ifShouldHide =
-                            describeBranch "Stay docked." waitForProgressInGame
-                        }
-                        context
-                        |> Maybe.withDefault
-                            (undockUsingStationWindow context
+                    case
+                        continueIfShouldHide
+                            { ifShouldHide =
+                                describeBranch "Stay docked." waitForProgressInGame
+                            }
+                            context
+                    of
+                        Just stayDocked ->
+                            stayDocked
+
+                        Nothing ->
+                            undockUsingStationWindow context
                                 { ifCannotReachButton =
                                     describeBranch "No alternative for undocking" askForHelpToGetUnstuck
                                 }
-                            )
                 , ifSeeShipUI =
-                    \shipUI ->
-                        continueIfShouldHide
-                            { ifShouldHide =
-                                returnDronesToBay context
-                                    |> Maybe.withDefault
-                                        (describeBranch
-                                            "Dock to station or structure."
-                                            (dockAtRandomStationOrStructure
-                                                context
-                                                { shipUI = shipUI
-                                                , overviewWindows = context.readingFromGameClient.overviewWindows
-                                                }
-                                            )
-                                        )
-                            }
-                            context
-                , ifUndockingComplete = decideNextActionWhenInSpace context
+                    decideNextActionWhenInSpace context
                 }
                 context.readingFromGameClient
             )
@@ -566,13 +568,217 @@ continueIfShouldHide config context =
                             Nothing
 
 
+runAway : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> DecisionPathNode
+runAway context shipUI =
+    case context.eventContext.botSettings.hideLocationName of
+        Nothing ->
+            dockAtRandomStationOrStructure context shipUI
+
+        Just hideLocationName ->
+            let
+                routesToHideLocation =
+                    dockToStationOrStructureWithMatchingName
+                        { nameFromSettingOrInfoPanel = hideLocationName }
+                        context
+            in
+            case routesToHideLocation.viaLocationsWindow of
+                Just viaLocationsWindow ->
+                    viaLocationsWindow
+
+                Nothing ->
+                    case routesToHideLocation.viaOverview of
+                        Just viaOverview ->
+                            viaOverview
+
+                        Nothing ->
+                            describeBranch
+                                (String.concat
+                                    [ "Did not find "
+                                    , hideLocationName
+                                    , " in the locations window or any overview window. "
+                                    , "Defaulting to solar system menu."
+                                    ]
+                                )
+                                (routesToHideLocation.viaSolarSystemMenu ())
+
+
+dockToStationOrStructureWithMatchingName :
+    { nameFromSettingOrInfoPanel : String }
+    -> BotDecisionContext
+    ->
+        { viaLocationsWindow : Maybe DecisionPathNode
+        , viaOverview : Maybe DecisionPathNode
+        , viaSolarSystemMenu : () -> DecisionPathNode
+        }
+dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context =
+    let
+        {-
+           2023-01-11 Observation by Dean: Text in surroundings context menu entry sometimes wraps station name in XML tags:
+           <color=#FF58A7BF>Niyabainen IV - M1 - Caldari Navy Assembly Plant</color>
+        -}
+        displayTextRepresentsMatchingStation : String -> Bool
+        displayTextRepresentsMatchingStation =
+            simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
+                >> String.contains (simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry nameFromSettingOrInfoPanel)
+    in
+    useContextMenuOnLocationWithMatchingName
+        displayTextRepresentsMatchingStation
+        (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+        context
+
+
+useContextMenuOnLocationWithMatchingName :
+    (String -> Bool)
+    -> EveOnline.BotFramework.UseContextMenuCascadeNode
+    -> BotDecisionContext
+    ->
+        { viaLocationsWindow : Maybe DecisionPathNode
+        , viaOverview : Maybe DecisionPathNode
+        , viaSolarSystemMenu : () -> DecisionPathNode
+        }
+useContextMenuOnLocationWithMatchingName nameMatches useMenu context =
+    let
+        viaLocationsWindow : Maybe DecisionPathNode
+        viaLocationsWindow =
+            case context.readingFromGameClient.locationsWindow of
+                Nothing ->
+                    Nothing
+
+                Just locationsWindow ->
+                    case
+                        locationsWindow.placeEntries
+                            |> List.filter (.mainText >> nameMatches)
+                            |> List.head
+                    of
+                        Nothing ->
+                            Nothing
+
+                        Just placeEntry ->
+                            Just
+                                (EveOnline.BotFrameworkSeparatingMemory.useContextMenuCascade
+                                    ( placeEntry.mainText, placeEntry.uiNode )
+                                    useMenu
+                                    context
+                                )
+
+        matchingOverviewEntry : Maybe OverviewWindowEntry
+        matchingOverviewEntry =
+            context.readingFromGameClient.overviewWindows
+                |> List.concatMap .entries
+                |> List.filter
+                    (.objectName
+                        >> Maybe.map nameMatches
+                        >> Maybe.withDefault False
+                    )
+                |> List.head
+
+        viaOverview =
+            case matchingOverviewEntry of
+                Just overviewEntry ->
+                    Just
+                        (EveOnline.BotFrameworkSeparatingMemory.useContextMenuCascadeOnOverviewEntry
+                            useMenu
+                            overviewEntry
+                            context
+                        )
+
+                Nothing ->
+                    Nothing
+    in
+    { viaLocationsWindow = viaLocationsWindow
+    , viaOverview = viaOverview
+    , viaSolarSystemMenu =
+        \() ->
+            let
+                overviewWindowScrollControls =
+                    context.readingFromGameClient.overviewWindows
+                        |> List.filterMap .scrollControls
+                        |> List.head
+            in
+            overviewWindowScrollControls
+                |> Maybe.andThen scrollDown
+                |> Maybe.withDefault
+                    (useContextMenuCascadeOnListSurroundingsButton
+                        (useMenuEntryWithTextContainingFirstOf
+                            [ "locations" ]
+                            (useMenuEntryInLastContextMenuInCascade
+                                { describeChoice = "select using the configured predicate"
+                                , chooseEntry =
+                                    List.filter (.text >> nameMatches)
+                                        >> List.head
+                                }
+                                useMenu
+                            )
+                        )
+                        context
+                    )
+    }
+
+
+scrollDown : EveOnline.ParseUserInterface.ScrollControls -> Maybe DecisionPathNode
+scrollDown scrollControls =
+    case scrollControls.scrollHandle of
+        Nothing ->
+            Nothing
+
+        Just scrollHandle ->
+            let
+                scrollControlsTotalDisplayRegion =
+                    scrollControls.uiNode.totalDisplayRegion
+
+                scrollControlsBottom =
+                    scrollControlsTotalDisplayRegion.y + scrollControlsTotalDisplayRegion.height
+
+                freeHeightAtBottom =
+                    scrollControlsBottom
+                        - (scrollHandle.totalDisplayRegion.y + scrollHandle.totalDisplayRegion.height)
+            in
+            if 10 < freeHeightAtBottom then
+                Just
+                    (describeBranch "Click at scroll control bottom"
+                        (decideActionForCurrentStep
+                            (EffectOnWindow.effectsMouseClickAtLocation
+                                EffectOnWindow.MouseButtonLeft
+                                { x = scrollControlsTotalDisplayRegion.x + 3
+                                , y = scrollControlsBottom - 8
+                                }
+                                ++ [ EffectOnWindow.KeyDown EffectOnWindow.vkey_END
+                                   , EffectOnWindow.KeyUp EffectOnWindow.vkey_END
+                                   ]
+                            )
+                        )
+                    )
+
+            else
+                Nothing
+
+
+{-| Prepare a station name or structure name coming from bot-settings for comparing with menu entries.
+
+  - The user could take the name from the info panel:
+    The names sometimes differ between info panel and menu entries: 'Moon 7' can become 'M7'.
+
+  - Do not distinguish between the comma and period characters:
+    Besides the similar visual appearance, also because of the limitations of popular bot-settings parsing frameworks.
+    The user can remove a comma or replace it with a full stop/period, whatever looks better.
+
+-}
+simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry : String -> String
+simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry =
+    String.toLower
+        >> String.replace "moon " "m"
+        >> String.replace "," ""
+        >> String.replace "." ""
+        >> String.trim
+
+
 {-| 2020-07-11 Discovery by Viktor:
 The entries for structures in the menu from the SurroundingsButton can be nested one level deeper than the ones for stations.
 In other words, not all structures appear directly under the "structures" entry.
 -}
 dockAtRandomStationOrStructure :
     BotDecisionContext
-    -> SeeUndockingComplete
+    -> EveOnline.ParseUserInterface.ShipUI
     -> DecisionPathNode
 dockAtRandomStationOrStructure context seeUndockingComplete =
     case fightRatsIfShipIsPointed context seeUndockingComplete of
@@ -621,9 +827,33 @@ dockAtRandomStationOrStructure context seeUndockingComplete =
                 context
 
 
-decideNextActionWhenInSpace : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
-decideNextActionWhenInSpace context seeUndockingComplete =
-    if seeUndockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
+decideNextActionWhenInSpace : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> DecisionPathNode
+decideNextActionWhenInSpace context shipUI =
+    case
+        continueIfShouldHide
+            { ifShouldHide =
+                returnDronesToBay context
+                    |> Maybe.withDefault
+                        (describeBranch
+                            "Hide at configured location."
+                            (runAway context shipUI)
+                        )
+            }
+            context
+    of
+        Just hideAction ->
+            hideAction
+
+        Nothing ->
+            decideNextActionWhenInSpaceNotHiding context shipUI
+
+
+decideNextActionWhenInSpaceNotHiding :
+    BotDecisionContext
+    -> EveOnline.ParseUserInterface.ShipUI
+    -> DecisionPathNode
+decideNextActionWhenInSpaceNotHiding context shipUI =
+    if shipUIIndicatesShipIsWarpingOrJumping shipUI then
         describeBranch "I see we are warping."
             ([ returnDronesToBay context
              , deactivateModulesForWarp context
@@ -648,13 +878,16 @@ decideNextActionWhenInSpace context seeUndockingComplete =
                             (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
 
                     Nothing ->
-                        modulesToActivateAlwaysActivated context seeUndockingComplete
+                        modulesToActivateAlwaysActivated context shipUI
                 )
 
 
-modulesToActivateAlwaysActivated : BotDecisionContext -> SeeUndockingComplete -> DecisionPathNode
-modulesToActivateAlwaysActivated context seeUndockingComplete =
-    case fightRatsIfShipIsPointed context seeUndockingComplete of
+modulesToActivateAlwaysActivated :
+    BotDecisionContext
+    -> EveOnline.ParseUserInterface.ShipUI
+    -> DecisionPathNode
+modulesToActivateAlwaysActivated context shipUI =
+    case fightRatsIfShipIsPointed context shipUI of
         Just fightPointingRats ->
             {-
                Adapt to observation shared with session-recording-2024-05-15T13-11-03:
@@ -672,7 +905,7 @@ modulesToActivateAlwaysActivated context seeUndockingComplete =
                             (describeBranch "No drones to return."
                                 (enterAnomaly { ifNoAcceptableAnomalyAvailable = ifNoAcceptableAnomalyAvailable }
                                     context
-                                    seeUndockingComplete
+                                    shipUI
                                 )
                             )
 
@@ -703,7 +936,7 @@ modulesToActivateAlwaysActivated context seeUndockingComplete =
                                     decideActionInAnomaly
                                         { arrivalInAnomalyAgeSeconds = arrivalInAnomalyAgeSeconds }
                                         context
-                                        seeUndockingComplete
+                                        shipUI
                                         returnDronesAndEnterAnomalyOrWait
                             in
                             describeBranch ("We are in anomaly '" ++ anomalyID ++ "' since " ++ String.fromInt arrivalInAnomalyAgeSeconds ++ " seconds.")
@@ -718,7 +951,7 @@ modulesToActivateAlwaysActivated context seeUndockingComplete =
                                                     describeBranch "Get out of this anomaly."
                                                         (dockAtRandomStationOrStructure
                                                             context
-                                                            seeUndockingComplete
+                                                            shipUI
                                                         )
                                                 }
                                             )
@@ -759,10 +992,10 @@ undockUsingStationWindow context { ifCannotReachButton } =
 decideActionInAnomaly :
     { arrivalInAnomalyAgeSeconds : Int }
     -> BotDecisionContext
-    -> SeeUndockingComplete
+    -> EveOnline.ParseUserInterface.ShipUI
     -> DecisionPathNode
     -> DecisionPathNode
-decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplete continueIfCombatComplete =
+decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context shipUI continueIfCombatComplete =
     let
         ratsToAttackByPriority =
             ratsToAttackByPriorityFromContext context
@@ -785,7 +1018,7 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                 context.readingFromGameClient.targets |> List.filter .isActiveTarget
 
         overviewsAllEntries =
-            seeUndockingComplete.overviewWindows
+            context.readingFromGameClient.overviewWindows
                 |> List.concatMap .entries
 
         maybeObjectToOrbit =
@@ -802,7 +1035,7 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                     Nothing
 
                 Just objectToOrbit ->
-                    ensureShipIsOrbiting seeUndockingComplete.shipUI objectToOrbit
+                    ensureShipIsOrbiting shipUI objectToOrbit
 
         waitTimeRemainingSeconds =
             context.eventContext.botSettings.anomalyWaitTimeSeconds - arrivalInAnomalyAgeSeconds
@@ -855,7 +1088,7 @@ decideActionInAnomaly { arrivalInAnomalyAgeSeconds } context seeUndockingComplet
                         , waitForProgress = waitForProgressInGame
                         }
                         context
-                        seeUndockingComplete
+                        shipUI
     in
     if context.eventContext.botSettings.orbitInCombat == PromptParser.Yes then
         ensureShipIsOrbitingDecision
@@ -893,9 +1126,9 @@ findObjectToOrbitByName orbitObjectNames overviewEntries =
 enterAnomaly :
     { ifNoAcceptableAnomalyAvailable : DecisionPathNode }
     -> BotDecisionContext
-    -> SeeUndockingComplete
+    -> EveOnline.ParseUserInterface.ShipUI
     -> DecisionPathNode
-enterAnomaly { ifNoAcceptableAnomalyAvailable } context seeUndockingComplete =
+enterAnomaly { ifNoAcceptableAnomalyAvailable } context shipUI =
     case context.readingFromGameClient.probeScannerWindow of
         Nothing ->
             describeBranch "I do not see the probe scanner window." askForHelpToGetUnstuck
@@ -993,8 +1226,11 @@ deactivateModulesForWarp context =
                 )
 
 
-fightRatsIfShipIsPointed : BotDecisionContext -> SeeUndockingComplete -> Maybe DecisionPathNode
-fightRatsIfShipIsPointed context seeUndockingComplete =
+fightRatsIfShipIsPointed :
+    BotDecisionContext
+    -> EveOnline.ParseUserInterface.ShipUI
+    -> Maybe DecisionPathNode
+fightRatsIfShipIsPointed context shipUI =
     {- Based on observation from 2024-04-24:
 
        [...] "f" is the command to order the drones to fight the rat that is targeted.
@@ -1004,7 +1240,7 @@ fightRatsIfShipIsPointed context seeUndockingComplete =
        3.  In the case of being targeted by multiple points, the above gets repeated.
 
     -}
-    case offensiveBuffButtonsIndicatingSelfShipIsPointed seeUndockingComplete of
+    case offensiveBuffButtonsIndicatingSelfShipIsPointed shipUI of
         [] ->
             Nothing
 
@@ -1035,7 +1271,7 @@ fightRatsIfShipIsPointed context seeUndockingComplete =
                         , waitForProgress = waitForProgressInGame
                         }
                         context
-                        seeUndockingComplete
+                        shipUI
                     )
                 )
 
@@ -1043,9 +1279,9 @@ fightRatsIfShipIsPointed context seeUndockingComplete =
 fightUsingDronesAndModules :
     { ifNoTarget : DecisionPathNode, lockNextTarget : DecisionPathNode, waitForProgress : DecisionPathNode }
     -> BotDecisionContext
-    -> SeeUndockingComplete
+    -> EveOnline.ParseUserInterface.ShipUI
     -> DecisionPathNode
-fightUsingDronesAndModules config context seeUndockingComplete =
+fightUsingDronesAndModules config context shipUI =
     let
         ratsToAttackByPriority =
             ratsToAttackByPriorityFromContext context
@@ -1072,7 +1308,7 @@ fightUsingDronesAndModules config context seeUndockingComplete =
 
                     Nothing ->
                         case
-                            seeUndockingComplete
+                            shipUI
                                 |> shipUIModulesToActivateOnTarget
                                 |> List.filter (.isActive >> Maybe.withDefault False >> not)
                                 |> List.head
@@ -1766,9 +2002,9 @@ getNamesOfRatsInOverview readingFromGameClient =
         |> List.map (.objectName >> Maybe.withDefault "do not see name of overview entry")
 
 
-shipUIModulesToActivateOnTarget : SeeUndockingComplete -> List ShipUIModuleButton
-shipUIModulesToActivateOnTarget =
-    .shipUI >> .moduleButtonsRows >> .top
+shipUIModulesToActivateOnTarget : EveOnline.ParseUserInterface.ShipUI -> List ShipUIModuleButton
+shipUIModulesToActivateOnTarget shipUI =
+    shipUI.moduleButtonsRows.top
 
 
 nothingFromIntIfGreaterThan : Int -> Int -> Maybe Int
@@ -1797,9 +2033,9 @@ Classifation sources:
 
 -}
 offensiveBuffButtonsIndicatingSelfShipIsPointed :
-    SeeUndockingComplete
+    EveOnline.ParseUserInterface.ShipUI
     -> List EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion
-offensiveBuffButtonsIndicatingSelfShipIsPointed undockingComplete =
+offensiveBuffButtonsIndicatingSelfShipIsPointed shipUI =
     List.filterMap
         (\offensiveBuffButton ->
             if offensiveBuffButtonNameIndicatesSelfShipIsPointed offensiveBuffButton.name then
@@ -1808,7 +2044,7 @@ offensiveBuffButtonsIndicatingSelfShipIsPointed undockingComplete =
             else
                 Nothing
         )
-        undockingComplete.shipUI.offensiveBuffButtons
+        shipUI.offensiveBuffButtons
 
 
 offensiveBuffButtonNameIndicatesSelfShipIsPointed : String -> Bool

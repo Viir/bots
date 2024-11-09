@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-11-07
+{- EVE Online combat anomaly bot version 2024-11-08
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -526,66 +526,83 @@ closeMessageBox readingFromGameClient =
 
 continueIfShouldHide : { ifShouldHide : DecisionPathNode } -> BotDecisionContext -> Maybe DecisionPathNode
 continueIfShouldHide config context =
-    case
-        context.eventContext
-            |> EveOnline.BotFramework.secondsToSessionEnd
-            |> Maybe.andThen (nothingFromIntIfGreaterThan 200)
-    of
-        Just secondsToSessionEnd ->
-            Just
-                (describeBranch
-                    ("Session ends in " ++ String.fromInt secondsToSessionEnd ++ " seconds.")
-                    config.ifShouldHide
-                )
+    let
+        hasNoShipModules =
+            case context.readingFromGameClient.shipUI of
+                Nothing ->
+                    False
 
-        Nothing ->
-            if context.eventContext.botSettings.hideWhenNeutralInLocal /= PromptParser.Yes then
-                Nothing
+                Just shipUI ->
+                    shipUI.moduleButtons == []
+    in
+    if hasNoShipModules then
+        Just
+            (describeBranch
+                "Ship UI contains zero module buttons."
+                config.ifShouldHide
+            )
 
-            else
-                case context.readingFromGameClient |> localChatWindowFromUserInterface of
-                    Nothing ->
-                        Just
-                            (describeBranch
-                                "I don't see the local chat window."
-                                askForHelpToGetUnstuck
-                            )
+    else
+        case
+            context.eventContext
+                |> EveOnline.BotFramework.secondsToSessionEnd
+                |> Maybe.andThen (nothingFromIntIfGreaterThan 200)
+        of
+            Just secondsToSessionEnd ->
+                Just
+                    (describeBranch
+                        ("Session ends in " ++ String.fromInt secondsToSessionEnd ++ " seconds.")
+                        config.ifShouldHide
+                    )
 
-                    Just localChatWindow ->
-                        let
-                            chatUserHasGoodStanding chatUser =
-                                goodStandingPatterns
-                                    |> List.any
-                                        (\goodStandingPattern ->
-                                            case chatUser.standingIconHint of
-                                                Nothing ->
-                                                    False
+            Nothing ->
+                if context.eventContext.botSettings.hideWhenNeutralInLocal /= PromptParser.Yes then
+                    Nothing
 
-                                                Just standingIconHint ->
-                                                    stringContainsIgnoringCase
-                                                        goodStandingPattern
-                                                        standingIconHint
-                                        )
-
-                            subsetOfUsersWithNoGoodStanding : List { uiNode : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion, name : Maybe String, standingIconHint : Maybe String }
-                            subsetOfUsersWithNoGoodStanding =
-                                case localChatWindow.userlist of
-                                    Nothing ->
-                                        []
-
-                                    Just userlist ->
-                                        userlist.visibleUsers
-                                            |> List.filter (chatUserHasGoodStanding >> not)
-                        in
-                        if 1 < List.length subsetOfUsersWithNoGoodStanding then
+                else
+                    case context.readingFromGameClient |> localChatWindowFromUserInterface of
+                        Nothing ->
                             Just
                                 (describeBranch
-                                    "There is an enemy or neutral in local chat."
-                                    config.ifShouldHide
+                                    "I don't see the local chat window."
+                                    askForHelpToGetUnstuck
                                 )
 
-                        else
-                            Nothing
+                        Just localChatWindow ->
+                            let
+                                chatUserHasGoodStanding chatUser =
+                                    goodStandingPatterns
+                                        |> List.any
+                                            (\goodStandingPattern ->
+                                                case chatUser.standingIconHint of
+                                                    Nothing ->
+                                                        False
+
+                                                    Just standingIconHint ->
+                                                        stringContainsIgnoringCase
+                                                            goodStandingPattern
+                                                            standingIconHint
+                                            )
+
+                                subsetOfUsersWithNoGoodStanding : List { uiNode : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion, name : Maybe String, standingIconHint : Maybe String }
+                                subsetOfUsersWithNoGoodStanding =
+                                    case localChatWindow.userlist of
+                                        Nothing ->
+                                            []
+
+                                        Just userlist ->
+                                            userlist.visibleUsers
+                                                |> List.filter (chatUserHasGoodStanding >> not)
+                            in
+                            if 1 < List.length subsetOfUsersWithNoGoodStanding then
+                                Just
+                                    (describeBranch
+                                        "There is an enemy or neutral in local chat."
+                                        config.ifShouldHide
+                                    )
+
+                            else
+                                Nothing
 
 
 runAway : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> DecisionPathNode

@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-11-01
+{- EVE Online combat anomaly bot version 2024-11-07
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -527,11 +527,14 @@ closeMessageBox readingFromGameClient =
 continueIfShouldHide : { ifShouldHide : DecisionPathNode } -> BotDecisionContext -> Maybe DecisionPathNode
 continueIfShouldHide config context =
     case
-        context.eventContext |> EveOnline.BotFramework.secondsToSessionEnd |> Maybe.andThen (nothingFromIntIfGreaterThan 200)
+        context.eventContext
+            |> EveOnline.BotFramework.secondsToSessionEnd
+            |> Maybe.andThen (nothingFromIntIfGreaterThan 200)
     of
         Just secondsToSessionEnd ->
             Just
-                (describeBranch ("Session ends in " ++ (secondsToSessionEnd |> String.fromInt) ++ " seconds.")
+                (describeBranch
+                    ("Session ends in " ++ String.fromInt secondsToSessionEnd ++ " seconds.")
                     config.ifShouldHide
                 )
 
@@ -542,7 +545,11 @@ continueIfShouldHide config context =
             else
                 case context.readingFromGameClient |> localChatWindowFromUserInterface of
                     Nothing ->
-                        Just (describeBranch "I don't see the local chat window." askForHelpToGetUnstuck)
+                        Just
+                            (describeBranch
+                                "I don't see the local chat window."
+                                askForHelpToGetUnstuck
+                            )
 
                     Just localChatWindow ->
                         let
@@ -550,19 +557,32 @@ continueIfShouldHide config context =
                                 goodStandingPatterns
                                     |> List.any
                                         (\goodStandingPattern ->
-                                            chatUser.standingIconHint
-                                                |> Maybe.map (stringContainsIgnoringCase goodStandingPattern)
-                                                |> Maybe.withDefault False
+                                            case chatUser.standingIconHint of
+                                                Nothing ->
+                                                    False
+
+                                                Just standingIconHint ->
+                                                    stringContainsIgnoringCase
+                                                        goodStandingPattern
+                                                        standingIconHint
                                         )
 
+                            subsetOfUsersWithNoGoodStanding : List { uiNode : EveOnline.ParseUserInterface.UITreeNodeWithDisplayRegion, name : Maybe String, standingIconHint : Maybe String }
                             subsetOfUsersWithNoGoodStanding =
-                                localChatWindow.userlist
-                                    |> Maybe.map .visibleUsers
-                                    |> Maybe.withDefault []
-                                    |> List.filter (chatUserHasGoodStanding >> not)
+                                case localChatWindow.userlist of
+                                    Nothing ->
+                                        []
+
+                                    Just userlist ->
+                                        userlist.visibleUsers
+                                            |> List.filter (chatUserHasGoodStanding >> not)
                         in
-                        if 1 < (subsetOfUsersWithNoGoodStanding |> List.length) then
-                            Just (describeBranch "There is an enemy or neutral in local chat." config.ifShouldHide)
+                        if 1 < List.length subsetOfUsersWithNoGoodStanding then
+                            Just
+                                (describeBranch
+                                    "There is an enemy or neutral in local chat."
+                                    config.ifShouldHide
+                                )
 
                         else
                             Nothing

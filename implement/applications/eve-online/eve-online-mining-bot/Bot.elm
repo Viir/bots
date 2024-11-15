@@ -1950,7 +1950,10 @@ compressAndStackAllIfConditionsMet context inventoryWindowWithMiningHold config 
 
             Just itemToCompress ->
                 describeBranch "I see at least one item to compress"
-                    (if config.miningHoldFillPercent < 75 then
+                    (if
+                        config.miningHoldFillPercent
+                            < (context.eventContext.botSettings.unloadMiningHoldPercent // 2)
+                     then
                         closeCompressionWindow
 
                      else

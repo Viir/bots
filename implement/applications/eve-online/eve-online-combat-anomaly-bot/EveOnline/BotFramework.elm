@@ -128,7 +128,7 @@ type alias SetupState =
     , searchUIRootAddressResponse :
         Maybe { timeInMilliseconds : Int, response : VolatileProcessInterface.SearchUIRootAddressResponseStruct }
     , lastReadingFromGame : Maybe { timeInMilliseconds : Int, stage : ReadingFromGameState }
-    , lastReadFromGameComplete : Maybe InterfaceToHost.ReadFromWindowCompleteStruct
+    , lastReadFromGameClientRectLeftUpperToScreen : Maybe InterfaceToHost.WinApiPointStruct
     , lastEffectFailedToAcquireInputFocus : Maybe String
     , randomIntegers : List Int
     }
@@ -474,7 +474,7 @@ initSetup =
     , gameClientProcesses = Nothing
     , searchUIRootAddressResponse = Nothing
     , lastReadingFromGame = Nothing
-    , lastReadFromGameComplete = Nothing
+    , lastReadFromGameClientRectLeftUpperToScreen = Nothing
     , lastEffectFailedToAcquireInputFocus = Nothing
     , randomIntegers = []
     }
@@ -1294,7 +1294,8 @@ integrateReadFromWindowComplete { timeInMilliseconds, readFromWindowComplete } s
                 { timeInMilliseconds = readingTimeInMilliseconds
                 , stage = ReadingFromGameInProgress inProgress
                 }
-        , lastReadFromGameComplete = Just readFromWindowComplete
+        , lastReadFromGameClientRectLeftUpperToScreen =
+            Just readFromWindowComplete.clientRectLeftUpperToScreen
     }
 
 
@@ -1496,11 +1497,11 @@ getSetupTaskWhenVolatileProcessSetupCompleted { timeInMilliseconds } botConfigur
                                                         OperateBot
                                                             { buildTaskFromEffectSequence =
                                                                 \effectSequenceOnWindow ->
-                                                                    case stateBefore.lastReadFromGameComplete of
+                                                                    case stateBefore.lastReadFromGameClientRectLeftUpperToScreen of
                                                                         Nothing ->
                                                                             InterfaceToHost.WindowsInputRequest []
 
-                                                                        Just lastReadFromGameComplete ->
+                                                                        Just lastReadFromGameClientRectLeftUpperToScreen ->
                                                                             InterfaceToHost.WindowsInputRequest
                                                                                 (List.concat
                                                                                     [ [ InterfaceToHost.BringWindowToForeground
@@ -1508,7 +1509,7 @@ getSetupTaskWhenVolatileProcessSetupCompleted { timeInMilliseconds } botConfigur
                                                                                       , InterfaceToHost.WaitMilliseconds 100
                                                                                       ]
                                                                                     , effectSequenceOnWindow
-                                                                                        |> List.map (effectOnWindowAsWindowsInputSequenceItem lastReadFromGameComplete)
+                                                                                        |> List.map (effectOnWindowAsWindowsInputSequenceItem lastReadFromGameClientRectLeftUpperToScreen)
                                                                                         |> List.intersperse (InterfaceToHost.WaitMilliseconds 210)
                                                                                     ]
                                                                                 )
@@ -1544,15 +1545,15 @@ getSetupTaskWhenVolatileProcessSetupCompleted { timeInMilliseconds } botConfigur
 
 
 effectOnWindowAsWindowsInputSequenceItem :
-    InterfaceToHost.ReadFromWindowCompleteStruct
+    InterfaceToHost.WinApiPointStruct
     -> Common.EffectOnWindow.EffectOnWindowStruct
     -> InterfaceToHost.WindowsInputSequenceItem
-effectOnWindowAsWindowsInputSequenceItem readFromWindow effectOnWindow =
+effectOnWindowAsWindowsInputSequenceItem lastReadFromGameClientRectLeftUpperToScreen effectOnWindow =
     case effectOnWindow of
         Common.EffectOnWindow.MouseMoveTo mouseMoveTo ->
             let
                 clientRectOffset =
-                    readFromWindow.clientRectLeftUpperToScreen
+                    lastReadFromGameClientRectLeftUpperToScreen
 
                 mouseMoveToInClientArea =
                     { x = mouseMoveTo.x + clientRectOffset.x

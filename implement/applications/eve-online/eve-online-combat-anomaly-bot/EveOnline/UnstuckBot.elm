@@ -19,7 +19,7 @@ type alias UnstuckBotState supervised =
     , lastReadFromWindowComplete :
         Maybe
             { windowId : String
-            , reading : InterfaceToHost.ReadFromWindowCompleteStruct
+            , clientRectLeftUpperToScreen : InterfaceToHost.WinApiPointStruct
             }
     }
 
@@ -54,7 +54,8 @@ processEventResolvingStuck config event stateBefore =
                         InterfaceToHost.InvokeMethodOnWindowResponse windowId (Ok (InterfaceToHost.ReadFromWindowMethodResult readFromWindowComplete)) ->
                             Just
                                 { windowId = windowId
-                                , reading = readFromWindowComplete
+                                , clientRectLeftUpperToScreen =
+                                    readFromWindowComplete.clientRectLeftUpperToScreen
                                 }
 
                         _ ->
@@ -116,8 +117,8 @@ processEventResolvingStuck config event stateBefore =
                                     Just readFromWindowComplete ->
                                         let
                                             mouseClickLocation =
-                                                { x = readFromWindowComplete.reading.clientRectLeftUpperToScreen.x + 10
-                                                , y = readFromWindowComplete.reading.clientRectLeftUpperToScreen.y + 10
+                                                { x = readFromWindowComplete.clientRectLeftUpperToScreen.x + 10
+                                                , y = readFromWindowComplete.clientRectLeftUpperToScreen.y + 10
                                                 }
 
                                             windowId =

@@ -1,4 +1,4 @@
-{- EVE Online Intel Bot - Local Watch Script - 2024-11-09
+{- EVE Online Intel Bot - Local Watch Script - 2024-12-01
 
    This bot watches local and plays an alarm sound when a pilot with bad standing appears.
 -}

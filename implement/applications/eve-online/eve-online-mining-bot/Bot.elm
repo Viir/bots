@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2024-10-26
+{- EVE Online mining bot version 2024-11-15
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 

@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2024-10-26
+{- EVE Online mining bot version 2024-11-15
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -101,7 +101,9 @@ import EveOnline.ParseUserInterface
     exposing
         ( OverviewWindowEntry
         , centerFromDisplayRegion
+        , getAllContainedDisplayTextsWithRegion
         )
+import List.Extra
 import Maybe.Extra
 import Regex
 import Result.Extra
@@ -129,6 +131,7 @@ defaultBotSettings =
     , selectInstancePilotName = Nothing
     , includeAsteroidPatterns = []
     , miningSites = []
+    , compressFromMiningHold = PromptParser.No
     }
 
 
@@ -260,6 +263,14 @@ parseBotSettings =
                     )
              }
            )
+         , ( "compress-from-mining-hold"
+           , { alternativeNames = []
+             , description = "Compress items from the mining hold, when the mining hold is filled at least 75 %. The only supported values are `no` and `yes`."
+             , valueParser =
+                PromptParser.valueTypeYesOrNo
+                    (\compress settings -> { settings | compressFromMiningHold = compress })
+             }
+           )
          ]
             |> Dict.fromList
         )
@@ -292,6 +303,7 @@ type alias BotSettings =
     , selectInstancePilotName : Maybe String
     , includeAsteroidPatterns : List String
     , miningSites : List String
+    , compressFromMiningHold : PromptParser.YesOrNo
     }
 
 
@@ -851,13 +863,25 @@ modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
                                                                          else
                                                                             "All known mining modules found so far are active."
                                                                         )
-                                                                        (readShipUIModuleButtonTooltips context
-                                                                            |> Maybe.withDefault waitForProgressInGame
+                                                                        (case readShipUIModuleButtonTooltips context of
+                                                                            Just readTooltips ->
+                                                                                readTooltips
+
+                                                                            Nothing ->
+                                                                                compressAndStackAllIfConditionsMet
+                                                                                    context
+                                                                                    inventoryWindowWithMiningHoldSelected
+                                                                                    { miningHoldFillPercent = fillPercent
+                                                                                    , ifNothingToCompress = waitForProgressInGame
+                                                                                    }
                                                                         )
 
                                                                 Just inactiveModule ->
                                                                     describeBranch "I see an inactive mining module. Activate it."
-                                                                        (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                                                                        (clickModuleButtonButWaitIfClickedInPreviousStep
+                                                                            context
+                                                                            inactiveModule
+                                                                        )
                                                         }
                                                     )
                                                 )
@@ -1881,6 +1905,134 @@ capacityGaugeUsedPercent =
             (\capacity -> capacity.maximum |> Maybe.map (\maximum -> capacity.used * 100 // maximum))
 
 
+compressAndStackAllIfConditionsMet :
+    BotDecisionContext
+    -> EveOnline.ParseUserInterface.InventoryWindow
+    -> { miningHoldFillPercent : Int, ifNothingToCompress : DecisionPathNode }
+    -> DecisionPathNode
+compressAndStackAllIfConditionsMet context inventoryWindowWithMiningHold config =
+    let
+        closeCompressionWindow =
+            case context.readingFromGameClient.compressionWindow of
+                Nothing ->
+                    stackAllIfSeeingStackableItems
+                        inventoryWindowWithMiningHold
+                        { ifNotSeeingStackableItems = config.ifNothingToCompress }
+
+                Just compressionWindow ->
+                    case compressionWindow.windowControls |> Maybe.andThen .closeButton of
+                        Nothing ->
+                            describeBranch "Close window button is missing"
+                                -- Assume buttons appear on mouse hover
+                                (decideActionForCurrentStep
+                                    (EveOnline.BotFramework.mouseMoveToUIElement compressionWindow.uiNode)
+                                )
+
+                        Just closeButton ->
+                            mouseClickOnUIElement MouseButtonLeft closeButton
+                                |> Result.Extra.unpack
+                                    (always (describeBranch "Failed click on close button" askForHelpToGetUnstuck))
+                                    decideActionForCurrentStep
+    in
+    if context.eventContext.botSettings.compressFromMiningHold /= PromptParser.Yes then
+        closeCompressionWindow
+
+    else
+        case
+            inventoryWindowWithMiningHold
+                |> selectedContainerItemsFromInventoryWindow
+                |> Maybe.withDefault []
+                |> List.filter inventoryItemIsCandidateForCompression
+                |> List.head
+        of
+            Nothing ->
+                closeCompressionWindow
+
+            Just itemToCompress ->
+                describeBranch "I see at least one item to compress"
+                    (if config.miningHoldFillPercent < 75 then
+                        closeCompressionWindow
+
+                     else
+                        case context.readingFromGameClient.compressionWindow of
+                            Nothing ->
+                                useContextMenuCascade
+                                    ( "item to compress", itemToCompress )
+                                    (useMenuEntryWithTextContaining "compress" menuCascadeCompleted)
+                                    context
+
+                            Just compressionWindow ->
+                                case compressionWindow.compressButton of
+                                    Nothing ->
+                                        describeBranch "Compress button is missing" closeCompressionWindow
+
+                                    Just compressButton ->
+                                        mouseClickOnUIElement MouseButtonLeft compressButton
+                                            |> Result.Extra.unpack
+                                                (always (describeBranch "Failed click on compress button" askForHelpToGetUnstuck))
+                                                decideActionForCurrentStep
+                    )
+
+
+stackAllIfSeeingStackableItems :
+    EveOnline.ParseUserInterface.InventoryWindow
+    -> { ifNotSeeingStackableItems : DecisionPathNode }
+    -> DecisionPathNode
+stackAllIfSeeingStackableItems inventoryWindow { ifNotSeeingStackableItems } =
+    let
+        inventoryItemsWithLongestDisplayText =
+            inventoryWindow
+                |> selectedContainerItemsFromInventoryWindow
+                |> Maybe.withDefault []
+                |> List.filterMap
+                    (\itemNode ->
+                        itemNode
+                            |> getAllContainedDisplayTextsWithRegion
+                            |> List.map Tuple.first
+                            |> List.sortBy String.length
+                            |> List.reverse
+                            |> List.head
+                            |> Maybe.map (Tuple.pair itemNode)
+                    )
+
+        inventoryItemsGroupedByDisplayText =
+            inventoryItemsWithLongestDisplayText
+                |> List.Extra.gatherEqualsBy Tuple.second
+
+        stackableItems =
+            inventoryItemsGroupedByDisplayText
+                |> List.filter (Tuple.second >> List.length >> (<) 1)
+    in
+    if stackableItems == [] then
+        ifNotSeeingStackableItems
+
+    else
+        describeBranch
+            ("Seeing "
+                ++ String.fromInt (List.sum (List.map (Tuple.second >> List.length) stackableItems))
+                ++ " stackable items in "
+                ++ String.fromInt (List.length stackableItems)
+                ++ " groups"
+            )
+            (case inventoryWindow.buttonToStackAll of
+                Nothing ->
+                    describeBranch "Missing button to stack all"
+                        ifNotSeeingStackableItems
+
+                Just buttonToStackAll ->
+                    mouseClickOnUIElement MouseButtonLeft buttonToStackAll
+                        |> Result.Extra.unpack
+                            (always (describeBranch "Failed click on button" askForHelpToGetUnstuck))
+                            decideActionForCurrentStep
+            )
+
+
+inventoryItemIsCandidateForCompression : UIElement -> Bool
+inventoryItemIsCandidateForCompression =
+    EveOnline.ParseUserInterface.getAllContainedDisplayTextsWithRegion
+        >> List.all (Tuple.first >> String.toLower >> String.contains "compressed" >> not)
+
+
 inventoryWindowWithMiningHoldSelectedFromGameClient : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.InventoryWindow
 inventoryWindowWithMiningHoldSelectedFromGameClient =
     .inventoryWindows
@@ -1909,6 +2061,12 @@ inventoryWindowSelectedContainerIsMiningHold_pre_PhotonUI =
 
 selectedContainerFirstItemFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe UIElement
 selectedContainerFirstItemFromInventoryWindow =
+    selectedContainerItemsFromInventoryWindow
+        >> Maybe.andThen List.head
+
+
+selectedContainerItemsFromInventoryWindow : EveOnline.ParseUserInterface.InventoryWindow -> Maybe (List UIElement)
+selectedContainerItemsFromInventoryWindow =
     .selectedContainerInventory
         >> Maybe.andThen .itemsView
         >> Maybe.map
@@ -1920,7 +2078,6 @@ selectedContainerFirstItemFromInventoryWindow =
                     EveOnline.ParseUserInterface.InventoryItemsNotListView { items } ->
                         items
             )
-        >> Maybe.andThen List.head
 
 
 miningHoldFromInventoryWindowShipEntry :

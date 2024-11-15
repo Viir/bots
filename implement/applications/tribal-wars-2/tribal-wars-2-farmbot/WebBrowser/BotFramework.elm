@@ -6,7 +6,7 @@
 
 module WebBrowser.BotFramework exposing (..)
 
-import BotLab.BotInterface_To_Host_2023_05_15 as InterfaceToHost
+import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
 import Dict
 import Json.Decode
 import Json.Encode
@@ -644,6 +644,9 @@ integrateTaskResult { timeInMilliseconds, taskId, requestId, taskResult } webBro
             ( webBrowserStateBefore, Nothing )
 
         InterfaceToHost.RandomBytesResponse _ ->
+            ( webBrowserStateBefore, Nothing )
+
+        InterfaceToHost.WindowsInputResponse _ ->
             ( webBrowserStateBefore, Nothing )
 
         InterfaceToHost.OpenWindowResponse openWindowResult ->

@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2024-11-15
+{- EVE Online mining bot version 2024-12-09
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -25,9 +25,11 @@
    + `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
    + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
    + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
-   + `unload-fleet-hangar-percent` : This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
+   + `unload-fleet-hangar-percent` : This will make the bot unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
    + `dock-when-without-drones` : This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`.
    + `repair-before-undocking` : Repair the ship at the station before undocking. The only supported values are `no` and `yes`.
+   + `afterburner-module-text` : Text found in tooltips of the afterburner module.
+   + `afterburner-distance-threshold` : Distance threshold (in meters) at which to activate/deactivate the afterburner.
 
    When using more than one setting, start a new line for each setting in the text input field.
    Here is an example of a complete settings string:
@@ -129,6 +131,8 @@ defaultBotSettings =
     , selectInstancePilotName = Nothing
     , includeAsteroidPatterns = []
     , miningSites = []
+    , afterburnerModuleText = Nothing
+    , afterburnerDistanceThreshold = Nothing
     }
 
 
@@ -260,6 +264,22 @@ parseBotSettings =
                     )
              }
            )
+         , ( "afterburner-module-text"
+           , { alternativeNames = []
+             , description = "Text found in tooltips of the afterburner module."
+             , valueParser =
+                PromptParser.valueTypeString
+                    (\moduleName settings -> { settings | afterburnerModuleText = Just moduleName })
+             }
+           )
+         , ( "afterburner-distance-threshold"
+           , { alternativeNames = []
+             , description = "Distance threshold (in meters) to trigger the afterburner activation."
+             , valueParser =
+                PromptParser.valueTypeInteger
+                    (\distance settings -> { settings | afterburnerDistanceThreshold = Just distance })
+             }
+           )
          ]
             |> Dict.fromList
         )
@@ -292,6 +312,8 @@ type alias BotSettings =
     , selectInstancePilotName : Maybe String
     , includeAsteroidPatterns : List String
     , miningSites : List String
+    , afterburnerModuleText : Maybe String
+    , afterburnerDistanceThreshold : Maybe Int
     }
 
 
@@ -797,52 +819,51 @@ modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
                             (dockToUnloadOre context)
 
                     Ok selectedAsteroids ->
-                        if
-                            (selectedAsteroids.asteroidMatchingSettings
-                                |> Maybe.map (Tuple.second >> .closeEnoughForMining)
-                                |> Maybe.withDefault False
+                        describeBranch
+                            ("The mining hold is not yet filled "
+                                ++ describeThresholdToUnload
+                                ++ ". Get more ore."
                             )
-                                && shipManeuverIsApproaching context.readingFromGameClient
-                        then
-                            describeBranch "Minable asteroid is close enough to stop the ship"
-                                (decideActionForCurrentStep
-                                    [ EffectOnWindow.KeyDown EffectOnWindow.vkey_CONTROL
-                                    , EffectOnWindow.KeyDown EffectOnWindow.vkey_SPACE
-                                    , EffectOnWindow.KeyUp EffectOnWindow.vkey_CONTROL
-                                    , EffectOnWindow.KeyUp EffectOnWindow.vkey_SPACE
-                                    ]
-                                )
+                            (case
+                                context.readingFromGameClient.targets
+                                    |> List.sortBy
+                                        (\target ->
+                                            if target.isActiveTarget then
+                                                0
 
-                        else
-                            describeBranch ("The mining hold is not yet filled " ++ describeThresholdToUnload ++ ". Get more ore.")
-                                (case
-                                    context.readingFromGameClient.targets
-                                        |> List.sortBy
-                                            (\target ->
-                                                if target.isActiveTarget then
-                                                    0
+                                            else
+                                                1
+                                        )
+                                    |> List.head
+                             of
+                                Nothing ->
+                                    describeBranch "I see no locked target."
+                                        (travelToMiningSiteAndLaunchDronesAndTargetAsteroid selectedAsteroids context)
 
-                                                else
-                                                    1
-                                            )
-                                        |> List.head
-                                 of
-                                    Nothing ->
-                                        describeBranch "I see no locked target."
-                                            (travelToMiningSiteAndLaunchDronesAndTargetAsteroid selectedAsteroids context)
+                                Just nextTarget ->
+                                    unlockTargetsNotForMining context
+                                        |> Maybe.withDefault
+                                            (describeBranch "I see a locked target."
+                                                (ensureTargetIsInMiningRange
+                                                    context
+                                                    nextTarget
+                                                    { whenInRange =
+                                                        if shipManeuverIsApproaching context.readingFromGameClient then
+                                                            describeBranch "Minable asteroid is close enough to stop the ship"
+                                                                ([ EffectOnWindow.KeyDown EffectOnWindow.vkey_CONTROL
+                                                                 , EffectOnWindow.KeyDown EffectOnWindow.vkey_SPACE
+                                                                 , EffectOnWindow.KeyUp EffectOnWindow.vkey_CONTROL
+                                                                 , EffectOnWindow.KeyUp EffectOnWindow.vkey_SPACE
+                                                                 ]
+                                                                    |> decideActionForCurrentStep
+                                                                )
 
-                                    Just nextTarget ->
-                                        {- Depending on the UI configuration, the game client might automatically target rats.
-                                           To avoid these targets interfering with mining, unlock them here.
-                                        -}
-                                        unlockTargetsNotForMining context
-                                            |> Maybe.withDefault
-                                                (describeBranch "I see a locked target."
-                                                    (ensureTargetIsInMiningRange
-                                                        context
-                                                        nextTarget
-                                                        { whenInRange =
-                                                            case knownMiningModules |> List.filter (.isActive >> Maybe.withDefault False >> not) |> List.head of
+                                                        else
+                                                            case
+                                                                knownMiningModules
+                                                                    |> List.filter (.isActive >> Maybe.withDefault False >> not)
+                                                                    |> List.head
+                                                            of
                                                                 Nothing ->
                                                                     describeBranch
                                                                         (if knownMiningModules == [] then
@@ -851,17 +872,27 @@ modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
                                                                          else
                                                                             "All known mining modules found so far are active."
                                                                         )
-                                                                        (readShipUIModuleButtonTooltips context
-                                                                            |> Maybe.withDefault waitForProgressInGame
+                                                                        (case readShipUIModuleButtonTooltips context of
+                                                                            Just readAction ->
+                                                                                readAction
+
+                                                                            Nothing ->
+                                                                                case deactivateAfterburner context of
+                                                                                    Just deactivateAfterburnerAction ->
+                                                                                        describeBranch "Deactivate afterburner."
+                                                                                            deactivateAfterburnerAction
+
+                                                                                    Nothing ->
+                                                                                        waitForProgressInGame
                                                                         )
 
                                                                 Just inactiveModule ->
                                                                     describeBranch "I see an inactive mining module. Activate it."
                                                                         (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
-                                                        }
-                                                    )
+                                                    }
                                                 )
-                                )
+                                            )
+                            )
 
 
 ensureTargetIsInMiningRange :
@@ -880,12 +911,87 @@ ensureTargetIsInMiningRange context target { whenInRange } =
                 whenInRange
 
             else
+                let
+                    approachCommand =
+                        useContextMenuCascade
+                            ( "targeted object", target.uiNode )
+                            (useMenuEntryWithTextContaining "approach" menuCascadeCompleted)
+                            context
+                in
                 describeBranch ("Target is " ++ String.fromInt distanceMeters ++ " meters away. Approach it.")
-                    (useContextMenuCascade
-                        ( "targeted object", target.uiNode )
-                        (useMenuEntryWithTextContaining "approach" menuCascadeCompleted)
-                        context
+                    (if shipManeuverIsApproaching context.readingFromGameClient then
+                        case activateAfterburnerIfNeeded context distanceMeters of
+                            Just afterburnerActivation ->
+                                describeBranch "Afterburner is not active. Activate it."
+                                    afterburnerActivation
+
+                            Nothing ->
+                                approachCommand
+
+                     else
+                        approachCommand
                     )
+
+
+deactivateAfterburner : BotDecisionContext -> Maybe DecisionPathNode
+deactivateAfterburner context =
+    let
+        afterburnerModules =
+            knownAfterburnerModulesFromContext context
+
+        activeAfterburnerModules =
+            afterburnerModules
+                |> List.filter
+                    (\moduleButton ->
+                        case moduleButton.isActive of
+                            Nothing ->
+                                False
+
+                            Just isActive ->
+                                isActive
+                    )
+    in
+    case activeAfterburnerModules of
+        [] ->
+            Nothing
+
+        activeModule :: _ ->
+            Just (clickModuleButtonButWaitIfClickedInPreviousStep context activeModule)
+
+
+activateAfterburnerIfNeeded : BotDecisionContext -> Int -> Maybe DecisionPathNode
+activateAfterburnerIfNeeded context distance =
+    let
+        afterburnerModules =
+            knownAfterburnerModulesFromContext context
+
+        isActive m =
+            m.isActive |> Maybe.withDefault False
+    in
+    case context.eventContext.botSettings.afterburnerDistanceThreshold of
+        Just threshold ->
+            if distance > threshold then
+                case List.filter (not << isActive) afterburnerModules |> List.head of
+                    Just inactiveModule ->
+                        Just
+                            (describeBranch
+                                ("Distance to target is "
+                                    ++ String.fromInt distance
+                                    ++ "m, above "
+                                    ++ String.fromInt threshold
+                                    ++ "m. Activating afterburner."
+                                )
+                                (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                            )
+
+                    Nothing ->
+                        Nothing
+
+            else
+                Nothing
+
+        Nothing ->
+            Nothing
 
 
 readDistanceOfTargetInMeters : EveOnline.ParseUserInterface.Target -> Result String Int
@@ -2004,3 +2110,27 @@ randomIntFromInterval context interval =
 
     else
         interval.minimum + (randomInteger |> modBy intervalLength)
+
+
+knownAfterburnerModulesFromContext : BotDecisionContext -> List EveOnline.ParseUserInterface.ShipUIModuleButton
+knownAfterburnerModulesFromContext context =
+    case context.eventContext.botSettings.afterburnerModuleText of
+        Nothing ->
+            []
+
+        Just afterburnerText ->
+            context.readingFromGameClient.shipUI
+                |> Maybe.map .moduleButtons
+                |> Maybe.withDefault []
+                |> List.filter
+                    (\moduleButton ->
+                        moduleButton
+                            |> EveOnline.BotFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
+                            |> Maybe.map
+                                (\tooltipMemory ->
+                                    tooltipMemory.allContainedDisplayTextsWithRegion
+                                        |> List.map Tuple.first
+                                        |> List.any (stringContainsIgnoringCase afterburnerText)
+                                )
+                            |> Maybe.withDefault False
+                    )

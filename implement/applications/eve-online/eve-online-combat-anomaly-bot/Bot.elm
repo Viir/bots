@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2024-11-15
+{- EVE Online combat anomaly bot version 2025-02-07
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -1661,29 +1661,34 @@ assumeNotEnoughBandwidthToLaunchDrone context =
 
 returnDronesToBay : BotDecisionContext -> Maybe DecisionPathNode
 returnDronesToBay context =
-    context.readingFromGameClient.dronesWindow
-        |> Maybe.andThen .droneGroupInSpace
-        |> Maybe.andThen
-            (\droneGroupInLocalSpace ->
-                if
-                    (droneGroupInLocalSpace.header.quantityFromTitle
-                        |> Maybe.map .current
-                        |> Maybe.withDefault 0
-                    )
-                        < 1
-                then
+    case context.readingFromGameClient.dronesWindow of
+        Nothing ->
+            Nothing
+
+        Just dronesWindow ->
+            case dronesWindow.droneGroupInSpace of
+                Nothing ->
                     Nothing
 
-                else
-                    Just
-                        (describeBranch "I see there are drones in space. Return those to bay."
-                            (useContextMenuCascade
-                                ( "drones group", droneGroupInLocalSpace.header.uiNode )
-                                (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
-                                context
-                            )
+                Just droneGroupInLocalSpace ->
+                    if
+                        (droneGroupInLocalSpace.header.quantityFromTitle
+                            |> Maybe.map .current
+                            |> Maybe.withDefault 0
                         )
-            )
+                            < 1
+                    then
+                        Nothing
+
+                    else
+                        Just
+                            (describeBranch "I see there are drones in space. Return those to bay."
+                                (useContextMenuCascade
+                                    ( "drones group", droneGroupInLocalSpace.header.uiNode )
+                                    (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
+                                    context
+                                )
+                            )
 
 
 lockTargetFromOverviewEntry :

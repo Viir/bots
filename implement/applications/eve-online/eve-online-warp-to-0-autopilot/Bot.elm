@@ -1,4 +1,4 @@
-{- EVE Online warp-to-0 auto-pilot version 2024-11-15
+{- EVE Online warp-to-0 auto-pilot version 2025-02-07
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
@@ -276,16 +276,30 @@ updateMemoryForNewReadingFromGame context memoryBefore =
 
 knownModulesToActivateAlways : BotDecisionContext -> List ( String, EveOnline.ParseUserInterface.ShipUIModuleButton )
 knownModulesToActivateAlways context =
-    context.readingFromGameClient.shipUI
-        |> Maybe.map .moduleButtons
-        |> Maybe.withDefault []
-        |> List.filterMap
-            (\moduleButton ->
-                moduleButton
-                    |> EveOnline.BotFramework.getModuleButtonTooltipFromModuleButton context.memory.shipModules
-                    |> Maybe.andThen (tooltipLooksLikeModuleToActivateAlways context)
-                    |> Maybe.map (\moduleName -> ( moduleName, moduleButton ))
-            )
+    case context.readingFromGameClient.shipUI of
+        Nothing ->
+            []
+
+        Just shipUI ->
+            shipUI.moduleButtons
+                |> List.filterMap
+                    (\moduleButton ->
+                        case
+                            EveOnline.BotFramework.getModuleButtonTooltipFromModuleButton
+                                context.memory.shipModules
+                                moduleButton
+                        of
+                            Nothing ->
+                                Nothing
+
+                            Just moduleButtonTooltip ->
+                                case tooltipLooksLikeModuleToActivateAlways context moduleButtonTooltip of
+                                    Nothing ->
+                                        Nothing
+
+                                    Just moduleName ->
+                                        Just ( moduleName, moduleButton )
+                    )
 
 
 tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> ModuleButtonTooltipMemory -> Maybe String
@@ -443,9 +457,11 @@ moduleButtonImageProcessing :
     -> { activeIndicationSampledPixels : List PixelValueRGB, activeIndicationPixelGreenessPercent : Maybe Int }
 moduleButtonImageProcessing context moduleButton =
     let
+        measurementLocation : Location2d
         measurementLocation =
             locationToMeasureGlowFromModuleButton moduleButton
 
+        sampledLocations : List ( Int, Int )
         sampledLocations =
             [ ( -1, 0 )
             , ( -1, 1 )
@@ -461,13 +477,16 @@ moduleButtonImageProcessing context moduleButton =
                         )
                     )
 
+        activeIndicationSampledPixels : List PixelValueRGB
         activeIndicationSampledPixels =
             sampledLocations
                 |> List.filterMap context.screenshot.pixels_2x2
 
+        activeIndicationSampledPixelsGreenessPercents : List Int
         activeIndicationSampledPixelsGreenessPercents =
             List.map greenessPercentFromPixelValue activeIndicationSampledPixels
 
+        activeIndicationPixelGreenessPercent : Maybe Int
         activeIndicationPixelGreenessPercent =
             if 0 < List.length activeIndicationSampledPixelsGreenessPercents then
                 activeIndicationSampledPixelsGreenessPercents
@@ -487,9 +506,11 @@ greenessPercentFromPixelValue : PixelValueRGB -> Int
 greenessPercentFromPixelValue pixelValue =
     -- https://www.w3.org/TR/css-color-3/#hsl-color
     let
+        hsla : { hue : Float, saturation : Float, lightness : Float, alpha : Float }
         hsla =
             Color.toHsla (Color.rgb255 pixelValue.red pixelValue.green pixelValue.blue)
 
+        hueGreenessFactor : Float
         hueGreenessFactor =
             max 0 (1 - (abs (hsla.hue - 0.333) * 4))
     in

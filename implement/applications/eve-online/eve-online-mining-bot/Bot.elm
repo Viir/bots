@@ -1525,6 +1525,7 @@ warpToRandomAsteroidBelt context =
 runAway : BotDecisionContext -> DecisionPathNode
 runAway context =
     let
+        defaultRoute : () -> DecisionPathNode
         defaultRoute () =
             dockToRandomStationOrStructure context
     in
@@ -1561,6 +1562,11 @@ dockToUnloadOre context =
     case unloadStationOrStructureName context of
         Just unloadStationName ->
             let
+                routesToStation :
+                    { viaLocationsWindow : Maybe DecisionPathNode
+                    , viaOverview : Maybe DecisionPathNode
+                    , viaSolarSystemMenu : () -> DecisionPathNode
+                    }
                 routesToStation =
                     dockToStationOrStructureWithMatchingName
                         { nameFromSettingOrInfoPanel = unloadStationName }
@@ -1621,20 +1627,37 @@ launchDrones context =
                 case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInSpace ) of
                     ( Just droneGroupInBay, Just droneGroupInSpace ) ->
                         let
+                            dronesInBayQuantity : Int
                             dronesInBayQuantity =
-                                droneGroupInBay.header.quantityFromTitle
-                                    |> Maybe.map .current
-                                    |> Maybe.withDefault 0
+                                case droneGroupInBay.header.quantityFromTitle of
+                                    Nothing ->
+                                        0
 
+                                    Just quantityFromTitle ->
+                                        quantityFromTitle.current
+
+                            dronesInSpaceQuantityCurrent : Int
                             dronesInSpaceQuantityCurrent =
-                                droneGroupInSpace.header.quantityFromTitle
-                                    |> Maybe.map .current
-                                    |> Maybe.withDefault 0
+                                case droneGroupInSpace.header.quantityFromTitle of
+                                    Nothing ->
+                                        0
 
+                                    Just quantityFromTitle ->
+                                        quantityFromTitle.current
+
+                            dronesInSpaceQuantityLimit : Int
                             dronesInSpaceQuantityLimit =
-                                droneGroupInSpace.header.quantityFromTitle
-                                    |> Maybe.andThen .maximum
-                                    |> Maybe.withDefault 2
+                                case droneGroupInSpace.header.quantityFromTitle of
+                                    Nothing ->
+                                        2
+
+                                    Just quantityFromTitle ->
+                                        case quantityFromTitle.maximum of
+                                            Nothing ->
+                                                2
+
+                                            Just maximum ->
+                                                maximum
                         in
                         if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
                             Just
@@ -1656,29 +1679,34 @@ launchDrones context =
 
 returnDronesToBay : BotDecisionContext -> Maybe DecisionPathNode
 returnDronesToBay context =
-    context.readingFromGameClient.dronesWindow
-        |> Maybe.andThen .droneGroupInSpace
-        |> Maybe.andThen
-            (\droneGroupInLocalSpace ->
-                if
-                    (droneGroupInLocalSpace.header.quantityFromTitle
-                        |> Maybe.map .current
-                        |> Maybe.withDefault 0
-                    )
-                        < 1
-                then
+    case context.readingFromGameClient.dronesWindow of
+        Nothing ->
+            Nothing
+
+        Just dronesWindow ->
+            case dronesWindow.droneGroupInSpace of
+                Nothing ->
                     Nothing
 
-                else
-                    Just
-                        (describeBranch "I see there are drones in space. Return those to bay."
-                            (useContextMenuCascade
-                                ( "drones group", droneGroupInLocalSpace.header.uiNode )
-                                (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
-                                context
-                            )
+                Just droneGroupInLocalSpace ->
+                    if
+                        (droneGroupInLocalSpace.header.quantityFromTitle
+                            |> Maybe.map .current
+                            |> Maybe.withDefault 0
                         )
-            )
+                            < 1
+                    then
+                        Nothing
+
+                    else
+                        Just
+                            (describeBranch "I see there are drones in space. Return those to bay."
+                                (useContextMenuCascade
+                                    ( "drones group", droneGroupInLocalSpace.header.uiNode )
+                                    (useMenuEntryWithTextContaining "Return to drone bay" menuCascadeCompleted)
+                                    context
+                                )
+                            )
 
 
 readShipUIModuleButtonTooltips : BotDecisionContext -> Maybe DecisionPathNode
@@ -1779,9 +1807,11 @@ initBotMemory =
 statusTextFromDecisionContext : BotDecisionContext -> String
 statusTextFromDecisionContext context =
     let
+        readingFromGameClient : ReadingFromGameClient
         readingFromGameClient =
             context.readingFromGameClient
 
+        describeSessionPerformance : String
         describeSessionPerformance =
             [ ( "times unloaded", context.memory.timesUnloaded )
             , ( "volume unloaded / m³", context.memory.volumeUnloadedCubicMeters )
@@ -1789,6 +1819,7 @@ statusTextFromDecisionContext context =
                 |> List.map (\( metric, amount ) -> metric ++ ": " ++ (amount |> String.fromInt))
                 |> String.join ", "
 
+        describeShip : String
         describeShip =
             case readingFromGameClient.shipUI of
                 Just shipUI ->
@@ -1810,6 +1841,7 @@ statusTextFromDecisionContext context =
                         Nothing ->
                             "I do not see if I am docked or in space. Please set up game client first."
 
+        describeDrones : String
         describeDrones =
             case readingFromGameClient.dronesWindow of
                 Nothing ->
@@ -1830,6 +1862,7 @@ statusTextFromDecisionContext context =
                            )
                         ++ "."
 
+        describeMiningHold : String
         describeMiningHold =
             "mining hold filled "
                 ++ (readingFromGameClient
@@ -1840,6 +1873,7 @@ statusTextFromDecisionContext context =
                    )
                 ++ "%."
 
+        describeCurrentReading : String
         describeCurrentReading =
             [ describeMiningHold, describeShip, describeDrones ] |> String.join " "
     in

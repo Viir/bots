@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2024-12-09
+{- EVE Online mining bot version 2025-02-07
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -1159,7 +1159,19 @@ ensureMiningHoldIsSelectedInInventoryWindow readingFromGameClient continueWithIn
         Nothing ->
             case readingFromGameClient.inventoryWindows |> List.head of
                 Nothing ->
-                    describeBranch "I do not see an inventory window. Please open an inventory window." askForHelpToGetUnstuck
+                    case findInventoryButtonInNeocom readingFromGameClient of
+                        Just inventoryButton ->
+                            describeBranch "Opening the inventory window."
+                                (case mouseClickOnUIElement MouseButtonLeft inventoryButton of
+                                    Err _ ->
+                                        describeBranch "Failed to click inventory button" askForHelpToGetUnstuck
+
+                                    Ok clickAction ->
+                                        decideActionForCurrentStep clickAction
+                                )
+
+                        Nothing ->
+                            describeBranch "Could not find the inventory button in the Neocom." askForHelpToGetUnstuck
 
                 Just inventoryWindow ->
                     describeBranch

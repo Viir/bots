@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2024-11-15
+{- Tribal Wars 2 farmbot version 2025-02-12
 
    This bot farms barbarian villages in Tribal Wars 2.
    It automatically detects barbarian villages, available troops and configured army presets to attack.
@@ -2860,7 +2860,18 @@ webBrowserDefaultContentHtml =
 <link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap" rel="stylesheet">
 
 <style>
-body { font-family: Arial, sans-serif; }
+
+body
+{
+    font-family: Arial, sans-serif;
+    background-color: #333;
+    color: #eee;
+}
+
+a
+{
+    color: #fff;
+}
 
 .noto-color-emoji-regular {
   font-family: "Noto Color Emoji", sans-serif;

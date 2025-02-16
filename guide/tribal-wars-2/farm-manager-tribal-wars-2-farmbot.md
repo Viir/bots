@@ -13,7 +13,7 @@ It automatically detects barbarian villages, available troops and configured arm
 
 ### Efficient
 
-+ Fast enough to send 800 attacks per hour.
++ Fast enough to send 700 attacks per hour.
 + Supports multiple army presets per village to make the best use of your troops.
 + Takes into account the limit of 50 attacks per village.
 + Option to skip barbarian villages under a certain amount of points.
@@ -34,7 +34,7 @@ https://youtu.be/yzkernqechE
 
 Following are the first steps shown in the video:
 
-+ Download the file from <https://botlab.blob.core.windows.net/library/by-name/2024-05-10-tribal-wars-2-farmbot.zip>
++ Download the file from <https://botlab.blob.core.windows.net/library/by-name/2025-02-12-tribal-wars-2-farmbot.zip>
 + Extract the downloaded zip archive. The extraction will give you a file named `tribal-wars-2-farmbot.exe`.
 + Run the `tribal-wars-2-farmbot.exe` program.
 + Click on 'Continue without Installing'
@@ -42,7 +42,7 @@ Following are the first steps shown in the video:
 
 Then we land on this screen where we can select the Tribal Wars 2 farmbot:
 
-![Screen to select the Tribal Wars 2 Farmbot](./image/2022-11-15-tribal-wars-2-farmbot-pick-bot-bundled-bot-with-marker.png)
+![Screen to select the Tribal Wars 2 Farmbot](./image/2025-02-16-tribal-wars-2-farmbot-select-bot-bundled-bot-with-marker.png)
 
 + Here click on the 'Tribal Wars 2 farmbot' under 'Bundled Bot'
 + On the next screen, scroll down and click the button 'Start Play Session'
@@ -51,7 +51,7 @@ Then we land on this screen where we can select the Tribal Wars 2 farmbot:
 
 Then the bot starts and we see a screen like this:
 
-![Tribal Wars 2 farmbot session started](./image/2022-12-02-tribal-wars-2-farmbot-started.png)
+![Tribal Wars 2 farmbot session started](./image/2025-02-16-tribal-wars-2-farmbot-started.png)
 
 In the left pane, we see information about the play session and controls to pause and continue the bot. The left pane also shows a status report from the bot under 'Status text from bot'.
 
@@ -64,7 +64,7 @@ In the right pane, the bot opens a web browser tab. The web browser tab is initi
 Here we enter the address of the Tribal Wars 2 game world we want to enter with the bot. Since the browser by the bot is entirely separate from other web browsers and has a different user profile, we need to log in to the game to be able to enter the game world.
 After logging in and selecting the game world, this new browser tab shows the game as any other web browser:
 
-![Tribal Wars 2 farmbot session started](./image/2022-12-02-tribal-wars-2-farmbot-game-entered.jpg)
+![Tribal Wars 2 farmbot session started](./image/2025-02-16-tribal-wars-2-farmbot-game-entered.jpeg)
 
 Then the bot displays a message like this:
 
@@ -131,6 +131,15 @@ Following is a list of available settings:
 + `limit-outgoing-commands-per-village`: The maximum number of outgoing commands per village before the bot considers the village completed. By default, the bot will use up all available 50 outgoing commands per village. You can also specify a range like `45 - 48`. The bot then picks a random value in this range for each village.
 + `restart-game-client-after-break`: Set this to 'yes' to make the bot restart the game client/web browser after each break.
 + `open-website-on-start`: Website to open when starting the web browser.
++ `web-browser-user-data-dir`: To use the bot with multiple Tribal Wars 2 accounts simultaneously, configure a different name here for each account.
+
+When using more than one setting, start a new line for each setting in the text input field.
+Here is an example of `bot-settings` for three farm cycles with breaks of 20 to 40 minutes in between:
+
+```
+number-of-farm-cycles = 3
+break-duration = 20 - 40
+```
 
 You can enter any combination of settings before starting the bot. When in the 'Configure Session' view, scroll to the 'Bot Settings' section and click on 'Edit'.
 
@@ -170,7 +179,7 @@ To make it remember the farm locations, configure the number of farm cycles to b
 
 ### How much time does this bot need to send all attacks on my account?
 
-Sending one attack takes less than four seconds. The bot can cover 800 farms per hour. The first farm cycle per session is a special case: For the first cycle, it needs additional time to find the farm villages. The game limits us to 50 concurrent attacks per village, and the bot switches to the next village when the currently selected village hits that limit. One farm cycle is complete when all your villages are at the limit, either because of the attack limit or because no matching units are remaining.
+Sending one attack takes less than four seconds. The bot can cover 700 farms per hour. The first farm cycle per session is a special case: For the first cycle, it needs additional time to find the farm villages. The game limits us to 50 concurrent attacks per village, and the bot switches to the next village when the currently selected village hits that limit. One farm cycle is complete when all your villages are at the limit, either because of the attack limit or because no matching units are remaining.
 
 ### How can I farm (multiple) inactive players?
 

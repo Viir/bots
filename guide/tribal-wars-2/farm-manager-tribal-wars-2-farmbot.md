@@ -30,7 +30,7 @@ It automatically detects barbarian villages, available troops and configured arm
 
 This video shows the process of starting the farmbot and setting up your Tribal Wars 2 account:
 
-https://youtu.be/yzkernqechE
+https://youtu.be/6etWO9tXH7o
 
 Following are the first steps shown in the video:
 

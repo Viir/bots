@@ -40,6 +40,10 @@ To export the play session recording into a transportable zip archive, use the b
 
 **Note**: After clicking that button, the software might take a few seconds to respond, depending on how many events are in the play session.
 
-Sessions exported this way are saved into the 'Downloads' folder of your Windows user account, with file names like `session-recording-2024-02-18T16-25-34.zip`
+The software then opens a new 'Save as' dialog window where we can select a directory to save the exported recording, as seen in the screenshot below:
+
+![File save dialog for exporting a play session recording](./image/2025-04-23-botlab-client-ui-export-session-recording-dialog.png)
+
+The file save dialog will default to a file name like `session-recording-2025-04-23T09-31-32.zip`
 
 With the export, you can share the play session recording like any other file. This way, other people can do an analysis as detailed as necessary. When required, it also enables distilling the training data to adapt the bot to the specifics of your game client.

@@ -86,10 +86,12 @@ processEventResolvingStuck config event stateBefore =
 
                 newEffectsOnGameClient ->
                     let
+                        lastStepsEffectsOnGameClient : List (List InterfaceToHost.WindowsInputSequenceItem)
                         lastStepsEffectsOnGameClient =
                             newEffectsOnGameClient
                                 :: List.take 10 stateBefore.lastStepsEffectsOnGameClient
 
+                        continueWithoutIntervention : ( UnstuckBotState supervised, InterfaceToHost.BotEventResponse )
                         continueWithoutIntervention =
                             ( { stateBefore
                                 | supervised = supervisedState
@@ -175,6 +177,7 @@ processEventResolvingStuck config event stateBefore =
                         in
                         ( { stateBefore
                             | supervised = supervisedState
+                            , lastStepsEffectsOnGameClient = []
                           }
                         , InterfaceToHost.ContinueSession continueSessionWithIntervention
                         )

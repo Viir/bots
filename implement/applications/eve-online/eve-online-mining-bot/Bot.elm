@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2025-04-23
+{- EVE Online mining bot version 2025-04-26
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -888,7 +888,10 @@ modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
 
                                                                 Just inactiveModule ->
                                                                     describeBranch "I see an inactive mining module. Activate it."
-                                                                        (clickModuleButtonButWaitIfClickedInPreviousStep context inactiveModule)
+                                                                        (clickModuleButtonButWaitIfClickedInPreviousStep
+                                                                            context
+                                                                            inactiveModule
+                                                                        )
                                                     }
                                                 )
                                             )

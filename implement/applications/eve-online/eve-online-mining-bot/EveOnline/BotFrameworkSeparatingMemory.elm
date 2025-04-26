@@ -76,7 +76,7 @@ type alias StepDecisionContext botSettings botMemory =
     , readingFromGameClient : ReadingFromGameClient
     , screenshot : ReadingFromGameClientScreenshot
     , memory : botMemory
-    , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStruct
+    , previousStepsEffects : List (List Common.EffectOnWindow.EffectOnWindowStruct)
     , previousReadingsFromGameClient : List ReadingFromGameClientMemory
     , contextMenuCascadeLevel : Int
     , randomIntegers : List Int
@@ -89,7 +89,7 @@ type alias StateIncludingFramework botSettings botMemory =
 
 type alias BotState botMemory =
     { botMemory : botMemory
-    , lastStepEffects : List Common.EffectOnWindow.EffectOnWindowStruct
+    , lastStepsEffects : List (List Common.EffectOnWindow.EffectOnWindowStruct)
     , lastReadingsFromGameClient : List ReadingFromGameClientMemory
     }
 
@@ -131,7 +131,7 @@ initState botMemory =
 initStateInBaseFramework : botMemory -> BotState botMemory
 initStateInBaseFramework botMemory =
     { botMemory = botMemory
-    , lastStepEffects = []
+    , lastStepsEffects = []
     , lastReadingsFromGameClient = []
     }
 
@@ -209,7 +209,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                     , memory = botMemory
                     , readingFromGameClient = readingFromGameClient
                     , screenshot = screenshot
-                    , previousStepEffects = stateBefore.lastStepEffects
+                    , previousStepsEffects = stateBefore.lastStepsEffects
                     , previousReadingsFromGameClient = stateBefore.lastReadingsFromGameClient
                     , contextMenuCascadeLevel = contextMenuCascadeLevel
                     , randomIntegers = readingFromGameClientCompleted.randomIntegers
@@ -241,9 +241,14 @@ processEventInBaseFramework config eventContext event stateBefore =
 
                 readingFromGameClientMemory =
                     asReadingFromGameClientMemory readingFromGameClient
+
+                lastStepsEffects : List (List Common.EffectOnWindow.EffectOnWindowStruct)
+                lastStepsEffects =
+                    List.take 2
+                        (effectsOnGameClientWindow :: stateBefore.lastStepsEffects)
             in
             ( { botMemory = botMemory
-              , lastStepEffects = effectsOnGameClientWindow
+              , lastStepsEffects = lastStepsEffects
               , lastReadingsFromGameClient =
                     readingFromGameClientMemory
                         :: stateBefore.lastReadingsFromGameClient
@@ -485,11 +490,17 @@ discardContextMenuIfTooDistantFromTargetElement :
 discardContextMenuIfTooDistantFromTargetElement { toleratedDistance } =
     \{ targetUIElement } context cascadeFirstElement ->
         let
+            previousStepClickOnTargetLocation : Maybe EveOnline.BotFramework.Location2d
             previousStepClickOnTargetLocation =
-                context.previousStepEffects
-                    |> EveOnline.BotFramework.findMouseButtonClickLocationsInListOfEffects Common.EffectOnWindow.MouseButtonRight
-                    |> List.filter (isPointInRectangle targetUIElement.totalDisplayRegion)
-                    |> List.head
+                case context.previousStepsEffects of
+                    [] ->
+                        Nothing
+
+                    previousStepEffects :: _ ->
+                        previousStepEffects
+                            |> EveOnline.BotFramework.findMouseButtonClickLocationsInListOfEffects Common.EffectOnWindow.MouseButtonRight
+                            |> List.filter (isPointInRectangle targetUIElement.totalDisplayRegion)
+                            |> List.head
 
             projectedTargetClickLocation =
                 previousStepClickOnTargetLocation
@@ -737,8 +748,13 @@ clickModuleButtonButWaitIfClickedInPreviousStep :
     -> EveOnline.ParseUserInterface.ShipUIModuleButton
     -> DecisionPathNode
 clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
-    if doEffectsClickModuleButton moduleButton context.previousStepEffects then
-        Common.DecisionPath.describeBranch "Already clicked on this module button in previous step."
+    if
+        context.previousStepsEffects
+            |> List.take 2
+            |> List.any (\previousStepEffects -> doEffectsClickModuleButton moduleButton previousStepEffects)
+    then
+        Common.DecisionPath.describeBranch
+            "Already clicked on this module button in previous step."
             waitForProgressInGame
 
     else

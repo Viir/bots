@@ -1939,26 +1939,31 @@ findMouseButtonClickLocationsInListOfEffects :
     -> List Common.EffectOnWindow.EffectOnWindowStruct
     -> List Location2d
 findMouseButtonClickLocationsInListOfEffects mouseButton =
+    let
+        mouseButtonCode : Common.EffectOnWindow.VirtualKeyCode
+        mouseButtonCode =
+            Common.EffectOnWindow.virtualKeyCodeFromMouseButton mouseButton
+    in
     List.foldl
-        (\effect ( maybeLastMouseMoveLocation, leftClickLocations ) ->
+        (\effect ( maybeLastMouseMoveLocation, clickLocations ) ->
             case effect of
                 Common.EffectOnWindow.MouseMoveTo mouseMoveTo ->
-                    ( Just mouseMoveTo, leftClickLocations )
+                    ( Just mouseMoveTo, clickLocations )
 
                 Common.EffectOnWindow.KeyDown keyDown ->
                     case maybeLastMouseMoveLocation of
                         Nothing ->
-                            ( maybeLastMouseMoveLocation, leftClickLocations )
+                            ( maybeLastMouseMoveLocation, clickLocations )
 
                         Just lastMouseMoveLocation ->
-                            if keyDown == Common.EffectOnWindow.virtualKeyCodeFromMouseButton mouseButton then
-                                ( maybeLastMouseMoveLocation, leftClickLocations ++ [ lastMouseMoveLocation ] )
+                            if keyDown == mouseButtonCode then
+                                ( maybeLastMouseMoveLocation, clickLocations ++ [ lastMouseMoveLocation ] )
 
                             else
-                                ( maybeLastMouseMoveLocation, leftClickLocations )
+                                ( maybeLastMouseMoveLocation, clickLocations )
 
                 _ ->
-                    ( maybeLastMouseMoveLocation, leftClickLocations )
+                    ( maybeLastMouseMoveLocation, clickLocations )
         )
         ( Nothing, [] )
         >> Tuple.second

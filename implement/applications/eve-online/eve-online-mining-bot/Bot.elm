@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2025-04-26
+{- EVE Online mining bot version 2025-04-28
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -117,8 +117,8 @@ import Result.Extra
 defaultBotSettings : BotSettings
 defaultBotSettings =
     { runAwayShieldHitpointsThresholdPercent = 70
-    , unloadStationName = Nothing
-    , unloadStructureName = Nothing
+    , unloadStationNames = []
+    , unloadStructureNames = []
     , unloadFleetHangarPercent = -1
     , unloadMiningHoldPercent = 99
     , activateModulesAlways = []
@@ -152,7 +152,11 @@ parseBotSettings =
              , description = "Name of a station to dock to when the mining hold is full."
              , valueParser =
                 PromptParser.valueTypeString
-                    (\stationName settings -> { settings | unloadStationName = Just stationName })
+                    (\stationName settings ->
+                        { settings
+                            | unloadStationNames = String.trim stationName :: settings.unloadStationNames
+                        }
+                    )
              }
            )
          , ( "unload-structure-name"
@@ -160,7 +164,11 @@ parseBotSettings =
              , description = "Name of a structure to dock to when the mining hold is full."
              , valueParser =
                 PromptParser.valueTypeString
-                    (\structureName settings -> { settings | unloadStructureName = Just structureName })
+                    (\structureName settings ->
+                        { settings
+                            | unloadStructureNames = String.trim structureName :: settings.unloadStructureNames
+                        }
+                    )
              }
            )
          , ( "unload-fleet-hangar-percent"
@@ -298,8 +306,8 @@ dockWhenDroneWindowInvisibleCount =
 
 type alias BotSettings =
     { runAwayShieldHitpointsThresholdPercent : Int
-    , unloadStationName : Maybe String
-    , unloadStructureName : Maybe String
+    , unloadStationNames : List String
+    , unloadStructureNames : List String
     , unloadFleetHangarPercent : Int
     , unloadMiningHoldPercent : Int
     , activateModulesAlways : List String
@@ -1273,23 +1281,37 @@ lockTargetFromOverviewEntry overviewEntry context =
 
 
 dockToStationOrStructureWithMatchingName :
-    { nameFromSettingOrInfoPanel : String }
+    { namesFromSettingOrInfoPanel : List String }
     -> BotDecisionContext
     ->
         { viaLocationsWindow : Maybe DecisionPathNode
         , viaOverview : Maybe DecisionPathNode
         , viaSolarSystemMenu : () -> DecisionPathNode
         }
-dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context =
+dockToStationOrStructureWithMatchingName { namesFromSettingOrInfoPanel } context =
     let
+        destNamesSimplified : List String
+        destNamesSimplified =
+            List.map
+                simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
+                namesFromSettingOrInfoPanel
+
         {-
            2023-01-11 Observation by Dean: Text in surroundings context menu entry sometimes wraps station name in XML tags:
            <color=#FF58A7BF>Niyabainen IV - M1 - Caldari Navy Assembly Plant</color>
         -}
         displayTextRepresentsMatchingStation : String -> Bool
-        displayTextRepresentsMatchingStation =
-            simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
-                >> String.contains (simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry nameFromSettingOrInfoPanel)
+        displayTextRepresentsMatchingStation displayName =
+            let
+                displayNameSimplified =
+                    simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
+                        displayName
+            in
+            List.any
+                (\destName ->
+                    String.contains destName displayNameSimplified
+                )
+                destNamesSimplified
     in
     useContextMenuOnLocationWithMatchingName
         displayTextRepresentsMatchingStation
@@ -1532,8 +1554,11 @@ runAway context =
         defaultRoute () =
             dockToRandomStationOrStructure context
     in
-    case unloadStationOrStructureName context of
-        Just unloadStationName ->
+    case unloadStationOrStructureNames context of
+        [] ->
+            defaultRoute ()
+
+        stationAndStructureNames ->
             {-
                Prioritize unload station and overview entry, because that will be faster than using the surroundings button menu. If that fails, fall back to surroundings menu.
                <https://forum.botlab.org/t/the-mining-robot-cant-find-its-way-home/4922/4>
@@ -1541,7 +1566,7 @@ runAway context =
             let
                 routesToStation =
                     dockToStationOrStructureWithMatchingName
-                        { nameFromSettingOrInfoPanel = unloadStationName }
+                        { namesFromSettingOrInfoPanel = stationAndStructureNames }
                         context
             in
             case routesToStation.viaLocationsWindow of
@@ -1556,14 +1581,16 @@ runAway context =
                         Nothing ->
                             defaultRoute ()
 
-        Nothing ->
-            defaultRoute ()
-
 
 dockToUnloadOre : BotDecisionContext -> DecisionPathNode
 dockToUnloadOre context =
-    case unloadStationOrStructureName context of
-        Just unloadStationName ->
+    case unloadStationOrStructureNames context of
+        [] ->
+            describeBranch
+                "At which station should I dock?. There is no station or structure name configured and I was never docked in a station in this session."
+                askForHelpToGetUnstuck
+
+        stationAndStructureNames ->
             let
                 routesToStation :
                     { viaLocationsWindow : Maybe DecisionPathNode
@@ -1572,7 +1599,7 @@ dockToUnloadOre context =
                     }
                 routesToStation =
                     dockToStationOrStructureWithMatchingName
-                        { nameFromSettingOrInfoPanel = unloadStationName }
+                        { namesFromSettingOrInfoPanel = stationAndStructureNames }
                         context
             in
             case routesToStation.viaLocationsWindow of
@@ -1585,31 +1612,31 @@ dockToUnloadOre context =
                             viaOverview
 
                         Nothing ->
-                            describeBranch "I do not see a matching name in the Locations or overview windows. Therefore, we are falling back to the solar system menu."
+                            describeBranch
+                                "I do not see a matching name in the Locations or overview windows. Therefore, we are falling back to the solar system menu."
                                 (routesToStation.viaSolarSystemMenu ())
 
-        Nothing ->
-            describeBranch "At which station should I dock?. I was never docked in a station in this session." askForHelpToGetUnstuck
 
+unloadStationOrStructureNames : BotDecisionContext -> List String
+unloadStationOrStructureNames context =
+    let
+        fromSettings : List String
+        fromSettings =
+            List.concat
+                [ context.eventContext.botSettings.unloadStationNames
+                , context.eventContext.botSettings.unloadStructureNames
+                ]
+    in
+    if fromSettings == [] then
+        case context.memory.lastDockedStationNameFromInfoPanel of
+            Just lastDocked ->
+                [ lastDocked ]
 
-unloadStationOrStructureName : BotDecisionContext -> Maybe String
-unloadStationOrStructureName context =
-    case context.eventContext.botSettings.unloadStationName of
-        Just unloadStationName ->
-            Just unloadStationName
+            Nothing ->
+                []
 
-        Nothing ->
-            case context.eventContext.botSettings.unloadStructureName of
-                Just unloadStructureName ->
-                    Just unloadStructureName
-
-                Nothing ->
-                    case context.memory.lastDockedStationNameFromInfoPanel of
-                        Just lastDocked ->
-                            Just lastDocked
-
-                        Nothing ->
-                            Nothing
+    else
+        fromSettings
 
 
 dockToRandomStationOrStructure : BotDecisionContext -> DecisionPathNode

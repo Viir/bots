@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2025-04-26
+{- EVE Online combat anomaly bot version 2025-04-28
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -126,7 +126,7 @@ defaultBotSettings =
     , warpToAnomalyDistance = "Within 0 m"
     , sortOverviewBy = Nothing
     , deactivateModuleOnWarp = []
-    , hideLocationName = Nothing
+    , hideLocationNames = []
     }
 
 
@@ -259,7 +259,9 @@ parseBotSettings =
              , valueParser =
                 PromptParser.valueTypeString
                     (\locationName settings ->
-                        { settings | hideLocationName = Just locationName }
+                        { settings
+                            | hideLocationNames = String.trim locationName :: settings.hideLocationNames
+                        }
                     )
              }
            )
@@ -288,7 +290,7 @@ type alias BotSettings =
     , warpToAnomalyDistance : String
     , sortOverviewBy : Maybe String
     , deactivateModuleOnWarp : List String
-    , hideLocationName : Maybe String
+    , hideLocationNames : List String
     }
 
 
@@ -607,15 +609,15 @@ continueIfShouldHide config context =
 
 runAway : BotDecisionContext -> EveOnline.ParseUserInterface.ShipUI -> DecisionPathNode
 runAway context shipUI =
-    case context.eventContext.botSettings.hideLocationName of
-        Nothing ->
+    case context.eventContext.botSettings.hideLocationNames of
+        [] ->
             dockAtRandomStationOrStructure context shipUI
 
-        Just hideLocationName ->
+        hideLocationNames ->
             let
                 routesToHideLocation =
                     dockToStationOrStructureWithMatchingName
-                        { nameFromSettingOrInfoPanel = hideLocationName }
+                        { namesFromSettingOrInfoPanel = hideLocationNames }
                         context
             in
             case routesToHideLocation.viaLocationsWindow of
@@ -630,9 +632,11 @@ runAway context shipUI =
                         Nothing ->
                             describeBranch
                                 (String.concat
-                                    [ "Did not find "
-                                    , hideLocationName
-                                    , " in the locations window or any overview window. "
+                                    [ "Did not find any of the "
+                                    , String.fromInt (List.length hideLocationNames)
+                                    , " configured locations ("
+                                    , String.join ", " hideLocationNames
+                                    , ") in the locations window or any overview window. "
                                     , "Defaulting to solar system menu."
                                     ]
                                 )
@@ -640,23 +644,37 @@ runAway context shipUI =
 
 
 dockToStationOrStructureWithMatchingName :
-    { nameFromSettingOrInfoPanel : String }
+    { namesFromSettingOrInfoPanel : List String }
     -> BotDecisionContext
     ->
         { viaLocationsWindow : Maybe DecisionPathNode
         , viaOverview : Maybe DecisionPathNode
         , viaSolarSystemMenu : () -> DecisionPathNode
         }
-dockToStationOrStructureWithMatchingName { nameFromSettingOrInfoPanel } context =
+dockToStationOrStructureWithMatchingName { namesFromSettingOrInfoPanel } context =
     let
+        destNamesSimplified : List String
+        destNamesSimplified =
+            List.map
+                simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
+                namesFromSettingOrInfoPanel
+
         {-
            2023-01-11 Observation by Dean: Text in surroundings context menu entry sometimes wraps station name in XML tags:
            <color=#FF58A7BF>Niyabainen IV - M1 - Caldari Navy Assembly Plant</color>
         -}
         displayTextRepresentsMatchingStation : String -> Bool
-        displayTextRepresentsMatchingStation =
-            simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
-                >> String.contains (simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry nameFromSettingOrInfoPanel)
+        displayTextRepresentsMatchingStation displayName =
+            let
+                displayNameSimplified =
+                    simplifyStationOrStructureNameFromSettingsBeforeComparingToMenuEntry
+                        displayName
+            in
+            List.any
+                (\destName ->
+                    String.contains destName displayNameSimplified
+                )
+                destNamesSimplified
     in
     useContextMenuOnLocationWithMatchingName
         displayTextRepresentsMatchingStation

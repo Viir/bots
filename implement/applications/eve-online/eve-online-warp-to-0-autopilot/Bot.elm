@@ -1,4 +1,4 @@
-{- EVE Online warp-to-0 auto-pilot version 2025-04-23
+{- EVE Online warp-to-0 auto-pilot version 2025-04-30
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
@@ -42,7 +42,6 @@ import EveOnline.BotFramework
         , ModuleButtonTooltipMemory
         , PixelValueRGB
         , ReadingFromGameClient
-        , SeeUndockingComplete
         , ShipModulesMemory
         , infoPanelRouteFirstMarkerFromReadingFromGameClient
         , menuCascadeCompleted
@@ -169,8 +168,7 @@ autopilotBotDecisionRoot context =
                     describeBranch
                         "To continue, undock manually."
                         waitForProgressInGame
-                , ifSeeShipUI = always Nothing
-                , ifUndockingComplete =
+                , ifSeeShipUI =
                     decideStepWhenInSpace
                         context
                         { infoPanelRouteFirstMarker = infoPanelRouteFirstMarker }
@@ -183,10 +181,10 @@ autopilotBotDecisionRoot context =
 decideStepWhenInSpace :
     BotDecisionContext
     -> { infoPanelRouteFirstMarker : EveOnline.ParseUserInterface.InfoPanelRouteRouteElementMarker }
-    -> SeeUndockingComplete
+    -> EveOnline.ParseUserInterface.ShipUI
     -> DecisionPathNode
-decideStepWhenInSpace context { infoPanelRouteFirstMarker } undockingComplete =
-    if undockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
+decideStepWhenInSpace context { infoPanelRouteFirstMarker } shipUI =
+    if shipUIIndicatesShipIsWarpingOrJumping shipUI then
         describeBranch
             "I see the ship is warping or jumping. I wait until that maneuver ends."
             (decideStepWhenInSpaceWaiting context)

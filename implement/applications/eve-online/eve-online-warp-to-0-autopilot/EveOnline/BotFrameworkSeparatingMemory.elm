@@ -16,6 +16,7 @@ To learn more about developing for EVE Online, see the guide at <https://to.botl
 -}
 
 import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
+import Common
 import Common.DecisionPath
 import Common.EffectOnWindow
 import Dict
@@ -25,7 +26,6 @@ import EveOnline.BotFramework
         , ReadingFromGameClient
         , ReadingFromGameClientMemory
         , ReadingFromGameClientScreenshot
-        , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
         , UseContextMenuCascadeNode
@@ -76,7 +76,7 @@ type alias StepDecisionContext botSettings botMemory =
     , readingFromGameClient : ReadingFromGameClient
     , screenshot : ReadingFromGameClientScreenshot
     , memory : botMemory
-    , previousStepEffects : List Common.EffectOnWindow.EffectOnWindowStruct
+    , previousStepsEffects : List (List Common.EffectOnWindow.EffectOnWindowStruct)
     , previousReadingsFromGameClient : List ReadingFromGameClientMemory
     , contextMenuCascadeLevel : Int
     , randomIntegers : List Int
@@ -89,7 +89,7 @@ type alias StateIncludingFramework botSettings botMemory =
 
 type alias BotState botMemory =
     { botMemory : botMemory
-    , lastStepEffects : List Common.EffectOnWindow.EffectOnWindowStruct
+    , lastStepsEffects : List (List Common.EffectOnWindow.EffectOnWindowStruct)
     , lastReadingsFromGameClient : List ReadingFromGameClientMemory
     }
 
@@ -131,7 +131,7 @@ initState botMemory =
 initStateInBaseFramework : botMemory -> BotState botMemory
 initStateInBaseFramework botMemory =
     { botMemory = botMemory
-    , lastStepEffects = []
+    , lastStepsEffects = []
     , lastReadingsFromGameClient = []
     }
 
@@ -167,6 +167,7 @@ processEventInBaseFramework config eventContext event stateBefore =
     case event of
         EveOnline.BotFramework.ReadingFromGameClientCompleted readingFromGameClientCompleted ->
             let
+                readingFromGameClient : EveOnline.ParseUserInterface.ParsedUserInterface
                 readingFromGameClient =
                     readingFromGameClientCompleted.parsed
 
@@ -179,6 +180,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                     , screenshot = screenshot
                     }
 
+                botMemory : botMemory
                 botMemory =
                     stateBefore.botMemory
                         |> config.updateMemoryForNewReadingFromGame updateMemoryContext
@@ -189,6 +191,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                         |> Maybe.map .contextMenus
                         |> Maybe.withDefault []
 
+                contextMenuCascadeLevelAlreadyInPreviousReading : Int
                 contextMenuCascadeLevelAlreadyInPreviousReading =
                     List.map2
                         Tuple.pair
@@ -200,6 +203,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                             )
                         |> List.length
 
+                contextMenuCascadeLevel : Int
                 contextMenuCascadeLevel =
                     min (contextMenuCascadeLevelAlreadyInPreviousReading + 1)
                         (List.length readingFromGameClient.contextMenus)
@@ -209,7 +213,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                     , memory = botMemory
                     , readingFromGameClient = readingFromGameClient
                     , screenshot = screenshot
-                    , previousStepEffects = stateBefore.lastStepEffects
+                    , previousStepsEffects = stateBefore.lastStepsEffects
                     , previousReadingsFromGameClient = stateBefore.lastReadingsFromGameClient
                     , contextMenuCascadeLevel = contextMenuCascadeLevel
                     , randomIntegers = readingFromGameClientCompleted.randomIntegers
@@ -219,6 +223,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                     config.decideNextStep decisionContext
                         |> Common.DecisionPath.unpackToDecisionStagesDescriptionsAndLeaf
 
+                effectsOnGameClientWindow : List Common.EffectOnWindow.EffectOnWindowStruct
                 effectsOnGameClientWindow =
                     case decisionLeaf of
                         ContinueSession act ->
@@ -227,23 +232,31 @@ processEventInBaseFramework config eventContext event stateBefore =
                         FinishSession ->
                             []
 
+                describeActivity : String
                 describeActivity =
                     decisionStagesDescriptions
                         |> List.indexedMap
                             (\decisionLevel -> (++) (("+" |> List.repeat (decisionLevel + 1) |> String.join "") ++ " "))
                         |> String.join "\n"
 
+                statusText : String
                 statusText =
                     [ config.statusTextFromDecisionContext decisionContext
                     , describeActivity
                     ]
                         |> String.join "\n"
 
+                readingFromGameClientMemory : ReadingFromGameClientMemory
                 readingFromGameClientMemory =
                     asReadingFromGameClientMemory readingFromGameClient
+
+                lastStepsEffects : List (List Common.EffectOnWindow.EffectOnWindowStruct)
+                lastStepsEffects =
+                    List.take 2
+                        (effectsOnGameClientWindow :: stateBefore.lastStepsEffects)
             in
             ( { botMemory = botMemory
-              , lastStepEffects = effectsOnGameClientWindow
+              , lastStepsEffects = lastStepsEffects
               , lastReadingsFromGameClient =
                     readingFromGameClientMemory
                         :: stateBefore.lastReadingsFromGameClient
@@ -252,6 +265,7 @@ processEventInBaseFramework config eventContext event stateBefore =
             , case decisionLeaf of
                 ContinueSession continueSession ->
                     let
+                        millisecondsToNextReadingFromGame : Int
                         millisecondsToNextReadingFromGame =
                             ((continueSession.millisecondsToNextReadingFromGameModifierPercent + 100)
                                 * (continueSession.millisecondsToNextReadingFromGameBase
@@ -278,7 +292,9 @@ useContextMenuCascadeOnOverviewEntry :
     -> DecisionPathNode
 useContextMenuCascadeOnOverviewEntry useContextMenu overviewEntry context =
     useContextMenuCascade
-        ( "overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'", overviewEntry.uiNode )
+        ( "overview entry '" ++ (overviewEntry.objectName |> Maybe.withDefault "") ++ "'"
+        , overviewEntry.uiNode
+        )
         useContextMenu
         context
 
@@ -288,47 +304,63 @@ useContextMenuCascadeOnListSurroundingsButton :
     -> StepDecisionContext a b
     -> DecisionPathNode
 useContextMenuCascadeOnListSurroundingsButton useContextMenu context =
-    case context.readingFromGameClient.infoPanelContainer |> Maybe.andThen .infoPanelLocationInfo of
+    case context.readingFromGameClient.infoPanelContainer of
         Nothing ->
-            Common.DecisionPath.describeBranch "I do not see the location info panel." askForHelpToGetUnstuck
+            Common.DecisionPath.describeBranch
+                "I do not see any info panel."
+                askForHelpToGetUnstuck
 
-        Just infoPanelLocationInfo ->
-            useContextMenuCascadeWithCustomConfig
-                filterToDiscardContextMenuOnListSurroundingsButton
-                { targetUIElement = infoPanelLocationInfo.listSurroundingsButton
-                , targetUIElementName = "surroundings button"
-                }
-                useContextMenu
-                context
+        Just infoPanelContainer ->
+            case infoPanelContainer.infoPanelLocationInfo of
+                Nothing ->
+                    Common.DecisionPath.describeBranch
+                        "I do not see the location info panel."
+                        askForHelpToGetUnstuck
+
+                Just infoPanelLocationInfo ->
+                    useContextMenuCascadeWithCustomConfig
+                        filterToDiscardContextMenuOnListSurroundingsButton
+                        { targetUIElement = infoPanelLocationInfo.listSurroundingsButton
+                        , targetUIElementName = "surroundings button"
+                        }
+                        useContextMenu
+                        context
 
 
 filterToDiscardContextMenuOnListSurroundingsButton : FilterToDiscardContextMenu a b
 filterToDiscardContextMenuOnListSurroundingsButton =
     \target context cascadeFirstElement ->
-        discardContextMenuIfTooDistantFromTargetElement { toleratedDistance = 30 } target context cascadeFirstElement
-            |> Maybe.andThen
-                (\reasonToDiscard ->
-                    if
-                        (cascadeFirstElement.uiNode.totalDisplayRegion.x < 100)
-                            && (cascadeFirstElement.uiNode.totalDisplayRegion.y < 100)
-                    then
-                        {-
-                           Adapt to game client from session-recording-2023-02-11T16-17-12, shared by Foivos Saropoulos at <https://forum.botlab.org/t/mining-bot-warping-to-a-new-asteroid-belt-if-a-spacific-npc-is-present/4571/14>
+        case
+            discardContextMenuIfTooDistantFromTargetElement
+                { toleratedDistance = 40 }
+                target
+                context
+                cascadeFirstElement
+        of
+            Nothing ->
+                Nothing
 
-                           In event 708, we see how the game client differed from the previous ones: When clicking on the surroundings button in the info panel, it placed the new context menu at the upper left corner of the game client window.
-                           In the earlier training data, the game clients always opened the context menu so that at least an edge was close to the mouse cursor.
-                           The unusual placement is why you got the 'Existing cascade is too far away' error: When seeing this inconsistency, the bot assumed the context menu belonged to another entity.
-                        -}
-                        Nothing
+            Just reasonToDiscard ->
+                if
+                    (cascadeFirstElement.uiNode.totalDisplayRegion.x < 100)
+                        && (cascadeFirstElement.uiNode.totalDisplayRegion.y < 100)
+                then
+                    {-
+                       Adapt to game client from session-recording-2023-02-11T16-17-12, shared by Foivos Saropoulos at <https://forum.botlab.org/t/mining-bot-warping-to-a-new-asteroid-belt-if-a-spacific-npc-is-present/4571/14>
 
-                    else
-                        Just reasonToDiscard
-                )
+                       In event 708, we see how the game client differed from the previous ones: When clicking on the surroundings button in the info panel, it placed the new context menu at the upper left corner of the game client window.
+                       In the earlier training data, the game clients always opened the context menu so that at least an edge was close to the mouse cursor.
+                       The unusual placement is why you got the 'Existing cascade is too far away' error: When seeing this inconsistency, the bot assumed the context menu belonged to another entity.
+                    -}
+                    Nothing
+
+                else
+                    Just reasonToDiscard
 
 
 filterToDiscardContextMenuDefault : FilterToDiscardContextMenu a b
 filterToDiscardContextMenuDefault =
-    discardContextMenuIfTooDistantFromTargetElement { toleratedDistance = 20 }
+    discardContextMenuIfTooDistantFromTargetElement { toleratedDistance = 40 }
 
 
 useContextMenuCascade :
@@ -350,18 +382,24 @@ useContextMenuCascadeWithCustomConfig :
     -> DecisionPathNode
 useContextMenuCascadeWithCustomConfig filterToDiscardContextMenu target useContextMenu context =
     let
+        readingFromGameClient : ReadingFromGameClient
         readingFromGameClient =
             context.readingFromGameClient
 
+        beginCascade : Common.DecisionPath.DecisionPathNode EndDecisionPathStructure
         beginCascade =
             let
+                occludingRegionsWithSafetyMargin : List EveOnline.ParseUserInterface.DisplayRegion
                 occludingRegionsWithSafetyMargin =
                     readingFromGameClient.contextMenus
                         |> List.map (.uiNode >> .totalDisplayRegion >> growRegionOnAllSides 2)
 
+                regionsRemainingAfterOcclusion : List EveOnline.ParseUserInterface.DisplayRegion
                 regionsRemainingAfterOcclusion =
                     subtractRegionsFromRegion
-                        { minuend = target.targetUIElement.totalDisplayRegion, subtrahend = occludingRegionsWithSafetyMargin }
+                        { minuend = target.targetUIElement.totalDisplayRegion
+                        , subtrahend = occludingRegionsWithSafetyMargin
+                        }
             in
             case
                 regionsRemainingAfterOcclusion
@@ -371,17 +409,25 @@ useContextMenuCascadeWithCustomConfig filterToDiscardContextMenu target useConte
             of
                 Nothing ->
                     let
+                        clickLocationDefault : EveOnline.BotFramework.Location2d
+                        clickLocationDefault =
+                            { x = 4, y = context.readingFromGameClient.uiTree.totalDisplayRegion.height - 30 }
+
+                        clickLocation : EveOnline.BotFramework.Location2d
                         clickLocation =
-                            context.readingFromGameClient.neocom
-                                |> Maybe.andThen .clock
-                                |> Maybe.map
-                                    (\clock ->
-                                        { x = clock.uiNode.totalDisplayRegion.x + clock.uiNode.totalDisplayRegion.width // 2
-                                        , y = clock.uiNode.totalDisplayRegion.y - 10
-                                        }
-                                    )
-                                |> Maybe.withDefault
-                                    { x = 4, y = context.readingFromGameClient.uiTree.totalDisplayRegion.height - 30 }
+                            case context.readingFromGameClient.neocom of
+                                Nothing ->
+                                    clickLocationDefault
+
+                                Just neocom ->
+                                    case neocom.clock of
+                                        Nothing ->
+                                            clickLocationDefault
+
+                                        Just clock ->
+                                            { x = clock.uiNode.totalDisplayRegion.x + clock.uiNode.totalDisplayRegion.width // 2
+                                            , y = clock.uiNode.totalDisplayRegion.y - 10
+                                            }
                     in
                     Common.DecisionPath.describeBranch
                         ("All of " ++ target.targetUIElementName ++ " is occluded by context menus.")
@@ -402,12 +448,18 @@ useContextMenuCascadeWithCustomConfig filterToDiscardContextMenu target useConte
                             |> decideActionForCurrentStep
                         )
 
+        discardExistingContextMenu : String -> Common.DecisionPath.DecisionPathNode EndDecisionPathStructure
         discardExistingContextMenu reasonToDiscard =
             Common.DecisionPath.describeBranch
                 ("Discard existing context menu (" ++ reasonToDiscard ++ ")")
                 beginCascade
     in
-    case context.previousReadingsFromGameClient |> List.take 3 |> List.reverse |> List.head of
+    case
+        context.previousReadingsFromGameClient
+            |> List.take 3
+            |> List.reverse
+            |> List.head
+    of
         Nothing ->
             beginCascade
 
@@ -485,26 +537,36 @@ discardContextMenuIfTooDistantFromTargetElement :
 discardContextMenuIfTooDistantFromTargetElement { toleratedDistance } =
     \{ targetUIElement } context cascadeFirstElement ->
         let
+            previousStepClickOnTargetLocation : Maybe EveOnline.BotFramework.Location2d
             previousStepClickOnTargetLocation =
-                context.previousStepEffects
-                    |> EveOnline.BotFramework.findMouseButtonClickLocationsInListOfEffects Common.EffectOnWindow.MouseButtonRight
-                    |> List.filter (isPointInRectangle targetUIElement.totalDisplayRegion)
-                    |> List.head
+                case context.previousStepsEffects of
+                    [] ->
+                        Nothing
 
+                    previousStepEffects :: _ ->
+                        previousStepEffects
+                            |> EveOnline.BotFramework.findMouseButtonClickLocationsInListOfEffects
+                                Common.EffectOnWindow.MouseButtonRight
+                            |> Common.listFind (isPointInRectangle targetUIElement.totalDisplayRegion)
+
+            projectedTargetClickLocation : EveOnline.ParseUserInterface.Location2d
             projectedTargetClickLocation =
                 previousStepClickOnTargetLocation
                     |> Maybe.withDefault (centerFromDisplayRegion targetUIElement.totalDisplayRegion)
 
+            cascadeFirstElementEdgesClosestPointToTargetUIElement : EveOnline.BotFramework.Location2d
             cascadeFirstElementEdgesClosestPointToTargetUIElement =
                 projectedTargetClickLocation
                     |> closestPointOnRectangleEdge cascadeFirstElement.uiNode.totalDisplayRegion
 
+            cascadeFirstElementIsCloseToInitialUIElement : Bool
             cascadeFirstElementIsCloseToInitialUIElement =
                 EveOnline.BotFramework.distanceSquaredBetweenLocations
                     projectedTargetClickLocation
                     cascadeFirstElementEdgesClosestPointToTargetUIElement
                     < (toleratedDistance * toleratedDistance)
 
+            cascadeFirstElementIsInExpectedRegion : Bool
             cascadeFirstElementIsInExpectedRegion =
                 cascadeFirstElementIsCloseToInitialUIElement
 
@@ -515,6 +577,8 @@ discardContextMenuIfTooDistantFromTargetElement { toleratedDistance } =
             Just
                 ("not in expected region ("
                     ++ Maybe.withDefault "none" (Maybe.map describeLocation previousStepClickOnTargetLocation)
+                    ++ ", "
+                    ++ describeLocation projectedTargetClickLocation
                     ++ ")"
                 )
 
@@ -670,31 +734,17 @@ overviewWindowIsScrollable overviewWindow =
 
 branchDependingOnDockedOrInSpace :
     { ifDocked : DecisionPathNode
-    , ifSeeShipUI : EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
-    , ifUndockingComplete : SeeUndockingComplete -> DecisionPathNode
+    , ifSeeShipUI : EveOnline.ParseUserInterface.ShipUI -> DecisionPathNode
     }
     -> ReadingFromGameClient
     -> DecisionPathNode
-branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI, ifUndockingComplete } readingFromGameClient =
+branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI } readingFromGameClient =
     case readingFromGameClient.shipUI of
         Nothing ->
             Common.DecisionPath.describeBranch "I see no ship UI, assume we are docked." ifDocked
 
         Just shipUI ->
             ifSeeShipUI shipUI
-                |> Maybe.withDefault
-                    (case readingFromGameClient.overviewWindows of
-                        [] ->
-                            Common.DecisionPath.describeBranch
-                                "I see no overview window, wait until undocking completed."
-                                waitForProgressInGame
-
-                        overviewWindows ->
-                            Common.DecisionPath.describeBranch "I see ship UI and overview, undocking complete."
-                                (ifUndockingComplete
-                                    { shipUI = shipUI, overviewWindows = overviewWindows }
-                                )
-                    )
 
 
 waitForProgressInGame : DecisionPathNode
@@ -737,8 +787,13 @@ clickModuleButtonButWaitIfClickedInPreviousStep :
     -> EveOnline.ParseUserInterface.ShipUIModuleButton
     -> DecisionPathNode
 clickModuleButtonButWaitIfClickedInPreviousStep context moduleButton =
-    if doEffectsClickModuleButton moduleButton context.previousStepEffects then
-        Common.DecisionPath.describeBranch "Already clicked on this module button in previous step."
+    if
+        context.previousStepsEffects
+            |> List.take 2
+            |> List.any (\previousStepEffects -> doEffectsClickModuleButton moduleButton previousStepEffects)
+    then
+        Common.DecisionPath.describeBranch
+            "Already clicked on this module button in previous step."
             waitForProgressInGame
 
     else

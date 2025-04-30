@@ -1673,6 +1673,7 @@ requestToVolatileProcessResultDisplayString =
 statusReportFromState : StateIncludingFramework botSettings s -> String
 statusReportFromState state =
     let
+        fromBot : String
         fromBot =
             state.botState.lastEvent
                 |> Maybe.map
@@ -1686,6 +1687,7 @@ statusReportFromState state =
                     )
                 |> Maybe.withDefault ""
 
+        inputFocusLines : List String
         inputFocusLines =
             case state.setup.lastEffectFailedToAcquireInputFocus of
                 Nothing ->
@@ -1706,7 +1708,8 @@ statusReportFromState state =
 
 {-| This works only while the context menu model does not support branching. In this special case, we can unpack the tree into a list.
 
-With the switch to the new 'Photon UI' in the game client, the effects used to expand menu entries change: Before, the player used a click on the menu entry to expand its children, but now expanding it requires hovering the mouse over the menu entry.
+With the switch to the new 'Photon UI' in the game client, the effects used to expand menu entries change:
+Before, the player used a click on the menu entry to expand its children, but now expanding it requires hovering the mouse over the menu entry.
 
 -}
 unpackContextMenuTreeToListOfActionsDependingOnReadings :
@@ -1714,29 +1717,39 @@ unpackContextMenuTreeToListOfActionsDependingOnReadings :
     -> List (ReadingFromGameClient -> ( String, Maybe (Result () (List Common.EffectOnWindow.EffectOnWindowStruct)) ))
 unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
     let
-        actionFromChoice { isLastElement } ( describeChoice, chooseEntry ) =
-            chooseEntry
-                >> Maybe.map
-                    (\menuEntry ->
-                        let
-                            useClick =
-                                isLastElement
-                                    || (String.toLower (String.trim menuEntry.text) == "dock")
-                        in
-                        if useClick then
-                            ( "Click menu entry " ++ describeChoice ++ "."
-                            , menuEntry.uiNode |> mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft |> Just
-                            )
-
-                        else
-                            ( "Hover menu entry " ++ describeChoice ++ "."
-                            , menuEntry.uiNode |> mouseMoveToUIElement |> Ok |> Just
-                            )
-                    )
-                >> Maybe.withDefault
+        actionFromChoice :
+            { a | isLastElement : Bool }
+            -> ( String, b -> Maybe { c | text : String, uiNode : UIElement } )
+            -> b
+            -> ( String, Maybe (Result () (List Common.EffectOnWindow.EffectOnWindowStruct)) )
+        actionFromChoice { isLastElement } ( describeChoice, chooseEntry ) menuEntries =
+            case chooseEntry menuEntries of
+                Nothing ->
                     ( "Search menu entry " ++ describeChoice ++ "."
                     , Nothing
                     )
+
+                Just menuEntry ->
+                    let
+                        useClick : Bool
+                        useClick =
+                            isLastElement
+                                || (String.toLower (String.trim menuEntry.text) == "dock")
+                    in
+                    if useClick then
+                        ( "Click menu entry " ++ describeChoice ++ "."
+                        , menuEntry.uiNode
+                            |> mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft
+                            |> Just
+                        )
+
+                    else
+                        ( "Hover menu entry " ++ describeChoice ++ "."
+                        , menuEntry.uiNode
+                            |> mouseMoveToUIElement
+                            |> Ok
+                            |> Just
+                        )
 
         listFromNextChoiceAndFollowingNodes nextChoice following =
             (nextChoice |> actionFromChoice { isLastElement = following == MenuCascadeCompleted })
@@ -1756,8 +1769,12 @@ unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
 
 secondsToSessionEnd : BotEventContext a -> Maybe Int
 secondsToSessionEnd botEventContext =
-    botEventContext.sessionTimeLimitInMilliseconds
-        |> Maybe.map (\sessionTimeLimitInMilliseconds -> (sessionTimeLimitInMilliseconds - botEventContext.timeInMilliseconds) // 1000)
+    case botEventContext.sessionTimeLimitInMilliseconds of
+        Nothing ->
+            Nothing
+
+        Just sessionTimeLimitInMilliseconds ->
+            Just ((sessionTimeLimitInMilliseconds - botEventContext.timeInMilliseconds) // 1000)
 
 
 mouseMoveToUIElement : UIElement -> List Common.EffectOnWindow.EffectOnWindowStruct
@@ -1796,7 +1813,11 @@ uiNodeVisibleRegionLargeEnoughForClicking node =
 
 
 type UseContextMenuCascadeNode
-    = MenuEntryWithCustomChoice { describeChoice : String, chooseEntry : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry } UseContextMenuCascadeNode
+    = MenuEntryWithCustomChoice
+        { describeChoice : String
+        , chooseEntry : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry
+        }
+        UseContextMenuCascadeNode
     | MenuCascadeCompleted
 
 

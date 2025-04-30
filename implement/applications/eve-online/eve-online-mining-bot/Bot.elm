@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2025-04-28
+{- EVE Online mining bot version 2025-04-29
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -70,7 +70,6 @@ import EveOnline.BotFramework
         ( ModuleButtonTooltipMemory
         , OverviewWindowsMemory
         , ReadingFromGameClient
-        , SeeUndockingComplete
         , ShipModulesMemory
         , UIElement
         , localChatWindowFromUserInterface
@@ -370,26 +369,31 @@ miningBotDecisionRootBeforeApplyingSettings context =
                         context.readingFromGameClient
                         (dockedWithMiningHoldSelected context)
                 , ifSeeShipUI =
-                    returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones context
-                , ifUndockingComplete =
-                    \seeUndockingComplete ->
-                        continueIfShouldHide
-                            { ifShouldHide =
-                                returnDronesToBay context
-                                    |> Maybe.withDefault (dockToUnloadOre context)
-                            }
-                            context
-                            |> Maybe.withDefault
-                                (ensureUserEnabledNameColumnInOverview
-                                    { ifEnabled =
-                                        ensureMiningHoldIsSelectedInInventoryWindow
-                                            context.readingFromGameClient
-                                            (inSpaceWithMiningHoldSelected context seeUndockingComplete)
-                                    , ifDisabled =
-                                        describeBranch "Please configure the overview to show objects names." askForHelpToGetUnstuck
+                    \shipUI ->
+                        case returnDronesAndRunAwayIfHitpointsAreTooLowOrWithoutDrones context shipUI of
+                            Just toRunAway ->
+                                toRunAway
+
+                            Nothing ->
+                                continueIfShouldHide
+                                    { ifShouldHide =
+                                        returnDronesToBay context
+                                            |> Maybe.withDefault (dockToUnloadOre context)
                                     }
-                                    seeUndockingComplete
-                                )
+                                    context
+                                    |> Maybe.withDefault
+                                        (ensureUserEnabledNameColumnInOverview
+                                            { ifEnabled =
+                                                ensureMiningHoldIsSelectedInInventoryWindow
+                                                    context.readingFromGameClient
+                                                    (inSpaceWithMiningHoldSelected context shipUI)
+                                            , ifDisabled =
+                                                describeBranch
+                                                    "Please configure the overview to show objects names."
+                                                    askForHelpToGetUnstuck
+                                            }
+                                            context.readingFromGameClient
+                                        )
                 }
                 context.readingFromGameClient
             )
@@ -398,7 +402,9 @@ miningBotDecisionRootBeforeApplyingSettings context =
 continueIfShouldHide : { ifShouldHide : DecisionPathNode } -> BotDecisionContext -> Maybe DecisionPathNode
 continueIfShouldHide config context =
     case
-        context.eventContext |> EveOnline.BotFramework.secondsToSessionEnd |> Maybe.andThen (nothingFromIntIfGreaterThan 200)
+        context.eventContext
+            |> EveOnline.BotFramework.secondsToSessionEnd
+            |> Maybe.andThen (nothingFromIntIfGreaterThan 200)
     of
         Just secondsToSessionEnd ->
             Just
@@ -763,11 +769,11 @@ checkAndRepairBeforeUndockingUsingContextMenu context inventoryWindowWithMiningH
 
 inSpaceWithMiningHoldSelected :
     BotDecisionContext
-    -> SeeUndockingComplete
+    -> EveOnline.ParseUserInterface.ShipUI
     -> EveOnline.ParseUserInterface.InventoryWindow
     -> DecisionPathNode
-inSpaceWithMiningHoldSelected context seeUndockingComplete inventoryWindowWithMiningHoldSelected =
-    if seeUndockingComplete.shipUI |> shipUIIndicatesShipIsWarpingOrJumping then
+inSpaceWithMiningHoldSelected context shipUI inventoryWindowWithMiningHoldSelected =
+    if shipUIIndicatesShipIsWarpingOrJumping shipUI then
         describeBranch "I see we are warping."
             ([ returnDronesToBay context
              , readShipUIModuleButtonTooltips context
@@ -1996,10 +2002,13 @@ shouldDockBecauseDroneWindowWasInvisibleTooLong memory =
         && List.all ((==) False) memory.lastReadingsInSpaceDronesWindowWasVisible
 
 
-ensureUserEnabledNameColumnInOverview : { ifEnabled : DecisionPathNode, ifDisabled : DecisionPathNode } -> SeeUndockingComplete -> DecisionPathNode
-ensureUserEnabledNameColumnInOverview { ifEnabled, ifDisabled } seeUndockingComplete =
+ensureUserEnabledNameColumnInOverview :
+    { ifEnabled : DecisionPathNode, ifDisabled : DecisionPathNode }
+    -> ReadingFromGameClient
+    -> DecisionPathNode
+ensureUserEnabledNameColumnInOverview { ifEnabled, ifDisabled } readingFromGameClient =
     if
-        seeUndockingComplete.overviewWindows
+        readingFromGameClient.overviewWindows
             |> List.any
                 (\overviewWindow ->
                     (overviewWindow.entries |> List.all (.objectName >> (==) Nothing))

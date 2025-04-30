@@ -19,7 +19,6 @@ import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
 import Common
 import Common.DecisionPath
 import Common.EffectOnWindow
-import Common.PromptParser exposing (YesOrNo(..))
 import Dict
 import EveOnline.BotFramework
     exposing
@@ -696,31 +695,17 @@ overviewWindowIsScrollable overviewWindow =
 
 branchDependingOnDockedOrInSpace :
     { ifDocked : DecisionPathNode
-    , ifSeeShipUI : EveOnline.ParseUserInterface.ShipUI -> Maybe DecisionPathNode
-    , ifUndockingComplete : SeeUndockingComplete -> DecisionPathNode
+    , ifSeeShipUI : EveOnline.ParseUserInterface.ShipUI -> DecisionPathNode
     }
     -> ReadingFromGameClient
     -> DecisionPathNode
-branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI, ifUndockingComplete } readingFromGameClient =
+branchDependingOnDockedOrInSpace { ifDocked, ifSeeShipUI } readingFromGameClient =
     case readingFromGameClient.shipUI of
         Nothing ->
             Common.DecisionPath.describeBranch "I see no ship UI, assume we are docked." ifDocked
 
         Just shipUI ->
             ifSeeShipUI shipUI
-                |> Maybe.withDefault
-                    (case readingFromGameClient.overviewWindows of
-                        [] ->
-                            Common.DecisionPath.describeBranch
-                                "I see no overview window, wait until undocking completed."
-                                waitForProgressInGame
-
-                        overviewWindows ->
-                            Common.DecisionPath.describeBranch "I see ship UI and overview, undocking complete."
-                                (ifUndockingComplete
-                                    { shipUI = shipUI, overviewWindows = overviewWindows }
-                                )
-                    )
 
 
 waitForProgressInGame : DecisionPathNode

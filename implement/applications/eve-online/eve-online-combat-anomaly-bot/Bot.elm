@@ -82,6 +82,7 @@ import EveOnline.BotFramework
         , useMenuEntryInLastContextMenuInCascade
         , useMenuEntryWithTextContaining
         , useMenuEntryWithTextContainingFirstOf
+        , useMenuEntryWithTextContainingFirstOfCommonContinuation
         , useMenuEntryWithTextEqual
         )
 import EveOnline.BotFrameworkSeparatingMemory
@@ -616,7 +617,7 @@ runAway context shipUI =
         hideLocationNames ->
             let
                 routesToHideLocation =
-                    dockToStationOrStructureWithMatchingName
+                    dockOrWarpToLocationWithMatchingName
                         { namesFromSettingOrInfoPanel = hideLocationNames }
                         context
             in
@@ -643,7 +644,7 @@ runAway context shipUI =
                                 (routesToHideLocation.viaSolarSystemMenu ())
 
 
-dockToStationOrStructureWithMatchingName :
+dockOrWarpToLocationWithMatchingName :
     { namesFromSettingOrInfoPanel : List String }
     -> BotDecisionContext
     ->
@@ -651,7 +652,17 @@ dockToStationOrStructureWithMatchingName :
         , viaOverview : Maybe DecisionPathNode
         , viaSolarSystemMenu : () -> DecisionPathNode
         }
-dockToStationOrStructureWithMatchingName { namesFromSettingOrInfoPanel } context =
+dockOrWarpToLocationWithMatchingName { namesFromSettingOrInfoPanel } context =
+    {-
+       session-2025-04-29T00-59:
+       A location given with settings is in space and is NOT directly at a structure.
+       In the context menu for that location, we see following entries at the top:
+       ----
+       Warp to Within (0 m) -> This one appears to be expandable.
+       Align to
+       Show Info
+       ...
+    -}
     let
         destNamesSimplified : List String
         destNamesSimplified =
@@ -678,7 +689,18 @@ dockToStationOrStructureWithMatchingName { namesFromSettingOrInfoPanel } context
     in
     useContextMenuOnLocationWithMatchingName
         displayTextRepresentsMatchingStation
-        (useMenuEntryWithTextContaining "dock" menuCascadeCompleted)
+        (useMenuEntryWithTextContainingFirstOf
+            [ ( "dock"
+              , menuCascadeCompleted
+              )
+            , ( "Warp to Within (0 m)"
+              , menuCascadeCompleted
+              )
+            , ( "Warp to"
+              , useMenuEntryWithTextContaining "Within 0 m" menuCascadeCompleted
+              )
+            ]
+        )
         context
 
 
@@ -754,7 +776,7 @@ useContextMenuOnLocationWithMatchingName nameMatches useMenu context =
                 |> Maybe.andThen scrollDown
                 |> Maybe.withDefault
                     (useContextMenuCascadeOnListSurroundingsButton
-                        (useMenuEntryWithTextContainingFirstOf
+                        (useMenuEntryWithTextContainingFirstOfCommonContinuation
                             [ "locations" ]
                             (useMenuEntryInLastContextMenuInCascade
                                 { describeChoice = "select using the configured predicate"
@@ -885,7 +907,7 @@ dockAtRandomStationOrStructure context seeUndockingComplete =
                         }
             in
             useContextMenuCascadeOnListSurroundingsButton
-                (useMenuEntryWithTextContainingFirstOf [ "stations", "structures" ]
+                (useMenuEntryWithTextContainingFirstOfCommonContinuation [ "stations", "structures" ]
                     (chooseNextMenuEntryDockOrRandom 3)
                 )
                 context

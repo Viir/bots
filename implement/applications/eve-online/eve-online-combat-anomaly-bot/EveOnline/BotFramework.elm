@@ -19,6 +19,7 @@ To learn more about developing for EVE Online, see the guide at <https://to.botl
 import Array
 import Bitwise
 import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
+import Common
 import Common.Basics
 import Common.EffectOnWindow
 import CompilationInterface.SourceFiles
@@ -1876,20 +1877,43 @@ useMenuEntryWithTextContaining textToSearch =
         }
 
 
-useMenuEntryWithTextContainingFirstOf : List String -> UseContextMenuCascadeNode -> UseContextMenuCascadeNode
+useMenuEntryWithTextContainingFirstOfCommonContinuation : List String -> UseContextMenuCascadeNode -> UseContextMenuCascadeNode
+useMenuEntryWithTextContainingFirstOfCommonContinuation priorities continuation =
+    useMenuEntryWithTextContainingFirstOf
+        (List.map (\textToSearch -> ( textToSearch, continuation )) priorities)
+
+
+useMenuEntryWithTextContainingFirstOf :
+    List ( String, UseContextMenuCascadeNode )
+    -> UseContextMenuCascadeNode
 useMenuEntryWithTextContainingFirstOf priorities =
-    useMenuEntryInLastContextMenuInCascade
-        { describeChoice = "with text containing first available of " ++ (priorities |> List.map (String.Extra.surround "'") |> String.join ", ")
+    MenuEntryWithCustomChoice
+        { describeChoice =
+            "with text containing first available of "
+                ++ (priorities
+                        |> List.map (\( textToSearch, _ ) -> String.Extra.surround "'" textToSearch)
+                        |> String.join ", "
+                   )
         , chooseEntry =
-            \menuEntries ->
+            \menu ->
                 priorities
-                    |> List.concatMap
-                        (\textToSearch ->
-                            menuEntries
-                                |> List.filter (.text >> Common.Basics.stringContainsIgnoringCase textToSearch)
-                                |> List.sortBy (.text >> String.trim >> String.length)
+                    |> Common.listMapFind
+                        (\( textToSearch, submenu ) ->
+                            case
+                                menu.entries
+                                    |> List.filter (.text >> Common.Basics.stringContainsIgnoringCase textToSearch)
+                                    |> List.sortBy (.text >> String.trim >> String.length)
+                                    |> List.head
+                            of
+                                Nothing ->
+                                    Nothing
+
+                                Just menuEntry ->
+                                    Just
+                                        ( menuEntry
+                                        , submenu
+                                        )
                         )
-                    |> List.head
         }
 
 

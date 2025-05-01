@@ -36,7 +36,6 @@ import EveOnline.BotFramework
         , growRegionOnAllSides
         , isPointInRectangle
         , mouseClickOnUIElement
-        , unpackContextMenuTreeToListOfActionsDependingOnReadings
         )
 import EveOnline.ParseUserInterface
     exposing
@@ -185,6 +184,7 @@ processEventInBaseFramework config eventContext event stateBefore =
                     stateBefore.botMemory
                         |> config.updateMemoryForNewReadingFromGame updateMemoryContext
 
+                lastReadingFromGameClientContextMenus : List EveOnline.BotFramework.ContextMenu
                 lastReadingFromGameClientContextMenus =
                     stateBefore.lastReadingsFromGameClient
                         |> List.head
@@ -487,48 +487,31 @@ useContextMenuCascadeWithCustomConfig filterToDiscardContextMenu target useConte
 
                             else
                                 case
-                                    useContextMenu
-                                        |> unpackContextMenuTreeToListOfActionsDependingOnReadings
+                                    EveOnline.BotFramework.getNextContextMenu
+                                        useContextMenu
+                                        readingFromGameClient
                                         {-
                                            2023-01-12 Adapt to behavior of menu from surroundings button:
                                            When opening that menu, the game client opens not only the first level but sometimes also expands the 'stations' entry so that we immediately also have the second level on screen.
                                         -}
-                                        |> List.drop
-                                            (min
-                                                (List.length cascadeFollowingElements)
-                                                (context.contextMenuCascadeLevel - 1)
-                                            )
-                                        |> List.head
+                                        (min
+                                            (List.length cascadeFollowingElements)
+                                            (context.contextMenuCascadeLevel - 1)
+                                        )
                                 of
-                                    Nothing ->
-                                        beginCascade
+                                    Err err ->
+                                        Common.DecisionPath.describeBranch
+                                            ("Failed to continue context menu: " ++ err)
+                                            beginCascade
 
-                                    Just descriptionAndEffectsFromReading ->
-                                        let
-                                            readingFromGameClientForSelectingMenuEntry =
-                                                { readingFromGameClient
-                                                    | contextMenus =
-                                                        readingFromGameClient.contextMenus
-                                                            |> List.reverse
-                                                            |> List.take context.contextMenuCascadeLevel
-                                                            |> List.reverse
-                                                }
+                                    Ok EveOnline.BotFramework.CompletedMenuCascade ->
+                                        Common.DecisionPath.describeBranch
+                                            ("Completed cascade on " ++ target.targetUIElementName)
+                                            beginCascade
 
-                                            ( stepDescription, maybeEffectsToGameClient ) =
-                                                descriptionAndEffectsFromReading readingFromGameClientForSelectingMenuEntry
-                                        in
+                                    Ok (EveOnline.BotFramework.ContinueMenuCascade ( stepDescription, effectsToGameClient )) ->
                                         Common.DecisionPath.describeBranch stepDescription
-                                            (case maybeEffectsToGameClient of
-                                                Nothing ->
-                                                    beginCascade
-
-                                                Just (Err _) ->
-                                                    Common.DecisionPath.describeBranch "Failed to perform this action"
-                                                        beginCascade
-
-                                                Just (Ok effectsToGameClient) ->
-                                                    decideActionForCurrentStep effectsToGameClient
-                                            )
+                                            (decideActionForCurrentStep effectsToGameClient)
 
 
 discardContextMenuIfTooDistantFromTargetElement :

@@ -1712,59 +1712,91 @@ With the switch to the new 'Photon UI' in the game client, the effects used to e
 Before, the player used a click on the menu entry to expand its children, but now expanding it requires hovering the mouse over the menu entry.
 
 -}
-unpackContextMenuTreeToListOfActionsDependingOnReadings :
+getNextContextMenu :
     UseContextMenuCascadeNode
-    -> List (ReadingFromGameClient -> ( String, Maybe (Result () (List Common.EffectOnWindow.EffectOnWindowStruct)) ))
-unpackContextMenuTreeToListOfActionsDependingOnReadings treeNode =
-    let
-        actionFromChoice :
-            { a | isLastElement : Bool }
-            -> ( String, b -> Maybe { c | text : String, uiNode : UIElement } )
-            -> b
-            -> ( String, Maybe (Result () (List Common.EffectOnWindow.EffectOnWindowStruct)) )
-        actionFromChoice { isLastElement } ( describeChoice, chooseEntry ) menuEntries =
-            case chooseEntry menuEntries of
-                Nothing ->
-                    ( "Search menu entry " ++ describeChoice ++ "."
-                    , Nothing
-                    )
+    -> ReadingFromGameClient
+    -> Int
+    -> Result String ContextMenuStepSuccess
+getNextContextMenu treeNode readingFromGameClient currentDepth =
+    {-
+       In contrast to unpackContextMenuTreeToListOfActionsDependingOnReadings,
+       this function returns the action for the current menu depth.
+    -}
+    {-
+       Note that the first/root node of the menu cascade we get in the reading from the game client
+       Is not the first in the list (inside `LayerCore` `l_menu`) but the last list item.
+    -}
+    getNextContextMenuRec
+        treeNode
+        (readingFromGameClient.contextMenus
+            |> List.reverse
+            |> List.take (currentDepth + 1)
+        )
 
-                Just menuEntry ->
-                    let
-                        useClick : Bool
-                        useClick =
-                            isLastElement
-                                || (String.toLower (String.trim menuEntry.text) == "dock")
-                    in
-                    if useClick then
-                        ( "Click menu entry " ++ describeChoice ++ "."
-                        , menuEntry.uiNode
-                            |> mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft
-                            |> Just
-                        )
 
-                    else
-                        ( "Hover menu entry " ++ describeChoice ++ "."
-                        , menuEntry.uiNode
-                            |> mouseMoveToUIElement
-                            |> Ok
-                            |> Just
-                        )
-
-        listFromNextChoiceAndFollowingNodes nextChoice following =
-            (nextChoice |> actionFromChoice { isLastElement = following == MenuCascadeCompleted })
-                :: (following |> unpackContextMenuTreeToListOfActionsDependingOnReadings)
-    in
+getNextContextMenuRec :
+    UseContextMenuCascadeNode
+    -> List EveOnline.ParseUserInterface.ContextMenu
+    -> Result String ContextMenuStepSuccess
+getNextContextMenuRec treeNode remainingMenus =
     case treeNode of
         MenuCascadeCompleted ->
-            []
+            Ok CompletedMenuCascade
 
-        MenuEntryWithCustomChoice custom following ->
-            listFromNextChoiceAndFollowingNodes
-                ( "'" ++ custom.describeChoice ++ "'"
-                , custom.chooseEntry
-                )
-                following
+        MenuEntryWithCustomChoice custom ->
+            case remainingMenus of
+                [] ->
+                    Err ("Could not find menu entry " ++ custom.describeChoice ++ ".")
+
+                [ currentMenu ] ->
+                    case custom.chooseEntry currentMenu of
+                        Nothing ->
+                            Err ("Could not find menu entry " ++ custom.describeChoice ++ ".")
+
+                        Just ( menuEntry, following ) ->
+                            let
+                                isLastMenu : Bool
+                                isLastMenu =
+                                    following == MenuCascadeCompleted
+
+                                useClick : Bool
+                                useClick =
+                                    (String.toLower (String.trim menuEntry.text) == "dock")
+                                        || isLastMenu
+                            in
+                            if useClick then
+                                case mouseClickOnUIElement Common.EffectOnWindow.MouseButtonLeft menuEntry.uiNode of
+                                    Ok effects ->
+                                        Ok
+                                            (ContinueMenuCascade
+                                                ( "Click on menu entry " ++ custom.describeChoice ++ "."
+                                                , effects
+                                                )
+                                            )
+
+                                    Err _ ->
+                                        Err ("Failed to click menu entry " ++ custom.describeChoice ++ ".")
+
+                            else
+                                Ok
+                                    (ContinueMenuCascade
+                                        ( "Move mouse to entry " ++ custom.describeChoice
+                                        , mouseMoveToUIElement menuEntry.uiNode
+                                        )
+                                    )
+
+                nextMenu :: remainingMenusTail ->
+                    case custom.chooseEntry nextMenu of
+                        Nothing ->
+                            Err ("Could not find menu entry " ++ custom.describeChoice ++ ".")
+
+                        Just ( menuEntry, following ) ->
+                            {-
+                               TODO: Here check if the current menu matches the selected menu
+                            -}
+                            getNextContextMenuRec
+                                following
+                                remainingMenusTail
 
 
 secondsToSessionEnd : BotEventContext a -> Maybe Int
@@ -1815,10 +1847,22 @@ uiNodeVisibleRegionLargeEnoughForClicking node =
 type UseContextMenuCascadeNode
     = MenuEntryWithCustomChoice
         { describeChoice : String
-        , chooseEntry : ReadingFromGameClient -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry
+        , chooseEntry :
+            {-
+               We explicitly supply the context menu for the current level.
+               (Only) using the complete reading from the game client would not be precise enough,
+               because sometimes the game client opens not only the root but also
+               a submenu when opening a context menu.
+            -}
+            EveOnline.ParseUserInterface.ContextMenu
+            -> Maybe ( EveOnline.ParseUserInterface.ContextMenuEntry, UseContextMenuCascadeNode )
         }
-        UseContextMenuCascadeNode
     | MenuCascadeCompleted
+
+
+type ContextMenuStepSuccess
+    = ContinueMenuCascade ( String, List Common.EffectOnWindow.EffectOnWindowStruct )
+    | CompletedMenuCascade
 
 
 useMenuEntryWithTextContaining : String -> UseContextMenuCascadeNode -> UseContextMenuCascadeNode
@@ -1860,25 +1904,41 @@ useMenuEntryWithTextEqual textToSearch =
 
 
 useMenuEntryInLastContextMenuInCascade :
-    { describeChoice : String, chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry }
+    { describeChoice : String
+    , chooseEntry : List EveOnline.ParseUserInterface.ContextMenuEntry -> Maybe EveOnline.ParseUserInterface.ContextMenuEntry
+    }
     -> UseContextMenuCascadeNode
     -> UseContextMenuCascadeNode
-useMenuEntryInLastContextMenuInCascade choice =
+useMenuEntryInLastContextMenuInCascade choice followingChoice =
     MenuEntryWithCustomChoice
         { describeChoice = choice.describeChoice
-        , chooseEntry = pickEntryFromLastContextMenuInCascade choice.chooseEntry
+        , chooseEntry =
+            \currentMenu ->
+                case choice.chooseEntry currentMenu.entries of
+                    Nothing ->
+                        Nothing
+
+                    Just menuEntry ->
+                        Just ( menuEntry, followingChoice )
         }
 
 
 useRandomMenuEntry : Int -> UseContextMenuCascadeNode -> UseContextMenuCascadeNode
-useRandomMenuEntry randomInt =
+useRandomMenuEntry randomInt followingChoice =
     MenuEntryWithCustomChoice
         { describeChoice = "random entry"
         , chooseEntry =
-            \readingFromGameClient ->
-                readingFromGameClient
-                    |> pickEntryFromLastContextMenuInCascade
-                        (Common.Basics.listElementAtWrappedIndex randomInt)
+            \currentMenu ->
+                case
+                    Common.Basics.listElementAtWrappedIndex
+                        randomInt
+                        currentMenu.entries
+                of
+                    Nothing ->
+                        Nothing
+
+                    Just menuEntry ->
+                        Just ( menuEntry, followingChoice )
         }
 
 

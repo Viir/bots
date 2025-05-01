@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2025-04-30
+{- EVE Online combat anomaly bot version 2025-05-01
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -61,6 +61,7 @@ module Bot exposing
     )
 
 import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
+import Common
 import Common.Basics exposing (listElementAtWrappedIndex, resultFirstSuccessOrFirstError, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
@@ -76,7 +77,6 @@ import EveOnline.BotFramework
         , localChatWindowFromUserInterface
         , menuCascadeCompleted
         , mouseClickOnUIElement
-        , pickEntryFromLastContextMenuInCascade
         , shipUIIndicatesShipIsWarpingOrJumping
         , uiNodeVisibleRegionLargeEnoughForClicking
         , useMenuEntryInLastContextMenuInCascade
@@ -850,34 +850,43 @@ dockAtRandomStationOrStructure context seeUndockingComplete =
                         |> List.any (\toAvoid -> menuEntry.text |> stringContainsIgnoringCase toAvoid)
                         |> not
 
-                chooseNextMenuEntry =
-                    { describeChoice = "Use 'Dock' if available or a random entry."
-                    , chooseEntry =
-                        pickEntryFromLastContextMenuInCascade
-                            (\menuEntries ->
+                chooseNextMenuEntryDockOrRandom : Int -> UseContextMenuCascadeNode
+                chooseNextMenuEntryDockOrRandom remainingDepth =
+                    MenuEntryWithCustomChoice
+                        { describeChoice = "Use 'Dock' if available or a random entry."
+                        , chooseEntry =
+                            \menu ->
                                 let
                                     suitableMenuEntries =
-                                        List.filter menuEntryIsSuitable menuEntries
+                                        List.filter menuEntryIsSuitable menu.entries
                                 in
-                                [ withTextContainingIgnoringCase "dock"
-                                , List.filter (.text >> stringContainsIgnoringCase "station")
-                                    >> Common.Basics.listElementAtWrappedIndex
+                                case
+                                    [ withTextContainingIgnoringCase "dock"
+                                    , List.filter (.text >> stringContainsIgnoringCase "station")
+                                        >> Common.Basics.listElementAtWrappedIndex
+                                            (context.randomIntegers |> List.head |> Maybe.withDefault 0)
+                                    , Common.Basics.listElementAtWrappedIndex
                                         (context.randomIntegers |> List.head |> Maybe.withDefault 0)
-                                , Common.Basics.listElementAtWrappedIndex
-                                    (context.randomIntegers |> List.head |> Maybe.withDefault 0)
-                                ]
-                                    |> List.filterMap (\priority -> suitableMenuEntries |> priority)
-                                    |> List.head
-                            )
-                    }
+                                    ]
+                                        |> Common.listMapFind (\priority -> suitableMenuEntries |> priority)
+                                of
+                                    Nothing ->
+                                        Nothing
+
+                                    Just menuEntry ->
+                                        if remainingDepth <= 0 then
+                                            Just ( menuEntry, MenuCascadeCompleted )
+
+                                        else
+                                            Just
+                                                ( menuEntry
+                                                , chooseNextMenuEntryDockOrRandom (remainingDepth - 1)
+                                                )
+                        }
             in
             useContextMenuCascadeOnListSurroundingsButton
                 (useMenuEntryWithTextContainingFirstOf [ "stations", "structures" ]
-                    (MenuEntryWithCustomChoice chooseNextMenuEntry
-                        (MenuEntryWithCustomChoice chooseNextMenuEntry
-                            (MenuEntryWithCustomChoice chooseNextMenuEntry MenuCascadeCompleted)
-                        )
-                    )
+                    (chooseNextMenuEntryDockOrRandom 3)
                 )
                 context
 

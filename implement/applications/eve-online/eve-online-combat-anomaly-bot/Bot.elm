@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2025-05-01
+{- EVE Online combat anomaly bot version 2025-05-07
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -1515,6 +1515,7 @@ launchAndEngageDrones config context =
             case ( dronesWindow.droneGroupInBay, dronesWindow.droneGroupInSpace ) of
                 ( Just droneGroupInBay, Just droneGroupInSpace ) ->
                     let
+                        idlingDrones : List EveOnline.ParseUserInterface.DronesWindowEntryDroneStructure
                         idlingDrones =
                             droneGroupInSpace
                                 |> EveOnline.ParseUserInterface.enumerateAllDronesFromDronesGroup
@@ -1525,20 +1526,37 @@ launchAndEngageDrones config context =
                                         >> List.any (stringContainsIgnoringCase "idle")
                                     )
 
+                        dronesInBayQuantity : Int
                         dronesInBayQuantity =
-                            droneGroupInBay.header.quantityFromTitle
-                                |> Maybe.map .current
-                                |> Maybe.withDefault 0
+                            case droneGroupInBay.header.quantityFromTitle of
+                                Nothing ->
+                                    0
 
+                                Just quantityFromTitle ->
+                                    quantityFromTitle.current
+
+                        dronesInSpaceQuantityCurrent : Int
                         dronesInSpaceQuantityCurrent =
-                            droneGroupInSpace.header.quantityFromTitle
-                                |> Maybe.map .current
-                                |> Maybe.withDefault 0
+                            case droneGroupInSpace.header.quantityFromTitle of
+                                Nothing ->
+                                    0
 
+                                Just quantityFromTitle ->
+                                    quantityFromTitle.current
+
+                        dronesInSpaceQuantityLimit : Int
                         dronesInSpaceQuantityLimit =
-                            droneGroupInSpace.header.quantityFromTitle
-                                |> Maybe.andThen .maximum
-                                |> Maybe.withDefault 2
+                            case droneGroupInSpace.header.quantityFromTitle of
+                                Nothing ->
+                                    2
+
+                                Just quantityFromTitle ->
+                                    case quantityFromTitle.maximum of
+                                        Nothing ->
+                                            2
+
+                                        Just maximum ->
+                                            maximum
 
                         {-
                            Observation from session-recording-2024-05-07T11-55-13.zip-event-482-eve-online-memory-reading:
@@ -1560,12 +1578,14 @@ launchAndEngageDrones config context =
                                                 )
                                     )
 
+                        engageDrones : DecisionPathNode
                         engageDrones =
                             useContextMenuCascade
                                 ( "drones group", droneGroupInSpace.header.uiNode )
                                 (useMenuEntryWithTextContaining "engage target" menuCascadeCompleted)
                                 context
 
+                        considerLaunch : () -> Maybe DecisionPathNode
                         considerLaunch () =
                             if 0 < dronesInBayQuantity && dronesInSpaceQuantityCurrent < dronesInSpaceQuantityLimit then
                                 if assumeNotEnoughBandwidthToLaunchDrone context then

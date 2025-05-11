@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2025-05-07
+{- EVE Online combat anomaly bot version 2025-05-08
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -1618,7 +1618,7 @@ launchAndEngageDrones config context =
                                     targetsWithDronesAssignedLowPrio : List EveOnline.ParseUserInterface.Target
                                     targetsWithDronesAssignedLowPrio =
                                         List.filter
-                                            (\target -> List.member target redirectToTargets)
+                                            (\target -> not (List.member target redirectToTargets))
                                             targetsWithDronesAssigned
                                 in
                                 if 0 < List.length targetsWithDronesAssignedLowPrio then

@@ -1956,37 +1956,65 @@ moduleIsActiveOrReloading moduleButton =
 
 
 iconSpriteHasColorOfRat : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
-iconSpriteHasColorOfRat =
-    .iconSpriteColorPercent
-        >> Maybe.map
-            (\colorPercent ->
-                colorPercent.g * 3 < colorPercent.r && colorPercent.b * 3 < colorPercent.r && 60 < colorPercent.r && 50 < colorPercent.a
-            )
-        >> Maybe.withDefault False
+iconSpriteHasColorOfRat overviewEntry =
+    case overviewEntry.iconSpriteColorPercent of
+        Nothing ->
+            False
+
+        Just colorPercent ->
+            (colorPercent.g * 3 < colorPercent.r)
+                && (colorPercent.b * 3 < colorPercent.r)
+                && (60 < colorPercent.r && 50 < colorPercent.a)
 
 
 updateMemoryForNewReadingFromGame : UpdateMemoryContext -> BotMemory -> BotMemory
 updateMemoryForNewReadingFromGame context botMemoryBefore =
     let
+        currentStationNameFromInfoPanel : Maybe String
         currentStationNameFromInfoPanel =
             context.readingFromGameClient.infoPanelContainer
                 |> Maybe.andThen .infoPanelLocationInfo
                 |> Maybe.andThen .expandedContent
                 |> Maybe.andThen .currentStationName
 
+        shipIsWarping : Maybe Bool
         shipIsWarping =
-            context.readingFromGameClient.shipUI
-                |> Maybe.andThen .indication
-                |> Maybe.andThen .maneuverType
-                |> Maybe.map ((==) EveOnline.ParseUserInterface.ManeuverWarp)
+            case context.readingFromGameClient.shipUI of
+                Nothing ->
+                    Nothing
 
+                Just shipUI ->
+                    case shipUI.indication of
+                        Nothing ->
+                            Nothing
+
+                        Just indication ->
+                            case indication.maneuverType of
+                                Nothing ->
+                                    Nothing
+
+                                Just maneuverType ->
+                                    case maneuverType of
+                                        EveOnline.ParseUserInterface.ManeuverWarp ->
+                                            Just True
+
+                                        _ ->
+                                            Just False
+
+        namesOfRatsInOverview : List String
         namesOfRatsInOverview =
             getNamesOfRatsInOverview context.readingFromGameClient
 
+        weJustFinishedWarping : Bool
         weJustFinishedWarping =
-            (shipIsWarping /= botMemoryBefore.shipWarpingInLastReading)
-                && (botMemoryBefore.shipWarpingInLastReading == Just True)
+            case botMemoryBefore.shipWarpingInLastReading of
+                Just True ->
+                    shipIsWarping /= botMemoryBefore.shipWarpingInLastReading
 
+                _ ->
+                    False
+
+        visitedAnomalies : Dict.Dict String MemoryOfAnomaly
         visitedAnomalies =
             if shipIsWarping == Just True then
                 botMemoryBefore.visitedAnomalies
@@ -2022,8 +2050,10 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
                                         Set.union anomalyMemoryBefore.ratsSeen (Set.fromList namesOfRatsInOverview)
                                 }
                         in
-                        botMemoryBefore.visitedAnomalies |> Dict.insert currentAnomalyID anomalyMemory
+                        botMemoryBefore.visitedAnomalies
+                            |> Dict.insert currentAnomalyID anomalyMemory
 
+        notEnoughBandwidthToLaunchDrone : Bool
         notEnoughBandwidthToLaunchDrone =
             readingFromGameClientSaysNotEnoughBandwidthToLaunchDrone context.readingFromGameClient
 

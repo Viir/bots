@@ -1,4 +1,4 @@
-{- EVE Online combat anomaly bot version 2025-05-08
+{- EVE Online combat anomaly bot version 2025-05-13
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
@@ -529,7 +529,27 @@ closeMessageBox readingFromGameClient =
 
 continueIfShouldHide : { ifShouldHide : DecisionPathNode } -> BotDecisionContext -> Maybe DecisionPathNode
 continueIfShouldHide config context =
+    case checkIfShouldHide context of
+        Nothing ->
+            Nothing
+
+        Just ( reason, justAskForHelp ) ->
+            Just
+                (describeBranch
+                    reason
+                    (if justAskForHelp then
+                        askForHelpToGetUnstuck
+
+                     else
+                        config.ifShouldHide
+                    )
+                )
+
+
+checkIfShouldHide : BotDecisionContext -> Maybe ( String, Bool )
+checkIfShouldHide context =
     let
+        hasNoShipModules : Bool
         hasNoShipModules =
             case context.readingFromGameClient.shipUI of
                 Nothing ->
@@ -540,9 +560,8 @@ continueIfShouldHide config context =
     in
     if hasNoShipModules then
         Just
-            (describeBranch
-                "Ship UI contains zero module buttons."
-                config.ifShouldHide
+            ( "Ship UI contains zero module buttons."
+            , False
             )
 
     else
@@ -553,9 +572,8 @@ continueIfShouldHide config context =
         of
             Just secondsToSessionEnd ->
                 Just
-                    (describeBranch
-                        ("Session ends in " ++ String.fromInt secondsToSessionEnd ++ " seconds.")
-                        config.ifShouldHide
+                    ( "Session ends in " ++ String.fromInt secondsToSessionEnd ++ " seconds."
+                    , False
                     )
 
             Nothing ->
@@ -566,9 +584,8 @@ continueIfShouldHide config context =
                     case context.readingFromGameClient |> localChatWindowFromUserInterface of
                         Nothing ->
                             Just
-                                (describeBranch
-                                    "I don't see the local chat window."
-                                    askForHelpToGetUnstuck
+                                ( "I don't see the local chat window."
+                                , True
                                 )
 
                         Just localChatWindow ->
@@ -599,9 +616,8 @@ continueIfShouldHide config context =
                             in
                             if 1 < List.length subsetOfUsersWithNoGoodStanding then
                                 Just
-                                    (describeBranch
-                                        "There is an enemy or neutral in local chat."
-                                        config.ifShouldHide
+                                    ( "There is an enemy or neutral in local chat."
+                                    , False
                                     )
 
                             else

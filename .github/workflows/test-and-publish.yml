@@ -1,0 +1,26 @@
+name: test-and-publish
+
+on:
+  push:
+  workflow_dispatch:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-24.04
+
+    steps:
+
+    - name: Avoid git mutating files on checkout
+      run: |
+        git config --global core.autocrlf false
+
+    - uses: actions/checkout@v4
+
+    - name: Install elm-format
+      run: npm  install  -g  elm-format
+
+    - name: Check formatting in Elm program code
+      run: elm-format  --validate  ./implement/

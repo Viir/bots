@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2025-02-12
+{- Tribal Wars 2 farmbot version 2025-05-27
 
    This bot farms barbarian villages in Tribal Wars 2.
    It automatically detects barbarian villages, available troops and configured army presets to attack.
@@ -1918,14 +1918,16 @@ pickBestMatchingArmyPresetForVillage settings presets ( villageId, villageDetail
 
     else
         let
-            farmPresetFilter =
+            farmArmyPresetPatterns : List String
+            farmArmyPresetPatterns =
                 settings.farmArmyPresetPatterns
 
-            farmPresetsMaybeEmpty =
+            matchingFarmPresets : List ArmyPreset
+            matchingFarmPresets =
                 presets
                     |> List.filter
                         (\preset ->
-                            farmPresetFilter
+                            farmArmyPresetPatterns
                                 |> List.any
                                     (\presetFilter ->
                                         stringContainsIgnoringCase presetFilter preset.name
@@ -1933,11 +1935,11 @@ pickBestMatchingArmyPresetForVillage settings presets ( villageId, villageDetail
                         )
                     |> List.sortBy (.name >> String.toLower)
         in
-        case farmPresetsMaybeEmpty of
+        case matchingFarmPresets of
             [] ->
                 describeBranch
                     ("Found no army presets matching the patterns ["
-                        ++ (farmPresetFilter |> List.map (String.Extra.surround "'") |> String.join ", ")
+                        ++ (farmArmyPresetPatterns |> List.map (String.Extra.surround "'") |> String.join ", ")
                         ++ "]."
                     )
                     (endDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
@@ -1949,7 +1951,12 @@ pickBestMatchingArmyPresetForVillage settings presets ( villageId, villageDetail
                 of
                     [] ->
                         describeBranch
-                            ("Found " ++ (farmPresets |> List.length |> String.fromInt) ++ " army presets for farming, but none enabled for this village.")
+                            (String.concat
+                                [ "Found "
+                                , farmPresets |> List.length |> String.fromInt
+                                , " army presets for farming, but none enabled for this village."
+                                ]
+                            )
                             (endDecisionPath (CompletedThisVillage NoMatchingArmyPresetEnabledForThisVillage))
 
                     farmPresetsEnabledForThisVillage ->
@@ -1962,8 +1969,12 @@ pickBestMatchingArmyPresetForVillage settings presets ( villageId, villageDetail
                                                 |> Dict.toList
                                                 |> List.all
                                                     (\( unitId, presetUnitCount ) ->
-                                                        presetUnitCount
-                                                            <= (villageDetails.units |> Dict.get unitId |> Maybe.map .available |> Maybe.withDefault 0)
+                                                        case Dict.get unitId villageDetails.units of
+                                                            Nothing ->
+                                                                False
+
+                                                            Just villageUnitCount ->
+                                                                presetUnitCount <= villageUnitCount.available
                                                     )
                                         )
                         in

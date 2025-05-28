@@ -1,4 +1,4 @@
-{- Tribal Wars 2 farmbot version 2025-05-27
+{- Tribal Wars 2 farmbot version 2025-05-28
 
    This bot farms barbarian villages in Tribal Wars 2.
    It automatically detects barbarian villages, available troops and configured army presets to attack.
@@ -166,7 +166,9 @@ parseBotSettings =
              , valueParser =
                 PromptParser.valueTypeString
                     (\presetPattern settings ->
-                        { settings | farmArmyPresetPatterns = presetPattern :: settings.farmArmyPresetPatterns }
+                        { settings
+                            | farmArmyPresetPatterns = List.concat [ settings.farmArmyPresetPatterns, [ presetPattern ] ]
+                        }
                     )
              }
            )
@@ -1924,16 +1926,17 @@ pickBestMatchingArmyPresetForVillage settings presets ( villageId, villageDetail
 
             matchingFarmPresets : List ArmyPreset
             matchingFarmPresets =
-                presets
-                    |> List.filter
-                        (\preset ->
-                            farmArmyPresetPatterns
-                                |> List.any
-                                    (\presetFilter ->
+                farmArmyPresetPatterns
+                    |> List.concatMap
+                        (\presetFilter ->
+                            presets
+                                |> List.filter
+                                    (\preset ->
                                         stringContainsIgnoringCase presetFilter preset.name
                                     )
+                                |> List.sortBy (.name >> String.toLower)
                         )
-                    |> List.sortBy (.name >> String.toLower)
+                    |> Common.Basics.listUnique
         in
         case matchingFarmPresets of
             [] ->

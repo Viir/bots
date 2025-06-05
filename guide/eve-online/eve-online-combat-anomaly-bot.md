@@ -26,7 +26,7 @@ If the BotLab client is not already installed on your machine, follow the guide 
 The BotLab client is a tool for developing bots and also makes running bots easier with graphical user interfaces for configuration.
 
 In the BotLab client, load the bot by entering the following link in the 'Select Bot' view:
-<https://catalog.botlab.org/5e505439bd2868c3>
+<https://catalog.botlab.org/f698f8010ae995ef>
 
 There is a detailed walkthrough video on how to load and run a bot at <https://to.botlab.org/guide/video/how-to-run-a-bot-live>
 
@@ -48,6 +48,7 @@ All settings are optional; you only need them in case the defaults don't fit you
 + `anomaly-wait-time`: Minimum time to wait after arriving in an anomaly before considering it finished. Use this if you see anomalies in which rats arrive later than you arrive on grid.
 + `warp-to-anomaly-distance`: Defaults to 'Within 0 m'
 + `deactivate-module-on-warp` : Name of a module to deactivate when warping. Enter the name as it appears in the tooltip. Use this setting multiple times to select multiple modules.
++ `hide-location-name` : Name of a location to hide. Enter the name as it appears in the 'Locations' window.
 
 When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of a complete settings string:
@@ -58,6 +59,7 @@ anomaly-name = Drone Horde
 hide-when-neutral-in-local = yes
 avoid-rat = Infested Carrier
 activate-module-always = shield hardener
+hide-location-name = Dock me here
 ```
 
 ----

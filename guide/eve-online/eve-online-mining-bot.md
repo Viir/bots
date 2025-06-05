@@ -31,7 +31,7 @@ If the BotLab client is not already installed on your machine, follow the guide 
 The BotLab client is a tool for developing bots and also makes running bots easier with graphical user interfaces for configuration.
 
 In the BotLab client, load the bot by entering the following link in the 'Select Bot' view:
-<https://catalog.botlab.org/ac44fb7318168bdb>
+<https://catalog.botlab.org/ed9b5acc9cebd2c4>
 
 There is a detailed walkthrough video on how to load and run a bot at <https://to.botlab.org/guide/video/how-to-run-a-bot-live>
 
@@ -58,18 +58,22 @@ To give an overview of the performance of the bot, it displays statistics like t
 
 All settings are optional; you only need them in case the defaults don't fit your use-case.
 
++ `mining-site` : Name of a mining location, as it appears in the 'Label' column of the 'Locations' window.
 + `unload-station-name` : Name of a station to dock to when the mining hold is full.
 + `unload-structure-name` : Name of a structure to dock to when the mining hold is full.
 + `activate-module-always` : Text found in tooltips of ship modules that should always be active. For example: "shield hardener".
 + `hide-when-neutral-in-local` : Should we hide when a neutral or hostile pilot appears in the local chat? The only supported values are `no` and `yes`.
-+ `unload-fleet-hangar-percent` : This will make the bot to unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
++ `unload-fleet-hangar-percent` : This will make the bot unload the mining hold at least XX percent full to the fleet hangar, you must be in a fleet with an orca or a rorqual and the fleet hangar must be visible within the inventory window.
 + `dock-when-without-drones` : This will make the bot dock when it's out of drones. The only supported values are `no` and `yes`.
 + `repair-before-undocking` : Repair the ship at the station before undocking. The only supported values are `no` and `yes`.
++ `afterburner-module-text` : Text found in tooltips of the afterburner module.
++ `afterburner-distance-threshold` : Distance threshold (in meters) at which to activate/deactivate the afterburner.
 
 When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of a complete settings string:
 
 ```
+mining-site = mining bookmark label
 unload-station-name = Noghere VII - Moon 15
 activate-module-always = shield hardener
 activate-module-always = afterburner

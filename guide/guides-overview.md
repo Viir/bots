@@ -1,4 +1,4 @@
-What is more interesting than playing video games? - Programming bots to play video games!
+# AI playing video games
 
 ## Guides
 

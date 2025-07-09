@@ -20,7 +20,7 @@
 
 + [Walkthrough, Programming, Video] Combining behaviors of multiple bot programs: <https://youtu.be/ALXsLznDOfM>
 
-+ General Bot Programming Guide: [general-bot-programming-guide.md](./general-bot-programming-guide.md)
++ General Bot Programming Guide: [general-bot-programming-guide.md](./guide/general-bot-programming-guide.md)
 
 + Learn how to develop EVE Online bots and intel tools. Discover the engineering methods and tools behind the most advanced bots: <https://to.botlab.org/guide/developing-for-eve-online>
 

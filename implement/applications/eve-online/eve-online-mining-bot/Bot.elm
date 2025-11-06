@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2025-10-29
+{- EVE Online mining bot version 2025-11-06
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -135,6 +135,7 @@ defaultBotSettings =
     , afterburnerModuleText = Nothing
     , afterburnerDistanceThreshold = Nothing
     , compressFromMiningHold = PromptParser.No
+    , returnDronesWhenNoRatsVisible = PromptParser.Yes
     }
 
 
@@ -298,6 +299,14 @@ parseBotSettings =
                     (\compress settings -> { settings | compressFromMiningHold = compress })
              }
            )
+         , ( "return-drones-when-no-rats-visible"
+           , { alternativeNames = []
+             , description = "Return drones to bay when no rats are visible in space. The only supported values are `no` and `yes`."
+             , valueParser =
+                PromptParser.valueTypeYesOrNo
+                    (\returnDrones settings -> { settings | returnDronesWhenNoRatsVisible = returnDrones })
+             }
+           )
          ]
             |> Dict.fromList
         )
@@ -333,6 +342,7 @@ type alias BotSettings =
     , afterburnerModuleText : Maybe String
     , afterburnerDistanceThreshold : Maybe Int
     , compressFromMiningHold : PromptParser.YesOrNo
+    , returnDronesWhenNoRatsVisible : PromptParser.YesOrNo
     }
 
 
@@ -344,6 +354,7 @@ type alias BotMemory =
     , shipModules : ShipModulesMemory
     , overviewWindows : OverviewWindowsMemory
     , lastReadingsInSpaceDronesWindowWasVisible : List Bool
+    , lastTimeRatVisible : Maybe Int
     }
 
 
@@ -1102,7 +1113,7 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid selectedAsteroids context =
             describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
                 (warpToOverviewEntryIfFarEnough context asteroidInOverview
                     |> Maybe.withDefault
-                        (launchDrones context
+                        (launchOrReturnDronesAccordingToSettings context
                             |> Maybe.withDefault
                                 (lockTargetFromOverviewEntryAndEnsureIsInRange
                                     context
@@ -1672,6 +1683,34 @@ dockToRandomStationOrStructure context =
         context
 
 
+launchOrReturnDronesAccordingToSettings : BotDecisionContext -> Maybe DecisionPathNode
+launchOrReturnDronesAccordingToSettings context =
+    let
+        dronesShouldBeLaunched : Bool
+        dronesShouldBeLaunched =
+            if context.eventContext.botSettings.returnDronesWhenNoRatsVisible == PromptParser.Yes then
+                case context.memory.lastTimeRatVisible of
+                    Nothing ->
+                        False
+
+                    Just lastTimeRatVisible ->
+                        let
+                            timeSinceLastRatVisibleInSeconds =
+                                (context.eventContext.timeInMilliseconds // 1000)
+                                    - lastTimeRatVisible
+                        in
+                        timeSinceLastRatVisibleInSeconds < 10
+
+            else
+                True
+    in
+    if dronesShouldBeLaunched then
+        launchDrones context
+
+    else
+        returnDronesToBay context
+
+
 launchDrones : BotDecisionContext -> Maybe DecisionPathNode
 launchDrones context =
     context.readingFromGameClient.dronesWindow
@@ -1854,6 +1893,7 @@ initBotMemory =
     , shipModules = EveOnline.BotFramework.initShipModulesMemory
     , overviewWindows = EveOnline.BotFramework.initOverviewWindowsMemory
     , lastReadingsInSpaceDronesWindowWasVisible = []
+    , lastTimeRatVisible = Nothing
     }
 
 
@@ -1995,6 +2035,17 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
                 (context.readingFromGameClient.dronesWindow /= Nothing)
                     :: botMemoryBefore.lastReadingsInSpaceDronesWindowWasVisible
                     |> List.take dockWhenDroneWindowInvisibleCount
+
+        ratsVisibleNow =
+            overviewShowsRat context.readingFromGameClient
+
+        lastTimeRatVisible : Maybe Int
+        lastTimeRatVisible =
+            if ratsVisibleNow then
+                Just (context.timeInMilliseconds // 1000)
+
+            else
+                botMemoryBefore.lastTimeRatVisible
     in
     { lastDockedStationNameFromInfoPanel =
         [ currentStationNameFromInfoPanel, botMemoryBefore.lastDockedStationNameFromInfoPanel ]
@@ -2010,6 +2061,7 @@ updateMemoryForNewReadingFromGame context botMemoryBefore =
         botMemoryBefore.overviewWindows
             |> EveOnline.BotFramework.integrateCurrentReadingsIntoOverviewWindowsMemory context.readingFromGameClient
     , lastReadingsInSpaceDronesWindowWasVisible = lastReadingsInSpaceDronesWindowWasVisible
+    , lastTimeRatVisible = lastTimeRatVisible
     }
 
 
@@ -2321,6 +2373,27 @@ containsSelectionIndicatorPhotonUI =
                                )
                    )
             )
+
+
+overviewShowsRat : ReadingFromGameClient -> Bool
+overviewShowsRat readingFromGameClient =
+    List.any
+        (\overviewWindow ->
+            List.any iconSpriteHasColorOfRat overviewWindow.entries
+        )
+        readingFromGameClient.overviewWindows
+
+
+iconSpriteHasColorOfRat : EveOnline.ParseUserInterface.OverviewWindowEntry -> Bool
+iconSpriteHasColorOfRat overviewEntry =
+    case overviewEntry.iconSpriteColorPercent of
+        Nothing ->
+            False
+
+        Just colorPercent ->
+            (colorPercent.g * 3 < colorPercent.r)
+                && (colorPercent.b * 3 < colorPercent.r)
+                && (60 < colorPercent.r && 50 < colorPercent.a)
 
 
 nothingFromIntIfGreaterThan : Int -> Int -> Maybe Int

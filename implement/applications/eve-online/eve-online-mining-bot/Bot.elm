@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2025-11-06
+{- EVE Online mining bot version 2025-11-15
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -366,9 +366,9 @@ type alias State =
     EveOnline.BotFrameworkSeparatingMemory.StateIncludingFramework BotSettings BotMemory
 
 
-type alias SelectedAsteroidsFromOverview =
-    { clickableAsteroids : List OverviewWindowEntry
-    , asteroidMatchingSettings : Maybe ( OverviewWindowEntry, { closeEnoughForMining : Bool } )
+type alias SelectedMineablesFromOverview =
+    { clickableMineables : List OverviewWindowEntry
+    , mineableMatchingSettings : Maybe ( OverviewWindowEntry, { closeEnoughForMining : Bool } )
     }
 
 
@@ -850,12 +850,12 @@ modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
                     )
 
             else
-                case selectAsteroidsFromOverview context of
+                case selectMineablesFromOverview context of
                     Err err ->
-                        describeBranch ("Failed to select asteroids from overview: " ++ err)
+                        describeBranch ("Failed to select mineables from overview: " ++ err)
                             (dockToUnloadOre context)
 
-                    Ok selectedAsteroids ->
+                    Ok selectedMineables ->
                         describeBranch
                             ("The mining hold is not yet filled "
                                 ++ describeThresholdToUnload
@@ -875,7 +875,7 @@ modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
                              of
                                 Nothing ->
                                     describeBranch "I see no locked target."
-                                        (travelToMiningSiteAndLaunchDronesAndTargetAsteroid selectedAsteroids context)
+                                        (travelToMiningSiteAndLaunchDronesAndTargetMineable selectedMineables context)
 
                                 Just nextTarget ->
                                     unlockTargetsNotForMining context
@@ -1087,31 +1087,31 @@ unlockTargetsNotForMining context =
             )
 
 
-travelToMiningSiteAndLaunchDronesAndTargetAsteroid : SelectedAsteroidsFromOverview -> BotDecisionContext -> DecisionPathNode
-travelToMiningSiteAndLaunchDronesAndTargetAsteroid selectedAsteroids context =
+travelToMiningSiteAndLaunchDronesAndTargetMineable : SelectedMineablesFromOverview -> BotDecisionContext -> DecisionPathNode
+travelToMiningSiteAndLaunchDronesAndTargetMineable selectedMineables context =
     let
         continueWithWarpToMiningSite =
             returnDronesToBay context
                 |> Maybe.withDefault (warpToMiningSite context)
     in
-    case selectedAsteroids.asteroidMatchingSettings of
+    case selectedMineables.mineableMatchingSettings of
         Nothing ->
-            case selectedAsteroids.clickableAsteroids of
+            case selectedMineables.clickableMineables of
                 [] ->
-                    describeBranch "I see no clickable asteroid in the overview. Warp to mining site."
+                    describeBranch "I see no clickable mineable in the overview. Warp to mining site."
                         continueWithWarpToMiningSite
 
-                clickableAsteroids ->
+                clickableMineables ->
                     describeBranch
                         ("I see "
-                            ++ String.fromInt (List.length clickableAsteroids)
-                            ++ "clickable asteroids in the overview. But none of these matches the filter from settings. Warp to other mining site."
+                            ++ String.fromInt (List.length clickableMineables)
+                            ++ " clickable mineables in the overview. But none of these matches the filter from settings. Warp to other mining site."
                         )
                         continueWithWarpToMiningSite
 
-        Just ( asteroidInOverview, _ ) ->
-            describeBranch ("Choosing asteroid '" ++ (asteroidInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
-                (warpToOverviewEntryIfFarEnough context asteroidInOverview
+        Just ( mineableInOverview, _ ) ->
+            describeBranch ("Choosing mineable '" ++ (mineableInOverview.objectName |> Maybe.withDefault "Nothing") ++ "'")
+                (warpToOverviewEntryIfFarEnough context mineableInOverview
                     |> Maybe.withDefault
                         (launchOrReturnDronesAccordingToSettings context
                             |> Maybe.withDefault
@@ -1120,26 +1120,26 @@ travelToMiningSiteAndLaunchDronesAndTargetAsteroid selectedAsteroids context =
                                     (min context.eventContext.botSettings.targetingRange
                                         context.eventContext.botSettings.miningModuleRange
                                     )
-                                    asteroidInOverview
+                                    mineableInOverview
                                 )
                         )
                 )
 
 
-selectAsteroidsFromOverview : BotDecisionContext -> Result String SelectedAsteroidsFromOverview
-selectAsteroidsFromOverview context =
+selectMineablesFromOverview : BotDecisionContext -> Result String SelectedMineablesFromOverview
+selectMineablesFromOverview context =
     let
-        clickableAsteroids =
-            clickableAsteroidsFromOverviewWindow context.readingFromGameClient
+        clickableMineables =
+            clickableMineablesFromOverviewWindow context.readingFromGameClient
 
-        continueWithAsteroidMatchingSettings asteroidMatchingSettings =
+        continueWithMineableMatchingSettings mineableMatchingSettings =
             Ok
-                { clickableAsteroids = clickableAsteroids
-                , asteroidMatchingSettings = asteroidMatchingSettings
+                { clickableMineables = clickableMineables
+                , mineableMatchingSettings = mineableMatchingSettings
                 }
     in
-    clickableAsteroids
-        |> List.filter (asteroidOverviewEntryMatchesSettings context.eventContext.botSettings)
+    clickableMineables
+        |> List.filter (mineableOverviewEntryMatchesSettings context.eventContext.botSettings)
         |> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
         |> List.sortBy (.objectDistanceInMeters >> Result.withDefault 9999999)
         |> List.head
@@ -1163,10 +1163,10 @@ selectAsteroidsFromOverview context =
                               }
                             )
                                 |> Just
-                                |> continueWithAsteroidMatchingSettings
+                                |> continueWithMineableMatchingSettings
                         )
             )
-        |> Maybe.withDefault (continueWithAsteroidMatchingSettings Nothing)
+        |> Maybe.withDefault (continueWithMineableMatchingSettings Nothing)
 
 
 warpToOverviewEntryIfFarEnough : BotDecisionContext -> OverviewWindowEntry -> Maybe DecisionPathNode
@@ -2098,16 +2098,16 @@ activeShipTreeEntryFromInventoryWindow =
         >> List.head
 
 
-clickableAsteroidsFromOverviewWindow : ReadingFromGameClient -> List OverviewWindowEntry
-clickableAsteroidsFromOverviewWindow =
-    overviewWindowEntriesRepresentingAsteroids
+clickableMineablesFromOverviewWindow : ReadingFromGameClient -> List OverviewWindowEntry
+clickableMineablesFromOverviewWindow =
+    overviewWindowEntriesRepresentingMineable
         >> List.filter (.uiNode >> uiNodeVisibleRegionLargeEnoughForClicking)
         >> List.filter (.opacityPercent >> Maybe.map ((<=) 50) >> Maybe.withDefault True)
         >> List.sortBy (.uiNode >> .totalDisplayRegion >> .y)
 
 
-asteroidOverviewEntryMatchesSettings : BotSettings -> OverviewWindowEntry -> Bool
-asteroidOverviewEntryMatchesSettings settings overviewEntry =
+mineableOverviewEntryMatchesSettings : BotSettings -> OverviewWindowEntry -> Bool
+mineableOverviewEntryMatchesSettings settings overviewEntry =
     let
         textMatchesPattern text =
             (settings.includeAsteroidPatterns == [])
@@ -2120,17 +2120,29 @@ asteroidOverviewEntryMatchesSettings settings overviewEntry =
         |> List.any textMatchesPattern
 
 
-overviewWindowEntriesRepresentingAsteroids : ReadingFromGameClient -> List OverviewWindowEntry
-overviewWindowEntriesRepresentingAsteroids =
+overviewWindowEntriesRepresentingMineable : ReadingFromGameClient -> List OverviewWindowEntry
+overviewWindowEntriesRepresentingMineable =
     .overviewWindows
-        >> List.map (.entries >> List.filter overviewWindowEntryRepresentsAnAsteroid)
+        >> List.map (.entries >> List.filter overviewWindowEntryRepresentsMineable)
         >> List.concat
 
 
-overviewWindowEntryRepresentsAnAsteroid : OverviewWindowEntry -> Bool
-overviewWindowEntryRepresentsAnAsteroid entry =
-    (entry.textsLeftToRight |> List.any (stringContainsIgnoringCase "asteroid"))
-        && (entry.textsLeftToRight |> List.any (stringContainsIgnoringCase "belt") |> not)
+overviewWindowEntryRepresentsMineable : OverviewWindowEntry -> Bool
+overviewWindowEntryRepresentsMineable entry =
+    if
+        (entry.textsLeftToRight |> List.any (stringContainsIgnoringCase "asteroid"))
+            && (entry.textsLeftToRight |> List.any (stringContainsIgnoringCase "belt") |> not)
+    then
+        True
+
+    else
+        {-
+           2025-11-12: Squids4daddy:
+           One important addition that it needs.  Please add "Harvestable Cloud" as a recognized type of ore in the overview.a
+           The bot currently tries to warp out of gas sites because it doesn't recognize that as what the ship is there for
+           Note that there are at least 8 varieties, but they all start with the Harvestable Cloud label.
+        -}
+        entry.textsLeftToRight |> List.any (stringContainsIgnoringCase "harvestable cloud")
 
 
 capacityGaugeUsedPercent : EveOnline.ParseUserInterface.InventoryWindow -> Maybe Int

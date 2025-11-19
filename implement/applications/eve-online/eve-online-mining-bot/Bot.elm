@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2025-11-15
+{- EVE Online mining bot version 2025-11-19
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -1837,7 +1837,7 @@ tooltipLooksLikeMiningModule =
     .allContainedDisplayTextsWithRegion
         >> List.map Tuple.first
         >> List.any
-            (Regex.fromString "\\d\\s*m3\\s*\\/\\s*s" |> Maybe.map Regex.contains |> Maybe.withDefault (always False))
+            (Regex.fromString "\\d\\s*m[³3]\\s*\\/\\s*s" |> Maybe.map Regex.contains |> Maybe.withDefault (always False))
 
 
 tooltipLooksLikeModuleToActivateAlways : BotDecisionContext -> ModuleButtonTooltipMemory -> Maybe String

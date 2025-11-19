@@ -1,4 +1,4 @@
-{- EVE Online warp-to-0 auto-pilot version 2025-10-29
+{- EVE Online warp-to-0 auto-pilot version 2025-11-19
 
    This bot makes your travels faster and safer by directly warping to gates/stations. It follows the route set in the in-game autopilot and uses the context menu to initiate jump and dock commands.
 
@@ -243,10 +243,13 @@ updateMemoryForNewReadingFromGame context memoryBefore =
         doesTravelEnRoute : Bool
         doesTravelEnRoute =
             case infoPanelRouteFirstMarkerFromReadingFromGameClient context.readingFromGameClient of
-                Nothing ->
-                    False
-
                 Just _ ->
+                    True
+
+                Nothing ->
+                    {- Observation from the game client: Route icons disappear while jumping.
+                       Therefore, do not only rely on the info panel route markers.
+                    -}
                     case context.readingFromGameClient.shipUI of
                         Nothing ->
                             False

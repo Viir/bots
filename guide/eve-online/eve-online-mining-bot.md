@@ -68,6 +68,7 @@ All settings are optional; you only need them in case the defaults don't fit you
 + `repair-before-undocking` : Repair the ship at the station before undocking. The only supported values are `no` and `yes`.
 + `afterburner-module-text` : Text found in tooltips of the afterburner module.
 + `afterburner-distance-threshold` : Distance threshold (in meters) at which to activate/deactivate the afterburner.
++ `return-drones-when-no-rats-visible` : Return drones to bay when no rats are visible in space. Default is `yes`.
 
 When using more than one setting, start a new line for each setting in the text input field.
 Here is an example of a complete settings string:
@@ -77,6 +78,7 @@ mining-site = mining bookmark label
 unload-station-name = Noghere VII - Moon 15
 activate-module-always = shield hardener
 activate-module-always = afterburner
+return-drones-when-no-rats-visible = no
 ```
 
 The bot searches the configured structure or station name in the 'Locations' window and all overview windows.

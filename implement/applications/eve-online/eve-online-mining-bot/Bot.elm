@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2025-11-20
+{- EVE Online mining bot version 2025-11-21
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -62,6 +62,7 @@ module Bot exposing
     )
 
 import BotLab.BotInterface_To_Host_2024_10_19 as InterfaceToHost
+import Common
 import Common.Basics exposing (listElementAtWrappedIndex, stringContainsIgnoringCase)
 import Common.DecisionPath exposing (describeBranch)
 import Common.EffectOnWindow as EffectOnWindow exposing (MouseButton(..))
@@ -110,6 +111,7 @@ import List.Extra
 import Maybe.Extra
 import Regex
 import Result.Extra
+import Set
 
 
 {-| Sources for the defaults:
@@ -880,9 +882,12 @@ modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
                                         (travelToMiningSiteAndLaunchDronesAndTargetMineable selectedMineables context)
 
                                 Just nextTarget ->
-                                    unlockTargetsNotForMining context
-                                        |> Maybe.withDefault
-                                            (describeBranch "I see a locked target."
+                                    case unlockTargetsNotForMining context selectedMineables of
+                                        Just unlockNonMiningTargetAction ->
+                                            unlockNonMiningTargetAction
+
+                                        Nothing ->
+                                            describeBranch "I see a locked target."
                                                 (ensureTargetIsInMiningRange
                                                     context
                                                     nextTarget
@@ -938,7 +943,6 @@ modulesToActivateAlwaysActivated context inventoryWindowWithMiningHoldSelected =
                                                                         )
                                                     }
                                                 )
-                                            )
                             )
 
 
@@ -1065,20 +1069,59 @@ readDistanceOfTargetInMeters target =
             )
 
 
-unlockTargetsNotForMining : BotDecisionContext -> Maybe DecisionPathNode
-unlockTargetsNotForMining context =
+unlockTargetsNotForMining : BotDecisionContext -> SelectedMineablesFromOverview -> Maybe DecisionPathNode
+unlockTargetsNotForMining context selectedMineables =
+    {-
+       Observation session-recording-2025-11-21T11-27-31:
+       Locked target does not contain text 'asteroid' anymore.
+       ---
+       Example of observed label on locked target:
+       '<center>Scordite II-Grade <center>2,484 m'
+       ---
+       <https://forum.botlab.org/t/eve-mining-bot-23-02-issue-locks-an-asteroid-then-unlocks-it-and-repeats-this-over-and-over/5278>
+    -}
     let
-        targetsToUnlock =
-            context.readingFromGameClient.targets
-                |> List.filter (.textsTopToBottom >> List.any (stringContainsIgnoringCase "asteroid") >> not)
+        mineableLabels : Set.Set String
+        mineableLabels =
+            selectedMineables.clickableMineables
+                |> List.concatMap
+                    (\overviewEntry ->
+                        case overviewEntry.objectName of
+                            Nothing ->
+                                []
+
+                            Just name ->
+                                String.words name
+                    )
+                |> Set.fromList
+
+        shouldUnlockTarget : EveOnline.ParseUserInterface.Target -> Bool
+        shouldUnlockTarget target =
+            let
+                textItems =
+                    target.textsTopToBottom
+                        |> List.concatMap String.words
+
+                looksLikeMineable =
+                    List.any
+                        (\word -> Set.member word mineableLabels)
+                        textItems
+            in
+            not looksLikeMineable
     in
-    targetsToUnlock
-        |> List.head
-        |> Maybe.map
-            (\targetToUnlock ->
-                describeBranch
+    case
+        Common.listFind
+            shouldUnlockTarget
+            context.readingFromGameClient.targets
+    of
+        Nothing ->
+            Nothing
+
+        Just targetToUnlock ->
+            Just
+                (describeBranch
                     ("I see a target not for mining: '"
-                        ++ (targetToUnlock.textsTopToBottom |> String.join " ")
+                        ++ String.join " " targetToUnlock.textsTopToBottom
                         ++ "'. Unlock this target."
                     )
                     (useContextMenuCascade
@@ -1086,7 +1129,7 @@ unlockTargetsNotForMining context =
                         (useMenuEntryWithTextContaining "unlock" menuCascadeCompleted)
                         context
                     )
-            )
+                )
 
 
 travelToMiningSiteAndLaunchDronesAndTargetMineable : SelectedMineablesFromOverview -> BotDecisionContext -> DecisionPathNode

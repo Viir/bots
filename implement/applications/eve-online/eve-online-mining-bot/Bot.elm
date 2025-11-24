@@ -1,4 +1,4 @@
-{- EVE Online mining bot version 2025-11-21
+{- EVE Online mining bot version 2025-11-24
 
    This bot automates the complete mining process, including offloading the ore and traveling between the mining spot and the unloading location.
 
@@ -1100,7 +1100,15 @@ unlockTargetsNotForMining context selectedMineables =
             let
                 textItems =
                     target.textsTopToBottom
-                        |> List.concatMap String.words
+                        |> List.concatMap
+                            (\targetString ->
+                                {-
+                                   String.words  "<center>Plagioclase" will return ["<center>Plagioclase"]
+                                   ---
+                                   TODO: Consider stripping XML tags more generally here?
+                                -}
+                                String.words (String.replace "<center>" "" targetString)
+                            )
 
                 looksLikeMineable =
                     List.any

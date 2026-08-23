@@ -48,7 +48,9 @@ import EveOnline.BotFramework
         , menuCascadeCompleted
         , mouseClickOnUIElement
         , shipUIIndicatesShipIsWarpingOrJumping
+        , useMenuEntryWithTextContaining
         , useMenuEntryWithTextContainingFirstOf
+        , useMenuEntryWithTextEqual
         )
 import EveOnline.BotFrameworkSeparatingMemory
     exposing
@@ -57,7 +59,9 @@ import EveOnline.BotFrameworkSeparatingMemory
         , branchDependingOnDockedOrInSpace
         , clickModuleButtonButWaitIfClickedInPreviousStep
         , decideActionForCurrentStep
-        , useContextMenuCascade
+        , discardContextMenuIfTooDistantFromTargetElement
+        , useContextMenuCascadeOnListSurroundingsButton
+        , useContextMenuCascadeWithCustomConfig
         , waitForProgressInGame
         )
 import EveOnline.MemoryReading
@@ -100,6 +104,34 @@ type alias BotMemory =
     , shipModules : ShipModulesMemory
     , didTravelEnRoute : Bool
     , lastReadingsWithoutRoute : Int
+
+    -- Ported from saxrat's #330 fix for the identical failure shape in the
+    -- identical cascade. Right after a route is (re)set, the route panel's
+    -- marker strip needs a moment to finish computing -- during that window
+    -- its icon can be absent, partial, or still shifting, and right-clicking
+    -- during it means clicking a position with no clickable icon there yet.
+    -- `routeFirstMarkerUnchangedTicks` requires the marker's own region to
+    -- have read the same for at least one full tick before it is clicked.
+    , routeFirstMarkerRegion : Maybe EveOnline.ParseUserInterface.DisplayRegion
+    , routeFirstMarkerUnchangedTicks : Int
+
+    -- How many consecutive readings the route panel has named the *same*
+    -- next system without a jump landing (`jumpsCompleted` moving), and
+    -- which system that was. Past `jumpCascadeStuckReadings`,
+    -- `jumpToNextSystemViaSurroundingsButton` takes over instead of the
+    -- marker cascade continuing to retry the same small, shifting icon.
+    --
+    -- Counted in readings rather than in menu (re)opens the way saxrat's own
+    -- #330 fix counts it, because this app's vendored `UpdateMemoryContext`
+    -- (unlike saxrat's and the mission runner's) carries no
+    -- `previousStepsEffects` to attribute a right-click to -- extending the
+    -- host-interface plumbing to add that is a larger, separate change this
+    -- fix does not make. A reading-count bound is coarser (it cannot tell
+    -- "waiting for a menu to render" from "stuck"), so it is set well above
+    -- an ordinary multi-open cascade rather than at the edge of one -- see
+    -- `jumpCascadeStuckReadings`.
+    , jumpCascadeSystem : Maybe String
+    , jumpCascadeStuckReadings : Int
     }
 
 
@@ -119,6 +151,10 @@ initBotMemory =
     , shipModules = EveOnline.BotFramework.initShipModulesMemory
     , didTravelEnRoute = False
     , lastReadingsWithoutRoute = 0
+    , routeFirstMarkerRegion = Nothing
+    , routeFirstMarkerUnchangedTicks = 0
+    , jumpCascadeSystem = Nothing
+    , jumpCascadeStuckReadings = 0
     }
 
 
@@ -194,9 +230,73 @@ decideStepWhenInSpace context { infoPanelRouteFirstMarker } shipUI =
             "I see the ship is warping or jumping. I wait until that maneuver ends."
             (decideStepWhenInSpaceWaiting context)
 
+    else if context.memory.routeFirstMarkerUnchangedTicks < 1 then
+        describeBranch
+            "Route panel's first marker just appeared or moved since the last reading -- wait for the route to finish (re)computing before clicking it."
+            waitForProgressInGame
+
+    else if jumpCascadeStuckReadings <= context.memory.jumpCascadeStuckReadings then
+        jumpToNextSystemViaSurroundingsButton context
+
     else
         jumpThroughRouteStargate context
             (routeMarkerCascade context infoPanelRouteFirstMarker)
+
+
+{-| How many consecutive readings the route panel may go on naming the *same*
+next system, with no jump landing, before giving up on the marker cascade and
+falling back to `jumpToNextSystemViaSurroundingsButton` instead.
+
+Ported from saxrat's #330, whose own `jumpCascadeStuckReopens` counts menu
+(re)opens rather than readings and is set to 3 -- "at the edge of what the
+marker cascade's own comment calls ordinary" for that unit. This app's
+`UpdateMemoryContext` carries no `previousStepsEffects` to count re-opens
+from, so this counts readings instead, which cannot distinguish "waiting for
+a menu to render" from "stuck" the way saxrat's can -- and is set well above
+an ordinary cascade's length rather than at its edge for that reason. This
+bot's own measured baseline (see `jumpThroughRouteStargate`'s doc comment) is
+about 19 readings per completed jump on the *old*, un-widened 70px tolerance;
+30 gives the newly-widened 200px tolerance room to still be slower than the
+other apps' own copies of this cascade without tripping the fallback on an
+ordinary leg.
+-}
+jumpCascadeStuckReadings : Int
+jumpCascadeStuckReadings =
+    30
+
+
+{-| Jump to the route's next system by right-clicking the persistent
+"surroundings" button rather than the route panel's own marker. Ported from
+saxrat's #330 -- see that bot's own `jumpToNextSystemViaSurroundingsButton`
+for the full argument and what is and is not verified about it live. This bot
+has no drones to recall first, unlike saxrat's version.
+-}
+jumpToNextSystemViaSurroundingsButton : BotDecisionContext -> DecisionPathNode
+jumpToNextSystemViaSurroundingsButton context =
+    case context.readingFromGameClient |> nextSystemOnRouteFromReading of
+        Nothing ->
+            describeBranch
+                "Was going to fall back to the surroundings-button cascade, but the route panel no longer names a next system -- nothing to jump toward this way either."
+                waitForProgressInGame
+
+        Just systemName ->
+            describeBranch
+                ("The route-marker cascade has spent "
+                    ++ String.fromInt context.memory.jumpCascadeStuckReadings
+                    ++ " reading(s) trying to jump toward '"
+                    ++ systemName
+                    ++ "' with no jump landing, past "
+                    ++ String.fromInt jumpCascadeStuckReadings
+                    ++ " -- right-click the surroundings button instead and cascade to this gate by name."
+                )
+                (useContextMenuCascadeOnListSurroundingsButton
+                    (useMenuEntryWithTextEqual "Stargates"
+                        (useMenuEntryWithTextContaining systemName
+                            (useMenuEntryWithTextEqual "Jump" menuCascadeCompleted)
+                        )
+                    )
+                    context
+                )
 
 
 {-| Right-click the route panel's first marker and take whichever of "dock" or
@@ -223,8 +323,16 @@ routeMarkerCascade :
     -> EveOnline.ParseUserInterface.InfoPanelRouteRouteElementMarker
     -> DecisionPathNode
 routeMarkerCascade context infoPanelRouteFirstMarker =
-    useContextMenuCascade
-        ( "route element icon", infoPanelRouteFirstMarker.uiNode )
+    -- Widened from the shared 70px default to 200, matching the mission
+    -- runner's and saxrat's own copies of this same cascade -- both of them
+    -- widened it for the identical reason this bot's own doc comment above
+    -- already gives ("'Jump Through Stargate' took 3-4 menu opens before
+    -- being recognized... the route icon is small and sits in a strip that
+    -- can shift as the route updates"), which this bot had evidently
+    -- written down and never actually applied to the cascade it describes.
+    useContextMenuCascadeWithCustomConfig
+        (discardContextMenuIfTooDistantFromTargetElement { toleratedDistance = 200 })
+        { targetUIElement = infoPanelRouteFirstMarker.uiNode, targetUIElementName = "route element icon" }
         (useMenuEntryWithTextContainingFirstOf
             [ "dock"
 
@@ -681,6 +789,13 @@ updateMemoryForNewReadingFromGame context memoryBefore =
 
             else
                 memoryBefore.lastReadingsWithoutRoute + 1
+
+        currentRouteFirstMarkerRegion =
+            infoPanelRouteFirstMarkerFromReadingFromGameClient context.readingFromGameClient
+                |> Maybe.map (.uiNode >> .totalDisplayRegion)
+
+        currentJumpCascadeSystem =
+            context.readingFromGameClient |> nextSystemOnRouteFromReading
     in
     { jumpsCompleted = memoryBefore.jumpsCompleted + newJumpsCompleted
     , lastSolarSystemName = lastSolarSystemName
@@ -690,6 +805,31 @@ updateMemoryForNewReadingFromGame context memoryBefore =
             memoryBefore.shipModules
     , didTravelEnRoute = memoryBefore.didTravelEnRoute || doesTravelEnRoute
     , lastReadingsWithoutRoute = lastReadingsWithoutRoute
+    , routeFirstMarkerRegion = currentRouteFirstMarkerRegion
+    , routeFirstMarkerUnchangedTicks =
+        if currentRouteFirstMarkerRegion == Nothing then
+            0
+
+        else if currentRouteFirstMarkerRegion == memoryBefore.routeFirstMarkerRegion then
+            memoryBefore.routeFirstMarkerUnchangedTicks + 1
+
+        else
+            0
+    , jumpCascadeSystem = currentJumpCascadeSystem
+    , jumpCascadeStuckReadings =
+        -- A jump landing is read off `newJumpsCompleted` rather than off the
+        -- system name changing, because the *destination* station's own
+        -- "system" can repeat the previous entry's name on a route that
+        -- jumps back through the same system twice, which would otherwise
+        -- read as no progress on a leg that genuinely completed.
+        if currentJumpCascadeSystem == Nothing then
+            0
+
+        else if (currentJumpCascadeSystem == memoryBefore.jumpCascadeSystem) && (newJumpsCompleted == 0) then
+            memoryBefore.jumpCascadeStuckReadings + 1
+
+        else
+            0
     }
 
 

@@ -20,10 +20,16 @@ Usage:
 
 Setup, once:
     * developers.eveonline.com -> Create New Application
-    * type "Authentication & API Access", scope `esi-ui.write_waypoint.v1`
+    * type "Authentication & API Access", scopes -- see `SCOPES` below for the
+      exact current set and why each one is there
     * callback exactly `http://localhost:8635/callback`
     * python3 esi_waypoint.py client-id <the client id>   (kept in the Keychain)
       or export ESI_CLIENT_ID=<the client id> to override it for one run
+
+A character authorised before `SCOPES` last changed does not carry the new
+scopes -- ESI answers a call it cannot cover with 403 rather than degrading
+silently. Run `auth` again for that character to pick them up; nothing about
+an existing refresh token is otherwise disturbed.
 
 Also importable. `botlab_host.py` calls `set_destination` in-process for the
 `SetAutopilotDestinationRequest` volatile-process request, so every function
@@ -84,7 +90,32 @@ import webbrowser
 
 LOGIN_HOST = "https://login.eveonline.com"
 ESI_HOST = "https://esi.evetech.net/latest"
-SCOPES = "esi-ui.write_waypoint.v1"
+
+# esi-ui.write_waypoint.v1: the original and only scope this ever needed for
+#   `set`/`set_destination` itself.
+# esi-search.search_structures.v1: lets `resolve_name` find a player-owned
+#   structure's *id* by name through the authenticated character search,
+#   which is the only ESI endpoint that ever sees one -- the public
+#   `/universe/ids/` bulk lookup this file already used never includes a
+#   private structure, docked there or not.
+# esi-universe.read_structures.v1: a *second*, separate scope the search
+#   result alone does not cover -- `/characters/{id}/search/` answers with
+#   ids only, and confirming a candidate's own name (so the right one is
+#   picked, the way `resolve_name` already does for `/universe/ids/`'s
+#   results) needs `/universe/structures/{id}/`, which CCP gates on this
+#   scope rather than the search one. Found live: the search call succeeded
+#   and returned a real id while the structure-info call answered 401 "Token
+#   is not valid for any required scope: esi-universe.read_structures.v1" --
+#   the two are genuinely independent grants. See
+#   `_resolve_via_character_search`.
+# esi-wallet.read_character_wallet.v1: not read by anything in this file yet;
+#   added while re-authorising anyway rather than asking for a second consent
+#   screen later.
+# A token issued before this line changed does not carry the new scopes, and
+# ESI answers a call it cannot cover with 401/403 rather than silently
+# degrading -- run 'esi_waypoint.py auth' again to pick them up.
+SCOPES = ("esi-ui.write_waypoint.v1 esi-search.search_structures.v1 "
+          "esi-universe.read_structures.v1 esi-wallet.read_character_wallet.v1")
 CALLBACK_PORT = 8635
 CALLBACK_PATH = "/callback"
 REDIRECT_URI = f"http://localhost:{CALLBACK_PORT}{CALLBACK_PATH}"
@@ -656,10 +687,19 @@ def _universe_get(path, deadline):
     return payload
 
 
-def resolve_name(name, deadline=None):
+def resolve_name(name, deadline=None, character=None):
     """The id of a station, structure or system, by name. Raises `EsiError`.
 
-    Returns `(id, kind)` where kind is one of the `/universe/ids/` bucket names.
+    Returns `(id, kind)` where kind is one of the `/universe/ids/` bucket
+    names, or `"structures"` when the answer came from
+    `_resolve_via_character_search` instead.
+
+    `character` is optional and, when given, is who the character-search
+    fallback authenticates as -- see that function for why it has to be a
+    specific character rather than any stored token. Every call site that has
+    already chosen a character (`set_destination`, and the CLI's own
+    pre-resolve) passes it; a caller that has not chosen one yet simply gets
+    the old behaviour, unable to see a player-owned structure at all.
     """
     deadline = deadline or Deadline()
     cached = _ID_BY_NAME.get(name.lower())
@@ -686,6 +726,15 @@ def resolve_name(name, deadline=None):
     found = _resolve_via_system(name, deadline)
     if found:
         return _remember(name, found[0], found[1])
+
+    # A player-owned structure is invisible to everything above -- the public
+    # bulk lookup and the system enumeration both only ever see NPC-owned
+    # space. This is the one path that can actually find one, and only for a
+    # character with docking access to it.
+    if character:
+        structure_id = _resolve_via_character_search(name, character, deadline)
+        if structure_id:
+            return _remember(name, structure_id, "structures")
 
     raise EsiError(f"nothing named {name!r} was found. Structures in "
                    "player-owned space often need the character to have docked "
@@ -715,6 +764,69 @@ def _resolve_via_system(name, deadline):
         station = _universe_get(f"/universe/stations/{station_id}/", deadline)
         if station and station.get("name", "").lower() == name.lower():
             return station_id, "stations"
+    return None
+
+
+def _resolve_via_character_search(name, character, deadline):
+    """A player-owned structure's id, via the authenticated character-search
+    endpoint, or `None`.
+
+    This is the endpoint `resolve_name`'s own error message has always
+    promised without anything here actually calling it: `/universe/ids/` is a
+    public bulk lookup and never includes a private Upwell structure,
+    regardless of whether this character has docked there. Only
+    `GET /characters/{character_id}/search/` does, and only for a character
+    with docking access to it -- which is also why `/universe/structures/
+    {structure_id}/` below needs the same character's token: CCP restricts
+    both to avoid leaking a private structure's name and location to a
+    character who has never been there.
+
+    `strict=False` casts a slightly wider net than an exact match up front
+    (the search endpoint tokenises rather than matching the full string), and
+    each candidate id is then checked against its own `/universe/structures/`
+    name for an exact match -- the same discipline `resolve_name` already
+    applies to `/universe/ids/`'s results, so a structure whose name merely
+    contains a shared word cannot be picked by accident.
+
+    **A 401/403 raises rather than being read as "no match".** The two calls
+    here each gate on their own scope (`esi-search.search_structures.v1` and
+    `esi-universe.read_structures.v1`), and a token missing one answers 401 --
+    which, folded into "found nothing", would have looked identical to this
+    character genuinely having no docking access. That distinction cost real
+    debugging time once already: the search call succeeded and returned a
+    real id while the structure-info call was silently swallowing a 401.
+    """
+    _, character_id = token_character(character, deadline)
+    token = access_token(character=character, deadline=deadline)
+    status, payload = esi(
+        "GET",
+        f"/characters/{character_id}/search/",
+        token=token,
+        params={"categories": "structure", "search": name, "strict": "false"},
+        deadline=deadline,
+    )
+    if status in (401, 403):
+        raise EsiError(f"character search for {name!r} failed ({status}): {payload} -- "
+                       "the token is missing a required scope. Run 'esi_waypoint.py auth' "
+                       "again after checking SCOPES in this file matches what the app "
+                       "registration at developers.eveonline.com allows.")
+    if status != 200:
+        return None
+    for structure_id in (payload or {}).get("structure") or []:
+        status, structure = esi(
+            "GET",
+            f"/universe/structures/{structure_id}/",
+            token=token,
+            deadline=deadline,
+        )
+        if status in (401, 403):
+            raise EsiError(f"structure lookup for id {structure_id} failed ({status}): "
+                           f"{structure} -- the token is missing a required scope. Run "
+                           "'esi_waypoint.py auth' again after checking SCOPES in this "
+                           "file matches what the app registration at "
+                           "developers.eveonline.com allows.")
+        if status == 200 and structure and structure.get("name", "").lower() == name.lower():
+            return structure_id
     return None
 
 
@@ -977,7 +1089,7 @@ def set_destination(name=None, destination_id=None, clear_other=True,
         else character_to_route(expected_character, deadline=deadline)
 
     if destination_id is None:
-        destination_id, _ = resolve_name(name, deadline=deadline)
+        destination_id, _ = resolve_name(name, deadline=deadline, character=chosen)
     return set_waypoint(destination_id, clear_other=clear_other,
                         add_to_beginning=add_to_beginning, deadline=deadline,
                         character=chosen)
@@ -1006,6 +1118,11 @@ def main():
 
     resolve = sub.add_parser("resolve", help="look up a station/system id by name")
     resolve.add_argument("name")
+    resolve.add_argument("--character", default=None,
+                         help="try the authenticated character-search fallback as this "
+                              "character too, for a player-owned structure the public "
+                              "lookup cannot see -- needed only where more than one "
+                              "character is authorised")
 
     setter = sub.add_parser("set", help="set the client's autopilot destination")
     target = setter.add_mutually_exclusive_group(required=True)
@@ -1060,14 +1177,14 @@ def main():
         return 0
 
     if args.command == "resolve":
-        found_id, kind = resolve_name(args.name)
+        found_id, kind = resolve_name(args.name, character=args.character)
         print(f"{found_id}  ({kind[:-1]})")
         return 0
 
     deadline = Deadline(args.budget)
     destination = args.id
     if destination is None:
-        destination, kind = resolve_name(args.name, deadline=deadline)
+        destination, kind = resolve_name(args.name, deadline=deadline, character=args.character)
         print(f"# {args.name!r} -> {destination} ({kind[:-1]})")
     # Through `set_destination` rather than straight to `set_waypoint`, so the
     # CLI and the host cannot disagree about which character a destination goes

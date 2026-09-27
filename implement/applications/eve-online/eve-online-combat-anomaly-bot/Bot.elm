@@ -1,4 +1,4 @@
-{- EVE Online Combat Anomaly Bot version 2026-05-24
+{- EVE Online Combat Anomaly Bot version 2026-09-27
 
    This bot uses the probe scanner to find combat anomalies and kills rats using drones and weapon modules.
 
